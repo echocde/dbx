@@ -124,6 +124,8 @@ export default {
     openConnection: "打开连接",
     closeConnection: "关闭连接",
     deleteConnection: "删除连接",
+    confirmDeleteTitle: "删除连接",
+    confirmDeleteMessage: "确定要删除「{name}」吗？此操作不可撤销。",
     editConnection: "编辑连接",
     newQuery: "新建查询",
     viewData: "查看数据",

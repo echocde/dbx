@@ -72,7 +72,7 @@ export default {
   },
   welcome: {
     title: "Database Workspace",
-    subtitle: "Choose a connection on the left to browse schema, or open a query tab directly. DBX supports multiple databases, query history, grid editing, and an AI SQL assistant.",
+    subtitle: "Choose a connection on the left to browse schema, or open a query tab directly.",
     connections: "Connections",
     connected: "Connected",
     databaseTypes: "Database Types",
@@ -81,6 +81,8 @@ export default {
     shortcuts: "Shortcuts",
     shortcutsHint: "Start the next action from here.",
     tip: "You can also expand connections on the left and right-click databases or tables for more actions.",
+    tipSidebar: "Click a table on the left to view data",
+    tipExecute: "to execute query",
   },
   common: {
     language: "Language",
@@ -124,6 +126,8 @@ export default {
     openConnection: "Open Connection",
     closeConnection: "Close Connection",
     deleteConnection: "Delete Connection",
+    confirmDeleteTitle: "Delete Connection",
+    confirmDeleteMessage: "Are you sure you want to delete \"{name}\"? This cannot be undone.",
     editConnection: "Edit Connection",
     newQuery: "New Query",
     viewData: "View Data",

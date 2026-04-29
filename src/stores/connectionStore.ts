@@ -74,7 +74,11 @@ export const useConnectionStore = defineStore("connection", () => {
   async function disconnect(connectionId: string) {
     await api.disconnectDb(connectionId);
     connectedIds.value.delete(connectionId);
-    treeNodes.value = treeNodes.value.filter((n) => n.id !== connectionId);
+    const node = treeNodes.value.find((n) => n.connectionId === connectionId);
+    if (node) {
+      node.isExpanded = false;
+      node.children = [];
+    }
     if (activeConnectionId.value === connectionId) {
       activeConnectionId.value = null;
     }

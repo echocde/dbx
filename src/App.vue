@@ -616,27 +616,6 @@ onUnmounted(() => {
           <!-- Empty State -->
           <div v-else class="flex-1 overflow-auto bg-background">
             <div class="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-center gap-6 px-8 py-10">
-              <div class="flex items-start justify-between gap-6">
-                <div class="space-y-2">
-                  <div class="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <DatabaseZap class="h-4 w-4" />
-                    {{ t('app.name') }}
-                  </div>
-                  <h2 class="text-2xl font-semibold tracking-normal">{{ t('welcome.title') }}</h2>
-                  <p class="max-w-xl text-sm leading-6 text-muted-foreground">
-                    {{ t('welcome.subtitle') }}
-                  </p>
-                </div>
-                <div class="flex shrink-0 gap-2">
-                  <Button variant="outline" @click="showConnectionDialog = true">
-                    <Plus class="h-4 w-4" /> {{ t('toolbar.newConnection') }}
-                  </Button>
-                  <Button :disabled="!connectionStore.activeConnectionId" @click="newQuery">
-                    <FilePlus2 class="h-4 w-4" /> {{ t('toolbar.newQuery') }}
-                  </Button>
-                </div>
-              </div>
-
               <div class="grid grid-cols-3 gap-3">
                 <div class="rounded-lg border bg-muted/20 px-4 py-3">
                   <div class="flex items-center gap-2 text-xs text-muted-foreground">

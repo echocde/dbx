@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import {
   Database, Table, Columns3, Eye, ChevronRight, ChevronDown,
   Loader2, FolderOpen, Trash2, TerminalSquare, RefreshCw,
-  Copy, TableProperties, Key, Link, Zap, ListTree, Pencil,
+  Copy, TableProperties, Key, Link, Zap, ListTree, Pencil, Plug, Unplug,
 } from "lucide-vue-next";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem,
@@ -15,6 +15,10 @@ import { useQueryStore } from "@/stores/queryStore";
 import type { TreeNode, TreeNodeType } from "@/types/database";
 import * as api from "@/lib/tauri";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const { t } = useI18n();
 const connectionStore = useConnectionStore();
@@ -175,7 +179,13 @@ async function refresh() {
   await toggle();
 }
 
+const showDeleteConfirm = ref(false);
+
 function deleteConnection() {
+  showDeleteConfirm.value = true;
+}
+
+function confirmDelete() {
   const node = props.node;
   if (node.connectionId) {
     connectionStore.disconnect(node.connectionId);
@@ -193,8 +203,19 @@ function editConnection() {
   }
 }
 
+function disconnectConnection() {
+  if (props.node.connectionId) {
+    connectionStore.disconnect(props.node.connectionId);
+    props.node.isExpanded = false;
+    props.node.children = [];
+  }
+}
+
 const canExpand = !leafTypes.has(props.node.type);
 const paddingLeft = `${props.depth * 16 + 8}px`;
+const isConnected = computed(() =>
+  props.node.type === "connection" && !!props.node.connectionId && connectionStore.connectedIds.has(props.node.connectionId)
+);
 
 const CHILDREN_PAGE_SIZE = 100;
 const displayLimit = ref(CHILDREN_PAGE_SIZE);
@@ -235,6 +256,7 @@ function showMore() {
           <DatabaseIcon v-if="node.type === 'connection'" :db-type="connectionStore.getConfig(node.connectionId || '')?.db_type || 'postgres'" class="w-3.5 h-3.5 shrink-0" />
           <component v-else :is="getIconInfo(node)?.icon || Database" class="w-3.5 h-3.5 shrink-0" :class="getIconInfo(node)?.colorClass" />
           <span class="truncate">{{ isGroupLabel(node) ? t(node.label) : node.label }}</span>
+          <span v-if="node.type === 'connection' && node.connectionId && connectionStore.connectedIds.has(node.connectionId)" class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
         </div>
         <template v-if="node.isExpanded && node.children">
           <TreeItem v-for="child in visibleChildren" :key="child.id" :node="child" :depth="depth + 1" />
@@ -252,8 +274,11 @@ function showMore() {
 
     <ContextMenuContent class="w-48">
       <template v-if="node.type === 'connection'">
-        <ContextMenuItem @click="toggle">
+        <ContextMenuItem v-if="!isConnected" @click="toggle">
           <Plug class="w-3.5 h-3.5 mr-2" /> {{ t('contextMenu.openConnection') }}
+        </ContextMenuItem>
+        <ContextMenuItem v-else @click="disconnectConnection">
+          <Unplug class="w-3.5 h-3.5 mr-2" /> {{ t('contextMenu.closeConnection') }}
         </ContextMenuItem>
         <ContextMenuItem @click="newQuery">
           <TerminalSquare class="w-3.5 h-3.5 mr-2" /> {{ t('contextMenu.newQuery') }}
@@ -305,4 +330,17 @@ function showMore() {
       </ContextMenuItem>
     </ContextMenuContent>
   </ContextMenu>
+
+  <Dialog v-model:open="showDeleteConfirm">
+    <DialogContent class="sm:max-w-[400px]">
+      <DialogHeader>
+        <DialogTitle>{{ t('contextMenu.confirmDeleteTitle') }}</DialogTitle>
+      </DialogHeader>
+      <p class="text-sm text-muted-foreground">{{ t('contextMenu.confirmDeleteMessage', { name: node.label }) }}</p>
+      <DialogFooter>
+        <Button variant="outline" @click="showDeleteConfirm = false">{{ t('dangerDialog.cancel') }}</Button>
+        <Button variant="destructive" @click="showDeleteConfirm = false; confirmDelete()">{{ t('contextMenu.deleteConnection') }}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
