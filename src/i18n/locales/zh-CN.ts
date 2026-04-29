@@ -39,6 +39,7 @@ export default {
     sshPassword: "SSH 密码",
     sshPasswordPlaceholder: "留空则使用密钥",
     sshKeyPath: "密钥路径",
+    compatible: "兼容",
   },
   editor: {
     pressToExecute: "按 Cmd+Enter 执行查询",

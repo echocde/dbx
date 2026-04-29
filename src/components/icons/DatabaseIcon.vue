@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { siMysql, siPostgresql, siSqlite, siRedis, siMongodb, siClickhouse, siDuckdb } from "simple-icons";
+import { siMysql, siPostgresql, siSqlite, siRedis, siMongodb, siClickhouse, siDuckdb, siMariadb, siTidb } from "simple-icons";
 import { Database } from "lucide-vue-next";
 
 const props = defineProps<{
@@ -15,6 +15,8 @@ const icons: Record<string, { path: string; color: string }> = {
   mongodb: { path: siMongodb.path, color: `#${siMongodb.hex}` },
   clickhouse: { path: siClickhouse.path, color: `#${siClickhouse.hex}` },
   duckdb: { path: siDuckdb.path, color: `#${siDuckdb.hex}` },
+  mariadb: { path: siMariadb.path, color: `#${siMariadb.hex}` },
+  tidb: { path: siTidb.path, color: `#${siTidb.hex}` },
 };
 
 const iconData = computed(() => icons[props.dbType]);

@@ -39,6 +39,7 @@ export default {
     sshPassword: "SSH Password",
     sshPasswordPlaceholder: "Leave empty to use key",
     sshKeyPath: "Key Path",
+    compatible: "Compatible",
   },
   editor: {
     pressToExecute: "Press Cmd+Enter to execute",

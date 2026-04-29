@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import type { ConnectionConfig, DatabaseType } from "@/types/database";
 import { useConnectionStore } from "@/stores/connectionStore";
+import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/tauri";
 
 const { t } = useI18n();
@@ -44,6 +45,7 @@ const defaultForm = (): Omit<ConnectionConfig, "id"> => ({
 });
 
 const form = ref(defaultForm());
+const selectedType = ref("mysql");
 
 watch(() => props.editConfig, (config) => {
   if (config) {
@@ -63,9 +65,11 @@ watch(() => props.editConfig, (config) => {
       ssh_password: config.ssh_password || "",
       ssh_key_path: config.ssh_key_path || "",
     };
+    selectedType.value = config.db_type;
   } else {
     editingId.value = null;
     form.value = defaultForm();
+    selectedType.value = "mysql";
   }
   testResult.value = null;
 });
@@ -74,17 +78,66 @@ const isEditing = ref(false);
 watch(() => editingId.value, (v) => { isEditing.value = !!v; });
 
 function onDbTypeChange(val: string) {
-  form.value.db_type = val as DatabaseType;
-  if (!editingId.value) {
-    if (val === "mysql") { form.value.port = 3306; form.value.username = "root"; }
-    else if (val === "postgres") { form.value.port = 5432; form.value.username = "postgres"; }
-    else if (val === "redis") { form.value.port = 6379; form.value.username = ""; }
-    else if (val === "sqlite" || val === "duckdb") { form.value.port = 0; form.value.username = ""; }
-    else if (val === "mongodb") { form.value.port = 27017; form.value.username = ""; }
-    else if (val === "clickhouse") { form.value.port = 8123; form.value.username = "default"; }
-    else if (val === "sqlserver") { form.value.port = 1433; form.value.username = "sa"; }
+  const aliasMap: Record<string, { type: DatabaseType; port: number; user: string }> = {
+    mysql:      { type: "mysql",      port: 3306,  user: "root" },
+    postgres:   { type: "postgres",   port: 5432,  user: "postgres" },
+    redis:      { type: "redis",      port: 6379,  user: "" },
+    sqlite:     { type: "sqlite",     port: 0,     user: "" },
+    duckdb:     { type: "duckdb",     port: 0,     user: "" },
+    mongodb:    { type: "mongodb",    port: 27017, user: "" },
+    clickhouse: { type: "clickhouse", port: 8123,  user: "default" },
+    sqlserver:  { type: "sqlserver",  port: 1433,  user: "sa" },
+    tidb:       { type: "mysql",      port: 4000,  user: "root" },
+    oceanbase:  { type: "mysql",      port: 2881,  user: "root" },
+    goldendb:   { type: "mysql",      port: 3306,  user: "root" },
+    mariadb:    { type: "mysql",      port: 3306,  user: "root" },
+    opengauss:  { type: "postgres",   port: 5432,  user: "gaussdb" },
+    gaussdb:    { type: "postgres",   port: 5432,  user: "gaussdb" },
+    kingbase:   { type: "postgres",   port: 54321, user: "system" },
+    vastbase:   { type: "postgres",   port: 5432,  user: "vastbase" },
+  };
+  const alias = aliasMap[val];
+  if (alias) {
+    selectedType.value = val;
+    form.value.db_type = alias.type;
+    if (!editingId.value) {
+      form.value.port = alias.port;
+      form.value.username = alias.user;
+    }
   }
 }
+
+const iconTypeMap: Record<string, string> = {
+  mysql: "mysql", postgres: "postgres", sqlite: "sqlite", redis: "redis",
+  mongodb: "mongodb", duckdb: "duckdb", clickhouse: "clickhouse", sqlserver: "sqlserver",
+  mariadb: "mariadb", tidb: "tidb", oceanbase: "mysql", goldendb: "mysql",
+  opengauss: "postgres", gaussdb: "postgres", kingbase: "postgres", vastbase: "postgres",
+};
+
+const dbOptions = [
+  { value: "mysql", label: "MySQL" },
+  { value: "postgres", label: "PostgreSQL" },
+  { value: "sqlite", label: "SQLite" },
+  { value: "redis", label: "Redis" },
+  { value: "mongodb", label: "MongoDB" },
+  { value: "duckdb", label: "DuckDB" },
+  { value: "clickhouse", label: "ClickHouse" },
+  { value: "sqlserver", label: "SQL Server" },
+  { value: "mariadb", label: "MariaDB" },
+];
+
+const mysqlCompat = [
+  { value: "tidb", label: "TiDB" },
+  { value: "oceanbase", label: "OceanBase" },
+  { value: "goldendb", label: "GoldenDB" },
+];
+
+const pgCompat = [
+  { value: "opengauss", label: "openGauss" },
+  { value: "gaussdb", label: "GaussDB" },
+  { value: "kingbase", label: "KingBase" },
+  { value: "vastbase", label: "Vastbase" },
+];
 
 async function testConnection() {
   isTesting.value = true;
@@ -137,19 +190,40 @@ watch([() => editingId.value, () => open.value], () => {
 
         <div class="grid grid-cols-4 items-center gap-4">
           <Label class="text-right">{{ t('connection.type') }}</Label>
-          <Select :model-value="form.db_type" @update:model-value="(val: any) => onDbTypeChange(String(val))">
+          <Select :model-value="selectedType" @update:model-value="(val: any) => onDbTypeChange(String(val))">
             <SelectTrigger class="col-span-3">
-              <SelectValue />
+              <div class="flex items-center gap-2">
+                <DatabaseIcon :db-type="iconTypeMap[selectedType] || selectedType" class="w-4 h-4" />
+                <SelectValue />
+              </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="mysql">MySQL</SelectItem>
-              <SelectItem value="postgres">PostgreSQL</SelectItem>
-              <SelectItem value="sqlite">SQLite</SelectItem>
-              <SelectItem value="redis">Redis</SelectItem>
-              <SelectItem value="mongodb">MongoDB</SelectItem>
-              <SelectItem value="duckdb">DuckDB</SelectItem>
-              <SelectItem value="clickhouse">ClickHouse</SelectItem>
-              <SelectItem value="sqlserver">SQL Server</SelectItem>
+              <SelectGroup>
+                <SelectItem v-for="opt in dbOptions" :key="opt.value" :value="opt.value">
+                  <div class="flex items-center gap-2">
+                    <DatabaseIcon :db-type="iconTypeMap[opt.value]" class="w-3.5 h-3.5" />
+                    {{ opt.label }}
+                  </div>
+                </SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel class="text-xs text-muted-foreground">MySQL {{ t('connection.compatible') }}</SelectLabel>
+                <SelectItem v-for="opt in mysqlCompat" :key="opt.value" :value="opt.value">
+                  <div class="flex items-center gap-2">
+                    <DatabaseIcon :db-type="iconTypeMap[opt.value]" class="w-3.5 h-3.5" />
+                    {{ opt.label }}
+                  </div>
+                </SelectItem>
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel class="text-xs text-muted-foreground">PostgreSQL {{ t('connection.compatible') }}</SelectLabel>
+                <SelectItem v-for="opt in pgCompat" :key="opt.value" :value="opt.value">
+                  <div class="flex items-center gap-2">
+                    <DatabaseIcon :db-type="iconTypeMap[opt.value]" class="w-3.5 h-3.5" />
+                    {{ opt.label }}
+                  </div>
+                </SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
         </div>
