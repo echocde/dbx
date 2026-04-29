@@ -1,6 +1,7 @@
 pub mod clickhouse_driver;
 pub mod mongo_driver;
 pub mod mysql;
+pub mod oracle_driver;
 pub mod postgres;
 pub mod redis_driver;
 pub mod sqlite;

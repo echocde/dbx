@@ -87,6 +87,7 @@ function onDbTypeChange(val: string) {
     mongodb:    { type: "mongodb",    port: 27017, user: "" },
     clickhouse: { type: "clickhouse", port: 8123,  user: "default" },
     sqlserver:  { type: "sqlserver",  port: 1433,  user: "sa" },
+    oracle:     { type: "oracle",     port: 1521,  user: "system" },
     tidb:       { type: "mysql",      port: 4000,  user: "root" },
     oceanbase:  { type: "mysql",      port: 2881,  user: "root" },
     goldendb:   { type: "mysql",      port: 3306,  user: "root" },
@@ -110,6 +111,7 @@ function onDbTypeChange(val: string) {
 const iconTypeMap: Record<string, string> = {
   mysql: "mysql", postgres: "postgres", sqlite: "sqlite", redis: "redis",
   mongodb: "mongodb", duckdb: "duckdb", clickhouse: "clickhouse", sqlserver: "sqlserver",
+  oracle: "oracle",
   mariadb: "mariadb", tidb: "tidb", oceanbase: "mysql", goldendb: "mysql",
   opengauss: "postgres", gaussdb: "postgres", kingbase: "postgres", vastbase: "postgres",
 };
@@ -123,6 +125,7 @@ const dbOptions = [
   { value: "duckdb", label: "DuckDB" },
   { value: "clickhouse", label: "ClickHouse" },
   { value: "sqlserver", label: "SQL Server" },
+  { value: "oracle", label: "Oracle" },
   { value: "mariadb", label: "MariaDB" },
 ];
 

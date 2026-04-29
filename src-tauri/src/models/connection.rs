@@ -41,6 +41,8 @@ pub enum DatabaseType {
     SqlServer,
     #[serde(rename = "mongodb")]
     MongoDb,
+    #[serde(rename = "oracle")]
+    Oracle,
 }
 
 impl ConnectionConfig {
@@ -84,6 +86,10 @@ impl ConnectionConfig {
                     format!("mongodb://{}:{}@{host}:{port}{db_part}", self.username, self.password)
                 }
             }
+            DatabaseType::Oracle => format!(
+                "oracle://{}:{}@{host}:{port}{db_part}",
+                self.username, self.password
+            ),
         }
     }
 }

@@ -132,6 +132,15 @@ async fn do_execute(
                 .map_err(|_| format!("Query timed out after {} seconds", QUERY_TIMEOUT.as_secs()))?
                 .map(truncate_result)
         }
+        PoolKind::Oracle(pool) => {
+            let pool = pool.clone();
+            drop(connections);
+            let mut pool = pool.lock().await;
+            timeout(QUERY_TIMEOUT, db::oracle_driver::execute_query(&mut pool, sql))
+                .await
+                .map_err(|_| format!("Query timed out after {} seconds", QUERY_TIMEOUT.as_secs()))?
+                .map(truncate_result)
+        }
         PoolKind::Redis(_) => Err("Use Redis-specific commands".to_string()),
         PoolKind::MongoDb(_) => Err("Use MongoDB-specific commands".to_string()),
     }

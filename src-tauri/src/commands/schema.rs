@@ -75,6 +75,13 @@ fn extract_clickhouse(connections: &std::collections::HashMap<String, PoolKind>,
     }
 }
 
+fn extract_oracle(connections: &std::collections::HashMap<String, PoolKind>, key: &str) -> Option<std::sync::Arc<tokio::sync::Mutex<db::oracle_driver::OraclePool>>> {
+    match connections.get(key)? {
+        PoolKind::Oracle(pool) => Some(pool.clone()),
+        _ => None,
+    }
+}
+
 #[tauri::command]
 pub async fn list_databases(
     state: State<'_, Arc<AppState>>,
@@ -90,6 +97,11 @@ pub async fn list_databases(
             drop(connections);
             let mut client = client.lock().await;
             return db::sqlserver::list_databases(&mut client).await;
+        }
+        if let Some(pool) = extract_oracle(&connections, &connection_id) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::list_databases(&pool).await;
         }
     }
 
@@ -119,6 +131,11 @@ pub async fn list_schemas(
             drop(connections);
             let mut client = client.lock().await;
             return db::sqlserver::list_schemas(&mut client).await;
+        }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::list_schemas(&pool).await;
         }
     }
 
@@ -155,6 +172,11 @@ pub async fn list_tables(
             drop(connections);
             let mut client = client.lock().await;
             return db::sqlserver::list_tables(&mut client, &schema).await;
+        }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::list_tables(&pool, &schema).await;
         }
     }
 
@@ -195,6 +217,11 @@ pub async fn get_columns(
             let mut client = client.lock().await;
             return db::sqlserver::get_columns(&mut client, &schema, &table).await;
         }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::get_columns(&pool, &schema, &table).await;
+        }
     }
 
     let connections = state.connections.lock().await;
@@ -224,6 +251,11 @@ pub async fn list_indexes(
             drop(connections);
             let mut client = client.lock().await;
             return db::sqlserver::list_indexes(&mut client, &schema, &table).await;
+        }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::list_indexes(&pool, &schema, &table).await;
         }
     }
 
@@ -255,6 +287,11 @@ pub async fn list_foreign_keys(
             let mut client = client.lock().await;
             return db::sqlserver::list_foreign_keys(&mut client, &schema, &table).await;
         }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::list_foreign_keys(&pool, &schema, &table).await;
+        }
     }
 
     let connections = state.connections.lock().await;
@@ -284,6 +321,11 @@ pub async fn list_triggers(
             drop(connections);
             let mut client = client.lock().await;
             return db::sqlserver::list_triggers(&mut client, &schema, &table).await;
+        }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return db::oracle_driver::list_triggers(&pool, &schema, &table).await;
         }
     }
 
@@ -335,6 +377,11 @@ pub async fn get_table_ddl(
             drop(connections);
             let mut client = client.lock().await;
             return build_sqlserver_ddl(&mut client, &schema, &table).await;
+        }
+        if let Some(pool) = extract_oracle(&connections, &pool_key) {
+            drop(connections);
+            let pool = pool.lock().await;
+            return build_oracle_ddl(&pool, &schema, &table).await;
         }
     }
 
@@ -426,6 +473,38 @@ async fn build_sqlserver_ddl(client: &mut db::sqlserver::SqlServerClient, schema
         let unique = if idx.is_unique { "UNIQUE " } else { "" };
         let cols = idx.columns.iter().map(|c| format!("[{c}]")).collect::<Vec<_>>().join(", ");
         ddl.push_str(&format!("\nCREATE {unique}INDEX [{}] ON [{schema}].[{table}] ({cols});", idx.name));
+    }
+    Ok(ddl)
+}
+
+async fn build_oracle_ddl(pool: &db::oracle_driver::OraclePool, schema: &str, table: &str) -> Result<String, String> {
+    let columns = db::oracle_driver::get_columns(pool, schema, table).await?;
+    let indexes = db::oracle_driver::list_indexes(pool, schema, table).await?;
+    let fkeys = db::oracle_driver::list_foreign_keys(pool, schema, table).await?;
+
+    let mut ddl = format!("CREATE TABLE \"{schema}\".\"{table}\" (\n");
+    let col_lines: Vec<String> = columns.iter().map(|c| {
+        let mut line = format!("  \"{}\" {}", c.name, c.data_type);
+        if !c.is_nullable { line.push_str(" NOT NULL"); }
+        if let Some(ref def) = c.column_default { line.push_str(&format!(" DEFAULT {def}")); }
+        line
+    }).collect();
+    ddl.push_str(&col_lines.join(",\n"));
+
+    let pks: Vec<&str> = columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.as_str()).collect();
+    if !pks.is_empty() {
+        ddl.push_str(&format!(",\n  PRIMARY KEY ({})", pks.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", ")));
+    }
+    for fk in &fkeys {
+        ddl.push_str(&format!(",\n  CONSTRAINT \"{}\" FOREIGN KEY (\"{}\") REFERENCES \"{}\"(\"{}\")", fk.name, fk.column, fk.ref_table, fk.ref_column));
+    }
+    ddl.push_str("\n);\n");
+
+    for idx in &indexes {
+        if idx.is_primary { continue; }
+        let unique = if idx.is_unique { "UNIQUE " } else { "" };
+        let cols = idx.columns.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+        ddl.push_str(&format!("\nCREATE {unique}INDEX \"{}\" ON \"{schema}\".\"{table}\" ({cols});", idx.name));
     }
     Ok(ddl)
 }

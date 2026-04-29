@@ -16,6 +16,7 @@ pub enum PoolKind {
     MongoDb(mongodb::Client),
     ClickHouse(db::clickhouse_driver::ChClient),
     SqlServer(std::sync::Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>),
+    Oracle(std::sync::Arc<tokio::sync::Mutex<db::oracle_driver::OraclePool>>),
 }
 
 pub struct AppState {
@@ -38,20 +39,24 @@ impl AppState {
         connection_id: &str,
         database: Option<&str>,
     ) -> Result<String, String> {
-        let is_embedded = {
+        let db_type = {
             let configs = self.configs.lock().await;
-            configs.get(connection_id)
-                .map(|c| c.db_type == DatabaseType::Sqlite || c.db_type == DatabaseType::DuckDb)
-                .unwrap_or(false)
+            configs.get(connection_id).map(|c| c.db_type.clone())
         };
 
+        let is_embedded = matches!(db_type, Some(DatabaseType::Sqlite) | Some(DatabaseType::DuckDb));
         if is_embedded {
             return Ok(connection_id.to_string());
         }
 
-        let pool_key = match database {
-            Some(db) => format!("{connection_id}:{db}"),
-            None => connection_id.to_string(),
+        let is_single_conn = matches!(db_type, Some(DatabaseType::Oracle));
+        let pool_key = if is_single_conn {
+            connection_id.to_string()
+        } else {
+            match database {
+                Some(db) => format!("{connection_id}:{db}"),
+                None => connection_id.to_string(),
+            }
         };
 
         let conns = self.connections.lock().await;
@@ -69,7 +74,9 @@ impl AppState {
 
         let mut db_config = config.clone();
         if let Some(db) = database {
-            db_config.database = Some(db.to_string());
+            if db_config.db_type != DatabaseType::Oracle {
+                db_config.database = Some(db.to_string());
+            }
         }
 
         let url = db_config.connection_url();
@@ -102,6 +109,14 @@ impl AppState {
                 ).await?;
                 PoolKind::SqlServer(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
             }
+            DatabaseType::Oracle => {
+                let pool = db::oracle_driver::OraclePool::connect(
+                    &db_config.host, db_config.port,
+                    db_config.database.as_deref().unwrap_or("ORCL"),
+                    &db_config.username, &db_config.password,
+                ).await?;
+                PoolKind::Oracle(std::sync::Arc::new(tokio::sync::Mutex::new(pool)))
+            }
         };
 
         self.connections.lock().await.insert(pool_key.clone(), pool);
@@ -113,9 +128,19 @@ impl AppState {
         connection_id: &str,
         database: Option<&str>,
     ) -> Result<String, String> {
-        let pool_key = match database {
-            Some(db) => format!("{connection_id}:{db}"),
-            None => connection_id.to_string(),
+        let is_single_conn = {
+            let configs = self.configs.lock().await;
+            configs.get(connection_id)
+                .map(|c| c.db_type == DatabaseType::Oracle)
+                .unwrap_or(false)
+        };
+        let pool_key = if is_single_conn {
+            connection_id.to_string()
+        } else {
+            match database {
+                Some(db) => format!("{connection_id}:{db}"),
+                None => connection_id.to_string(),
+            }
         };
         self.connections.lock().await.remove(&pool_key);
         self.get_or_create_pool(connection_id, database).await
@@ -196,6 +221,14 @@ pub async fn test_connection(config: ConnectionConfig) -> Result<String, String>
             ).await?;
             Ok("Connection successful".to_string())
         }
+        DatabaseType::Oracle => {
+            let _pool = db::oracle_driver::OraclePool::connect(
+                &config.host, config.port,
+                config.database.as_deref().unwrap_or("ORCL"),
+                &config.username, &config.password,
+            ).await?;
+            Ok("Connection successful".to_string())
+        }
     }
 }
 
@@ -245,6 +278,14 @@ pub async fn connect_db(
                 config.database.as_deref(),
             ).await?;
                 PoolKind::SqlServer(std::sync::Arc::new(tokio::sync::Mutex::new(client)))        }
+        DatabaseType::Oracle => {
+            let pool = db::oracle_driver::OraclePool::connect(
+                &config.host, config.port,
+                config.database.as_deref().unwrap_or("ORCL"),
+                &config.username, &config.password,
+            ).await?;
+            PoolKind::Oracle(std::sync::Arc::new(tokio::sync::Mutex::new(pool)))
+        }
     };
 
     state.connections.lock().await.insert(id.clone(), pool);
@@ -275,6 +316,7 @@ pub async fn disconnect_db(
                 PoolKind::MongoDb(_) => {},
                 PoolKind::ClickHouse(_) => {},
                 PoolKind::SqlServer(_) => {},
+                PoolKind::Oracle(_) => {},
             }
         }
     }
