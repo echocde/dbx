@@ -20,6 +20,7 @@ import DataGrid from "@/components/grid/DataGrid.vue";
 import RedisKeyBrowser from "@/components/redis/RedisKeyBrowser.vue";
 import AiAssistant from "@/components/editor/AiAssistant.vue";
 import MongoDocBrowser from "@/components/mongo/MongoDocBrowser.vue";
+import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import QueryHistory from "@/components/editor/QueryHistory.vue";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import type { ConnectionConfig } from "@/types/database";
@@ -689,10 +690,7 @@ async function setupFileDrop() {
               <div class="grid grid-cols-[1.2fr_0.8fr] gap-4">
                 <div class="rounded-lg border">
                   <div class="flex items-center justify-between border-b px-4 py-3">
-                    <div>
-                      <div class="text-sm font-medium">{{ t('welcome.quickConnections') }}</div>
-                      <div class="text-xs text-muted-foreground">{{ t('welcome.quickConnectionsHint') }}</div>
-                    </div>
+                    <div class="text-sm font-medium">{{ t('welcome.quickConnections') }}</div>
                   </div>
                   <div class="divide-y">
                     <button
@@ -701,11 +699,11 @@ async function setupFileDrop() {
                       class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
                       @click="openConnectionQuery(connection.id)"
                     >
-                      <Database class="h-4 w-4 text-muted-foreground" />
+                      <DatabaseIcon :db-type="connection.db_type" class="h-4 w-4" />
                       <div class="min-w-0 flex-1">
                         <div class="truncate text-sm font-medium">{{ connection.name }}</div>
                         <div class="truncate text-xs text-muted-foreground">
-                          {{ connection.db_type.toUpperCase() }} · {{ connection.host || connection.database || 'local' }}
+                          {{ connection.db_type.toUpperCase() }} · {{ connection.host || connection.database || 'local' }}{{ connection.port ? ':' + connection.port : '' }}
                         </div>
                       </div>
                       <FilePlus2 class="h-4 w-4 text-muted-foreground" />
@@ -719,7 +717,6 @@ async function setupFileDrop() {
                 <div class="rounded-lg border">
                   <div class="border-b px-4 py-3">
                     <div class="text-sm font-medium">{{ t('welcome.shortcuts') }}</div>
-                    <div class="text-xs text-muted-foreground">{{ t('welcome.shortcutsHint') }}</div>
                   </div>
                   <div class="grid gap-1 p-2">
                     <button class="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/50" @click="showConnectionDialog = true">
