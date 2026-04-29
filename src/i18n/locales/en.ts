@@ -71,8 +71,16 @@ export default {
     rowsPerPageShort: " rows",
   },
   welcome: {
-    title: "Welcome to DBX",
-    subtitle: "Create a connection to get started",
+    title: "Database Workspace",
+    subtitle: "Choose a connection on the left to browse schema, or open a query tab directly. DBX supports multiple databases, query history, grid editing, and an AI SQL assistant.",
+    connections: "Connections",
+    connected: "Connected",
+    databaseTypes: "Database Types",
+    quickConnections: "Quick Start",
+    quickConnectionsHint: "Click a connection to open a query tab.",
+    shortcuts: "Shortcuts",
+    shortcutsHint: "Start the next action from here.",
+    tip: "You can also expand connections on the left and right-click databases or tables for more actions.",
   },
   common: {
     language: "Language",

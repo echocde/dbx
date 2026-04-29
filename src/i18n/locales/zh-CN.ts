@@ -71,8 +71,16 @@ export default {
     rowsPerPageShort: " 行/页",
   },
   welcome: {
-    title: "欢迎使用 DBX",
-    subtitle: "创建一个连接以开始使用",
+    title: "数据库工作台",
+    subtitle: "选择左侧连接开始浏览结构，或直接创建查询标签页。DBX 支持多种数据库、查询历史、数据表格编辑和 AI SQL 助手。",
+    connections: "连接",
+    connected: "已连接",
+    databaseTypes: "数据库类型",
+    quickConnections: "快速开始",
+    quickConnectionsHint: "点击连接即可新建查询标签页。",
+    shortcuts: "常用操作",
+    shortcutsHint: "从这里开始你的下一步。",
+    tip: "也可以在左侧展开连接，右键数据库或表查看更多操作。",
   },
   common: {
     language: "语言",

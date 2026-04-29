@@ -125,6 +125,15 @@ async function toggle() {
   }
 }
 
+function onClick() {
+  const node = props.node;
+  if (node.type === "table" || node.type === "view") {
+    openData();
+  } else if (canExpand) {
+    toggle();
+  }
+}
+
 async function openData() {
   const node = props.node;
   if (!(node.type === "table" || node.type === "view") || !node.connectionId || !node.database) return;
@@ -215,8 +224,7 @@ function showMore() {
         <div
           class="flex items-center gap-1.5 py-1 px-2 rounded-sm cursor-pointer hover:bg-accent transition-colors"
           :style="{ paddingLeft }"
-          @click="canExpand && toggle()"
-          @dblclick="openData"
+          @click="onClick"
         >
           <template v-if="canExpand">
             <Loader2 v-if="node.isLoading" class="w-3.5 h-3.5 shrink-0 animate-spin text-muted-foreground" />

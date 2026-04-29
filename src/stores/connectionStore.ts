@@ -436,6 +436,7 @@ export const useConnectionStore = defineStore("connection", () => {
     connections,
     activeConnectionId,
     treeNodes,
+    connectedIds,
     getConfig,
     addConnection,
     updateConnection,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { DatabaseZap, FilePlus2, Play, Loader2, X, Globe, Moon, Sun, Upload, Download, Plus, History, Server, Table2 } from "lucide-vue-next";
+import { DatabaseZap, FilePlus2, Play, Loader2, X, Globe, Moon, Sun, Upload, Download, Plus, History, Server, Table2, Database, Search, ShieldCheck, Sparkles } from "lucide-vue-next";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 import { Button } from "@/components/ui/button";
@@ -94,6 +94,14 @@ const activeDatabaseOptions = computed(() => {
 
 const activeDatabaseValue = computed(() => activeTab.value?.database || "");
 const activeConnectionValue = computed(() => activeConnection.value?.id || "");
+const connectionStats = computed(() => {
+  const total = connectionStore.connections.length;
+  const connected = connectionStore.connectedIds.size;
+  const types = new Set(connectionStore.connections.map((connection) => connection.db_type)).size;
+  return { total, connected, types };
+});
+
+const recentConnections = computed(() => connectionStore.connections.slice(0, 5));
 
 function connectionDisplayName(connectionId: string): string {
   return connectionStore.getConfig(connectionId)?.name || connectionId;
@@ -152,6 +160,15 @@ function newQuery() {
   );
   if (!conn) return;
   queryStore.createTab(conn.id, conn.database || "");
+}
+
+async function openConnectionQuery(connectionId: string) {
+  const connection = connectionStore.getConfig(connectionId);
+  if (!connection) return;
+  const options = await getDatabaseOptions(connectionId);
+  const database = connection.database || options[0] || "";
+  connectionStore.activeConnectionId = connectionId;
+  queryStore.createTab(connectionId, database);
 }
 
 const DANGER_RE = /^\s*(DROP|DELETE|TRUNCATE|ALTER)\b/i;
@@ -597,15 +614,105 @@ onUnmounted(() => {
           </div>
 
           <!-- Empty State -->
-          <div v-else class="flex-1 flex items-center justify-center">
-            <div class="text-center">
-              <h2 class="text-lg font-medium mb-2">{{ t('welcome.title') }}</h2>
-              <p class="text-sm text-muted-foreground mb-4">
-                {{ t('welcome.subtitle') }}
-              </p>
-              <Button @click="showConnectionDialog = true">
-                <Plus class="h-4 w-4 mr-2" /> {{ t('toolbar.newConnection') }}
-              </Button>
+          <div v-else class="flex-1 overflow-auto bg-background">
+            <div class="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-center gap-6 px-8 py-10">
+              <div class="flex items-start justify-between gap-6">
+                <div class="space-y-2">
+                  <div class="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <DatabaseZap class="h-4 w-4" />
+                    {{ t('app.name') }}
+                  </div>
+                  <h2 class="text-2xl font-semibold tracking-normal">{{ t('welcome.title') }}</h2>
+                  <p class="max-w-xl text-sm leading-6 text-muted-foreground">
+                    {{ t('welcome.subtitle') }}
+                  </p>
+                </div>
+                <div class="flex shrink-0 gap-2">
+                  <Button variant="outline" @click="showConnectionDialog = true">
+                    <Plus class="h-4 w-4" /> {{ t('toolbar.newConnection') }}
+                  </Button>
+                  <Button :disabled="!connectionStore.activeConnectionId" @click="newQuery">
+                    <FilePlus2 class="h-4 w-4" /> {{ t('toolbar.newQuery') }}
+                  </Button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-3">
+                <div class="rounded-lg border bg-muted/20 px-4 py-3">
+                  <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Database class="h-3.5 w-3.5" /> {{ t('welcome.connections') }}
+                  </div>
+                  <div class="mt-2 text-2xl font-semibold">{{ connectionStats.total }}</div>
+                </div>
+                <div class="rounded-lg border bg-muted/20 px-4 py-3">
+                  <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    <ShieldCheck class="h-3.5 w-3.5" /> {{ t('welcome.connected') }}
+                  </div>
+                  <div class="mt-2 text-2xl font-semibold">{{ connectionStats.connected }}</div>
+                </div>
+                <div class="rounded-lg border bg-muted/20 px-4 py-3">
+                  <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Sparkles class="h-3.5 w-3.5" /> {{ t('welcome.databaseTypes') }}
+                  </div>
+                  <div class="mt-2 text-2xl font-semibold">{{ connectionStats.types }}</div>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-[1.2fr_0.8fr] gap-4">
+                <div class="rounded-lg border">
+                  <div class="flex items-center justify-between border-b px-4 py-3">
+                    <div>
+                      <div class="text-sm font-medium">{{ t('welcome.quickConnections') }}</div>
+                      <div class="text-xs text-muted-foreground">{{ t('welcome.quickConnectionsHint') }}</div>
+                    </div>
+                  </div>
+                  <div class="divide-y">
+                    <button
+                      v-for="connection in recentConnections"
+                      :key="connection.id"
+                      class="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/40"
+                      @click="openConnectionQuery(connection.id)"
+                    >
+                      <Database class="h-4 w-4 text-muted-foreground" />
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-sm font-medium">{{ connection.name }}</div>
+                        <div class="truncate text-xs text-muted-foreground">
+                          {{ connection.db_type.toUpperCase() }} · {{ connection.host || connection.database || 'local' }}
+                        </div>
+                      </div>
+                      <FilePlus2 class="h-4 w-4 text-muted-foreground" />
+                    </button>
+                    <div v-if="recentConnections.length === 0" class="px-4 py-8 text-sm text-muted-foreground">
+                      {{ t('sidebar.noConnections') }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border">
+                  <div class="border-b px-4 py-3">
+                    <div class="text-sm font-medium">{{ t('welcome.shortcuts') }}</div>
+                    <div class="text-xs text-muted-foreground">{{ t('welcome.shortcutsHint') }}</div>
+                  </div>
+                  <div class="grid gap-1 p-2">
+                    <button class="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/50" @click="showConnectionDialog = true">
+                      <Plus class="h-4 w-4" /> {{ t('toolbar.newConnection') }}
+                    </button>
+                    <button class="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/50" :disabled="!connectionStore.activeConnectionId" @click="newQuery">
+                      <FilePlus2 class="h-4 w-4" /> {{ t('toolbar.newQuery') }}
+                    </button>
+                    <button class="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/50" @click="showHistory = true">
+                      <History class="h-4 w-4" /> {{ t('history.title') }}
+                    </button>
+                    <button class="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-muted/50" @click="connectionStore.importConnectionsFromFile()">
+                      <Upload class="h-4 w-4" /> {{ t('sidebar.import') }}
+                    </button>
+                    <div class="mt-2 rounded-md bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground">
+                      <Search class="mr-1 inline h-3.5 w-3.5" />
+                      {{ t('welcome.tip') }}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           </div>
