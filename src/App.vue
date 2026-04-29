@@ -20,6 +20,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { setLocale, currentLocale, type Locale } from "@/i18n";
+import { getCurrentWindow, type Theme } from "@tauri-apps/api/window";
 import * as api from "@/lib/tauri";
 
 const { t } = useI18n();
@@ -187,6 +188,7 @@ const isDark = ref(localStorage.getItem("dbx-theme") === "dark");
 
 function applyTheme() {
   document.documentElement.classList.toggle("dark", isDark.value);
+  getCurrentWindow().setTheme(isDark.value ? "dark" as Theme : "light" as Theme);
 }
 
 function toggleTheme() {

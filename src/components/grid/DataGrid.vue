@@ -315,6 +315,10 @@ function onEditKeydown(e: KeyboardEvent) {
 
 function addRow() {
   newRows.value.push(props.result.columns.map(() => null));
+  nextTick(() => {
+    const el = getScrollerElement();
+    if (el) el.scrollTop = el.scrollHeight;
+  });
 }
 
 function deleteSelectedRow() {
