@@ -4,10 +4,10 @@ const globalDdlOpen = ref(false);
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, watch } from "vue";
+import { computed, nextTick, onUnmounted, watch } from "vue";
 import { useElementSize } from "@vueuse/core";
 import { useI18n } from "vue-i18n";
-import { ArrowUp, ArrowDown, Download, Plus, Trash2, Save, ChevronLeft, ChevronRight, Search, Inbox, SearchX, Code2, Copy, Loader2, X, Undo2 } from "lucide-vue-next";
+import { ArrowUp, ArrowDown, Download, Plus, Trash2, Save, ChevronLeft, ChevronRight, Search, Inbox, SearchX, Code2, Copy, Loader2, X, Undo2, WrapText } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -640,6 +640,15 @@ function copySql() {
 const showDdl = globalDdlOpen;
 const ddlContent = ref("");
 const ddlLoading = ref(false);
+const ddlWidth = ref(320);
+const ddlWrap = ref(true);
+const isResizingDdl = ref(false);
+let ddlResizeStartX = 0;
+let ddlResizeStartWidth = 0;
+
+const ddlDrawerStyle = computed(() => ({
+  width: `${ddlWidth.value}px`,
+}));
 
 async function toggleDdl() {
   if (showDdl.value) {
@@ -675,6 +684,34 @@ function copyDdl() {
   navigator.clipboard.writeText(ddlContent.value);
   toast(t('grid.copied'));
 }
+
+function toggleDdlWrap() {
+  ddlWrap.value = !ddlWrap.value;
+}
+
+function onDdlResizeStart(event: MouseEvent) {
+  isResizingDdl.value = true;
+  ddlResizeStartX = event.clientX;
+  ddlResizeStartWidth = ddlWidth.value;
+  document.body.classList.add("select-none", "cursor-col-resize");
+  window.addEventListener("mousemove", onDdlResizeMove);
+  window.addEventListener("mouseup", onDdlResizeEnd);
+}
+
+function onDdlResizeMove(event: MouseEvent) {
+  if (!isResizingDdl.value) return;
+  const nextWidth = ddlResizeStartWidth + ddlResizeStartX - event.clientX;
+  ddlWidth.value = Math.min(Math.max(nextWidth, 240), 900);
+}
+
+function onDdlResizeEnd() {
+  isResizingDdl.value = false;
+  document.body.classList.remove("select-none", "cursor-col-resize");
+  window.removeEventListener("mousemove", onDdlResizeMove);
+  window.removeEventListener("mouseup", onDdlResizeEnd);
+}
+
+onUnmounted(onDdlResizeEnd);
 
 const SQL_KEYWORDS = /\b(CREATE|TABLE|INDEX|UNIQUE|PRIMARY|KEY|FOREIGN|REFERENCES|CONSTRAINT|NOT|NULL|DEFAULT|INT|INTEGER|BIGINT|SMALLINT|VARCHAR|CHARACTER|VARYING|TEXT|BOOLEAN|DOUBLE|PRECISION|REAL|FLOAT|NUMERIC|DECIMAL|TIMESTAMP|DATE|TIME|SERIAL|AUTOINCREMENT|AUTO_INCREMENT|IF|EXISTS|ON|SET|CASCADE|RESTRICT|CHECK|WITH|WITHOUT|ZONE)\b/gi;
 
@@ -861,12 +898,24 @@ function escapeAndHighlightKeywords(s: string): string {
           </RecycleScroller>
             </div>
             <!-- DDL Drawer -->
-            <div v-if="showDdl" class="w-80 shrink-0 border-l flex flex-col bg-background">
+            <div
+              v-if="showDdl"
+              class="relative shrink-0 border-l flex flex-col bg-background min-w-0"
+              :class="{ 'ddl-drawer-resizing': isResizingDdl }"
+              :style="ddlDrawerStyle"
+            >
+              <div
+                class="absolute left-0 top-0 bottom-0 z-20 w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/30"
+                @mousedown.prevent="onDdlResizeStart"
+              />
               <div class="flex items-center gap-2 px-3 py-1.5 border-b shrink-0 bg-muted/20">
                 <Code2 class="w-3.5 h-3.5 text-muted-foreground" />
-                <span class="text-xs font-medium flex-1">{{ tableMeta?.tableName }} DDL</span>
+                <span class="text-xs font-medium flex-1 min-w-0 truncate">{{ tableMeta?.tableName }} DDL</span>
                 <Button variant="ghost" size="icon" class="h-5 w-5" @click="copyDdl">
                   <Copy class="w-3 h-3" />
+                </Button>
+                <Button variant="ghost" size="icon" class="h-5 w-5" :class="{ 'bg-accent': ddlWrap }" @click="toggleDdlWrap">
+                  <WrapText class="w-3 h-3" />
                 </Button>
                 <Button variant="ghost" size="icon" class="h-5 w-5" @click="showDdl = false">
                   <X class="w-3 h-3" />
@@ -875,7 +924,12 @@ function escapeAndHighlightKeywords(s: string): string {
               <div v-if="ddlLoading" class="flex-1 flex items-center justify-center">
                 <Loader2 class="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
-              <pre v-else class="flex-1 text-xs font-mono p-3 overflow-auto whitespace-pre-wrap ddl-code" v-html="highlightSql(ddlContent)"></pre>
+              <pre
+                v-else
+                class="flex-1 min-w-0 text-xs font-mono p-3 overflow-auto ddl-code leading-5"
+                :class="ddlWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
+                v-html="highlightSql(ddlContent)"
+              ></pre>
             </div>
           </div>
         </div>
@@ -994,6 +1048,10 @@ function escapeAndHighlightKeywords(s: string): string {
 .data-grid-scroller :deep(.vue-recycle-scroller__item-wrapper) {
   min-width: var(--total-w);
   overflow: visible;
+}
+
+.ddl-drawer-resizing {
+  transition: none;
 }
 
 .ddl-code :deep(.ddl-kw) {
