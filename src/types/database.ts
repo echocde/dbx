@@ -72,7 +72,7 @@ export type TreeNodeType =
   | "connection" | "database" | "schema" | "table" | "view"
   | "group-columns" | "group-indexes" | "group-fkeys" | "group-triggers"
   | "column" | "index" | "fkey" | "trigger"
-  | "redis-db" | "redis-key"
+  | "redis-db"
   | "mongo-db" | "mongo-collection";
 
 export interface TreeNode {
@@ -82,8 +82,6 @@ export interface TreeNode {
   children?: TreeNode[];
   isLoading?: boolean;
   isExpanded?: boolean;
-  scanCursor?: number;
-  hasMore?: boolean;
   connectionId?: string;
   database?: string;
   schema?: string;

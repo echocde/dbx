@@ -66,8 +66,6 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Zap, colorClass: "text-orange-300" };
     case "redis-db":
       return { icon: Database, colorClass: "text-red-400" };
-    case "redis-key":
-      return { icon: Key, colorClass: "text-red-300" };
     case "mongo-db":
       return { icon: Database, colorClass: "text-green-500" };
     case "mongo-collection":
@@ -77,7 +75,7 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
   }
 }
 
-const leafTypes: Set<TreeNodeType> = new Set(["column", "index", "fkey", "trigger", "redis-key"]);
+const leafTypes: Set<TreeNodeType> = new Set(["column", "index", "fkey", "trigger", "redis-db"]);
 const groupTypes: Set<TreeNodeType> = new Set(["group-columns", "group-indexes", "group-fkeys", "group-triggers"]);
 
 function isGroupLabel(node: TreeNode): boolean {
@@ -101,7 +99,6 @@ async function toggle() {
   } else if (node.type === "redis-db" && node.connectionId && node.database) {
     const tabTitle = `${connectionStore.getConfig(node.connectionId)?.name || "Redis"}:db${node.database}`;
     queryStore.createTab(node.connectionId, node.database, tabTitle, "redis");
-    await connectionStore.loadRedisKeys(node.connectionId, Number(node.database), node.id);
   } else if (node.type === "mongo-db" && node.connectionId && node.database) {
     await connectionStore.loadMongoCollections(node.connectionId, node.database);
   } else if (node.type === "mongo-collection" && node.connectionId && node.database) {
@@ -134,6 +131,8 @@ function onClick() {
   const node = props.node;
   if (node.type === "table" || node.type === "view") {
     openData();
+    toggle();
+  } else if (node.type === "redis-db") {
     toggle();
   } else if (canExpand) {
     toggle();
@@ -180,8 +179,6 @@ async function refresh() {
   const node = props.node;
   node.isExpanded = false;
   node.children = [];
-  node.scanCursor = undefined;
-  node.hasMore = undefined;
   await toggle();
 }
 
@@ -241,9 +238,7 @@ const visibleChildren = computed(() => {
   return props.node.children.slice(0, displayLimit.value);
 });
 
-const hasMoreChildren = computed(() =>
-  (props.node.children?.length ?? 0) > displayLimit.value || !!props.node.hasMore
-);
+const hasMoreChildren = computed(() => (props.node.children?.length ?? 0) > displayLimit.value);
 
 const remainingCount = computed(() =>
   (props.node.children?.length ?? 0) - displayLimit.value
@@ -251,12 +246,6 @@ const remainingCount = computed(() =>
 
 async function showMore() {
   if ((props.node.children?.length ?? 0) > displayLimit.value) {
-    displayLimit.value += CHILDREN_PAGE_SIZE;
-    return;
-  }
-
-  if (props.node.type === "redis-db" && props.node.connectionId && props.node.database && props.node.hasMore) {
-    await connectionStore.loadMoreRedisKeys(props.node.connectionId, Number(props.node.database), props.node.id);
     displayLimit.value += CHILDREN_PAGE_SIZE;
   }
 }
@@ -292,7 +281,7 @@ async function showMore() {
             @click="showMore"
           >
             <Loader2 v-if="node.isLoading" class="w-3 h-3 shrink-0 animate-spin" />
-            <span>{{ node.hasMore && remainingCount <= 0 ? t('sidebar.loadMore') : t('sidebar.showMore', { count: Math.min(CHILDREN_PAGE_SIZE, remainingCount) }) }}</span>
+            <span>{{ t('sidebar.showMore', { count: Math.min(CHILDREN_PAGE_SIZE, remainingCount) }) }}</span>
           </div>
         </template>
       </div>

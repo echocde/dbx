@@ -14,7 +14,6 @@ export default {
     import: "Import Connections",
     export: "Export Connections",
     showMore: "Show {count} more...",
-    loadMore: "Load more...",
   },
   connection: {
     title: "New Connection",

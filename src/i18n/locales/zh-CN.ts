@@ -14,7 +14,6 @@ export default {
     import: "导入连接",
     export: "导出连接",
     showMore: "加载更多 ({count})...",
-    loadMore: "继续加载...",
   },
   connection: {
     title: "新建连接",
