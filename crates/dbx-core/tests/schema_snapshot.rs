@@ -86,9 +86,8 @@ async fn snapshot_standardizes_sqlite_tables_views_and_metadata() {
     assert_eq!(snapshot.databases.iter().map(|db| db.name.as_str()).collect::<Vec<_>>(), vec!["main"]);
 
     let table_names = snapshot.tables.iter().map(|table| table.name.as_str()).collect::<Vec<_>>();
-    assert_eq!(table_names, vec!["teams", "users"]);
-    let view_names = snapshot.views.iter().map(|view| view.name.as_str()).collect::<Vec<_>>();
-    assert_eq!(view_names, vec!["active_users"]);
+    assert_eq!(table_names, vec!["active_users", "teams", "users"]);
+    assert!(serde_json::to_value(&snapshot).unwrap().get("views").is_none());
 
     let users = snapshot.tables.iter().find(|table| table.name == "users").unwrap();
     assert_eq!(users.table_type, "BASE TABLE");
@@ -96,4 +95,39 @@ async fn snapshot_standardizes_sqlite_tables_views_and_metadata() {
     assert!(users.indexes.iter().any(|index| index.name == "idx_users_team_id" && index.columns == vec!["team_id"]));
     assert!(users.foreign_keys.iter().any(|fk| fk.column == "team_id" && fk.ref_table == "teams"));
     assert!(users.triggers.iter().any(|trigger| trigger.name == "trg_users_ai" && trigger.event == "INSERT"));
+
+    let active_users = snapshot.tables.iter().find(|table| table.name == "active_users").unwrap();
+    assert_eq!(active_users.table_type, "VIEW");
+    assert!(active_users.columns.iter().any(|column| column.name == "email"));
+}
+
+#[tokio::test]
+async fn snapshot_propagates_schema_core_errors() {
+    let data_path = std::env::temp_dir().join(format!("dbx-schema-snapshot-missing-{}.db", uuid::Uuid::new_v4()));
+    let state = open_state().await;
+    let config = sqlite_config(&data_path);
+    state.configs.lock().await.insert(config.id.clone(), config.clone());
+
+    let err = snapshot(&state, &config.id, None, None).await.unwrap_err();
+
+    assert!(err.contains("Failed to list databases"), "{err}");
+    assert!(err.contains("Connection not found"), "{err}");
+}
+
+#[tokio::test]
+async fn snapshot_requires_database_for_database_scoped_connections_without_default() {
+    let state = open_state().await;
+    let mut config = sqlite_config(std::path::Path::new("unused"));
+    config.id = "mysql-no-db".to_string();
+    config.name = "MySQL without DB".to_string();
+    config.db_type = DatabaseType::Mysql;
+    config.driver_profile = None;
+    config.host = "127.0.0.1".to_string();
+    config.port = 3306;
+    state.configs.lock().await.insert(config.id.clone(), config.clone());
+
+    let err = snapshot(&state, &config.id, None, None).await.unwrap_err();
+
+    assert!(err.contains("Database is required"), "{err}");
+    assert!(err.contains("mysql-no-db"), "{err}");
 }
