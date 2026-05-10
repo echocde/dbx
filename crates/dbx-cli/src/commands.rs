@@ -43,31 +43,42 @@ enum FlagKind {
     Bool,
 }
 
+#[derive(Clone, Copy)]
+struct FlagSpec {
+    kind: FlagKind,
+    allow_dash_value: bool,
+}
+
 fn parse_args(args: Vec<String>) -> Result<ParsedArgs, CliEnvelope<serde_json::Value>> {
     let mut positionals = Vec::new();
     let mut index = 0;
 
     while index < args.len() {
         let arg = &args[index];
-        if arg.starts_with("--") {
-            let Some(kind) = flag_kind(&args, arg) else {
+        if arg == "--format" {
+            let Some(value) = args.get(index + 1) else {
+                return Err(invalid_args(format!("{arg} requires a value")));
+            };
+            if value != "json" {
+                return Err(invalid_args("Only --format json is supported"));
+            }
+            index += 2;
+        } else if arg.starts_with("--") {
+            let Some(spec) =
+                flag_spec(positionals.first().map(String::as_str), positionals.get(1).map(String::as_str), arg)
+            else {
                 return Err(invalid_args(format!("Unknown flag: {arg}")));
             };
 
-            if kind == FlagKind::Value {
+            if spec.kind == FlagKind::Value {
                 let Some(value) = args.get(index + 1) else {
                     return Err(invalid_args(format!("{arg} requires a value")));
                 };
-                if value.starts_with("--") {
+                if !spec.allow_dash_value && value.starts_with("--") {
                     return Err(invalid_args(format!("{arg} requires a value")));
                 }
-                if arg == "--format" && value != "json" {
-                    return Err(invalid_args("Only --format json is supported"));
-                }
-                if arg != "--format" {
-                    positionals.push(arg.clone());
-                    positionals.push(value.clone());
-                }
+                positionals.push(arg.clone());
+                positionals.push(value.clone());
                 index += 2;
             } else {
                 positionals.push(arg.clone());
@@ -82,39 +93,77 @@ fn parse_args(args: Vec<String>) -> Result<ParsedArgs, CliEnvelope<serde_json::V
     Ok(ParsedArgs { positionals })
 }
 
-fn flag_kind(args: &[String], flag: &str) -> Option<FlagKind> {
-    let first = args.first().map(String::as_str);
-    let second = args.get(1).map(String::as_str);
+fn flag_spec(command: Option<&str>, subcommand: Option<&str>, flag: &str) -> Option<FlagSpec> {
     let value = FlagKind::Value;
     let boolean = FlagKind::Bool;
+    let normal_value = FlagSpec { kind: value, allow_dash_value: false };
+    let free_text_value = FlagSpec { kind: value, allow_dash_value: true };
+    let boolean_flag = FlagSpec { kind: boolean, allow_dash_value: false };
 
-    match (first, second, flag) {
-        (_, _, "--format") => Some(value),
-        (Some("conn"), Some("show"), "--redacted") => Some(boolean),
-        (Some("schema"), Some("snapshot"), "--conn" | "--db") => Some(value),
-        (Some("safe-query"), _, "--conn" | "--sql" | "--db") => Some(value),
-        (Some("handoff"), _, "--conn" | "--title" | "--sql" | "--sql-file" | "--description") => Some(value),
-        (Some("result"), Some("current"), "--limit") => Some(value),
+    match (command, subcommand, flag) {
+        (Some("conn"), Some("show"), "--redacted") => Some(boolean_flag),
+        (Some("schema"), Some("snapshot"), "--conn" | "--db") => Some(normal_value),
+        (Some("safe-query"), _, "--conn" | "--db") => Some(normal_value),
+        (Some("safe-query"), _, "--sql") => Some(free_text_value),
+        (Some("handoff"), _, "--conn" | "--sql-file") => Some(normal_value),
+        (Some("handoff"), _, "--title" | "--sql" | "--description") => Some(free_text_value),
+        (Some("result"), Some("current"), "--limit") => Some(normal_value),
         _ => None,
     }
 }
 
-async fn context(_args: &[String]) -> CliEnvelope<serde_json::Value> {
+fn reject_unexpected_positionals(
+    args: &[String],
+    command: &str,
+    subcommand: Option<&str>,
+) -> Result<(), CliEnvelope<serde_json::Value>> {
+    let mut index = 0;
+    while index < args.len() {
+        let arg = &args[index];
+        let Some(spec) = flag_spec(Some(command), subcommand, arg) else {
+            return Err(invalid_args(format!("Unexpected positional argument: {arg}")));
+        };
+
+        index += match spec.kind {
+            FlagKind::Value => 2,
+            FlagKind::Bool => 1,
+        };
+    }
+    Ok(())
+}
+
+async fn context(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "context", None) {
+        return err;
+    }
+
     match crate::runtime_client::get_json("/context").await {
         Ok(data) => ok(CliSource::GuiRuntime, data),
         Err(_) => ok(CliSource::Headless, serde_json::json!({ "runtime": "headless" })),
     }
 }
 
-async fn conn_list(_args: &[String]) -> CliEnvelope<serde_json::Value> {
+async fn conn_list(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "conn", Some("list")) {
+        return err;
+    }
+
     ok(CliSource::Headless, serde_json::json!({ "connections": [] }))
 }
 
-async fn conn_show(_name: &str, _args: &[String]) -> CliEnvelope<serde_json::Value> {
+async fn conn_show(_name: &str, args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "conn", Some("show")) {
+        return err;
+    }
+
     ok(CliSource::Headless, serde_json::json!({}))
 }
 
 async fn schema_snapshot(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "schema", Some("snapshot")) {
+        return err;
+    }
+
     let Some(_conn) = option_value(args, "--conn") else {
         return fail(CliSource::Headless, CliErrorCode::ConnectionNotFound, "--conn is required", true);
     };
@@ -128,6 +177,10 @@ async fn schema_snapshot(args: &[String]) -> CliEnvelope<serde_json::Value> {
 }
 
 async fn safe_query(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "safe-query", None) {
+        return err;
+    }
+
     let Some(_conn) = option_value(args, "--conn") else {
         return fail(CliSource::Headless, CliErrorCode::ConnectionNotFound, "--conn is required", true);
     };
@@ -139,6 +192,10 @@ async fn safe_query(args: &[String]) -> CliEnvelope<serde_json::Value> {
 }
 
 async fn handoff(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "handoff", None) {
+        return err;
+    }
+
     let Some(conn) = required_option(args, "--conn") else {
         return invalid_args("--conn is required");
     };
@@ -184,7 +241,11 @@ async fn handoff(args: &[String]) -> CliEnvelope<serde_json::Value> {
     }
 }
 
-async fn selection(_args: &[String]) -> CliEnvelope<serde_json::Value> {
+async fn selection(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "selection", None) {
+        return err;
+    }
+
     match crate::runtime_client::get_json("/selection").await {
         Ok(data) => ok(CliSource::GuiRuntime, data),
         Err(_) => runtime_required("dbx selection requires DBX GUI runtime."),
@@ -192,6 +253,10 @@ async fn selection(_args: &[String]) -> CliEnvelope<serde_json::Value> {
 }
 
 async fn result_current(args: &[String]) -> CliEnvelope<serde_json::Value> {
+    if let Err(err) = reject_unexpected_positionals(args, "result", Some("current")) {
+        return err;
+    }
+
     let limit = match parse_result_limit(args) {
         Ok(limit) => limit,
         Err(err) => return err,
@@ -249,6 +314,88 @@ mod tests {
             CliEnvelope::Failure { error, .. } => assert_eq!(error.code, expected),
             CliEnvelope::Success { .. } => panic!("expected failure envelope"),
         }
+    }
+
+    fn assert_failure_message_contains(env: CliEnvelope<serde_json::Value>, expected: &str) {
+        match env {
+            CliEnvelope::Failure { error, .. } => assert!(
+                error.message.contains(expected),
+                "expected error message to contain {expected:?}, got {:?}",
+                error.message
+            ),
+            CliEnvelope::Success { .. } => panic!("expected failure envelope"),
+        }
+    }
+
+    #[test]
+    fn parser_allows_free_text_option_values_to_start_with_dashes() {
+        let parsed = parse_args(vec![
+            "handoff".into(),
+            "--conn".into(),
+            "local".into(),
+            "--title".into(),
+            "-- review generated SQL".into(),
+            "--sql".into(),
+            "-- explain select 1".into(),
+            "--description".into(),
+            "-- optional note".into(),
+        ])
+        .expect("free-text values beginning with -- should parse");
+
+        assert_eq!(
+            parsed.positionals,
+            vec![
+                "handoff",
+                "--conn",
+                "local",
+                "--title",
+                "-- review generated SQL",
+                "--sql",
+                "-- explain select 1",
+                "--description",
+                "-- optional note",
+            ]
+        );
+    }
+
+    #[test]
+    fn parser_accepts_global_json_format_before_between_and_after_command_args() {
+        let cases = [
+            vec!["--format", "json", "safe-query", "--conn", "local", "--sql", "select 1"],
+            vec!["safe-query", "--conn", "local", "--format", "json", "--sql", "select 1"],
+            vec!["safe-query", "--conn", "local", "--sql", "select 1", "--format", "json"],
+        ];
+
+        for args in cases {
+            let parsed = parse_args(args.iter().map(|value| value.to_string()).collect())
+                .unwrap_or_else(|err| panic!("expected parse success for {args:?}, got {err:?}"));
+            assert_eq!(parsed.positionals, vec!["safe-query", "--conn", "local", "--sql", "select 1"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_extra_positionals_for_each_command() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+
+        let cases = [
+            vec!["context", "extra"],
+            vec!["conn", "list", "extra"],
+            vec!["conn", "show", "local", "extra"],
+            vec!["schema", "snapshot", "--conn", "local", "extra"],
+            vec!["safe-query", "--conn", "local", "--sql", "select 1", "extra"],
+            vec!["handoff", "--conn", "local", "--title", "Review", "--sql", "select 1", "extra"],
+            vec!["selection", "extra"],
+            vec!["result", "current", "--limit", "50", "extra"],
+        ];
+
+        for args in cases {
+            let env = dispatch(args.iter().map(|value| value.to_string()).collect()).await;
+            assert_failure_message_contains(env, "Unexpected positional argument");
+        }
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
     }
 
     #[tokio::test]
