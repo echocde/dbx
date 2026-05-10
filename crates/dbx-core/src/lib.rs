@@ -4,6 +4,7 @@ pub mod connection;
 pub mod connection_secrets;
 pub mod db;
 pub mod external;
+pub mod handoff;
 pub mod history;
 pub mod models;
 pub mod mongo_ops;
