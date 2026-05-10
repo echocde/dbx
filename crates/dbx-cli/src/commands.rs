@@ -132,6 +132,71 @@ fn reject_unexpected_positionals(
     Ok(())
 }
 
+async fn open_state() -> Result<dbx_core::connection::AppState, String> {
+    let app_dir = crate::runtime_client::app_data_dir();
+    std::fs::create_dir_all(&app_dir).map_err(|err| err.to_string())?;
+    let storage = dbx_core::storage::Storage::open(&app_dir.join("dbx.db")).await?;
+    Ok(dbx_core::connection::AppState::new(storage))
+}
+
+fn redacted_config(config: &dbx_core::models::connection::ConnectionConfig) -> serde_json::Value {
+    let risk = dbx_core::sql_safety::risk_for_connection("SELECT 1", &config.name, config.color.as_deref());
+    serde_json::json!({
+        "id": config.id,
+        "name": config.name,
+        "databaseType": config.db_type,
+        "driverProfile": config.driver_profile,
+        "driverLabel": config.driver_label,
+        "defaultDatabase": config.database,
+        "color": config.color,
+        "sshEnabled": config.ssh_enabled,
+        "redactedUrl": redacted_url(config),
+        "risk": risk,
+    })
+}
+
+fn redacted_url(config: &dbx_core::models::connection::ConnectionConfig) -> String {
+    redact_uri_credentials(&config.redacted_connection_url())
+}
+
+fn redact_uri_credentials(value: &str) -> String {
+    let Some(scheme_index) = value.find("://") else {
+        return value.to_string();
+    };
+    let authority_start = scheme_index + 3;
+    let rest = &value[authority_start..];
+    let authority_len = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..authority_len];
+    let Some(at_index) = authority.rfind('@') else {
+        return value.to_string();
+    };
+
+    format!("{}{}{}", &value[..authority_start], &authority[at_index + 1..], &rest[authority_len..])
+}
+
+async fn load_headless_connections(
+) -> Result<Vec<dbx_core::models::connection::ConnectionConfig>, CliEnvelope<serde_json::Value>> {
+    let state = open_state().await.map_err(|err| fail(CliSource::Headless, CliErrorCode::InternalError, err, false))?;
+    state
+        .storage
+        .load_connections()
+        .await
+        .map_err(|err| fail(CliSource::Headless, CliErrorCode::InternalError, err, false))
+}
+
+async fn find_connection(
+    name: &str,
+) -> Result<dbx_core::models::connection::ConnectionConfig, CliEnvelope<serde_json::Value>> {
+    let configs = load_headless_connections().await?;
+    let matches: Vec<_> = configs.into_iter().filter(|config| config.name == name || config.id == name).collect();
+
+    match matches.len() {
+        1 => Ok(matches.into_iter().next().unwrap()),
+        0 => Err(fail(CliSource::Headless, CliErrorCode::ConnectionNotFound, "Connection not found", true)),
+        _ => Err(fail(CliSource::Headless, CliErrorCode::AmbiguousConnection, "Connection name is ambiguous", true)),
+    }
+}
+
 async fn context(args: &[String]) -> CliEnvelope<serde_json::Value> {
     if let Err(err) = reject_unexpected_positionals(args, "context", None) {
         return err;
@@ -139,7 +204,20 @@ async fn context(args: &[String]) -> CliEnvelope<serde_json::Value> {
 
     match crate::runtime_client::get_json("/context").await {
         Ok(data) => ok(CliSource::GuiRuntime, data),
-        Err(_) => ok(CliSource::Headless, serde_json::json!({ "runtime": "headless" })),
+        Err(_) => {
+            let configs = match load_headless_connections().await {
+                Ok(configs) => configs,
+                Err(err) => return err,
+            };
+            ok(
+                CliSource::Headless,
+                serde_json::json!({
+                    "runtime": "headless",
+                    "activeConnection": configs.first().map(redacted_config),
+                    "configSource": crate::runtime_client::app_data_dir().join("dbx.db").display().to_string(),
+                }),
+            )
+        }
     }
 }
 
@@ -148,15 +226,26 @@ async fn conn_list(args: &[String]) -> CliEnvelope<serde_json::Value> {
         return err;
     }
 
-    ok(CliSource::Headless, serde_json::json!({ "connections": [] }))
+    match load_headless_connections().await {
+        Ok(configs) => ok(
+            CliSource::Headless,
+            serde_json::json!({
+                "connections": configs.iter().map(redacted_config).collect::<Vec<_>>(),
+            }),
+        ),
+        Err(err) => err,
+    }
 }
 
-async fn conn_show(_name: &str, args: &[String]) -> CliEnvelope<serde_json::Value> {
+async fn conn_show(name: &str, args: &[String]) -> CliEnvelope<serde_json::Value> {
     if let Err(err) = reject_unexpected_positionals(args, "conn", Some("show")) {
         return err;
     }
 
-    ok(CliSource::Headless, serde_json::json!({}))
+    match find_connection(name).await {
+        Ok(config) => ok(CliSource::Headless, redacted_config(&config)),
+        Err(err) => err,
+    }
 }
 
 async fn schema_snapshot(args: &[String]) -> CliEnvelope<serde_json::Value> {
@@ -308,6 +397,7 @@ mod tests {
     use super::*;
     use crate::runtime_client::ENV_LOCK;
     use dbx_core::cli::CliErrorCode;
+    use dbx_core::models::connection::{ConnectionConfig, DatabaseType};
 
     fn assert_failure_code(env: CliEnvelope<serde_json::Value>, expected: CliErrorCode) {
         match env {
@@ -324,6 +414,53 @@ mod tests {
                 error.message
             ),
             CliEnvelope::Success { .. } => panic!("expected failure envelope"),
+        }
+    }
+
+    fn mysql_fixture(id: &str, name: &str, color: Option<&str>, password: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            id: id.to_string(),
+            name: name.to_string(),
+            db_type: DatabaseType::Mysql,
+            driver_profile: None,
+            driver_label: Some("MySQL".to_string()),
+            url_params: None,
+            host: "127.0.0.1".to_string(),
+            port: 3306,
+            username: "root".to_string(),
+            password: password.to_string(),
+            database: Some("app".to_string()),
+            color: color.map(str::to_string),
+            ssh_enabled: true,
+            ssh_host: "bastion.internal".to_string(),
+            ssh_port: 22,
+            ssh_user: "deploy".to_string(),
+            ssh_password: "ssh-secret".to_string(),
+            ssh_key_path: String::new(),
+            ssh_key_passphrase: "key-secret".to_string(),
+            ssh_expose_lan: false,
+            ssh_connect_timeout_secs: dbx_core::models::connection::default_ssh_connect_timeout_secs(),
+            ssl: false,
+            sysdba: false,
+            connection_string: Some(format!("mysql://root:{password}@127.0.0.1:3306/app")),
+            jdbc_driver_class: None,
+            jdbc_driver_paths: Vec::new(),
+        }
+    }
+
+    async fn seed_connections(dir: &std::path::Path, configs: &[ConnectionConfig]) {
+        std::fs::create_dir_all(dir).unwrap();
+        let storage = dbx_core::storage::Storage::open(&dir.join("dbx.db")).await.unwrap();
+        storage.save_connections(configs).await.unwrap();
+    }
+
+    fn success_data(env: CliEnvelope<serde_json::Value>) -> serde_json::Value {
+        match env {
+            CliEnvelope::Success { source, data, .. } => {
+                assert_eq!(source, CliSource::Headless);
+                data
+            }
+            CliEnvelope::Failure { error, .. } => panic!("expected success envelope, got {error:?}"),
         }
     }
 
@@ -448,6 +585,101 @@ mod tests {
             assert!(json.get("source").is_some(), "missing source for args: {args:?}");
             assert!(json.get("data").is_some() || json.get("error").is_some(), "missing data/error for args: {args:?}");
         }
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn context_reads_headless_storage_and_returns_redacted_active_connection() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        seed_connections(dir.path(), &[mysql_fixture("prod-id", "prod-main", Some("#ef4444"), "super-secret")]).await;
+
+        let data = success_data(dispatch(vec!["context".into(), "--format".into(), "json".into()]).await);
+
+        assert_eq!(data["runtime"], "headless");
+        assert_eq!(data["activeConnection"]["id"], "prod-id");
+        assert_eq!(data["activeConnection"]["name"], "prod-main");
+        assert_eq!(data["activeConnection"]["risk"]["isProduction"], true);
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("configSource"));
+        assert!(!json.contains("super-secret"));
+        assert!(!json.contains("ssh-secret"));
+        assert!(!json.contains("key-secret"));
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn conn_list_reads_storage_and_returns_redacted_connection_dtos_with_risk_metadata() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        seed_connections(
+            dir.path(),
+            &[
+                mysql_fixture("prod-id", "prod-main", Some("#ef4444"), "prod-secret"),
+                mysql_fixture("dev-id", "dev-main", Some("#22c55e"), "dev-secret"),
+            ],
+        )
+        .await;
+
+        let data = success_data(dispatch(vec!["conn".into(), "list".into(), "--format".into(), "json".into()]).await);
+        let connections = data["connections"].as_array().expect("connections should be an array");
+
+        assert_eq!(connections.len(), 2);
+        assert_eq!(connections[0]["id"], "prod-id");
+        assert_eq!(connections[0]["redactedUrl"], "mysql://127.0.0.1:3306/app?ssl-mode=preferred&charset=utf8mb4");
+        assert_eq!(connections[0]["risk"]["isProduction"], true);
+        assert_eq!(connections[0]["risk"]["productionReason"], "red connection color");
+        assert_eq!(connections[1]["risk"]["isProduction"], false);
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("prod-secret"));
+        assert!(!json.contains("dev-secret"));
+        assert!(!json.contains("root:"));
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn conn_show_supports_id_lookup_and_returns_not_found_or_ambiguous_errors() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        seed_connections(
+            dir.path(),
+            &[
+                mysql_fixture("prod-id", "prod-main", Some("#ef4444"), "prod-secret"),
+                mysql_fixture("dup-1", "shared", None, "first-secret"),
+                mysql_fixture("dup-2", "shared", None, "second-secret"),
+            ],
+        )
+        .await;
+
+        let shown = success_data(
+            dispatch(vec![
+                "conn".into(),
+                "show".into(),
+                "prod-id".into(),
+                "--redacted".into(),
+                "--format".into(),
+                "json".into(),
+            ])
+            .await,
+        );
+        assert_eq!(shown["id"], "prod-id");
+        assert_eq!(shown["risk"]["isProduction"], true);
+        assert!(!serde_json::to_string(&shown).unwrap().contains("prod-secret"));
+
+        assert_failure_code(
+            dispatch(vec!["conn".into(), "show".into(), "__missing__".into(), "--format".into(), "json".into()]).await,
+            CliErrorCode::ConnectionNotFound,
+        );
+        assert_failure_code(
+            dispatch(vec!["conn".into(), "show".into(), "shared".into(), "--format".into(), "json".into()]).await,
+            CliErrorCode::AmbiguousConnection,
+        );
 
         std::env::remove_var("DBX_APP_DATA_DIR");
     }
