@@ -257,10 +257,7 @@ async fn context(args: &[String]) -> CliEnvelope<serde_json::Value> {
     match crate::runtime_client::get_json("/context").await {
         Ok(data) => ok(CliSource::GuiRuntime, data),
         Err(_) => {
-            let configs = match load_headless_connections().await {
-                Ok(configs) => configs,
-                Err(err) => return err,
-            };
+            let configs = load_headless_connections().await.unwrap_or_default();
             ok(
                 CliSource::Headless,
                 serde_json::json!({
@@ -906,6 +903,37 @@ mod tests {
         assert!(!json.contains("super-secret"));
         assert!(!json.contains("ssh-secret"));
         assert!(!json.contains("key-secret"));
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn context_returns_headless_minimal_context_for_empty_or_unopenable_app_data() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let empty_app_data = dir.path().join("empty-app-data");
+        let unopenable_app_data = dir.path().join("app-data-file");
+        std::fs::write(&unopenable_app_data, "not a directory").unwrap();
+
+        for app_data in [&empty_app_data, &unopenable_app_data] {
+            std::env::set_var("DBX_APP_DATA_DIR", app_data);
+
+            let data = success_data(dispatch(vec!["context".into(), "--format".into(), "json".into()]).await);
+
+            assert_eq!(data["runtime"], "headless");
+            assert!(data["activeConnection"].is_null());
+            assert_eq!(data["configSource"], "headless");
+        }
+
+        std::env::set_var("DBX_APP_DATA_DIR", &unopenable_app_data);
+        assert_failure_code(
+            dispatch(vec!["conn".into(), "list".into(), "--format".into(), "json".into()]).await,
+            CliErrorCode::InternalError,
+        );
+        assert_failure_code(
+            dispatch(vec!["conn".into(), "show".into(), "missing".into(), "--format".into(), "json".into()]).await,
+            CliErrorCode::InternalError,
+        );
 
         std::env::remove_var("DBX_APP_DATA_DIR");
     }
