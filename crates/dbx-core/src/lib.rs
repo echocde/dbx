@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod cli;
 pub mod connection;
 pub mod connection_secrets;
 pub mod db;
