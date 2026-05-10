@@ -38,6 +38,7 @@ import { isCloseTabShortcut, isExecuteSqlShortcut } from "@/lib/keyboardShortcut
 import { isPreviewTab } from "@/lib/tabPresentation";
 import { SQL_FILE_UNSUPPORTED_TYPES } from "@/lib/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/aiSqlExecutionPolicy";
+import { restoreStartupAgentRuntime } from "@/lib/appStartup";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -448,15 +449,14 @@ function onLoginSuccess() {
 }
 
 function initApp() {
-  savedSqlStore
-    .initFromStorage()
-    .then(() => connectionStore.initFromDisk())
-    .then(() => {
-      reconnectRestoredTabs();
-    })
-    .catch((e: any) => {
-      toast(t("connection.loadFailed", { message: e?.message || String(e) }), 5000);
-    });
+  restoreStartupAgentRuntime({
+    initSavedSql: () => savedSqlStore.initFromStorage(),
+    initConnections: () => connectionStore.initFromDisk(),
+    reconnectRestoredTabs,
+    scheduleSync: () => agentRuntimeStore.scheduleSync(),
+  }).catch((e: any) => {
+    toast(t("connection.loadFailed", { message: e?.message || String(e) }), 5000);
+  });
   settingsStore.initAiConfig();
 }
 

@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import { buildAgentRuntimeSnapshot } from "../src/lib/agentRuntimeSnapshot.ts";
+import { restoreStartupAgentRuntime } from "../src/lib/appStartup.ts";
 
 test("builds runtime snapshot from active tab, selection, and limited result rows", () => {
   const snapshot = buildAgentRuntimeSnapshot({
@@ -77,4 +78,25 @@ test("omits empty selected SQL and marks empty UI selection as none", () => {
   assert.equal(snapshot.selectedSql, undefined);
   assert.deepEqual(snapshot.selection, { type: "none" });
   assert.equal(snapshot.result, undefined);
+});
+
+test("schedules startup runtime sync only after connections and restored tabs are ready", async () => {
+  const calls: string[] = [];
+
+  await restoreStartupAgentRuntime({
+    initSavedSql: async () => {
+      calls.push("saved-sql");
+    },
+    initConnections: async () => {
+      calls.push("connections");
+    },
+    reconnectRestoredTabs: async () => {
+      calls.push("reconnect");
+    },
+    scheduleSync: () => {
+      calls.push("schedule");
+    },
+  });
+
+  assert.deepEqual(calls, ["saved-sql", "connections", "reconnect", "schedule"]);
 });
