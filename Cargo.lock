@@ -1644,6 +1644,7 @@ dependencies = [
  "dbx-core",
  "duckdb",
  "futures",
+ "libc",
  "log",
  "mongodb",
  "percent-encoding",

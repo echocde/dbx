@@ -12,6 +12,8 @@ use super::connection::AppState;
 
 const BIND_ADDR: &str = "127.0.0.1:0";
 const DISCOVERY_FILE: &str = "agent-runtime.json";
+const MAX_HEADER_BYTES: usize = 16 * 1024;
+const MAX_BODY_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +73,13 @@ impl Drop for AgentRuntimeServer {
 struct RuntimeResponse {
     status: &'static str,
     body: serde_json::Value,
+}
+
+#[derive(Debug)]
+struct RuntimeRequest {
+    first_line: String,
+    headers: Vec<(String, String)>,
+    body: String,
 }
 
 #[tauri::command]
@@ -155,28 +164,124 @@ async fn run_server(app: AppHandle, state: AgentRuntimeState, mut shutdown: ones
 }
 
 async fn handle_connection(mut stream: TcpStream, state: AgentRuntimeState) {
-    let mut buf = vec![0u8; 65536];
-    let Ok(n) = stream.read(&mut buf).await else {
-        return;
+    let request = match read_request(&mut stream).await {
+        Ok(Some(request)) => request,
+        Ok(None) => return,
+        Err(response) => {
+            respond_json(&mut stream, response.status, response.body).await;
+            return;
+        }
     };
-    if n == 0 {
-        return;
-    }
 
-    let request = String::from_utf8_lossy(&buf[..n]);
-    if !is_authorized(&request, &state.token) {
+    if !is_authorized_headers(&request.headers, &state.token) {
         respond_json(&mut stream, "401 Unauthorized", serde_json::json!({"error": "unauthorized"})).await;
         return;
     }
 
-    let first_line = request.lines().next().unwrap_or("");
-    let body = request.split("\r\n\r\n").nth(1).unwrap_or("");
-    let response = route_request(first_line, body, &state).await;
+    let response = route_request(&request.first_line, &request.body, &state).await;
     respond_json(&mut stream, response.status, response.body).await;
 }
 
+async fn read_request(stream: &mut TcpStream) -> Result<Option<RuntimeRequest>, RuntimeResponse> {
+    let mut buf = Vec::new();
+    let header_end = loop {
+        if let Some(pos) = find_header_end(&buf) {
+            break pos;
+        }
+        if buf.len() >= MAX_HEADER_BYTES {
+            return Err(RuntimeResponse {
+                status: "431 Request Header Fields Too Large",
+                body: serde_json::json!({"error": "headers too large"}),
+            });
+        }
+
+        let mut chunk = [0u8; 8192];
+        let n = stream.read(&mut chunk).await.map_err(|_| RuntimeResponse {
+            status: "400 Bad Request",
+            body: serde_json::json!({"error": "invalid request"}),
+        })?;
+        if n == 0 {
+            return if buf.is_empty() {
+                Ok(None)
+            } else {
+                Err(RuntimeResponse {
+                    status: "400 Bad Request",
+                    body: serde_json::json!({"error": "incomplete request"}),
+                })
+            };
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    };
+
+    let header_text = String::from_utf8_lossy(&buf[..header_end]);
+    let mut lines = header_text.lines();
+    let first_line = lines.next().unwrap_or("").to_string();
+    let headers: Vec<(String, String)> = lines
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            Some((name.trim().to_string(), value.trim().to_string()))
+        })
+        .collect();
+    let content_length = content_length(&headers)?;
+    if content_length > MAX_BODY_BYTES {
+        return Err(RuntimeResponse {
+            status: "413 Payload Too Large",
+            body: serde_json::json!({"error": "body too large"}),
+        });
+    }
+
+    let body_start = header_end + 4;
+    let body_end = body_start + content_length;
+    while buf.len() < body_end {
+        let mut chunk = [0u8; 8192];
+        let n = stream.read(&mut chunk).await.map_err(|_| RuntimeResponse {
+            status: "400 Bad Request",
+            body: serde_json::json!({"error": "invalid request"}),
+        })?;
+        if n == 0 {
+            return Err(RuntimeResponse {
+                status: "400 Bad Request",
+                body: serde_json::json!({"error": "incomplete body"}),
+            });
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    }
+
+    Ok(Some(RuntimeRequest {
+        first_line,
+        headers,
+        body: String::from_utf8_lossy(&buf[body_start..body_end]).to_string(),
+    }))
+}
+
+fn find_header_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+fn content_length(headers: &[(String, String)]) -> Result<usize, RuntimeResponse> {
+    match headers.iter().find(|(name, _)| name.eq_ignore_ascii_case("content-length")) {
+        Some((_, value)) => value.parse::<usize>().map_err(|_| RuntimeResponse {
+            status: "400 Bad Request",
+            body: serde_json::json!({"error": "invalid content-length"}),
+        }),
+        None => Ok(0),
+    }
+}
+
+#[cfg(test)]
 fn is_authorized(request: &str, token: &str) -> bool {
-    request.lines().any(|line| line.trim_end() == format!("Authorization: Bearer {token}"))
+    request.lines().any(|line| {
+        let Some((name, value)) = line.split_once(':') else {
+            return false;
+        };
+        name.trim().eq_ignore_ascii_case("authorization") && value.trim() == format!("Bearer {token}")
+    })
+}
+
+fn is_authorized_headers(headers: &[(String, String)], token: &str) -> bool {
+    headers
+        .iter()
+        .any(|(name, value)| name.eq_ignore_ascii_case("authorization") && value == &format!("Bearer {token}"))
 }
 
 async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) -> RuntimeResponse {
@@ -197,10 +302,11 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
 
     if first_line.starts_with("GET /result/current ") || first_line.starts_with("GET /result/current?") {
         let snapshot = state.snapshot.read().await;
-        return RuntimeResponse {
-            status: "200 OK",
-            body: snapshot.result.clone().unwrap_or_else(|| serde_json::json!({"columns": [], "rows": []})),
-        };
+        let mut body = snapshot.result.clone().unwrap_or_else(|| serde_json::json!({"columns": [], "rows": []}));
+        if let Some(limit) = query_limit(first_line) {
+            truncate_result_rows(&mut body, limit);
+        }
+        return RuntimeResponse { status: "200 OK", body };
     }
 
     if first_line.starts_with("POST /handoff ") {
@@ -222,25 +328,37 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
     RuntimeResponse { status: "404 Not Found", body: serde_json::json!({"error": "not found"}) }
 }
 
+fn query_limit(first_line: &str) -> Option<usize> {
+    let target = first_line.split_whitespace().nth(1)?;
+    let query = target.split_once('?')?.1;
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        (key == "limit").then(|| value.parse::<usize>().ok()).flatten()
+    })
+}
+
+fn truncate_result_rows(result: &mut serde_json::Value, limit: usize) {
+    if let Some(rows) = result.get_mut("rows").and_then(|rows| rows.as_array_mut()) {
+        rows.truncate(limit);
+    }
+}
+
 fn write_discovery_file(dir: &Path, port: u16, token: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|err| err.to_string())?;
     let path = dir.join(DISCOVERY_FILE);
-    if let Ok(metadata) = std::fs::symlink_metadata(&path) {
-        if metadata.file_type().is_symlink() || !metadata.is_file() {
-            std::fs::remove_file(&path).map_err(|err| err.to_string())?;
-        }
-    }
+    let temp_path = dir.join(format!("{DISCOVERY_FILE}.{}.tmp", uuid::Uuid::new_v4()));
     let payload = serde_json::json!({ "port": port, "token": token });
     let body = serde_json::to_vec(&payload).map_err(|err| err.to_string())?;
 
     let mut options = OpenOptions::new();
-    options.create(true).write(true).truncate(true);
+    options.create_new(true).write(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
+        options.custom_flags(libc::O_NOFOLLOW);
     }
-    let mut file = options.open(&path).map_err(|err| err.to_string())?;
+    let mut file = options.open(&temp_path).map_err(|err| err.to_string())?;
     file.write_all(&body).map_err(|err| err.to_string())?;
     file.sync_all().map_err(|err| err.to_string())?;
 
@@ -249,7 +367,13 @@ fn write_discovery_file(dir: &Path, port: u16, token: &str) -> Result<PathBuf, S
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = file.metadata().map_err(|err| err.to_string())?.permissions();
         permissions.set_mode(0o600);
-        std::fs::set_permissions(&path, permissions).map_err(|err| err.to_string())?;
+        file.set_permissions(permissions).map_err(|err| err.to_string())?;
+    }
+    drop(file);
+
+    if let Err(err) = std::fs::rename(&temp_path, &path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(err.to_string());
     }
 
     Ok(path)
@@ -273,6 +397,7 @@ async fn respond_json(stream: &mut TcpStream, status: &str, body: serde_json::Va
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::net::TcpListener;
 
     fn runtime_state() -> AgentRuntimeState {
         AgentRuntimeState {
@@ -289,11 +414,43 @@ mod tests {
         std::fs::metadata(path).unwrap().permissions().mode() & 0o777
     }
 
+    async fn serve_once(state: AgentRuntimeState) -> std::net::SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_connection(stream, state).await;
+        });
+        addr
+    }
+
     #[test]
     fn authorization_requires_exact_bearer_token() {
         assert!(is_authorized("GET /context HTTP/1.1\r\nAuthorization: Bearer secret-token\r\n\r\n", "secret-token",));
+        assert!(is_authorized("GET /context HTTP/1.1\r\nauthorization: Bearer secret-token\r\n\r\n", "secret-token",));
         assert!(!is_authorized("GET /context HTTP/1.1\r\nAuthorization: Bearer wrong\r\n\r\n", "secret-token",));
         assert!(!is_authorized("GET /context HTTP/1.1\r\n\r\n", "secret-token"));
+    }
+
+    #[tokio::test]
+    async fn accepts_reqwest_lowercase_authorization_header() {
+        let state = runtime_state();
+        *state.snapshot.write().await = AgentRuntimeSnapshot {
+            active_connection_id: Some("conn-1".to_string()),
+            ..AgentRuntimeSnapshot::default()
+        };
+        let addr = serve_once(state).await;
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/context"))
+            .bearer_auth("secret-token")
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let body: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(body["activeConnectionId"], "conn-1");
     }
 
     #[tokio::test]
@@ -334,6 +491,73 @@ mod tests {
         assert_eq!(handoff.status, "200 OK");
         assert_eq!(handoff.body["id"], item.id);
         assert_eq!(state.handoffs.read().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn result_current_limit_truncates_rows() {
+        let state = runtime_state();
+        *state.snapshot.write().await = AgentRuntimeSnapshot {
+            result: Some(serde_json::json!({"columns": ["id"], "rows": [[1], [2], [3]]})),
+            ..AgentRuntimeSnapshot::default()
+        };
+
+        let result = route_request("GET /result/current?limit=2 HTTP/1.1", "", &state).await;
+
+        assert_eq!(result.status, "200 OK");
+        assert_eq!(result.body["rows"], serde_json::json!([[1], [2]]));
+    }
+
+    #[tokio::test]
+    async fn reads_fragmented_handoff_body_until_content_length() {
+        let state = runtime_state();
+        let addr = serve_once(state.clone()).await;
+        let item = dbx_core::handoff::HandoffItem::queued(
+            "conn-1".to_string(),
+            "Local".to_string(),
+            Some("main".to_string()),
+            "Review SQL".to_string(),
+            None,
+            "select ".to_string() + &"1".repeat(70_000),
+            dbx_core::sql_safety::OperationClass::Read,
+            dbx_core::sql_safety::RiskLevel::Low,
+            false,
+        );
+        let body = serde_json::to_string(&item).unwrap();
+        let head = format!(
+            "POST /handoff HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer secret-token\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        );
+        let split_at = body.len() / 2;
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+
+        stream.write_all(head.as_bytes()).await.unwrap();
+        stream.write_all(body[..split_at].as_bytes()).await.unwrap();
+        tokio::task::yield_now().await;
+        stream.write_all(body[split_at..].as_bytes()).await.unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+
+        let response = String::from_utf8(response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
+        assert_eq!(state.handoffs.read().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn rejects_body_larger_than_limit() {
+        let state = runtime_state();
+        let addr = serve_once(state).await;
+        let body_len = 1_048_577;
+        let request = format!(
+            "POST /handoff HTTP/1.1\r\nHost: {addr}\r\nAuthorization: Bearer secret-token\r\nContent-Length: {body_len}\r\n\r\n"
+        );
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = Vec::new();
+        stream.read_to_end(&mut response).await.unwrap();
+
+        let response = String::from_utf8(response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 413 Payload Too Large"), "{response}");
     }
 
     #[test]
