@@ -365,14 +365,16 @@ pub async fn execute_sql_statement_with_row_limit(
 
     let result = do_execute_with_row_limit(state, &pool_key, sql, schema, cancel_token.clone(), row_limit).await;
 
-    match &result {
+    let result = match &result {
         Err(e) if is_connection_error(e) && !is_canceled(&cancel_token) => {
             let db_opt = if database.is_empty() { None } else { Some(database) };
             let new_key = state.reconnect_pool(connection_id, db_opt).await?;
             do_execute_with_row_limit(state, &new_key, sql, schema, cancel_token, row_limit).await
         }
         _ => result,
-    }
+    };
+
+    result.map(|result| truncate_result_with_row_limit(result, row_limit))
 }
 
 pub async fn execute_multi_core(
@@ -795,6 +797,42 @@ mod tests {
     use crate::connection::AppState;
     use crate::models::connection::{ConnectionConfig, DatabaseType};
     use crate::storage::Storage;
+
+    fn query_result_with_rows(row_count: usize, truncated: bool) -> db::QueryResult {
+        db::QueryResult {
+            columns: vec!["id".to_string()],
+            rows: (1..=row_count).map(|id| vec![serde_json::Value::Number(id.into())]).collect(),
+            affected_rows: 0,
+            execution_time_ms: 0,
+            truncated,
+        }
+    }
+
+    #[test]
+    fn truncate_result_with_row_limit_truncates_rows_and_marks_result() {
+        let result = truncate_result_with_row_limit(query_result_with_rows(5, false), 3);
+
+        assert_eq!(result.rows.len(), 3);
+        assert!(result.truncated);
+        assert_eq!(result.rows[0][0], serde_json::Value::Number(1.into()));
+        assert_eq!(result.rows[2][0], serde_json::Value::Number(3.into()));
+    }
+
+    #[test]
+    fn truncate_result_with_row_limit_keeps_untruncated_result_when_within_limit() {
+        let result = truncate_result_with_row_limit(query_result_with_rows(3, false), 3);
+
+        assert_eq!(result.rows.len(), 3);
+        assert!(!result.truncated);
+    }
+
+    #[test]
+    fn truncate_result_with_row_limit_treats_zero_limit_as_one() {
+        let result = truncate_result_with_row_limit(query_result_with_rows(2, false), 0);
+
+        assert_eq!(result.rows.len(), 1);
+        assert!(result.truncated);
+    }
 
     #[tokio::test]
     async fn wait_for_query_returns_cancelled_when_token_is_cancelled() {
