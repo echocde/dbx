@@ -19,6 +19,7 @@ import type {
   SavedSqlFolder,
   SavedSqlLibrary,
 } from "@/types/database";
+import type { AgentRuntimeSnapshot } from "@/lib/agentRuntimeSnapshot";
 import type { AiConfig } from "@/stores/settingsStore";
 
 export interface AiMessage {
@@ -78,6 +79,14 @@ export async function aiCancelStream(sessionId: string): Promise<boolean> {
 
 export async function loadAiConfig(): Promise<AiConfig | null> {
   return invoke("load_ai_config");
+}
+
+export async function agentRuntimeUpdateSnapshot(snapshot: AgentRuntimeSnapshot): Promise<void> {
+  return invoke("agent_runtime_update_snapshot", { snapshot });
+}
+
+export async function agentRuntimeLoadHandoffs(): Promise<unknown[]> {
+  return invoke("agent_runtime_load_handoffs");
 }
 
 // --- AI Conversations ---

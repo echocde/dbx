@@ -15,6 +15,7 @@ import UpdateDialog from "@/components/layout/UpdateDialog.vue";
 import LoginPage from "@/components/auth/LoginPage.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
+import { useAgentRuntimeStore } from "@/stores/agentRuntimeStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { useToast } from "@/composables/useToast";
@@ -46,6 +47,7 @@ import type { HistoryEntry } from "@/lib/tauri";
 const { t } = useI18n();
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
+const agentRuntimeStore = useAgentRuntimeStore();
 const settingsStore = useSettingsStore();
 const savedSqlStore = useSavedSqlStore();
 const { message: toastMessage, visible: toastVisible, toast } = useToast();
@@ -158,6 +160,7 @@ watch(
   () => queryStore.activeTabId,
   () => {
     selectedSql.value = "";
+    agentRuntimeStore.setSelectedSql("");
     activeOutputView.value = "result";
   },
 );
@@ -614,7 +617,12 @@ onUnmounted(() => {
                       if (queryStore.activeTabId) queryStore.updateSql(queryStore.activeTabId, v);
                     }
                   "
-                  @editor-selection-change="(v: string) => (selectedSql = v)"
+                  @editor-selection-change="
+                    (v: string) => {
+                      selectedSql = v;
+                      agentRuntimeStore.setSelectedSql(v);
+                    }
+                  "
                   @editor-cursor-change="(p: number) => (cursorPos = p)"
                   @format-error="toast(t('toolbar.formatSqlFailed'))"
                   @reload="
