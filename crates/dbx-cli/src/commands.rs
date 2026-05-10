@@ -1,31 +1,4 @@
-use serde::Serialize;
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub(crate) enum CliErrorCode {
-    GuiRuntimeRequired,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum CliSource {
-    GuiRuntime,
-    Headless,
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct CliError {
-    code: CliErrorCode,
-    message: String,
-    recoverable: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub(crate) enum CliEnvelope<T> {
-    Success { ok: bool, source: CliSource, data: T },
-    Failure { ok: bool, source: CliSource, error: CliError },
-}
+use dbx_core::cli::{fail, ok, CliEnvelope, CliErrorCode, CliSource};
 
 pub(crate) async fn run(args: Vec<String>) -> Result<(), CliEnvelope<()>> {
     let output = match args.as_slice() {
@@ -48,14 +21,6 @@ async fn context() -> CliEnvelope<serde_json::Value> {
     }
 }
 
-fn ok<T>(source: CliSource, data: T) -> CliEnvelope<T> {
-    CliEnvelope::Success { ok: true, source, data }
-}
-
 fn runtime_required(message: &str) -> CliEnvelope<serde_json::Value> {
-    CliEnvelope::Failure {
-        ok: false,
-        source: CliSource::Headless,
-        error: CliError { code: CliErrorCode::GuiRuntimeRequired, message: message.to_string(), recoverable: true },
-    }
+    fail(CliSource::Headless, CliErrorCode::GuiRuntimeRequired, message, true)
 }
