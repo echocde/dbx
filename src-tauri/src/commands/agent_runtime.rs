@@ -10,7 +10,8 @@ use tokio::sync::{oneshot, RwLock};
 
 use super::connection::AppState;
 use dbx_core::handoff::{HandoffItem, HandoffStatus};
-use dbx_core::sql_safety::{risk_for, risk_for_connection, RiskContext};
+use dbx_core::models::connection::ConnectionConfig;
+use dbx_core::sql_safety::{classify_sql, risk_for, risk_for_connection, OperationClass, RiskContext, RiskLevel};
 
 const BIND_ADDR: &str = "127.0.0.1:0";
 const DISCOVERY_FILE: &str = "agent-runtime.json";
@@ -37,6 +38,7 @@ pub struct AgentRuntimeState {
     pub token: String,
     pub snapshot: Arc<RwLock<AgentRuntimeSnapshot>>,
     pub handoffs: Arc<RwLock<Vec<dbx_core::handoff::HandoffItem>>>,
+    pub app_state: Option<Arc<AppState>>,
 }
 
 pub struct AgentRuntimeServer {
@@ -121,12 +123,13 @@ pub async fn agent_runtime_reject_handoff(
     update_handoff_status(app_state.inner().as_ref(), runtime.state(), &id, HandoffStatus::Rejected).await
 }
 
-pub fn start(app: AppHandle) -> AgentRuntimeServer {
+pub fn start(app: AppHandle, app_state: Arc<AppState>) -> AgentRuntimeServer {
     let token = uuid::Uuid::new_v4().to_string();
     let state = AgentRuntimeState {
         token: token.clone(),
         snapshot: Arc::new(RwLock::new(AgentRuntimeSnapshot::default())),
         handoffs: Arc::new(RwLock::new(Vec::new())),
+        app_state: Some(app_state),
     };
     let discovery_path =
         app.path().app_data_dir().map(|dir| dir.join(DISCOVERY_FILE)).unwrap_or_else(|_| PathBuf::from(DISCOVERY_FILE));
@@ -340,7 +343,7 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
             }
         };
         let snapshot = state.snapshot.read().await.clone();
-        recompute_handoff_risk(&mut item, &snapshot);
+        recompute_handoff_risk(&mut item, &snapshot, state.app_state.as_deref()).await;
         item.status = dbx_core::handoff::HandoffStatus::Shown;
         let id = item.id.clone();
         state.handoffs.write().await.push(item);
@@ -350,17 +353,70 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
     RuntimeResponse { status: "404 Not Found", body: serde_json::json!({"error": "not found"}) }
 }
 
-fn recompute_handoff_risk(item: &mut HandoffItem, snapshot: &AgentRuntimeSnapshot) {
-    let risk = match snapshot.active_connection_name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
-        Some(connection_name) => risk_for_connection(&item.sql, connection_name, None),
-        None => risk_for(
-            &item.sql,
-            RiskContext { connection_name: "unknown", color: None, environment_label: Some("Production") },
-        ),
+async fn recompute_handoff_risk(item: &mut HandoffItem, snapshot: &AgentRuntimeSnapshot, app_state: Option<&AppState>) {
+    let connection = load_handoff_connection(app_state, &item.connection_id).await;
+    let risk = match connection {
+        ConnectionLookup::Found(config) => {
+            risk_for_connection(&item.sql, config.name.as_str(), config.color.as_deref())
+        }
+        ConnectionLookup::Missing => match matching_snapshot_connection_name(item, snapshot) {
+            Some(connection_name) => risk_for_connection(&item.sql, connection_name, None),
+            None => conservative_production_risk(&item.sql),
+        },
+        ConnectionLookup::ReadFailed => conservative_production_risk(&item.sql),
     };
     item.operation_class = risk.operation_class;
     item.risk_level = risk.risk_level;
     item.is_production = risk.is_production;
+}
+
+enum ConnectionLookup {
+    Found(ConnectionConfig),
+    Missing,
+    ReadFailed,
+}
+
+async fn load_handoff_connection(app_state: Option<&AppState>, connection_id: &str) -> ConnectionLookup {
+    let connection_id = connection_id.trim();
+    if connection_id.is_empty() {
+        return ConnectionLookup::Missing;
+    }
+    let Some(app_state) = app_state else {
+        return ConnectionLookup::Missing;
+    };
+
+    match app_state.storage.load_connections().await {
+        Ok(configs) => configs
+            .into_iter()
+            .find(|config| config.id == connection_id)
+            .map(ConnectionLookup::Found)
+            .unwrap_or(ConnectionLookup::Missing),
+        Err(err) => {
+            log::warn!("Agent runtime failed to load connection metadata for handoff risk: {err}");
+            ConnectionLookup::ReadFailed
+        }
+    }
+}
+
+fn matching_snapshot_connection_name<'a>(item: &HandoffItem, snapshot: &'a AgentRuntimeSnapshot) -> Option<&'a str> {
+    let handoff_connection_id = item.connection_id.trim();
+    let active_connection_id = snapshot.active_connection_id.as_deref().map(str::trim)?;
+    if handoff_connection_id.is_empty() || handoff_connection_id != active_connection_id {
+        return None;
+    }
+    snapshot.active_connection_name.as_deref().map(str::trim).filter(|name| !name.is_empty())
+}
+
+fn conservative_production_risk(sql: &str) -> dbx_core::sql_safety::RiskMetadata {
+    let mut risk =
+        risk_for(sql, RiskContext { connection_name: "unknown", color: None, environment_label: Some("Production") });
+    risk.is_production = true;
+    risk.risk_level = match classify_sql(sql) {
+        OperationClass::Ddl => RiskLevel::Critical,
+        OperationClass::Write if risk.risk_level == RiskLevel::Critical => RiskLevel::Critical,
+        _ => RiskLevel::High,
+    };
+    risk
 }
 
 async fn update_handoff_status(
@@ -484,6 +540,47 @@ mod tests {
             token: "secret-token".to_string(),
             snapshot: Arc::new(RwLock::new(AgentRuntimeSnapshot::default())),
             handoffs: Arc::new(RwLock::new(Vec::new())),
+            app_state: None,
+        }
+    }
+
+    async fn runtime_state_with_connections(
+        configs: Vec<dbx_core::models::connection::ConnectionConfig>,
+    ) -> AgentRuntimeState {
+        let db_path = std::env::temp_dir().join(format!("dbx-agent-runtime-test-{}.db", uuid::Uuid::new_v4()));
+        let storage = dbx_core::storage::Storage::open(&db_path).await.unwrap();
+        storage.save_connections(&configs).await.unwrap();
+        AgentRuntimeState { app_state: Some(Arc::new(AppState::new(storage))), ..runtime_state() }
+    }
+
+    fn connection_config(id: &str, name: &str, color: Option<&str>) -> dbx_core::models::connection::ConnectionConfig {
+        dbx_core::models::connection::ConnectionConfig {
+            id: id.to_string(),
+            name: name.to_string(),
+            db_type: dbx_core::models::connection::DatabaseType::Postgres,
+            driver_profile: None,
+            driver_label: None,
+            url_params: None,
+            host: "127.0.0.1".to_string(),
+            port: 5432,
+            username: "postgres".to_string(),
+            password: "secret".to_string(),
+            database: Some("postgres".to_string()),
+            color: color.map(str::to_string),
+            ssh_enabled: false,
+            ssh_host: String::new(),
+            ssh_port: 22,
+            ssh_user: String::new(),
+            ssh_password: String::new(),
+            ssh_key_path: String::new(),
+            ssh_key_passphrase: String::new(),
+            ssh_expose_lan: false,
+            ssh_connect_timeout_secs: dbx_core::models::connection::default_ssh_connect_timeout_secs(),
+            ssl: false,
+            sysdba: false,
+            connection_string: None,
+            jdbc_driver_class: None,
+            jdbc_driver_paths: Vec::new(),
         }
     }
 
@@ -624,6 +721,35 @@ mod tests {
         assert_eq!(stored[0].operation_class, dbx_core::sql_safety::OperationClass::Write);
         assert_eq!(stored[0].risk_level, dbx_core::sql_safety::RiskLevel::High);
         assert!(stored[0].is_production);
+    }
+
+    #[tokio::test]
+    async fn handoff_does_not_use_active_snapshot_when_target_connection_differs() {
+        let state = runtime_state_with_connections(vec![connection_config("target-dev", "dev-target", None)]).await;
+        *state.snapshot.write().await = AgentRuntimeSnapshot {
+            active_connection_id: Some("active-prod".to_string()),
+            active_connection_name: Some("prod-main".to_string()),
+            ..AgentRuntimeSnapshot::default()
+        };
+        let item = dbx_core::handoff::HandoffItem::queued(
+            "target-dev".to_string(),
+            "dev-target".to_string(),
+            Some("main".to_string()),
+            "Review SQL".to_string(),
+            None,
+            "update users set name = 'a' where id = 1".to_string(),
+            dbx_core::sql_safety::OperationClass::Read,
+            dbx_core::sql_safety::RiskLevel::Low,
+            false,
+        );
+
+        let handoff = route_request("POST /handoff HTTP/1.1", &serde_json::to_string(&item).unwrap(), &state).await;
+
+        assert_eq!(handoff.status, "200 OK");
+        let stored = state.handoffs.read().await;
+        assert_eq!(stored[0].operation_class, dbx_core::sql_safety::OperationClass::Write);
+        assert_eq!(stored[0].risk_level, dbx_core::sql_safety::RiskLevel::Medium);
+        assert!(!stored[0].is_production);
     }
 
     #[tokio::test]

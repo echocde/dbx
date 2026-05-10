@@ -38,8 +38,8 @@ pub fn run() {
             app.manage(state.clone());
 
             let app_handle = app.handle().clone();
-            commands::mcp_bridge::start(app_handle, state);
-            let runtime_state = commands::agent_runtime::start(app.handle().clone());
+            commands::mcp_bridge::start(app_handle, state.clone());
+            let runtime_state = commands::agent_runtime::start(app.handle().clone(), state.clone());
             app.manage(runtime_state);
 
             #[cfg(not(target_os = "macos"))]
