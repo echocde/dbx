@@ -156,7 +156,19 @@ fn redacted_config(config: &dbx_core::models::connection::ConnectionConfig) -> s
 }
 
 fn redacted_url(config: &dbx_core::models::connection::ConnectionConfig) -> String {
+    if matches!(
+        config.db_type,
+        dbx_core::models::connection::DatabaseType::Sqlite | dbx_core::models::connection::DatabaseType::DuckDb
+    ) {
+        return redact_embedded_path_url(&config.redacted_connection_url());
+    }
+
     redact_uri_credentials(&config.redacted_connection_url())
+}
+
+fn redact_embedded_path_url(value: &str) -> String {
+    let suffix_start = value.find(['?', '#']).unwrap_or(value.len());
+    format!("<redacted-path>{}", &value[suffix_start..])
 }
 
 fn redact_uri_credentials(value: &str) -> String {
@@ -188,7 +200,21 @@ async fn find_connection(
     name: &str,
 ) -> Result<dbx_core::models::connection::ConnectionConfig, CliEnvelope<serde_json::Value>> {
     let configs = load_headless_connections().await?;
-    let matches: Vec<_> = configs.into_iter().filter(|config| config.name == name || config.id == name).collect();
+    let id_matches: Vec<_> = configs.iter().filter(|config| config.id == name).collect();
+    match id_matches.len() {
+        1 => return Ok(id_matches[0].clone()),
+        0 => {}
+        _ => {
+            return Err(fail(
+                CliSource::Headless,
+                CliErrorCode::AmbiguousConnection,
+                "Connection id is ambiguous",
+                true,
+            ));
+        }
+    }
+
+    let matches: Vec<_> = configs.into_iter().filter(|config| config.name == name).collect();
 
     match matches.len() {
         1 => Ok(matches.into_iter().next().unwrap()),
@@ -214,7 +240,7 @@ async fn context(args: &[String]) -> CliEnvelope<serde_json::Value> {
                 serde_json::json!({
                     "runtime": "headless",
                     "activeConnection": configs.first().map(redacted_config),
-                    "configSource": crate::runtime_client::app_data_dir().join("dbx.db").display().to_string(),
+                    "configSource": "headless",
                 }),
             )
         }
@@ -448,6 +474,18 @@ mod tests {
         }
     }
 
+    fn embedded_fixture(id: &str, name: &str, db_type: DatabaseType, path: &std::path::Path) -> ConnectionConfig {
+        let mut config = mysql_fixture(id, name, None, "");
+        config.db_type = db_type;
+        config.host = path.display().to_string();
+        config.port = 0;
+        config.username = String::new();
+        config.password = String::new();
+        config.database = None;
+        config.connection_string = None;
+        config
+    }
+
     async fn seed_connections(dir: &std::path::Path, configs: &[ConnectionConfig]) {
         std::fs::create_dir_all(dir).unwrap();
         let storage = dbx_core::storage::Storage::open(&dir.join("dbx.db")).await.unwrap();
@@ -602,8 +640,10 @@ mod tests {
         assert_eq!(data["activeConnection"]["id"], "prod-id");
         assert_eq!(data["activeConnection"]["name"], "prod-main");
         assert_eq!(data["activeConnection"]["risk"]["isProduction"], true);
+        assert_eq!(data["configSource"], "headless");
         let json = serde_json::to_string(&data).unwrap();
         assert!(json.contains("configSource"));
+        assert!(!json.contains(&dir.path().join("dbx.db").display().to_string()));
         assert!(!json.contains("super-secret"));
         assert!(!json.contains("ssh-secret"));
         assert!(!json.contains("key-secret"));
@@ -638,6 +678,35 @@ mod tests {
         assert!(!json.contains("prod-secret"));
         assert!(!json.contains("dev-secret"));
         assert!(!json.contains("root:"));
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn conn_list_redacts_sqlite_and_duckdb_file_paths() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        let sqlite_path = dir.path().join("private").join("app.sqlite");
+        let duckdb_path = dir.path().join("private").join("warehouse.duckdb");
+        seed_connections(
+            dir.path(),
+            &[
+                embedded_fixture("sqlite-id", "local-sqlite", DatabaseType::Sqlite, &sqlite_path),
+                embedded_fixture("duckdb-id", "local-duckdb", DatabaseType::DuckDb, &duckdb_path),
+            ],
+        )
+        .await;
+
+        let data = success_data(dispatch(vec!["conn".into(), "list".into(), "--format".into(), "json".into()]).await);
+        let connections = data["connections"].as_array().expect("connections should be an array");
+
+        assert_eq!(connections[0]["redactedUrl"], "<redacted-path>?mode=rwc");
+        assert_eq!(connections[1]["redactedUrl"], "<redacted-path>?mode=rwc");
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(!json.contains("app.sqlite"));
+        assert!(!json.contains("warehouse.duckdb"));
+        assert!(!json.contains(dir.path().to_str().unwrap()));
 
         std::env::remove_var("DBX_APP_DATA_DIR");
     }
@@ -680,6 +749,35 @@ mod tests {
             dispatch(vec!["conn".into(), "show".into(), "shared".into(), "--format".into(), "json".into()]).await,
             CliErrorCode::AmbiguousConnection,
         );
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn conn_show_unique_id_match_takes_precedence_over_ambiguous_name() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        seed_connections(
+            dir.path(),
+            &[
+                mysql_fixture("shared", "id-target", Some("#22c55e"), "target-secret"),
+                mysql_fixture("dup-1", "shared", None, "first-secret"),
+                mysql_fixture("dup-2", "shared", None, "second-secret"),
+            ],
+        )
+        .await;
+
+        let shown = success_data(
+            dispatch(vec!["conn".into(), "show".into(), "shared".into(), "--format".into(), "json".into()]).await,
+        );
+
+        assert_eq!(shown["id"], "shared");
+        assert_eq!(shown["name"], "id-target");
+        let json = serde_json::to_string(&shown).unwrap();
+        assert!(!json.contains("target-secret"));
+        assert!(!json.contains("first-secret"));
+        assert!(!json.contains("second-secret"));
 
         std::env::remove_var("DBX_APP_DATA_DIR");
     }
