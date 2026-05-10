@@ -9,7 +9,8 @@ pub struct RuntimeDiscovery {
 }
 
 pub fn app_data_dir() -> PathBuf {
-    let home = std::env::var(if cfg!(windows) { "APPDATA" } else { "HOME" }).unwrap_or_else(|_| ".".to_string());
+    let home = std::env::var(if cfg!(windows) { "APPDATA" } else { "HOME" })
+        .unwrap_or_else(|_| ".".to_string());
 
     if cfg!(target_os = "macos") {
         PathBuf::from(home).join("Library/Application Support/com.dbx.app")

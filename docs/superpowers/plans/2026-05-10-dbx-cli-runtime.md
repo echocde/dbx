@@ -76,7 +76,7 @@ version = "0.5.2"
 edition = "2021"
 
 [[bin]]
-name = "dbx"
+name = "dbx-cli"
 path = "src/main.rs"
 
 [dependencies]
@@ -114,7 +114,7 @@ Run:
 cargo metadata --format-version 1 --no-deps
 ```
 
-Expected: output contains `"name":"dbx-cli"` and `"name":"dbx"`.
+Expected: output contains `"name":"dbx-cli"` for the package and `"name":"dbx-cli"` for the binary target.
 
 ---
 
@@ -874,8 +874,8 @@ async fn conn_show(name: &str, _args: &[String]) -> CliEnvelope<serde_json::Valu
 Run:
 
 ```bash
-cargo run -p dbx-cli -- conn list --format json
-cargo run -p dbx-cli -- conn show __missing__ --redacted --format json
+cargo run -p dbx-cli --bin dbx-cli -- conn list --format json
+cargo run -p dbx-cli --bin dbx-cli -- conn show __missing__ --redacted --format json
 ```
 
 Expected: first command returns an envelope; second returns `CONNECTION_NOT_FOUND` without panicking.
@@ -974,7 +974,7 @@ async fn safe_query(args: &[String]) -> CliEnvelope<serde_json::Value> {
 Run:
 
 ```bash
-cargo run -p dbx-cli -- safe-query --conn __missing__ --sql "DROP TABLE users" --format json
+cargo run -p dbx-cli --bin dbx-cli -- safe-query --conn __missing__ --sql "DROP TABLE users" --format json
 ```
 
 Expected: returns `CONNECTION_NOT_FOUND`. With a real DBX connection, `DROP TABLE users` returns `DDL_BLOCKED`.
@@ -1470,9 +1470,9 @@ pnpm tauri dev
 In a second terminal, run:
 
 ```bash
-cargo run -p dbx-cli -- context --format json
-cargo run -p dbx-cli -- selection --format json
-cargo run -p dbx-cli -- result current --limit 50 --format json
+cargo run -p dbx-cli --bin dbx-cli -- context --format json
+cargo run -p dbx-cli --bin dbx-cli -- selection --format json
+cargo run -p dbx-cli --bin dbx-cli -- result current --limit 50 --format json
 ```
 
 Expected: all three commands return `source: "gui-runtime"` when desktop is running.
@@ -1520,11 +1520,11 @@ Expected: no output.
 Run:
 
 ```bash
-cargo run -p dbx-cli -- context --format json
-cargo run -p dbx-cli -- conn list --format json
-cargo run -p dbx-cli -- conn show __missing__ --redacted --format json
-cargo run -p dbx-cli -- selection --format json
-cargo run -p dbx-cli -- result current --limit 50 --format json
+cargo run -p dbx-cli --bin dbx-cli -- context --format json
+cargo run -p dbx-cli --bin dbx-cli -- conn list --format json
+cargo run -p dbx-cli --bin dbx-cli -- conn show __missing__ --redacted --format json
+cargo run -p dbx-cli --bin dbx-cli -- selection --format json
+cargo run -p dbx-cli --bin dbx-cli -- result current --limit 50 --format json
 ```
 
 Expected: all commands return valid JSON envelopes. GUI-only commands return `GUI_RUNTIME_REQUIRED` if DBX desktop is not running.
