@@ -116,8 +116,12 @@ where
         let source = source.ok_or_else(|| de::Error::missing_field("source"))?;
 
         match (ok, has_data, has_error) {
-            (true, true, false) => Ok(CliEnvelope::Success { ok, source, data: data.expect("data presence was checked") }),
-            (false, false, true) => Ok(CliEnvelope::Failure { ok, source, error: error.expect("error presence was checked") }),
+            (true, true, false) => {
+                Ok(CliEnvelope::Success { ok, source, data: data.expect("data presence was checked") })
+            }
+            (false, false, true) => {
+                Ok(CliEnvelope::Failure { ok, source, error: error.expect("error presence was checked") })
+            }
             (true, _, _) => Err(de::Error::custom("ok=true requires data without error")),
             (false, _, _) => Err(de::Error::custom("ok=false requires error without data")),
         }
@@ -170,6 +174,31 @@ pub fn ok<T>(source: CliSource, data: T) -> CliEnvelope<T> {
 
 pub fn fail<T>(source: CliSource, code: CliErrorCode, message: impl Into<String>, recoverable: bool) -> CliEnvelope<T> {
     CliEnvelope::Failure { ok: false, source, error: CliError { code, message: message.into(), recoverable } }
+}
+
+pub fn fail_safe<T>(
+    source: CliSource,
+    fallback_code: CliErrorCode,
+    message: impl AsRef<str>,
+    recoverable: bool,
+) -> CliEnvelope<T> {
+    let (code, message) = map_safe_error(fallback_code, message.as_ref());
+    fail(source, code, message, recoverable)
+}
+
+pub fn map_safe_error(fallback_code: CliErrorCode, message: &str) -> (CliErrorCode, String) {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("timed out") || lower.contains("timeout") {
+        return (CliErrorCode::Timeout, "Operation timed out.".to_string());
+    }
+    if lower.contains("connection config not found") || lower == "connection not found" {
+        return (CliErrorCode::ConnectionNotFound, "Connection not found.".to_string());
+    }
+    if lower.contains("unsupported database") || lower.contains("unsupported database type") {
+        return (CliErrorCode::UnsupportedDatabaseType, "Unsupported database type.".to_string());
+    }
+
+    (fallback_code, "Operation failed. See DBX logs for details.".to_string())
 }
 
 #[cfg(test)]
@@ -278,5 +307,39 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("ok=true requires data without error"));
+    }
+
+    #[test]
+    fn maps_timeout_errors_without_leaking_internal_details() {
+        let (code, message) = map_safe_error(
+            CliErrorCode::InternalError,
+            "Query timed out after 30 seconds while reading /Users/alice/private.sqlite",
+        );
+
+        assert_eq!(code, CliErrorCode::Timeout);
+        assert_eq!(message, "Operation timed out.");
+        assert!(!message.contains("/Users/alice"));
+    }
+
+    #[test]
+    fn sanitizes_paths_uri_credentials_and_driver_details() {
+        let (code, message) = map_safe_error(
+            CliErrorCode::InternalError,
+            "SQLite connection failed: Database file does not exist: /Users/alice/private.sqlite; url=mysql://root:secret@localhost/db",
+        );
+
+        assert_eq!(code, CliErrorCode::InternalError);
+        assert_eq!(message, "Operation failed. See DBX logs for details.");
+        assert!(!message.contains("/Users/alice"));
+        assert!(!message.contains("root:secret"));
+        assert!(!message.contains("SQLite connection failed"));
+    }
+
+    #[test]
+    fn maps_connection_not_found_to_public_error_code() {
+        let (code, message) = map_safe_error(CliErrorCode::InternalError, "Connection config not found");
+
+        assert_eq!(code, CliErrorCode::ConnectionNotFound);
+        assert_eq!(message, "Connection not found.");
     }
 }

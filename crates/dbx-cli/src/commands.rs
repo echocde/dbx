@@ -1,4 +1,4 @@
-use dbx_core::cli::{fail, ok, CliEnvelope, CliErrorCode, CliSource};
+use dbx_core::cli::{fail, fail_safe, ok, CliEnvelope, CliErrorCode, CliSource};
 
 const DEFAULT_RESULT_LIMIT: u32 = 50;
 const MAX_RESULT_LIMIT: u32 = 1000;
@@ -188,12 +188,13 @@ fn redact_uri_credentials(value: &str) -> String {
 
 async fn load_headless_connections(
 ) -> Result<Vec<dbx_core::models::connection::ConnectionConfig>, CliEnvelope<serde_json::Value>> {
-    let state = open_state().await.map_err(|err| fail(CliSource::Headless, CliErrorCode::InternalError, err, false))?;
+    let state =
+        open_state().await.map_err(|err| fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false))?;
     state
         .storage
         .load_connections()
         .await
-        .map_err(|err| fail(CliSource::Headless, CliErrorCode::InternalError, err, false))
+        .map_err(|err| fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false))
 }
 
 async fn find_connection(
@@ -231,11 +232,13 @@ async fn state_with_connection(
 
     match config.db_type {
         dbx_core::models::connection::DatabaseType::Sqlite => {
-            let pool = dbx_core::db::sqlite::connect_path(&config.host).await?;
+            let path = dbx_core::connection::expand_tilde(&config.host);
+            let pool = dbx_core::db::sqlite::connect_path(&path).await?;
             state.connections.lock().await.insert(config.id.clone(), dbx_core::connection::PoolKind::Sqlite(pool));
         }
         dbx_core::models::connection::DatabaseType::DuckDb => {
-            let pool = dbx_core::db::duckdb_driver::connect_path(&config.host)?;
+            let path = dbx_core::connection::expand_tilde(&config.host);
+            let pool = dbx_core::db::duckdb_driver::connect_path(&path)?;
             state.connections.lock().await.insert(config.id.clone(), dbx_core::connection::PoolKind::DuckDb(pool));
         }
         _ => {
@@ -311,12 +314,12 @@ async fn schema_snapshot(args: &[String]) -> CliEnvelope<serde_json::Value> {
     };
     let state = match state_with_connection(config.clone()).await {
         Ok(state) => state,
-        Err(err) => return fail(CliSource::Headless, CliErrorCode::InternalError, err, false),
+        Err(err) => return fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false),
     };
 
     match dbx_core::schema_snapshot::snapshot(&state, &config.id, option_value(args, "--db"), None).await {
         Ok(snapshot) => ok(CliSource::Headless, serde_json::to_value(snapshot).unwrap()),
-        Err(err) => fail(CliSource::Headless, CliErrorCode::InternalError, err, false),
+        Err(err) => fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false),
     }
 }
 
@@ -357,32 +360,26 @@ async fn safe_query(args: &[String]) -> CliEnvelope<serde_json::Value> {
     }
     let state = match state_with_connection(config.clone()).await {
         Ok(state) => state,
-        Err(err) => return fail(CliSource::Headless, CliErrorCode::InternalError, err, false),
+        Err(err) => return fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false),
     };
     let database = option_value(args, "--db").or(config.database.as_deref()).unwrap_or("");
 
-    match dbx_core::query::execute_sql_statement(&state, &config.id, database, sql, None, None).await {
+    match dbx_core::query::execute_sql_statement_with_row_limit(&state, &config.id, database, sql, None, None, limit)
+        .await
+    {
         Ok(result) => ok(
             CliSource::Headless,
             serde_json::json!({
                 "risk": risk,
-                "result": limit_query_result(result, limit),
+                "result": result,
             }),
         ),
-        Err(err) => fail(CliSource::Headless, CliErrorCode::InternalError, err, false),
+        Err(err) => fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false),
     }
 }
 
 fn blocked_query(code: CliErrorCode, risk: &dbx_core::sql_safety::RiskMetadata) -> CliEnvelope<serde_json::Value> {
     fail(CliSource::Headless, code, serde_json::to_string(risk).unwrap(), true)
-}
-
-fn limit_query_result(mut result: dbx_core::db::QueryResult, limit: usize) -> dbx_core::db::QueryResult {
-    if result.rows.len() > limit {
-        result.rows.truncate(limit);
-        result.truncated = true;
-    }
-    result
 }
 
 async fn handoff(args: &[String]) -> CliEnvelope<serde_json::Value> {
@@ -431,7 +428,7 @@ async fn handoff(args: &[String]) -> CliEnvelope<serde_json::Value> {
 
     match queue_handoff(&item).await {
         Ok(()) => ok(CliSource::Headless, serde_json::json!({ "id": item.id, "status": "queued" })),
-        Err(err) => fail(CliSource::Headless, CliErrorCode::InternalError, err, false),
+        Err(err) => fail_safe(CliSource::Headless, CliErrorCode::InternalError, err, false),
     }
 }
 
@@ -592,6 +589,26 @@ mod tests {
         )
         .await
         .unwrap();
+        pool.close().await;
+    }
+
+    async fn create_large_sqlite_fixture(path: &std::path::Path, row_count: usize) {
+        std::fs::File::create(path).unwrap();
+        let pool = dbx_core::db::sqlite::connect_path(&path.display().to_string()).await.unwrap();
+        dbx_core::db::sqlite::execute_query(
+            &pool,
+            "CREATE TABLE numbers (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+        )
+        .await
+        .unwrap();
+        for id in 1..=row_count {
+            dbx_core::db::sqlite::execute_query(
+                &pool,
+                &format!("INSERT INTO numbers (id, value) VALUES ({id}, 'value-{id}')"),
+            )
+            .await
+            .unwrap();
+        }
         pool.close().await;
     }
 
@@ -950,6 +967,130 @@ mod tests {
         assert_eq!(data["result"]["columns"], serde_json::json!(["email"]));
         assert_eq!(data["result"]["rows"], serde_json::json!([["ada@example.com"]]));
         assert_eq!(data["result"]["truncated"], true);
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn safe_query_expands_tilde_for_sqlite_connection_path() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let data_path = home.join("fixture.sqlite");
+        create_sqlite_fixture(&data_path).await;
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        let mut config = embedded_fixture("sqlite-id", "local-sqlite", DatabaseType::Sqlite, &data_path);
+        config.host = "~/fixture.sqlite".to_string();
+        seed_connections(dir.path(), &[config]).await;
+
+        let data = success_data(
+            dispatch(vec![
+                "safe-query".into(),
+                "--conn".into(),
+                "local-sqlite".into(),
+                "--sql".into(),
+                "SELECT COUNT(*) FROM users".into(),
+                "--format".into(),
+                "json".into(),
+            ])
+            .await,
+        );
+
+        assert_eq!(data["result"]["rows"], serde_json::json!([[2]]));
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+        if let Some(previous_home) = previous_home {
+            std::env::set_var("HOME", previous_home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+    }
+
+    #[tokio::test]
+    async fn safe_query_large_sqlite_result_set_respects_limit() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let data_path = dir.path().join("large.sqlite");
+        create_large_sqlite_fixture(&data_path, 200).await;
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        seed_connections(
+            dir.path(),
+            &[embedded_fixture("sqlite-id", "local-sqlite", DatabaseType::Sqlite, &data_path)],
+        )
+        .await;
+
+        let data = success_data(
+            dispatch(vec![
+                "safe-query".into(),
+                "--conn".into(),
+                "sqlite-id".into(),
+                "--sql".into(),
+                "SELECT id, value FROM numbers ORDER BY id".into(),
+                "--limit".into(),
+                "7".into(),
+                "--format".into(),
+                "json".into(),
+            ])
+            .await,
+        );
+
+        let rows = data["result"]["rows"].as_array().expect("rows should be an array");
+        assert!(rows.len() <= 7, "safe-query returned {} rows for limit 7", rows.len());
+        assert_eq!(rows.len(), 7);
+        assert_eq!(data["result"]["truncated"], true);
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn schema_snapshot_and_safe_query_sanitize_internal_error_envelopes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let private_path = dir.path().join("private").join("missing.sqlite");
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        seed_connections(
+            dir.path(),
+            &[embedded_fixture("sqlite-id", "local-sqlite", DatabaseType::Sqlite, &private_path)],
+        )
+        .await;
+
+        let cases = [
+            dispatch(vec![
+                "schema".into(),
+                "snapshot".into(),
+                "--conn".into(),
+                "sqlite-id".into(),
+                "--format".into(),
+                "json".into(),
+            ])
+            .await,
+            dispatch(vec![
+                "safe-query".into(),
+                "--conn".into(),
+                "sqlite-id".into(),
+                "--sql".into(),
+                "SELECT 1".into(),
+                "--format".into(),
+                "json".into(),
+            ])
+            .await,
+        ];
+
+        for env in cases {
+            match env {
+                CliEnvelope::Failure { error, .. } => {
+                    let message = error.message;
+                    assert!(!message.contains(dir.path().to_str().unwrap()));
+                    assert!(!message.contains("missing.sqlite"));
+                    assert!(!message.contains("Database file does not exist"));
+                    assert!(!message.contains("SQLite connection failed"));
+                }
+                CliEnvelope::Success { .. } => panic!("expected sanitized failure envelope"),
+            }
+        }
 
         std::env::remove_var("DBX_APP_DATA_DIR");
     }
