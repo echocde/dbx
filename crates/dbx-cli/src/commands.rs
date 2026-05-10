@@ -156,14 +156,16 @@ fn redacted_config(config: &dbx_core::models::connection::ConnectionConfig) -> s
 }
 
 fn redacted_url(config: &dbx_core::models::connection::ConnectionConfig) -> String {
-    if matches!(
+    let redacted = if matches!(
         config.db_type,
         dbx_core::models::connection::DatabaseType::Sqlite | dbx_core::models::connection::DatabaseType::DuckDb
     ) {
-        return redact_embedded_path_url(&config.redacted_connection_url());
-    }
+        redact_embedded_path_url(&config.redacted_connection_url())
+    } else {
+        redact_uri_credentials(&config.redacted_connection_url())
+    };
 
-    redact_uri_credentials(&config.redacted_connection_url())
+    redact_sensitive_query_params(&redacted)
 }
 
 fn redact_embedded_path_url(value: &str) -> String {
@@ -184,6 +186,45 @@ fn redact_uri_credentials(value: &str) -> String {
     };
 
     format!("{}{}{}", &value[..authority_start], &authority[at_index + 1..], &rest[authority_len..])
+}
+
+fn redact_sensitive_query_params(value: &str) -> String {
+    let Some(query_start) = value.find('?') else {
+        return value.to_string();
+    };
+    let suffix = &value[query_start + 1..];
+    let (query, fragment) = match suffix.find('#') {
+        Some(fragment_start) => (&suffix[..fragment_start], &suffix[fragment_start..]),
+        None => (suffix, ""),
+    };
+    if query.is_empty() {
+        return value.to_string();
+    }
+
+    let query = query.split('&').map(redact_query_pair).collect::<Vec<_>>().join("&");
+    format!("{}?{}{}", &value[..query_start], query, fragment)
+}
+
+fn redact_query_pair(pair: &str) -> String {
+    if pair.is_empty() {
+        return String::new();
+    }
+    let (key, has_value) = match pair.split_once('=') {
+        Some((key, _)) => (key, true),
+        None => (pair, false),
+    };
+    if is_sensitive_query_key(key) {
+        let separator = if has_value { "=" } else { "" };
+        return format!("{key}{separator}<redacted>");
+    }
+    pair.to_string()
+}
+
+fn is_sensitive_query_key(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    ["password", "passwd", "token", "secret", "key", "cert", "path", "file", "sslkey", "passfile"]
+        .iter()
+        .any(|needle| key.contains(needle))
 }
 
 async fn load_headless_connections(
@@ -1069,6 +1110,36 @@ mod tests {
             dispatch(vec!["conn".into(), "show".into(), "shared".into(), "--format".into(), "json".into()]).await,
             CliErrorCode::AmbiguousConnection,
         );
+
+        std::env::remove_var("DBX_APP_DATA_DIR");
+    }
+
+    #[tokio::test]
+    async fn conn_list_and_show_redact_sensitive_query_params() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DBX_APP_DATA_DIR", dir.path());
+        let mut mysql = mysql_fixture("prod-id", "prod-main", Some("#ef4444"), "prod-secret");
+        mysql.url_params =
+            Some("password=pw&sslkey=/tmp/client.key&sslcert=/tmp/client.crt&token=abc&charset=utf8mb4".to_string());
+        seed_connections(dir.path(), &[mysql]).await;
+
+        let list = success_data(dispatch(vec!["conn".into(), "list".into(), "--format".into(), "json".into()]).await);
+        let listed_url = list["connections"][0]["redactedUrl"].as_str().unwrap();
+        assert!(listed_url.contains("password=<redacted>"));
+        assert!(listed_url.contains("sslkey=<redacted>"));
+        assert!(listed_url.contains("sslcert=<redacted>"));
+        assert!(listed_url.contains("token=<redacted>"));
+        assert!(listed_url.contains("charset=utf8mb4"));
+
+        let shown = success_data(
+            dispatch(vec!["conn".into(), "show".into(), "prod-id".into(), "--format".into(), "json".into()]).await,
+        );
+        let shown_json = serde_json::to_string(&shown).unwrap();
+        assert!(!shown_json.contains("pw"));
+        assert!(!shown_json.contains("/tmp/client.key"));
+        assert!(!shown_json.contains("/tmp/client.crt"));
+        assert!(!shown_json.contains("abc"));
 
         std::env::remove_var("DBX_APP_DATA_DIR");
     }

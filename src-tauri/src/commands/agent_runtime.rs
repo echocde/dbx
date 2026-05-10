@@ -10,6 +10,7 @@ use tokio::sync::{oneshot, RwLock};
 
 use super::connection::AppState;
 use dbx_core::handoff::{HandoffItem, HandoffStatus};
+use dbx_core::sql_safety::{risk_for, risk_for_connection, RiskContext};
 
 const BIND_ADDR: &str = "127.0.0.1:0";
 const DISCOVERY_FILE: &str = "agent-runtime.json";
@@ -325,10 +326,7 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
         if let Some(limit) = query_limit(first_line) {
             truncate_result_rows(&mut body, limit);
         }
-        return RuntimeResponse {
-            status: "200 OK",
-            body,
-        };
+        return RuntimeResponse { status: "200 OK", body };
     }
 
     if first_line.starts_with("POST /handoff ") {
@@ -341,6 +339,8 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
                 };
             }
         };
+        let snapshot = state.snapshot.read().await.clone();
+        recompute_handoff_risk(&mut item, &snapshot);
         item.status = dbx_core::handoff::HandoffStatus::Shown;
         let id = item.id.clone();
         state.handoffs.write().await.push(item);
@@ -350,7 +350,25 @@ async fn route_request(first_line: &str, body: &str, state: &AgentRuntimeState) 
     RuntimeResponse { status: "404 Not Found", body: serde_json::json!({"error": "not found"}) }
 }
 
-async fn update_handoff_status(app_state: &AppState, runtime: &AgentRuntimeState, id: &str, status: HandoffStatus) -> Result<bool, String> {
+fn recompute_handoff_risk(item: &mut HandoffItem, snapshot: &AgentRuntimeSnapshot) {
+    let risk = match snapshot.active_connection_name.as_deref().map(str::trim).filter(|name| !name.is_empty()) {
+        Some(connection_name) => risk_for_connection(&item.sql, connection_name, None),
+        None => risk_for(
+            &item.sql,
+            RiskContext { connection_name: "unknown", color: None, environment_label: Some("Production") },
+        ),
+    };
+    item.operation_class = risk.operation_class;
+    item.risk_level = risk.risk_level;
+    item.is_production = risk.is_production;
+}
+
+async fn update_handoff_status(
+    app_state: &AppState,
+    runtime: &AgentRuntimeState,
+    id: &str,
+    status: HandoffStatus,
+) -> Result<bool, String> {
     let stored = app_state.storage.update_handoff_status(id, status.clone()).await?;
     let runtime_updated = update_runtime_handoff_status(runtime, id, status).await;
     Ok(stored || runtime_updated)
@@ -553,6 +571,59 @@ mod tests {
         assert_eq!(handoff.status, "200 OK");
         assert_eq!(handoff.body["id"], item.id);
         assert_eq!(state.handoffs.read().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn handoff_recomputes_risk_from_sql_instead_of_trusting_client_fields() {
+        let state = runtime_state();
+        *state.snapshot.write().await = AgentRuntimeSnapshot {
+            active_connection_id: Some("conn-1".to_string()),
+            active_connection_name: Some("prod-main".to_string()),
+            ..AgentRuntimeSnapshot::default()
+        };
+        let item = dbx_core::handoff::HandoffItem::queued(
+            "conn-1".to_string(),
+            "client-supplied-dev".to_string(),
+            Some("main".to_string()),
+            "Review SQL".to_string(),
+            None,
+            "drop table users".to_string(),
+            dbx_core::sql_safety::OperationClass::Read,
+            dbx_core::sql_safety::RiskLevel::Low,
+            false,
+        );
+
+        let handoff = route_request("POST /handoff HTTP/1.1", &serde_json::to_string(&item).unwrap(), &state).await;
+
+        assert_eq!(handoff.status, "200 OK");
+        let stored = state.handoffs.read().await;
+        assert_eq!(stored[0].operation_class, dbx_core::sql_safety::OperationClass::Ddl);
+        assert_eq!(stored[0].risk_level, dbx_core::sql_safety::RiskLevel::Critical);
+        assert!(stored[0].is_production);
+    }
+
+    #[tokio::test]
+    async fn handoff_uses_conservative_production_when_connection_metadata_is_unavailable() {
+        let state = runtime_state();
+        let item = dbx_core::handoff::HandoffItem::queued(
+            "conn-1".to_string(),
+            "client-supplied-dev".to_string(),
+            None,
+            "Review SQL".to_string(),
+            None,
+            "update users set name = 'a' where id = 1".to_string(),
+            dbx_core::sql_safety::OperationClass::Read,
+            dbx_core::sql_safety::RiskLevel::Low,
+            false,
+        );
+
+        let handoff = route_request("POST /handoff HTTP/1.1", &serde_json::to_string(&item).unwrap(), &state).await;
+
+        assert_eq!(handoff.status, "200 OK");
+        let stored = state.handoffs.read().await;
+        assert_eq!(stored[0].operation_class, dbx_core::sql_safety::OperationClass::Write);
+        assert_eq!(stored[0].risk_level, dbx_core::sql_safety::RiskLevel::High);
+        assert!(stored[0].is_production);
     }
 
     #[tokio::test]
