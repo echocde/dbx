@@ -471,6 +471,11 @@ export default {
     proxyEnable: "AI 请求通过代理发送",
     proxyUrl: "代理地址",
     settingsHint: "配置会保存在本机应用数据目录中。请求由 Tauri 后端发出，避免在前端直接暴露给模型服务。",
+    enableThinking: "Thinking",
+    enableThinkingOn: "已启用",
+    enableThinkingOff: "已禁用",
+    enableThinkingHint:
+      "此选项仅对 /chat/completions API 且部分支持的模型生效。设为禁用后可大幅节省 token，但生成结果质量可能会略微下降。",
     actions: {
       generate: "生成 SQL",
       explain: "解释 SQL",

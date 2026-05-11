@@ -74,6 +74,12 @@ pub struct AiConfig {
     pub proxy_enabled: bool,
     #[serde(default)]
     pub proxy_url: String,
+    #[serde(default = "default_enable_thinking")]
+    pub enable_thinking: bool,
+}
+
+fn default_enable_thinking() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,17 +287,22 @@ pub async fn call_openai_compatible(client: &reqwest::Client, request: AiComplet
     let mut messages = vec![json!({ "role": "system", "content": request.system_prompt })];
     messages.extend(request.messages.iter().map(|message| json!({ "role": message.role, "content": message.content })));
 
-    let body = json!({
+    let mut body_obj = json!({
         "model": request.config.model,
         "messages": messages,
         "max_tokens": request.max_tokens.unwrap_or(2048),
         "temperature": request.temperature.unwrap_or(0.2),
     });
+    if !request.config.enable_thinking {
+        body_obj["extra_body"] = json!({
+            "chat_template_kwargs": { "enable_thinking": false }
+        });
+    }
 
     let res = client
         .post(&resolve_endpoint(&request.config))
         .headers(headers)
-        .json(&body)
+        .json(&body_obj)
         .send()
         .await
         .map_err(|e| format!("AI request failed: {e}"))?;
@@ -519,18 +530,23 @@ async fn stream_openai(
     let mut messages = vec![json!({ "role": "system", "content": request.system_prompt })];
     messages.extend(request.messages.iter().map(|m| json!({ "role": m.role, "content": m.content })));
 
-    let body = json!({
+    let mut body_obj = json!({
         "model": request.config.model,
         "messages": messages,
         "max_tokens": request.max_tokens.unwrap_or(2048),
         "temperature": request.temperature.unwrap_or(0.2),
         "stream": true,
     });
+    if !request.config.enable_thinking {
+        body_obj["extra_body"] = json!({
+            "chat_template_kwargs": { "enable_thinking": false }
+        });
+    }
 
     let res = client
         .post(&resolve_endpoint(&request.config))
         .headers(headers)
-        .json(&body)
+        .json(&body_obj)
         .send()
         .await
         .map_err(|e| format!("AI request failed: {e}"))?;
@@ -752,6 +768,7 @@ mod tests {
 
         assert_eq!(config.proxy_enabled, false);
         assert_eq!(config.proxy_url, "");
+        assert_eq!(config.enable_thinking, true);
     }
 
     #[test]
@@ -764,6 +781,7 @@ mod tests {
             api_style: AiApiStyle::Completions,
             proxy_enabled: true,
             proxy_url: "not a proxy url".to_string(),
+            enable_thinking: true,
         };
 
         let err = build_ai_http_client(&config, 1).unwrap_err();

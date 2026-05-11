@@ -481,6 +481,11 @@ export default {
     proxyUrl: "Proxy URL",
     settingsHint:
       "The config is stored in the local app data directory. Requests are sent by the Tauri backend instead of directly from the frontend.",
+    enableThinking: "Thinking",
+    enableThinkingOn: "Enabled",
+    enableThinkingOff: "Disabled",
+    enableThinkingHint:
+      "This option only takes effect on /chat/completions APIs and supported models. When disabled, it can significantly reduce token usage, but the quality of generated results may decrease slightly.",
     actions: {
       generate: "Generate SQL",
       explain: "Explain SQL",
