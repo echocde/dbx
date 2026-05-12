@@ -267,7 +267,7 @@ export default {
     applyWhere: "应用 WHERE",
     filterRows: "筛选行",
     filterAllRows: "全部行",
-    filterChangedRows: "有变更内容",
+    filterChangedRows: "变更项",
     page: "第 {page} 页",
     rowsPerPage: "每页行数",
     save: "保存",

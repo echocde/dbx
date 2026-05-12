@@ -1668,8 +1668,30 @@ defineExpose({
       <ContextMenuTrigger as-child>
         <div v-if="hasData || canUseWhereSearch" class="flex-1 flex flex-col overflow-hidden">
           <!-- Search bar -->
-          <div class="flex items-center border-b shrink-0 bg-muted/20 relative">
-            <div class="flex-1 flex items-center gap-1 px-2 py-1 min-w-0">
+          <div class="flex items-stretch border-b shrink-0 bg-muted/20 relative">
+            <div
+              v-if="useTransaction && editable && (tableMeta || customSave)"
+              class="flex items-center px-2 py-0.5 border-r shrink-0"
+            >
+              <Select
+                :model-value="rowStatusFilter"
+                @update:model-value="(value: any) => setRowStatusFilter(String(value))"
+              >
+                <SelectTrigger
+                  class="h-5 max-w-28 border-0 bg-transparent px-0 py-0 text-xs font-medium text-foreground/70 shadow-none focus-visible:ring-0 data-[state=open]:text-foreground [&_svg]:size-3"
+                >
+                  <SelectValue :placeholder="t('grid.filterRows')" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  <SelectItem value="all">{{ t("grid.filterAllRows") }}</SelectItem>
+                  <SelectItem value="changed">{{ t("grid.filterChangedRows") }}</SelectItem>
+                  <SelectItem value="edited">{{ t("grid.statusEdited") }}</SelectItem>
+                  <SelectItem value="new">{{ t("grid.statusNew") }}</SelectItem>
+                  <SelectItem value="deleted">{{ t("grid.statusDeleted") }}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div class="flex-1 flex items-center gap-1 px-2 py-0.5 min-w-0">
               <Search class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
               <input
                 ref="searchInputRef"
@@ -1725,7 +1747,7 @@ defineExpose({
             </div>
 
             <template v-if="canUseWhereSearch">
-              <div class="flex-1 flex items-center gap-1 px-2 py-1 border-l min-w-0 relative">
+              <div class="flex-1 flex items-center gap-1 px-2 py-0.5 border-l min-w-0 relative">
                 <span class="text-foreground/60 text-xs font-medium select-none shrink-0">WHERE</span>
                 <input
                   ref="whereFilterInputRef"
@@ -1776,7 +1798,7 @@ defineExpose({
                   <X class="w-3 h-3" />
                 </button>
               </div>
-              <div class="flex-1 flex items-center gap-1 px-2 py-1 border-l border-r min-w-0 relative">
+              <div class="flex-1 flex items-center gap-1 px-2 py-0.5 border-l border-r min-w-0 relative">
                 <span class="text-foreground/60 text-xs font-medium select-none shrink-0">ORDER BY</span>
                 <input
                   ref="orderByInputRef"
@@ -1829,72 +1851,58 @@ defineExpose({
               </div>
             </template>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-5 text-xs px-1.5 shrink-0"
-              :disabled="isSaving"
-              @click="onToolbarRefresh"
-            >
-              <Loader2 v-if="loading" class="w-3 h-3 mr-1 animate-spin" />
-              <RefreshCcw v-else class="w-3 h-3 mr-1" />
-              {{ t("grid.refresh") }}
-            </Button>
-            <Select
-              v-if="useTransaction && editable && (tableMeta || customSave)"
-              :model-value="rowStatusFilter"
-              @update:model-value="(value: any) => setRowStatusFilter(String(value))"
-            >
-              <SelectTrigger class="h-6 w-28 px-2 text-xs">
-                <SelectValue :placeholder="t('grid.filterRows')" />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                <SelectItem value="all">{{ t("grid.filterAllRows") }}</SelectItem>
-                <SelectItem value="changed">{{ t("grid.filterChangedRows") }}</SelectItem>
-                <SelectItem value="edited">{{ t("grid.statusEdited") }}</SelectItem>
-                <SelectItem value="new">{{ t("grid.statusNew") }}</SelectItem>
-                <SelectItem value="deleted">{{ t("grid.statusDeleted") }}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              v-if="useTransaction && editable && (tableMeta || customSave)"
-              variant="ghost"
-              size="sm"
-              class="h-5 text-xs px-1.5 shrink-0"
-              @click="addRow"
-            >
-              <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }}
-            </Button>
-            <span
-              v-if="transactionActive"
-              class="flex shrink-0 items-center gap-1 px-1 text-xs text-emerald-600 dark:text-emerald-400"
-            >
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {{ t("grid.transactionActive") }}
-            </span>
-            <Button
-              v-if="useTransaction"
-              :variant="transactionActive ? 'default' : 'secondary'"
-              size="sm"
-              class="h-5 text-xs px-1.5"
-              :disabled="!transactionActive || isSaving"
-              @click="onToolbarCommit"
-            >
-              <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
-              <Save v-else class="w-3 h-3 mr-1" />
-              {{ t("grid.commit") }}
-            </Button>
-            <Button
-              v-if="useTransaction"
-              variant="outline"
-              size="sm"
-              class="h-5 text-xs px-1.5"
-              :disabled="!transactionActive"
-              @click="onToolbarRollback"
-            >
-              <RotateCcw class="w-3 h-3 mr-1" />
-              {{ t("grid.rollback") }}
-            </Button>
+            <div class="flex shrink-0 items-center gap-1 px-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-5 text-xs px-1.5 shrink-0"
+                :disabled="isSaving"
+                @click="onToolbarRefresh"
+              >
+                <Loader2 v-if="loading" class="w-3 h-3 mr-1 animate-spin" />
+                <RefreshCcw v-else class="w-3 h-3 mr-1" />
+                {{ t("grid.refresh") }}
+              </Button>
+              <Button
+                v-if="useTransaction && editable && (tableMeta || customSave)"
+                variant="ghost"
+                size="sm"
+                class="h-5 text-xs px-1.5 shrink-0"
+                @click="addRow"
+              >
+                <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }}
+              </Button>
+              <span
+                v-if="transactionActive"
+                class="flex shrink-0 items-center gap-1 px-1 text-xs text-emerald-600 dark:text-emerald-400"
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {{ t("grid.transactionActive") }}
+              </span>
+              <Button
+                v-if="useTransaction"
+                :variant="transactionActive ? 'default' : 'secondary'"
+                size="sm"
+                class="h-5 text-xs px-1.5"
+                :disabled="!transactionActive || isSaving"
+                @click="onToolbarCommit"
+              >
+                <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
+                <Save v-else class="w-3 h-3 mr-1" />
+                {{ t("grid.commit") }}
+              </Button>
+              <Button
+                v-if="useTransaction"
+                variant="outline"
+                size="sm"
+                class="h-5 text-xs px-1.5"
+                :disabled="!transactionActive"
+                @click="onToolbarRollback"
+              >
+                <RotateCcw class="w-3 h-3 mr-1" />
+                {{ t("grid.rollback") }}
+              </Button>
+            </div>
           </div>
           <!-- Truncation warning banner -->
           <div
