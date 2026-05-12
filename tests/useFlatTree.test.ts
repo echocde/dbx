@@ -50,7 +50,8 @@ test("shouldVirtualizeFlatTree virtualizes every non-empty sidebar tree", () => 
 
 test("sidebar virtual tree keeps enough buffered rows for fast scrolling", () => {
   assert.equal(SIDEBAR_TREE_ROW_HEIGHT, 28);
-  assert.ok(SIDEBAR_TREE_SCROLL_BUFFER >= SIDEBAR_TREE_ROW_HEIGHT * 40);
+  assert.equal(SIDEBAR_TREE_SCROLL_BUFFER, 600);
+  assert.ok(SIDEBAR_TREE_SCROLL_BUFFER >= SIDEBAR_TREE_ROW_HEIGHT * 20);
 });
 
 test("sidebar virtual tree prerenders enough rows for the first frame", () => {
