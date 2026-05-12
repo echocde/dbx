@@ -269,18 +269,18 @@ async fn state_with_connection(
     config: dbx_core::models::connection::ConnectionConfig,
 ) -> Result<dbx_core::connection::AppState, String> {
     let state = open_state().await?;
-    state.configs.lock().await.insert(config.id.clone(), config.clone());
+    state.configs.write().await.insert(config.id.clone(), config.clone());
 
     match config.db_type {
         dbx_core::models::connection::DatabaseType::Sqlite => {
             let path = dbx_core::connection::expand_tilde(&config.host);
             let pool = dbx_core::db::sqlite::connect_path(&path).await?;
-            state.connections.lock().await.insert(config.id.clone(), dbx_core::connection::PoolKind::Sqlite(pool));
+            state.connections.write().await.insert(config.id.clone(), dbx_core::connection::PoolKind::Sqlite(pool));
         }
         dbx_core::models::connection::DatabaseType::DuckDb => {
             let path = dbx_core::connection::expand_tilde(&config.host);
             let pool = dbx_core::db::duckdb_driver::connect_path(&path)?;
-            state.connections.lock().await.insert(config.id.clone(), dbx_core::connection::PoolKind::DuckDb(pool));
+            state.connections.write().await.insert(config.id.clone(), dbx_core::connection::PoolKind::DuckDb(pool));
         }
         _ => {
             state.get_or_create_pool(&config.id, config.database.as_deref()).await?;
@@ -587,9 +587,16 @@ mod tests {
             ssh_key_passphrase: "key-secret".to_string(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: dbx_core::models::connection::default_ssh_connect_timeout_secs(),
+            proxy_enabled: false,
+            proxy_type: dbx_core::models::connection::ProxyType::Socks5,
+            proxy_host: String::new(),
+            proxy_port: 1080,
+            proxy_username: String::new(),
+            proxy_password: String::new(),
             ssl: false,
             sysdba: false,
             connection_string: Some(format!("mysql://root:{password}@127.0.0.1:3306/app")),
+            external_config: None,
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
         }

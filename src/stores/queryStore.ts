@@ -17,16 +17,24 @@ import type { SavedSqlFile } from "@/types/database";
 const STORAGE_KEY = "dbx-open-tabs";
 const ACTIVE_TAB_KEY = "dbx-active-tab";
 
+function browserStorage(): Storage | undefined {
+  return globalThis.localStorage;
+}
+
 function saveTabs(tabs: QueryTab[], activeTabId: string | null) {
+  const storage = browserStorage();
+  if (!storage) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeOpenTabs(tabs)));
-    localStorage.setItem(ACTIVE_TAB_KEY, activeTabId || "");
+    storage.setItem(STORAGE_KEY, JSON.stringify(serializeOpenTabs(tabs)));
+    storage.setItem(ACTIVE_TAB_KEY, activeTabId || "");
   } catch {}
 }
 
 function loadSavedTabs(): { tabs: QueryTab[]; activeTabId: string | null } {
+  const storage = browserStorage();
+  if (!storage) return { tabs: [], activeTabId: null };
   try {
-    return restoreOpenTabsState(localStorage.getItem(STORAGE_KEY), localStorage.getItem(ACTIVE_TAB_KEY), {
+    return restoreOpenTabsState(storage.getItem(STORAGE_KEY), storage.getItem(ACTIVE_TAB_KEY), {
       queryOnly: isTauriRuntime(),
     });
   } catch {

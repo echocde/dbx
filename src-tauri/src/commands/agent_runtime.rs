@@ -398,10 +398,7 @@ async fn load_handoff_connection(app_state: Option<&AppState>, connection_id: &s
     }
 }
 
-fn matching_snapshot_connection_name<'a>(
-    item: &HandoffItem,
-    snapshot: &'a AgentRuntimeSnapshot,
-) -> Option<&'a str> {
+fn matching_snapshot_connection_name<'a>(item: &HandoffItem, snapshot: &'a AgentRuntimeSnapshot) -> Option<&'a str> {
     let handoff_connection_id = item.connection_id.trim();
     let active_connection_id = snapshot.active_connection_id.as_deref().map(str::trim)?;
     if handoff_connection_id.is_empty() || handoff_connection_id != active_connection_id {
@@ -411,10 +408,8 @@ fn matching_snapshot_connection_name<'a>(
 }
 
 fn conservative_production_risk(sql: &str) -> dbx_core::sql_safety::RiskMetadata {
-    let mut risk = risk_for(
-        sql,
-        RiskContext { connection_name: "unknown", color: None, environment_label: Some("Production") },
-    );
+    let mut risk =
+        risk_for(sql, RiskContext { connection_name: "unknown", color: None, environment_label: Some("Production") });
     risk.is_production = true;
     risk.risk_level = match classify_sql(sql) {
         OperationClass::Ddl => RiskLevel::Critical,
@@ -558,11 +553,7 @@ mod tests {
         AgentRuntimeState { app_state: Some(Arc::new(AppState::new(storage))), ..runtime_state() }
     }
 
-    fn connection_config(
-        id: &str,
-        name: &str,
-        color: Option<&str>,
-    ) -> dbx_core::models::connection::ConnectionConfig {
+    fn connection_config(id: &str, name: &str, color: Option<&str>) -> dbx_core::models::connection::ConnectionConfig {
         dbx_core::models::connection::ConnectionConfig {
             id: id.to_string(),
             name: name.to_string(),
@@ -585,9 +576,16 @@ mod tests {
             ssh_key_passphrase: String::new(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: dbx_core::models::connection::default_ssh_connect_timeout_secs(),
+            proxy_enabled: false,
+            proxy_type: dbx_core::models::connection::ProxyType::Socks5,
+            proxy_host: String::new(),
+            proxy_port: 1080,
+            proxy_username: String::new(),
+            proxy_password: String::new(),
             ssl: false,
             sysdba: false,
             connection_string: None,
+            external_config: None,
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
         }

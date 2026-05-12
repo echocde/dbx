@@ -63,15 +63,8 @@ import * as api from "@/lib/api";
 import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { isHiddenGridColumn, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
-import { buildDataGridSaveStatements, formatGridSqlLiteral } from "@/lib/dataGridSql";
-import { formatMarkdownTable } from "@/lib/markdownTable";
-import { buildXlsxWorkbook } from "@/lib/xlsxExport";
-import {
-  matchesRowStatusFilter,
-  rowStatusFilterAfterAddingRow,
-  type RowStatus,
-  type RowStatusFilter,
-} from "@/lib/gridRowStatus";
+import { formatGridSqlLiteral } from "@/lib/dataGridSql";
+import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { useAgentRuntimeStore } from "@/stores/agentRuntimeStore";
 
 import { useToast } from "@/composables/useToast";

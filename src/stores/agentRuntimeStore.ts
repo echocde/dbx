@@ -41,18 +41,19 @@ export const useAgentRuntimeStore = defineStore("agentRuntime", () => {
   }
 
   async function syncNow() {
-    const connectionStore = useConnectionStore();
-    const queryStore = useQueryStore();
-    const snapshot = buildAgentRuntimeSnapshot({
-      tabs: queryStore.tabs,
-      activeTabId: queryStore.activeTabId,
-      getConnection: (connectionId) => connectionStore.getConfig(connectionId),
-      selectedSql: selectedSql.value,
-      selection: selection.value,
-      resultSampleLimit: DEFAULT_RESULT_SAMPLE_LIMIT,
-    });
+    if (!globalThis.localStorage) return;
 
     try {
+      const connectionStore = useConnectionStore();
+      const queryStore = useQueryStore();
+      const snapshot = buildAgentRuntimeSnapshot({
+        tabs: queryStore.tabs,
+        activeTabId: queryStore.activeTabId,
+        getConnection: (connectionId) => connectionStore.getConfig(connectionId),
+        selectedSql: selectedSql.value,
+        selection: selection.value,
+        resultSampleLimit: DEFAULT_RESULT_SAMPLE_LIMIT,
+      });
       await api.agentRuntimeUpdateSnapshot(snapshot);
     } catch (err) {
       console.debug("[DBX] Agent runtime snapshot sync skipped:", err);

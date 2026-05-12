@@ -41,7 +41,7 @@ pub async fn snapshot(
     schema_name: Option<&str>,
 ) -> Result<SchemaSnapshot, String> {
     let config = {
-        let configs = state.configs.lock().await;
+        let configs = state.configs.read().await;
         configs.get(connection_id).cloned().ok_or("Connection config not found")?
     };
 

@@ -29,9 +29,16 @@ fn sqlite_config(path: &std::path::Path) -> ConnectionConfig {
         ssh_key_passphrase: String::new(),
         ssh_expose_lan: false,
         ssh_connect_timeout_secs: default_ssh_connect_timeout_secs(),
+        proxy_enabled: false,
+        proxy_type: dbx_core::models::connection::ProxyType::Socks5,
+        proxy_host: String::new(),
+        proxy_port: 1080,
+        proxy_username: String::new(),
+        proxy_password: String::new(),
         ssl: false,
         sysdba: false,
         connection_string: None,
+        external_config: None,
         jdbc_driver_class: None,
         jdbc_driver_paths: Vec::new(),
     }
@@ -70,8 +77,8 @@ async fn snapshot_standardizes_sqlite_tables_views_and_metadata() {
     let state = open_state().await;
     let config = sqlite_config(&data_path);
     let pool = dbx_core::db::sqlite::connect_path(&data_path.display().to_string()).await.unwrap();
-    state.configs.lock().await.insert(config.id.clone(), config.clone());
-    state.connections.lock().await.insert(config.id.clone(), PoolKind::Sqlite(pool));
+    state.configs.write().await.insert(config.id.clone(), config.clone());
+    state.connections.write().await.insert(config.id.clone(), PoolKind::Sqlite(pool));
 
     let snapshot = snapshot(&state, &config.id, None, None).await.unwrap();
 
@@ -106,7 +113,7 @@ async fn snapshot_propagates_schema_core_errors() {
     let data_path = std::env::temp_dir().join(format!("dbx-schema-snapshot-missing-{}.db", uuid::Uuid::new_v4()));
     let state = open_state().await;
     let config = sqlite_config(&data_path);
-    state.configs.lock().await.insert(config.id.clone(), config.clone());
+    state.configs.write().await.insert(config.id.clone(), config.clone());
 
     let err = snapshot(&state, &config.id, None, None).await.unwrap_err();
 
@@ -124,7 +131,7 @@ async fn snapshot_requires_database_for_database_scoped_connections_without_defa
     config.driver_profile = None;
     config.host = "127.0.0.1".to_string();
     config.port = 3306;
-    state.configs.lock().await.insert(config.id.clone(), config.clone());
+    state.configs.write().await.insert(config.id.clone(), config.clone());
 
     let err = snapshot(&state, &config.id, None, None).await.unwrap_err();
 
