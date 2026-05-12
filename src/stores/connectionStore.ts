@@ -23,7 +23,7 @@ import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { isSchemaAware, TREE_SCHEMA_TYPES } from "@/lib/databaseCapabilities";
 import { buildDatabaseTreeNodes } from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
-import { buildTableTreeNodes, expandCachedObjectBrowserNodes } from "@/lib/tableTree";
+import { buildGroupedObjectTreeNodes, buildTableTreeNodes, expandCachedObjectBrowserNodes } from "@/lib/tableTree";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
@@ -685,20 +685,20 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
-      const cacheKey = schemaCacheKey(connectionId, database, schema || "", "tables");
+      const cacheKey = schemaCacheKey(connectionId, database, schema || "", "objects");
       if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
 
       const querySchema = schema || database;
-      const tables = await api.listTables(connectionId, database, querySchema);
       const config = getConfig(connectionId);
       const effectiveSchema = schema || (config?.db_type && isSchemaAware(config.db_type) ? database : undefined);
-      const children = buildTableTreeNodes({
-        nodeId,
-        connectionId,
-        database,
-        schema: effectiveSchema,
-        tables,
-      });
+      let children: TreeNode[];
+      try {
+        const objects = await api.listObjects(connectionId, database, querySchema);
+        children = buildGroupedObjectTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, objects });
+      } catch {
+        const tables = await api.listTables(connectionId, database, querySchema);
+        children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
+      }
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
@@ -919,6 +919,13 @@ export const useConnectionStore = defineStore("connection", () => {
       await loadForeignKeys(node.connectionId, node.database, node.tableName, node.schema);
     } else if (node.type === "group-triggers" && node.connectionId && node.database && node.tableName) {
       await loadTriggers(node.connectionId, node.database, node.tableName, node.schema);
+    } else if (
+      node.type === "group-tables" ||
+      node.type === "group-views" ||
+      node.type === "group-procedures" ||
+      node.type === "group-functions"
+    ) {
+      node.isExpanded = true;
     }
   }
 

@@ -12,17 +12,29 @@ import {
   Search,
   ScrollText,
   Table2,
+  TerminalSquare,
+  Trash2,
   X,
 } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import * as api from "@/lib/api";
 import type { ConnectionConfig, ObjectInfo, ObjectSourceKind } from "@/types/database";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
+import { qualifiedTableName } from "@/lib/tableSelectSql";
 import { useToast } from "@/composables/useToast";
 import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
+import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
 
@@ -49,6 +61,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { toast } = useToast();
+const queryStore = useQueryStore();
 
 const schemas = ref<string[]>([]);
 const selectedSchema = ref<string | undefined>(props.schema);
@@ -66,6 +79,8 @@ const sourceDraft = ref("");
 const sourceSaving = ref(false);
 const sourceSaveError = ref("");
 const error = ref("");
+const showDropConfirm = ref(false);
+const dropTarget = ref<ObjectRow | null>(null);
 let loadId = 0;
 
 const needsSchema = computed(() => isSchemaAware(props.connection.db_type));
@@ -194,6 +209,73 @@ async function openSource(row: ObjectRow) {
   } finally {
     sourceLoading.value = false;
   }
+}
+
+function openNewQuery(row: ObjectRow) {
+  const tabId = queryStore.createTab(props.connection.id, props.database, row.name);
+  queryStore.updateSql(tabId, `SELECT * FROM ${qualifiedName(row)} LIMIT 100;`);
+}
+
+function qualifiedName(row: ObjectRow): string {
+  return qualifiedTableName({
+    databaseType: props.connection.db_type,
+    schema: row.schema || selectedSchema.value,
+    tableName: row.name,
+  });
+}
+
+function requestDrop(row: ObjectRow) {
+  dropTarget.value = row;
+  showDropConfirm.value = true;
+}
+
+async function confirmDrop() {
+  if (!dropTarget.value) return;
+  const row = dropTarget.value;
+  const typeSql =
+    row.type === "VIEW"
+      ? "VIEW"
+      : row.type === "PROCEDURE"
+        ? "PROCEDURE"
+        : row.type === "FUNCTION"
+          ? "FUNCTION"
+          : "TABLE";
+  const name = qualifiedName(row);
+  try {
+    await api.executeQuery(props.connection.id, props.database, `DROP ${typeSql} ${name}`);
+    const successKey =
+      row.type === "VIEW"
+        ? "contextMenu.dropViewSuccess"
+        : row.type === "PROCEDURE"
+          ? "contextMenu.dropProcedureSuccess"
+          : row.type === "FUNCTION"
+            ? "contextMenu.dropFunctionSuccess"
+            : "contextMenu.dropTableSuccess";
+    toast(t(successKey, { name: row.name }));
+    await reload();
+  } catch (e: any) {
+    toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
+  }
+  dropTarget.value = null;
+}
+
+function dropConfirmTitle(): string {
+  if (!dropTarget.value) return "";
+  const type = dropTarget.value.type;
+  if (type === "VIEW") return t("contextMenu.confirmDropViewTitle");
+  if (type === "PROCEDURE") return t("contextMenu.confirmDropProcedureTitle");
+  if (type === "FUNCTION") return t("contextMenu.confirmDropFunctionTitle");
+  return t("contextMenu.confirmDropTableTitle");
+}
+
+function dropConfirmMessage(): string {
+  if (!dropTarget.value) return "";
+  const name = dropTarget.value.name;
+  const type = dropTarget.value.type;
+  if (type === "VIEW") return t("contextMenu.confirmDropViewMessage", { name });
+  if (type === "PROCEDURE") return t("contextMenu.confirmDropProcedureMessage", { name });
+  if (type === "FUNCTION") return t("contextMenu.confirmDropFunctionMessage", { name });
+  return t("contextMenu.confirmDropTableMessage", { name });
 }
 
 function closeSource() {
@@ -417,22 +499,62 @@ watch(
         key-field="id"
       >
         <template #default="{ item }">
-          <div
-            class="grid h-[38px] cursor-pointer items-center gap-3 border-b px-3 hover:bg-accent/50"
-            :class="{ 'bg-accent/40': sourceRow?.id === item.id }"
-            :style="{ gridTemplateColumns }"
-            @click="openRow(item)"
-          >
-            <div class="flex min-w-0 items-center gap-2">
-              <component :is="iconFor(item)" class="h-3.5 w-3.5 shrink-0" :class="iconClass(item.type)" />
-              <span class="truncate text-[13px] font-medium text-foreground">{{ item.name }}</span>
-            </div>
-            <div class="truncate text-xs text-muted-foreground">{{ typeLabel(item.type) }}</div>
-            <div class="truncate text-xs text-muted-foreground">{{ item.schema || props.database }}</div>
-            <div v-if="hasComments" class="truncate text-xs text-muted-foreground" :title="item.comment || ''">
-              {{ item.comment || "" }}
-            </div>
-          </div>
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <div
+                class="grid h-[38px] cursor-pointer items-center gap-3 border-b px-3 hover:bg-accent/50"
+                :class="{ 'bg-accent/40': sourceRow?.id === item.id }"
+                :style="{ gridTemplateColumns }"
+                @click="openRow(item)"
+              >
+                <div class="flex min-w-0 items-center gap-2">
+                  <component :is="iconFor(item)" class="h-3.5 w-3.5 shrink-0" :class="iconClass(item.type)" />
+                  <span class="truncate text-[13px] font-medium text-foreground">{{ item.name }}</span>
+                </div>
+                <div class="truncate text-xs text-muted-foreground">{{ typeLabel(item.type) }}</div>
+                <div class="truncate text-xs text-muted-foreground">{{ item.schema || props.database }}</div>
+                <div v-if="hasComments" class="truncate text-xs text-muted-foreground" :title="item.comment || ''">
+                  {{ item.comment || "" }}
+                </div>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-auto min-w-40">
+              <!-- TABLE -->
+              <template v-if="item.type === 'TABLE'">
+                <ContextMenuItem @click="openRow(item)">
+                  <Table2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.viewData") }}
+                </ContextMenuItem>
+                <ContextMenuItem @click="openNewQuery(item)">
+                  <TerminalSquare class="w-4 h-4 mr-2" /> {{ t("contextMenu.newQuery") }}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem class="text-destructive" @click="requestDrop(item)">
+                  <Trash2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.dropTable") }}
+                </ContextMenuItem>
+              </template>
+              <!-- VIEW -->
+              <template v-else-if="item.type === 'VIEW'">
+                <ContextMenuItem @click="openSource(item)">
+                  <Code2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.viewSource") }}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem class="text-destructive" @click="requestDrop(item)">
+                  <Trash2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.dropView") }}
+                </ContextMenuItem>
+              </template>
+              <!-- PROCEDURE / FUNCTION -->
+              <template v-else>
+                <ContextMenuItem @click="openSource(item)">
+                  <Code2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.viewSource") }}
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem class="text-destructive" @click="requestDrop(item)">
+                  <Trash2 class="w-4 h-4 mr-2" />
+                  {{ item.type === "PROCEDURE" ? t("contextMenu.dropProcedure") : t("contextMenu.dropFunction") }}
+                </ContextMenuItem>
+              </template>
+            </ContextMenuContent>
+          </ContextMenu>
         </template>
       </RecycleScroller>
       <div v-if="sourceRow" class="flex h-[42%] min-h-44 shrink-0 flex-col border-t bg-background">
@@ -520,6 +642,14 @@ watch(
       </div>
     </div>
   </div>
+
+  <DangerConfirmDialog
+    v-model:open="showDropConfirm"
+    :title="dropConfirmTitle()"
+    :details="dropConfirmMessage()"
+    :confirm-label="t('dangerDialog.deleteConfirm')"
+    @confirm="confirmDrop"
+  />
 </template>
 
 <style scoped>

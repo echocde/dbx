@@ -5,6 +5,8 @@ const leafTypes: Set<TreeNodeType> = new Set([
   "index",
   "fkey",
   "trigger",
+  "procedure",
+  "function",
   "object-browser",
   "redis-db",
   "mongo-collection",

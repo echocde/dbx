@@ -38,6 +38,9 @@ import {
   CopyPlus,
   Plus,
   FileText,
+  ScrollText,
+  Braces,
+  Code2,
 } from "lucide-vue-next";
 import {
   ContextMenu,
@@ -182,6 +185,18 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Database, colorClass: "text-yellow-500" };
     case "mongo-collection":
       return { icon: Table, colorClass: "text-green-400" };
+    case "procedure":
+      return { icon: ScrollText, colorClass: "text-blue-500" };
+    case "function":
+      return { icon: Braces, colorClass: "text-amber-500" };
+    case "group-tables":
+      return { icon: Table, colorClass: "text-green-500" };
+    case "group-views":
+      return { icon: Eye, colorClass: "text-purple-500" };
+    case "group-procedures":
+      return { icon: ScrollText, colorClass: "text-blue-500" };
+    case "group-functions":
+      return { icon: Braces, colorClass: "text-amber-500" };
     default:
       return { icon: Database, colorClass: "text-muted-foreground" };
   }
@@ -192,6 +207,10 @@ const groupTypes: Set<TreeNodeType> = new Set([
   "group-indexes",
   "group-fkeys",
   "group-triggers",
+  "group-tables",
+  "group-views",
+  "group-procedures",
+  "group-functions",
   "saved-sql-root",
   "saved-sql-folder",
 ]);
@@ -228,6 +247,16 @@ async function toggle() {
   }
 
   if (node.type === "saved-sql-root" || node.type === "saved-sql-folder") {
+    node.isExpanded = !node.isExpanded;
+    return;
+  }
+
+  if (
+    node.type === "group-tables" ||
+    node.type === "group-views" ||
+    node.type === "group-procedures" ||
+    node.type === "group-functions"
+  ) {
     node.isExpanded = !node.isExpanded;
     return;
   }
@@ -511,6 +540,38 @@ const showDropDatabaseConfirm = ref(false);
 const showCreateSchemaDialog = ref(false);
 const createSchemaName = ref("");
 const showDropSchemaConfirm = ref(false);
+
+// --- Procedure / Function Management ---
+const showDropObjectConfirm = ref(false);
+
+function buildDropObjectSql(): string {
+  const node = props.node;
+  const keyword = node.type === "procedure" ? "PROCEDURE" : "FUNCTION";
+  const name = qualifiedTableName(node.label, node.schema);
+  return `DROP ${keyword} ${name};`;
+}
+
+function viewObjectSource() {
+  void openObjectBrowser();
+}
+
+function requestDropObject() {
+  showDropObjectConfirm.value = true;
+}
+
+async function confirmDropObject() {
+  const node = props.node;
+  if (!node.connectionId || !node.database) return;
+  try {
+    await connectionStore.ensureConnected(node.connectionId);
+    await api.executeQuery(node.connectionId, node.database, buildDropObjectSql(), node.schema);
+    const msgKey = node.type === "procedure" ? "contextMenu.dropProcedureSuccess" : "contextMenu.dropFunctionSuccess";
+    toast(t(msgKey, { name: node.label }), 3000);
+    await refreshTableList(node);
+  } catch (e: any) {
+    toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
 
 const isTableNotView = computed(() => props.node.type === "table");
 
@@ -1190,6 +1251,8 @@ const hasTypeMenu = computed(() => {
     t === "table" ||
     t === "view" ||
     t === "column" ||
+    t === "procedure" ||
+    t === "function" ||
     t === "saved-sql-root" ||
     t === "saved-sql-folder" ||
     t === "saved-sql-file" ||
@@ -1471,6 +1534,17 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
             @vue:mounted="($event: any) => $event.el.focus()"
           />
           <span v-else class="min-w-0 flex-1 truncate">{{ displayLabel(node) }}</span>
+          <span
+            v-if="
+              (node.type === 'group-tables' ||
+                node.type === 'group-views' ||
+                node.type === 'group-procedures' ||
+                node.type === 'group-functions') &&
+              node.objectCount != null
+            "
+            class="text-muted-foreground text-[10px] shrink-0"
+            >{{ node.objectCount }}</span
+          >
           <Badge v-if="isNodeDefaultDatabase" variant="secondary" class="h-4 px-1.5 text-[10px]">
             {{ t("editor.defaultDatabase") }}
           </Badge>
@@ -1711,6 +1785,18 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         </ContextMenuItem>
       </template>
 
+      <template v-if="node.type === 'procedure' || node.type === 'function'">
+        <ContextMenuItem @click="viewObjectSource">
+          <Code2 class="w-4 h-4 mr-2" />
+          {{ t("contextMenu.viewSource") }}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem class="text-destructive" @click="requestDropObject">
+          <Trash2 class="w-4 h-4 mr-2" />
+          {{ node.type === "procedure" ? t("contextMenu.dropProcedure") : t("contextMenu.dropFunction") }}
+        </ContextMenuItem>
+      </template>
+
       <template v-if="isGroupLabel(node)">
         <ContextMenuItem v-if="node.type === 'saved-sql-root'" @click="openCreateSavedSqlFolder">
           <FolderPlus class="w-4 h-4" /> {{ t("savedSql.newFolder") }}
@@ -1885,6 +1971,21 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     :sql="buildTruncateTableSql()"
     :confirm-label="t('contextMenu.truncateTable')"
     @confirm="confirmTruncateTable"
+  />
+
+  <DangerConfirmDialog
+    v-model:open="showDropObjectConfirm"
+    :title="
+      node.type === 'procedure' ? t('contextMenu.confirmDropProcedureTitle') : t('contextMenu.confirmDropFunctionTitle')
+    "
+    :message="
+      node.type === 'procedure'
+        ? t('contextMenu.confirmDropProcedureMessage', { name: node.label })
+        : t('contextMenu.confirmDropFunctionMessage', { name: node.label })
+    "
+    :sql="buildDropObjectSql()"
+    :confirm-label="node.type === 'procedure' ? t('contextMenu.dropProcedure') : t('contextMenu.dropFunction')"
+    @confirm="confirmDropObject"
   />
 
   <Dialog v-model:open="showDuplicateDialog">
