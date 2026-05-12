@@ -276,6 +276,7 @@ export default {
     discard: "Descartar",
     dismiss: "Cerrar",
     addRow: "Agregar fila",
+    cloneRow: "Clonar fila",
     deleteRow: "Eliminar fila",
     restoreRow: "Restaurar fila",
     statusClean: "Sin cambios",

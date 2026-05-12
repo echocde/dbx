@@ -275,6 +275,7 @@ export default {
     discard: "Discard",
     dismiss: "Dismiss",
     addRow: "Add Row",
+    cloneRow: "Clone Row",
     deleteRow: "Delete Row",
     restoreRow: "Restore Row",
     statusClean: "Clean",

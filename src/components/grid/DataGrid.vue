@@ -35,6 +35,7 @@ import {
   FileDown,
   SquareDashed,
   Check,
+  CopyPlus,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import {
@@ -882,6 +883,7 @@ const {
   applyCellValue,
   onEditKeydown,
   addRow,
+  cloneRow,
   showDeleteRowConfirm,
   requestDeleteRow,
   confirmDeleteRow,
@@ -2513,6 +2515,9 @@ defineExpose({
         </ContextMenuSub>
         <ContextMenuSeparator />
         <template v-if="editable && contextRowItem">
+          <ContextMenuItem @click="cloneRow(contextRowItem.id)">
+            <CopyPlus class="w-3.5 h-3.5 mr-2" /> {{ t("grid.cloneRow") }}
+          </ContextMenuItem>
           <ContextMenuItem v-if="contextRowItem.isDeleted" @click="restoreRow(contextRowItem.id)">
             <Undo2 class="w-3.5 h-3.5 mr-2" /> {{ t("grid.restoreRow") }}
           </ContextMenuItem>

@@ -365,6 +365,25 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     });
   }
 
+  function cloneRow(rowId: number) {
+    const item = getRowItem(rowId);
+    if (!item) return;
+    const primaryKeys = tableMeta.value?.primaryKeys ?? [];
+    const columns = result.value.columns;
+    const clonedData = item.data.map((val, i) => (primaryKeys.includes(columns[i]) ? null : val));
+    rowStatusFilter.value = rowStatusFilterAfterAddingRow(rowStatusFilter.value);
+    newRows.value.push(clonedData);
+    if (useTransaction.value && !transactionActive.value) {
+      enterTransaction();
+    }
+    const newRowId = -newRows.value.length;
+    nextTick(() => {
+      const el = getScrollerElement();
+      if (el) el.scrollTop = el.scrollHeight;
+      startEdit(newRowId, initialEditColumn?.value ?? 0);
+    });
+  }
+
   function applyDeleteRow(rowId: number) {
     const item = getRowItem(rowId);
     if (!item) return;
@@ -622,6 +641,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     cancelEdit,
     onEditKeydown,
     addRow,
+    cloneRow,
     applyDeleteRow,
     showDeleteRowConfirm,
     pendingDeleteRowId,
