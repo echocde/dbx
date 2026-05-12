@@ -1089,6 +1089,7 @@ export const useConnectionStore = defineStore("connection", () => {
           continue;
         }
         if (!expandedIds.has(node.id)) continue;
+        clearLoadedChildrenCache(node.id);
         node.children = [];
         await loadTreeNodeChildren(node, { force: true });
         await restoreExpandedChildren(node, expandedIds, { force: true });
