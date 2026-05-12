@@ -18,6 +18,7 @@ const TableStructureEditorDialog = defineAsyncComponent(
 const FieldLineageDialog = defineAsyncComponent(() => import("@/components/lineage/FieldLineageDialog.vue"));
 const ConfigPassphraseDialog = defineAsyncComponent(() => import("@/components/config/ConfigPassphraseDialog.vue"));
 const DatabaseSearchDialog = defineAsyncComponent(() => import("@/components/search/DatabaseSearchDialog.vue"));
+const DatabaseExportDialog = defineAsyncComponent(() => import("@/components/export/DatabaseExportDialog.vue"));
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useDialogSources } from "@/composables/useDialogSources";
 
@@ -172,6 +173,12 @@ watch(
     :prefill-database="dialogs.databaseSearchPrefillDatabase.value"
     :prefill-schema="dialogs.databaseSearchPrefillSchema.value"
     @open-target="emit('openDatabaseSearchTarget', $event)"
+  />
+  <DatabaseExportDialog
+    v-model:open="dialogs.showDatabaseExportDialog.value"
+    :prefill-connection-id="dialogs.databaseExportPrefillConnectionId.value"
+    :prefill-database="dialogs.databaseExportPrefillDatabase.value"
+    :prefill-schema="dialogs.databaseExportPrefillSchema.value"
   />
   <ConfigPassphraseDialog
     v-model:open="dialogs.showConfigPassphraseDialog.value"

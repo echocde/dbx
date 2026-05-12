@@ -961,4 +961,17 @@ export default {
     openSource: "开源仓库",
     officialDocs: "官方文档",
   },
+  databaseExport: {
+    title: "导出数据库",
+    includeStructure: "表结构 (DDL)",
+    includeData: "表数据 (INSERT)",
+    includeObjects: "视图 / 存储过程 / 函数",
+    export: "导出",
+    exporting: "正在导出...",
+    currentTable: "当前: {table} ({current}/{total})",
+    rowsExported: "已导出 {count} 行",
+    exportSuccess: "数据库导出成功",
+    exportError: "导出失败: {error}",
+    exportCancelled: "导出已取消",
+  },
 };

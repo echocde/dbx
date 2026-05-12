@@ -38,6 +38,8 @@ import type {
   TableImportRequest,
   TableImportSummary,
   TableImportProgress,
+  DatabaseExportRequest,
+  ExportProgress,
 } from "./tauri";
 
 // ---------------------------------------------------------------------------
@@ -495,6 +497,44 @@ export async function importTableFile(
 
 export async function cancelTableImport(importId: string): Promise<boolean> {
   return post("/api/import/cancel", { importId });
+}
+
+// ---------------------------------------------------------------------------
+// Database Export
+// ---------------------------------------------------------------------------
+
+export async function exportDatabaseSql(
+  request: DatabaseExportRequest,
+  onProgress: (progress: ExportProgress) => void,
+): Promise<void> {
+  // 1. POST to start the export
+  const res = await fetch("/api/export/database", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ request }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+
+  // 2. SSE to listen for progress
+  return new Promise((resolve, reject) => {
+    const es = new EventSource(`/api/export/database/progress/${request.exportId}`);
+    es.onmessage = (e) => {
+      const progress: ExportProgress = JSON.parse(e.data);
+      onProgress(progress);
+      if (progress.status === "Done" || progress.status === "Error" || progress.status === "Cancelled") {
+        es.close();
+        resolve();
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      reject(new Error("Export SSE connection failed"));
+    };
+  });
+}
+
+export async function cancelDatabaseExport(exportId: string): Promise<void> {
+  await post("/api/export/database/cancel", { exportId });
 }
 
 // ---------------------------------------------------------------------------

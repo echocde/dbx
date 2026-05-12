@@ -978,4 +978,17 @@ export default {
     openSource: "Repositorio de código abierto",
     officialDocs: "Documentación oficial",
   },
+  databaseExport: {
+    title: "Exportar base de datos",
+    includeStructure: "Estructura de tablas (DDL)",
+    includeData: "Datos de tablas (INSERT)",
+    includeObjects: "Vistas / Procedimientos / Funciones",
+    export: "Exportar",
+    exporting: "Exportando...",
+    currentTable: "Actual: {table} ({current}/{total})",
+    rowsExported: "{count} filas exportadas",
+    exportSuccess: "Base de datos exportada exitosamente",
+    exportError: "Error al exportar: {error}",
+    exportCancelled: "Exportación cancelada",
+  },
 };

@@ -744,3 +744,51 @@ export async function importTableFile(
 export async function cancelTableImport(importId: string): Promise<boolean> {
   return invoke("cancel_table_import", { importId });
 }
+
+// --- Database Export ---
+export interface DatabaseExportRequest {
+  exportId: string;
+  connectionId: string;
+  database: string;
+  schema: string;
+  filePath: string;
+  includeStructure: boolean;
+  includeData: boolean;
+  includeObjects: boolean;
+  batchSize: number;
+}
+
+export interface ExportProgress {
+  exportId: string;
+  currentObject: string;
+  objectIndex: number;
+  totalObjects: number;
+  rowsExported: number;
+  totalRows: number | null;
+  status: "Running" | "Done" | "Error" | "Cancelled";
+  error: string | null;
+}
+
+export async function exportDatabaseSql(
+  request: DatabaseExportRequest,
+  onProgress: (progress: ExportProgress) => void,
+): Promise<void> {
+  const unlisten: UnlistenFn = await listen<ExportProgress>("database-export-progress", (event) => {
+    if (event.payload.exportId === request.exportId) {
+      onProgress(event.payload);
+      if (event.payload.status === "Done" || event.payload.status === "Error" || event.payload.status === "Cancelled") {
+        unlisten();
+      }
+    }
+  });
+  try {
+    await invoke("export_database_sql", { request });
+  } catch (e) {
+    unlisten();
+    throw e;
+  }
+}
+
+export async function cancelDatabaseExport(exportId: string): Promise<void> {
+  await invoke("cancel_database_export", { exportId });
+}

@@ -13,6 +13,7 @@ const showTableImportDialog = ref(false);
 const showStructureEditorDialog = ref(false);
 const showFieldLineageDialog = ref(false);
 const showDatabaseSearchDialog = ref(false);
+const showDatabaseExportDialog = ref(false);
 const showImportLayoutConfirm = ref(false);
 const pendingImportLayout = ref<SidebarLayout | null>(null);
 const showConfigPassphraseDialog = ref(false);
@@ -51,6 +52,9 @@ const lineagePrefillColumn = ref("");
 const databaseSearchPrefillConnectionId = ref("");
 const databaseSearchPrefillDatabase = ref("");
 const databaseSearchPrefillSchema = ref("");
+const databaseExportPrefillConnectionId = ref("");
+const databaseExportPrefillDatabase = ref("");
+const databaseExportPrefillSchema = ref("");
 
 let watchersRegistered = false;
 
@@ -183,6 +187,19 @@ export function useDialogSources() {
         }
       },
     );
+
+    watch(
+      () => connectionStore.databaseExportSource,
+      (v) => {
+        if (v) {
+          databaseExportPrefillConnectionId.value = v.connectionId;
+          databaseExportPrefillDatabase.value = v.database;
+          databaseExportPrefillSchema.value = v.schema ?? "";
+          showDatabaseExportDialog.value = true;
+          connectionStore.databaseExportSource = null;
+        }
+      },
+    );
   } // end watchersRegistered
 
   // Config export/import helpers
@@ -258,6 +275,7 @@ export function useDialogSources() {
     showStructureEditorDialog,
     showFieldLineageDialog,
     showDatabaseSearchDialog,
+    showDatabaseExportDialog,
     showImportLayoutConfirm,
     pendingImportLayout,
     showConfigPassphraseDialog,
@@ -295,6 +313,9 @@ export function useDialogSources() {
     databaseSearchPrefillConnectionId,
     databaseSearchPrefillDatabase,
     databaseSearchPrefillSchema,
+    databaseExportPrefillConnectionId,
+    databaseExportPrefillDatabase,
+    databaseExportPrefillSchema,
     onExportClick,
     onExportConfirm,
     onImportClick,

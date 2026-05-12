@@ -91,6 +91,11 @@ export const useConnectionStore = defineStore("connection", () => {
     database: string;
     schema?: string;
   } | null>(null);
+  const databaseExportSource = ref<{
+    connectionId: string;
+    database: string;
+    schema?: string;
+  } | null>(null);
   const sidebarLayout = ref<SidebarLayout>(emptyLayout());
   let layoutPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1400,6 +1405,7 @@ export const useConnectionStore = defineStore("connection", () => {
     structureEditorSource,
     fieldLineageSource,
     databaseSearchSource,
+    databaseExportSource,
     createConnectionGroup(name: string) {
       const result = createGroupOp(sidebarLayout.value, name);
       updateLayoutAndRebuild(result.layout);

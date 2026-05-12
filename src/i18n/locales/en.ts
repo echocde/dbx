@@ -976,4 +976,17 @@ export default {
     openSource: "Open-source repository",
     officialDocs: "Official docs",
   },
+  databaseExport: {
+    title: "Export Database",
+    includeStructure: "Table structure (DDL)",
+    includeData: "Table data (INSERT)",
+    includeObjects: "Views / Procedures / Functions",
+    export: "Export",
+    exporting: "Exporting...",
+    currentTable: "Current: {table} ({current}/{total})",
+    rowsExported: "{count} rows exported",
+    exportSuccess: "Database exported successfully",
+    exportError: "Export failed: {error}",
+    exportCancelled: "Export cancelled",
+  },
 };

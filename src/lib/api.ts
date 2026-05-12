@@ -98,6 +98,10 @@ export const previewTableImportFile = forward("previewTableImportFile");
 export const importTableFile = forward("importTableFile");
 export const cancelTableImport = forward("cancelTableImport");
 
+// Database Export
+export const exportDatabaseSql = forward("exportDatabaseSql");
+export const cancelDatabaseExport = forward("cancelDatabaseExport");
+
 // Redis
 export const redisListDatabases = forward("redisListDatabases");
 export const redisScanKeys = forward("redisScanKeys");
@@ -172,4 +176,6 @@ export type {
   TableImportRequest,
   TableImportSummary,
   TableImportProgress,
+  DatabaseExportRequest,
+  ExportProgress,
 } from "./tauri";
