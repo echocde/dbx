@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use crate::db::agent_driver::AgentDriverClient;
 use crate::models::connection::DatabaseType;
@@ -59,13 +60,17 @@ pub struct AgentDriverInfo {
 
 pub struct AgentManager {
     base_dir: PathBuf,
+    daemons: Mutex<std::collections::HashMap<String, AgentDriverClient>>,
 }
 
 impl AgentManager {
     pub fn new() -> Self {
         let home =
             std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_else(|_| ".".to_string());
-        Self { base_dir: PathBuf::from(home).join(".dbx").join("agents") }
+        Self {
+            base_dir: PathBuf::from(home).join(".dbx").join("agents"),
+            daemons: Mutex::new(std::collections::HashMap::new()),
+        }
     }
 
     pub fn base_dir(&self) -> &PathBuf {
@@ -138,6 +143,47 @@ impl AgentManager {
         let java = self.jre_java_path().to_string_lossy().to_string();
         let jar = self.driver_jar_path(key).to_string_lossy().to_string();
         AgentDriverClient::spawn(&java, &jar).await
+    }
+
+    pub async fn call_daemon<T: serde::de::DeserializeOwned + Send + 'static>(
+        &self,
+        db_type: &DatabaseType,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<T, String> {
+        let key = Self::db_type_to_agent_key(db_type)
+            .ok_or_else(|| format!("{:?} is not an agent-driven database type", db_type))?
+            .to_string();
+
+        let mut daemons = self.daemons.lock().await;
+
+        if !daemons.contains_key(&key) {
+            if !self.is_jre_installed() {
+                return Err("JRE runtime is not installed. Please install it from the Driver Manager.".to_string());
+            }
+            if !self.is_driver_installed(&key) {
+                return Err(format!("{key} driver is not installed. Please install it from the Driver Manager."));
+            }
+            let java = self.jre_java_path().to_string_lossy().to_string();
+            let jar = self.driver_jar_path(&key).to_string_lossy().to_string();
+            let client = AgentDriverClient::spawn(&java, &jar).await?;
+            daemons.insert(key.clone(), client);
+        }
+
+        let client = daemons.get_mut(&key).unwrap();
+        match client.call::<T>(method, params.clone()).await {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                log::warn!("[agent] daemon call failed, respawning: {e}");
+                daemons.remove(&key);
+                let java = self.jre_java_path().to_string_lossy().to_string();
+                let jar = self.driver_jar_path(&key).to_string_lossy().to_string();
+                let mut new_client = AgentDriverClient::spawn(&java, &jar).await?;
+                let result = new_client.call::<T>(method, params).await?;
+                daemons.insert(key, new_client);
+                Ok(result)
+            }
+        }
     }
 
     pub async fn download_file(url: &str, dest: &Path) -> Result<(), String> {

@@ -113,9 +113,10 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                 db::elasticsearch_driver::test_connection(&client).await.map(|_| "Connection successful".to_string())
             }
             DatabaseType::Dameng | DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::Goldendb => {
-                let mut client = state.agent_manager.spawn(&config.db_type).await?;
-                client
-                    .call::<serde_json::Value>(
+                state
+                    .agent_manager
+                    .call_daemon::<serde_json::Value>(
+                        &config.db_type,
                         "test_connection",
                         serde_json::json!({
                             "host": host,
