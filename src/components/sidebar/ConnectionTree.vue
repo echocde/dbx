@@ -100,34 +100,40 @@ function normalizedLabel(node: TreeNode): string {
 }
 
 function filterTree(nodes: TreeNode[], q: string): TreeNode[] {
-  const filteredNodes: TreeNode[] = [];
+  const filteredNodes: { node: TreeNode; score: number }[] = [];
 
   for (const node of nodes) {
     if (node.type === "object-browser" && node.hiddenChildren) {
-      const matches = node.hiddenChildren.filter((child) => matchSidebarLabel(normalizedLabel(child), q));
-      if (matches.length > 0) filteredNodes.push(...matches);
+      const matches = node.hiddenChildren
+        .map((child) => ({ node: child, score: matchSidebarLabel(normalizedLabel(child), q)?.score ?? 0 }))
+        .filter((m) => m.score > 0);
+      filteredNodes.push(...matches);
       continue;
     }
 
     const label = normalizedLabel(node);
-    const selfMatches = !!matchSidebarLabel(label, q);
+    const selfMatch = matchSidebarLabel(label, q);
     const filteredChildren = node.children ? filterTree(node.children, q) : undefined;
 
-    if (selfMatches || (filteredChildren && filteredChildren.length > 0)) {
+    if (selfMatch || (filteredChildren && filteredChildren.length > 0)) {
       if (!node.children) {
-        filteredNodes.push(node);
+        filteredNodes.push({ node, score: selfMatch?.score ?? 0 });
       } else {
         const children = filteredChildren ?? [];
         filteredNodes.push({
-          ...node,
-          children,
-          isExpanded: children.length > 0 && !searchCollapsedIds.value.has(node.id),
+          node: {
+            ...node,
+            children,
+            isExpanded: children.length > 0 && !searchCollapsedIds.value.has(node.id),
+          },
+          score: selfMatch?.score ?? 0,
         });
       }
     }
   }
 
-  return filteredNodes;
+  filteredNodes.sort((a, b) => b.score - a.score);
+  return filteredNodes.map((m) => m.node);
 }
 
 function matchesType(node: TreeNode): boolean {
