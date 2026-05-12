@@ -1094,20 +1094,6 @@ function openExternalUrl(url: string) {
                     <Input v-model="form.database" class="col-span-3" :placeholder="databasePlaceholder" />
                   </div>
 
-                  <div v-if="selectedType === 'dm'" class="grid grid-cols-4 items-center gap-4">
-                    <span />
-                    <p class="col-span-3 text-xs text-muted-foreground">
-                      {{ t("connection.dmCompatHint") }}
-                      <a
-                        href="https://eco.dameng.com/download/"
-                        target="_blank"
-                        class="underline text-primary hover:text-primary/80"
-                      >
-                        {{ t("connection.dmDownload") }}
-                      </a>
-                    </p>
-                  </div>
-
                   <div v-if="form.db_type === 'oracle'" class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right text-xs">SYSDBA</Label>
                     <label class="col-span-3 flex items-center gap-2 cursor-pointer">
