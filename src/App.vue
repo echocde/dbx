@@ -552,6 +552,8 @@ onUnmounted(() => {
           @check-updates="checkUpdates()"
           @open-transfer="dialogs.showTransferDialog.value = true"
           @open-sql-file="dialogs.showSqlFileDialog.value = true"
+          @open-schema-diff="dialogs.showSchemaDiffDialog.value = true"
+          @open-data-compare="dialogs.showDataCompareDialog.value = true"
         />
 
         <div

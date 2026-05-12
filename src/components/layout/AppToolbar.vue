@@ -11,6 +11,8 @@ import {
   Bot,
   ArrowLeftRight,
   FileCode,
+  GitCompareArrows,
+  TableProperties,
   Settings,
   CloudDownload,
 } from "lucide-vue-next";
@@ -52,6 +54,8 @@ const emit = defineEmits<{
   "check-updates": [];
   "open-transfer": [];
   "open-sql-file": [];
+  "open-schema-diff": [];
+  "open-data-compare": [];
 }>();
 
 const { t } = useI18n();
@@ -108,6 +112,28 @@ function onToolbarDblClick(e: MouseEvent) {
     >
       <FileCode class="h-3.5 w-3.5" />
       {{ t("sqlFile.title") }}
+    </Button>
+
+    <Button
+      variant="ghost"
+      size="sm"
+      class="h-8 px-2 text-xs gap-1"
+      @click="emit('open-schema-diff')"
+      :disabled="!hasConnections"
+    >
+      <GitCompareArrows class="h-3.5 w-3.5" />
+      {{ t("diff.title") }}
+    </Button>
+
+    <Button
+      variant="ghost"
+      size="sm"
+      class="h-8 px-2 text-xs gap-1"
+      @click="emit('open-data-compare')"
+      :disabled="!hasConnections"
+    >
+      <TableProperties class="h-3.5 w-3.5" />
+      {{ t("dataCompare.title") }}
     </Button>
 
     <div class="flex-1" data-tauri-drag-region />
