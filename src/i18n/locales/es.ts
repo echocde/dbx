@@ -941,5 +941,6 @@ export default {
     qqGroup: "Grupo QQ",
     project: "Proyecto",
     openSource: "Repositorio de código abierto",
+    officialDocs: "Documentación oficial",
   },
 };

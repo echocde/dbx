@@ -929,5 +929,6 @@ export default {
     qqGroup: "QQ 群",
     project: "项目",
     openSource: "开源仓库",
+    officialDocs: "官方文档",
   },
 };

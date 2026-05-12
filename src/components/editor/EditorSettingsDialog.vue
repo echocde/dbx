@@ -2,7 +2,7 @@
 import { ref, watch, shallowRef, computed } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
-import { CircleHelp, FolderOpen, Loader2, Settings, Trash2 } from "lucide-vue-next";
+import { CircleHelp, ExternalLink, FolderOpen, Loader2, Settings, Trash2 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useSettingsStore,
@@ -491,30 +492,52 @@ watch(
         </TabsList>
 
         <TabsContent value="editor" class="space-y-5 py-2">
-          <!-- Font Family -->
-          <div class="space-y-2">
-            <Label>{{ t("settings.fontFamily") }}</Label>
-            <Select :model-value="editFontFamily" @update:model-value="onFontFamilyChange">
-              <SelectTrigger>
-                <SelectValue :placeholder="t('settings.selectFont')" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  v-for="font in FONT_FAMILIES"
-                  :key="font.value"
-                  :value="font.value"
-                  :style="{ fontFamily: font.value }"
-                >
-                  {{ font.label }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p class="text-xs text-muted-foreground leading-relaxed font-mono" :style="{ fontFamily: editFontFamily }">
-              SELECT * FROM users WHERE id = 1;
-            </p>
-          </div>
+          <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+            <!-- Font Family -->
+            <div class="space-y-2">
+              <Label>{{ t("settings.fontFamily") }}</Label>
+              <Select :model-value="editFontFamily" @update:model-value="onFontFamilyChange">
+                <SelectTrigger>
+                  <SelectValue :placeholder="t('settings.selectFont')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="font in FONT_FAMILIES"
+                    :key="font.value"
+                    :value="font.value"
+                    :style="{ fontFamily: font.value }"
+                  >
+                    {{ font.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          <Separator />
+            <!-- Theme -->
+            <div class="space-y-2">
+              <Label>{{ t("settings.theme") }}</Label>
+              <Select :model-value="editTheme" @update:model-value="onThemeChange">
+                <SelectTrigger>
+                  <SelectValue :placeholder="t('settings.selectTheme')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="theme in EDITOR_THEMES" :key="theme.value" :value="theme.value">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="h-3 w-3 rounded-full border"
+                        :class="
+                          theme.dark
+                            ? 'bg-foreground border-foreground/20'
+                            : 'bg-muted-foreground/30 border-muted-foreground/40'
+                        "
+                      />
+                      {{ theme.label }}
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
           <!-- Font Size -->
           <div class="space-y-2">
@@ -540,54 +563,27 @@ watch(
 
           <Separator />
 
-          <!-- Theme -->
-          <div class="space-y-2">
-            <Label>{{ t("settings.theme") }}</Label>
-            <Select :model-value="editTheme" @update:model-value="onThemeChange">
-              <SelectTrigger>
-                <SelectValue :placeholder="t('settings.selectTheme')" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="theme in EDITOR_THEMES" :key="theme.value" :value="theme.value">
-                  <div class="flex items-center gap-2">
-                    <span
-                      class="h-3 w-3 rounded-full border"
-                      :class="
-                        theme.dark
-                          ? 'bg-foreground border-foreground/20'
-                          : 'bg-muted-foreground/30 border-muted-foreground/40'
-                      "
-                    />
-                    {{ theme.label }}
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          <div class="space-y-2">
-            <Label>{{ t("settings.executeMode") }}</Label>
-            <Select :model-value="editExecuteMode" @update:model-value="onExecuteModeChange">
-              <SelectTrigger>
-                <SelectValue :placeholder="t('settings.executeMode')" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{{ t("settings.executeModeAll") }}</SelectItem>
-                <SelectItem value="current">{{ t("settings.executeModeCurrent") }}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Separator />
-
-          <div class="flex items-center justify-between gap-4">
-            <div class="space-y-1">
-              <Label>{{ t("settings.wordWrap") }}</Label>
-              <p class="text-xs text-muted-foreground">{{ t("settings.wordWrapDescription") }}</p>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <Label>{{ t("settings.executeMode") }}</Label>
+              <Select :model-value="editExecuteMode" @update:model-value="onExecuteModeChange">
+                <SelectTrigger>
+                  <SelectValue :placeholder="t('settings.executeMode')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{{ t("settings.executeModeAll") }}</SelectItem>
+                  <SelectItem value="current">{{ t("settings.executeModeCurrent") }}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <input v-model="editWordWrap" type="checkbox" class="h-4 w-4 shrink-0 accent-primary" />
+
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-1">
+                <Label for="editor-word-wrap">{{ t("settings.wordWrap") }}</Label>
+                <p class="text-xs text-muted-foreground">{{ t("settings.wordWrapDescription") }}</p>
+              </div>
+              <Switch id="editor-word-wrap" v-model:checked="editWordWrap" class="mt-0.5" />
+            </div>
           </div>
 
           <Separator />
@@ -942,25 +938,78 @@ watch(
           </div>
 
           <div class="grid gap-3 sm:grid-cols-2">
-            <div class="rounded-lg border p-4">
+            <button
+              type="button"
+              class="rounded-lg border p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="openExternalUrl('https://qm.qq.com/cgi-bin/qm/qr?k=&group_code=1087880322')"
+            >
               <div class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {{ t("settings.community") }}
               </div>
-              <div class="mt-2 text-sm font-medium">{{ t("settings.qqGroup") }}</div>
+              <div class="mt-3 flex items-center gap-2 text-sm font-medium">
+                <img
+                  src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iODYiIHdpZHRoPSI4NiIgdmlld0JveD0iMCAwIDEyMCAxNDUiPjxwYXRoIGZpbGw9IiNmYWFiMDciIGQ9Ik02MC41MDMgMTQyLjIzN2MtMTIuNTMzIDAtMjQuMDM4LTQuMTk1LTMxLjQ0NS0xMC40Ni0zLjc2MiAxLjEyNC04LjU3NCAyLjkzMi0xMS42MSA1LjE3NS0yLjYgMS45MTgtMi4yNzUgMy44NzQtMS44MDcgNC42NjMgMi4wNTYgMy40NyAzNS4yNzMgMi4yMTYgNDQuODYyIDEuMTM2em0wIDBjMTIuNTM1IDAgMjQuMDM5LTQuMTk1IDMxLjQ0Ny0xMC40NiAzLjc2IDEuMTI0IDguNTczIDIuOTMyIDExLjYxIDUuMTc1IDIuNTk4IDEuOTE4IDIuMjc0IDMuODc0IDEuODA1IDQuNjYzLTIuMDU2IDMuNDctMzUuMjcyIDIuMjE2LTQ0Ljg2MiAxLjEzNnptMCAwIi8+PHBhdGggZD0iTTYwLjU3NiA2Ny4xMTljMjAuNjk4LS4xNCAzNy4yODYtNC4xNDcgNDIuOTA3LTUuNjgzIDEuMzQtLjM2NyAyLjA1Ni0xLjAyNCAyLjA1Ni0xLjAyNC4wMDUtLjE4OS4wODUtMy4zNy4wODUtNS4wMUMxMDUuNjI0IDI3Ljc2OCA5Mi41OC4wMDEgNjAuNSAwIDI4LjQyLjAwMSAxNS4zNzUgMjcuNzY5IDE1LjM3NSA1NS40MDFjMCAxLjY0Mi4wOCA0LjgyMi4wODYgNS4wMSAwIDAgLjU4My42MTUgMS42NS45MTMgNS4xOSAxLjQ0NCAyMi4wOSA1LjY1IDQzLjMxMiA1Ljc5NXptNTYuMjQ1IDIzLjAyYy0xLjI4My00LjEyOS0zLjAzNC04Ljk0NC00LjgwOC0xMy41NjggMCAwLTEuMDItLjEyNi0xLjUzNy4wMjMtMTUuOTEzIDQuNjIzLTM1LjIwMiA3LjU3LTQ5LjkgNy4zOTJoLS4xNTNjLTE0LjYxNi4xNzUtMzMuNzc0LTIuNzM3LTQ5LjYzNC03LjMxNS0uNjA2LS4xNzUtMS44MDItLjEtMS44MDItLjEtMS43NzQgNC42MjQtMy41MjUgOS40NC00LjgwOCAxMy41NjgtNi4xMTkgMTkuNjktNC4xMzYgMjcuODM4LTIuNjI3IDI4LjAyIDMuMjM5LjM5MiAxMi42MDYtMTQuODIxIDEyLjYwNi0xNC44MjEgMCAxNS40NTkgMTMuOTU3IDM5LjE5NSA0NS45MTggMzkuNDEzaC44NDhjMzEuOTYtLjIxOCA0NS45MTctMjMuOTU0IDQ1LjkxNy0zOS40MTMgMCAwIDkuMzY4IDE1LjIxMyAxMi42MDcgMTQuODIyIDEuNTA4LS4xODMgMy40OTEtOC4zMzItMi42MjctMjguMDIxIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTQ5LjA4NSA0MC44MjRjLTQuMzUyLjE5Ny04LjA3LTQuNzYtOC4zMDQtMTEuMDYzLS4yMzYtNi4zMDUgMy4wOTgtMTEuNTc2IDcuNDUtMTEuNzczIDQuMzQ3LS4xOTUgOC4wNjQgNC43NiA4LjMgMTEuMDY1LjIzOCA2LjMwNi0zLjA5NyAxMS41NzctNy40NDYgMTEuNzcxbTMxLjEzMy0xMS4wNjNjLS4yMzMgNi4zMDItMy45NTEgMTEuMjYtOC4zMDMgMTEuMDYzLTQuMzUtLjE5NS03LjY4NC01LjQ2NS03LjQ0Ni0xMS43Ny4yMzYtNi4zMDUgMy45NTItMTEuMjYgOC4zLTExLjA2NiA0LjM1Mi4xOTcgNy42ODYgNS40NjggNy40NDkgMTEuNzczIi8+PHBhdGggZmlsbD0iI2ZhYWIwNyIgZD0iTTg3Ljk1MiA0OS43MjVDODYuNzkgNDcuMTUgNzUuMDc3IDQ0LjI4IDYwLjU3OCA0NC4yOGgtLjE1NmMtMTQuNSAwLTI2LjIxMiAyLjg3LTI3LjM3NSA1LjQ0NmEuODYzLjg2MyAwIDAwLS4wODUuMzY3Ljg4Ljg4IDAgMDAuMTYuNDk2Yy45OCAxLjQyNyAxMy45ODUgOC40ODcgMjcuMyA4LjQ4N2guMTU2YzEzLjMxNCAwIDI2LjMxOS03LjA1OCAyNy4yOTktOC40ODdhLjg3My44NzMgMCAwMC4xNi0uNDk4Ljg1Ni44NTYgMCAwMC0uMDg1LS4zNjUiLz48cGF0aCBkPSJNNTQuNDM0IDI5Ljg1NGMuMTk5IDIuNDktMS4xNjcgNC43MDItMy4wNDYgNC45NDMtMS44ODMuMjQyLTMuNTY4LTEuNTgtMy43NjgtNC4wNy0uMTk3LTIuNDkyIDEuMTY3LTQuNzA0IDMuMDQzLTQuOTQ0IDEuODg2LS4yNDQgMy41NzQgMS41OCAzLjc3MSA0LjA3bTExLjk1Ni44MzNjLjM4NS0uNjg5IDMuMDA0LTQuMzEyIDguNDI3LTIuOTkzIDEuNDI1LjM0NyAyLjA4NC44NTcgMi4yMjMgMS4wNTcuMjA1LjI5Ni4yNjIuNzE4LjA1MyAxLjI4Ni0uNDEyIDEuMTI2LTEuMjYzIDEuMDk1LTEuNzM0Ljg3NS0uMzA1LS4xNDItNC4wODItMi42Ni03LjU2MiAxLjA5Ny0uMjQuMjU3LS42NjguMzQ2LTEuMDczLjA0LS40MDctLjMwOC0uNTc0LS45My0uMzM0LTEuMzYyIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTYwLjU3NiA4My4wOGgtLjE1M2MtOS45OTYuMTItMjIuMTE2LTEuMjA0LTMzLjg1NC0zLjUxOC0xLjAwNCA1LjgxOC0xLjYxIDEzLjEzMi0xLjA5IDIxLjg1MyAxLjMxNiAyMi4wNDMgMTQuNDA3IDM1LjkgMzQuNjE0IDM2LjFoLjgyYzIwLjIwOC0uMiAzMy4yOTgtMTQuMDU3IDM0LjYxNi0zNi4xLjUyLTguNzIzLS4wODctMTYuMDM1LTEuMDkyLTIxLjg1NC0xMS43MzkgMi4zMTUtMjMuODYyIDMuNjQtMzMuODYgMy41MTgiLz48cGF0aCBmaWxsPSIjZWIxOTIzIiBkPSJNMzIuMTAyIDgxLjIzNXYyMS42OTNzOS45MzcgMi4wMDQgMTkuODkzLjYxNlY4My41MzVjLTYuMzA3LS4zNTctMTMuMTA5LTEuMTUyLTE5Ljg5My0yLjMiLz48cGF0aCBmaWxsPSIjZWIxOTIzIiBkPSJNMTA1LjUzOSA2MC40MTJzLTE5LjMzIDYuMTAyLTQ0Ljk2MyA2LjI3NWgtLjE1M2MtMjUuNTkxLS4xNzItNDQuODk2LTYuMjU1LTQ0Ljk2Mi02LjI3NUw4Ljk4NyA3Ni41N2MxNi4xOTMgNC44ODIgMzYuMjYxIDguMDI4IDUxLjQzNiA3Ljg0NWguMTUzYzE1LjE3NS4xODMgMzUuMjQyLTIuOTYzIDUxLjQzNy03Ljg0NXptMCAwIi8+PC9zdmc+"
+                  alt="QQ"
+                  class="h-7 w-7 rounded-md bg-white p-1"
+                />
+                {{ t("settings.qqGroup") }}
+                <ExternalLink class="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+              </div>
               <div class="mt-1 font-mono text-base">1087880322</div>
-            </div>
-            <div class="rounded-lg border p-4">
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="openExternalUrl('https://discord.gg/W7NyVDRt6a')"
+            >
+              <div class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {{ t("settings.community") }}
+              </div>
+              <div class="mt-3 flex items-center gap-2 text-sm font-medium">
+                <img
+                  src="https://cdn.simpleicons.org/discord/5865F2"
+                  alt="Discord"
+                  class="h-7 w-7 rounded-md bg-white p-1"
+                />
+                Discord
+                <ExternalLink class="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <div class="mt-1 text-sm text-primary">discord.gg/W7NyVDRt6a</div>
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="openExternalUrl('https://github.com/t8y2/dbx')"
+            >
               <div class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 {{ t("settings.project") }}
               </div>
-              <div class="mt-2 text-sm font-medium">{{ t("settings.openSource") }}</div>
-              <div
-                class="mt-1 text-sm text-primary cursor-pointer hover:underline"
-                @click="openExternalUrl('https://github.com/t8y2/dbx')"
-              >
-                github.com/t8y2/dbx
+              <div class="mt-3 flex items-center gap-2 text-sm font-medium">
+                <img
+                  src="https://cdn.simpleicons.org/github/181717"
+                  alt="GitHub"
+                  class="h-7 w-7 rounded-md bg-white p-1"
+                />
+                {{ t("settings.openSource") }}
+                <ExternalLink class="ml-auto h-3.5 w-3.5 text-muted-foreground" />
               </div>
-            </div>
+              <div class="mt-1 text-sm text-primary">github.com/t8y2/dbx</div>
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border p-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              @click="openExternalUrl('https://dbxio.com')"
+            >
+              <div class="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {{ t("settings.project") }}
+              </div>
+              <div class="mt-3 flex items-center gap-2 text-sm font-medium">
+                <img src="/logo.png" alt="DBX" class="h-7 w-7 rounded-md" />
+                {{ t("settings.officialDocs") }}
+                <ExternalLink class="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+              </div>
+              <div class="mt-1 text-sm text-primary">dbxio.com</div>
+            </button>
           </div>
 
           <DialogFooter class="border-t-0 bg-transparent">
