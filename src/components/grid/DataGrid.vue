@@ -112,6 +112,7 @@ const emit = defineEmits<{
   reload: [sql?: string, searchText?: string, whereInput?: string, orderBy?: string, limit?: number, offset?: number];
   paginate: [offset: number, limit: number, whereInput?: string, orderBy?: string];
   sort: [column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string];
+  "update:whereInput": [value: string];
 }>();
 
 const hasData = computed(() => props.result.columns.length > 0);
@@ -564,6 +565,7 @@ function navigateWhereSuggestion(delta: number) {
 }
 
 watch(whereFilterInput, (val) => {
+  emit("update:whereInput", val);
   whereSuggestions.value = [];
   if (!props.tableMeta?.columns?.length) return;
   const trimmed = val.trim();

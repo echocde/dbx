@@ -386,6 +386,7 @@ function onHandleCloseColumnPanel() {
           :database="activeTab.database"
           :table-meta="activeTab.tableMeta"
           :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
+          @update:where-input="(v: string) => (activeTab.whereInput = v)"
           @reload="
             (
               sql?: string,
