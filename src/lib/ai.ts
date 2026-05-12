@@ -283,25 +283,33 @@ export async function buildAiContext(
       const schemas = await loadCandidateSchemas(tab, connection);
       for (const schema of schemas) {
         const tableList = await api.listTables(tab.connectionId, tab.database, schema);
-        for (const table of tableList) {
-          if (tables.length >= maxTables) {
-            truncated = true;
-            break;
-          }
-          const [columns, indexes, foreignKeys] = await Promise.all([
-            api.getColumns(tab.connectionId, tab.database, schema, table.name),
-            api.listIndexes(tab.connectionId, tab.database, schema, table.name).catch(() => [] as IndexInfo[]),
-            api.listForeignKeys(tab.connectionId, tab.database, schema, table.name).catch(() => [] as ForeignKeyInfo[]),
-          ]);
-          tables.push({
-            schema: schema === tab.database && connection.db_type !== "postgres" ? undefined : schema,
-            name: table.name,
-            tableType: table.table_type,
-            columns: columns.slice(0, maxColumnsPerTable),
-            indexes,
-            foreignKeys,
-          });
-          if (columns.length > maxColumnsPerTable) truncated = true;
+        const candidates = tableList.slice(0, maxTables - tables.length);
+        if (candidates.length < tableList.length) truncated = true;
+
+        const metaResults = await Promise.all(
+          candidates.map((table) =>
+            Promise.all([
+              api.getColumns(tab.connectionId, tab.database, schema, table.name),
+              api.listIndexes(tab.connectionId, tab.database, schema, table.name).catch(() => [] as IndexInfo[]),
+              api
+                .listForeignKeys(tab.connectionId, tab.database, schema, table.name)
+                .catch(() => [] as ForeignKeyInfo[]),
+            ]).then(([columns, indexes, foreignKeys]) => ({
+              schema: schema === tab.database && connection.db_type !== "postgres" ? undefined : schema,
+              name: table.name,
+              tableType: table.table_type,
+              columns: columns.slice(0, maxColumnsPerTable),
+              indexes,
+              foreignKeys,
+              _truncatedCols: columns.length > maxColumnsPerTable,
+            })),
+          ),
+        );
+
+        for (const meta of metaResults) {
+          if (meta._truncatedCols) truncated = true;
+          const { _truncatedCols, ...entry } = meta;
+          tables.push(entry);
         }
         if (tables.length >= maxTables) break;
       }
