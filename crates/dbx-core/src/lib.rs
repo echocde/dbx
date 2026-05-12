@@ -20,3 +20,5 @@ pub mod table_import;
 pub mod transfer;
 pub mod types;
 pub mod update;
+
+pub const GITHUB_PROXIES: &[&str] = &["https://update.hwdns.net/", "https://gh-proxy.org/", ""];

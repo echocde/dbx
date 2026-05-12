@@ -5,13 +5,7 @@ use tauri::State;
 use dbx_core::agent_manager::{AgentDriverInfo, AgentManager, AgentRegistry, InstalledDriver};
 use dbx_core::connection::AppState;
 
-const REGISTRY_URLS: &[&str] = &[
-    "https://update.hwdns.net/https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json",
-    "https://gh-proxy.org/https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json",
-    "https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json",
-];
-
-const DOWNLOAD_PROXIES: &[&str] = &["https://update.hwdns.net/", "https://gh-proxy.org/", ""];
+const REGISTRY_PATH: &str = "https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json";
 
 #[tauri::command]
 pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AgentDriverInfo>, String> {
@@ -105,9 +99,10 @@ async fn fetch_registry() -> Result<AgentRegistry, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let mut last_err = String::new();
-    for url in REGISTRY_URLS {
+    for proxy in dbx_core::GITHUB_PROXIES {
+        let url = format!("{proxy}{REGISTRY_PATH}");
         match client
-            .get(*url)
+            .get(&url)
             .header(reqwest::header::USER_AGENT, "dbx-agent-manager")
             .send()
             .await
@@ -133,7 +128,7 @@ async fn download_with_proxy(url: &str, dest: &std::path::Path) -> Result<(), St
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let mut last_err = String::new();
-    for proxy in DOWNLOAD_PROXIES {
+    for proxy in dbx_core::GITHUB_PROXIES {
         let full_url = format!("{proxy}{url}");
         log::info!("[agent] downloading from {full_url}");
         match client

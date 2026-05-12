@@ -1,10 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const LATEST_JSON_URLS: &[&str] = &[
-    "https://update.hwdns.net/https://github.com/t8y2/dbx/releases/latest/download/latest.json",
-    "https://gh-proxy.org/https://github.com/t8y2/dbx/releases/latest/download/latest.json",
-    "https://github.com/t8y2/dbx/releases/latest/download/latest.json",
-];
+const LATEST_JSON_PATH: &str = "https://github.com/t8y2/dbx/releases/latest/download/latest.json";
 const GITHUB_RELEASE_API_PREFIX: &str = "https://api.github.com/repos/t8y2/dbx/releases/tags/v";
 const RELEASE_URL_PREFIX: &str = "https://github.com/t8y2/dbx/releases/tag/v";
 
@@ -40,9 +36,10 @@ pub async fn fetch_latest_release() -> Result<TauriRelease, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let mut last_err = String::new();
-    for url in LATEST_JSON_URLS {
+    for proxy in crate::GITHUB_PROXIES {
+        let url = format!("{proxy}{LATEST_JSON_PATH}");
         match client
-            .get(*url)
+            .get(&url)
             .header(reqwest::header::USER_AGENT, "dbx-update-checker")
             .send()
             .await
