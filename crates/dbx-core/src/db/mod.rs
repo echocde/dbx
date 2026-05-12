@@ -25,19 +25,6 @@ pub use file_validator::validate_file_path;
 pub const CONNECTION_TIMEOUT_SECS: u64 = 5;
 pub const TCP_PROBE_TIMEOUT_SECS: u64 = 3;
 
-pub static ODBC_ENV: std::sync::LazyLock<odbc_api::Environment> = std::sync::LazyLock::new(|| {
-    if std::env::var("ODBCSYSINI").is_err() {
-        for dir in &["/opt/homebrew/etc", "/usr/local/etc", "/etc"] {
-            let path = std::path::Path::new(dir).join("odbcinst.ini");
-            if path.exists() {
-                std::env::set_var("ODBCSYSINI", dir);
-                break;
-            }
-        }
-    }
-    odbc_api::Environment::new().expect("Failed to initialize ODBC environment")
-});
-
 pub fn connection_timeout() -> Duration {
     Duration::from_secs(CONNECTION_TIMEOUT_SECS)
 }
