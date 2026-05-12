@@ -94,7 +94,9 @@ export function buildDataGridSaveStatements(options: DataGridSaveStatementOption
   for (const row of options.newRows) {
     const insertPairs = options.columns
       .map((column, index) => ({ column, value: row[index] }))
-      .filter((pair) => !isOracleRowId(options.databaseType, pair.column));
+      .filter((pair) => !isOracleRowId(options.databaseType, pair.column))
+      .filter((pair) => pair.value !== null && pair.value !== undefined);
+    if (!insertPairs.length) continue;
     const columns = insertPairs.map((pair) => quoteIdent(options.databaseType, pair.column)).join(", ");
     const values = insertPairs.map((pair) => formatGridSqlLiteral(pair.value, options.databaseType)).join(", ");
     statements.push(`INSERT INTO ${table} (${columns}) VALUES (${values});`);
