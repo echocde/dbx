@@ -6,7 +6,7 @@ pub use dbx_core::connection::{
     redacted_connection_url_for_endpoint, AppState, MysqlMode, OraclePool, PoolKind,
 };
 use dbx_core::db;
-use dbx_core::models::connection::{ConnectionConfig, DatabaseType};
+use dbx_core::models::connection::{rewrite_jdbc_url_host, ConnectionConfig, DatabaseType};
 
 #[tauri::command]
 pub async fn save_connections(state: State<'_, Arc<AppState>>, configs: Vec<ConnectionConfig>) -> Result<(), String> {
@@ -130,7 +130,15 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
             )
             .await
             .map(|_| "Connection successful".to_string()),
-            DatabaseType::Jdbc => state.test_external_driver("jdbc", &config).await,
+            DatabaseType::Jdbc => {
+                let mut jdbc_config = config.clone();
+                if host != config.host || port != config.port {
+                    if let Some(ref url) = jdbc_config.connection_string {
+                        jdbc_config.connection_string = Some(rewrite_jdbc_url_host(url, &host, port));
+                    }
+                }
+                state.test_external_driver("jdbc", &jdbc_config).await
+            }
         },
     };
 
