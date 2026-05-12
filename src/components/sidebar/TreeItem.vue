@@ -99,8 +99,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const { t } = useI18n();
+const labelRef = ref<HTMLElement>();
+const isTruncated = computed(() => {
+  const el = labelRef.value;
+  return !!el && el.scrollWidth > el.clientWidth;
+});
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 const savedSqlStore = useSavedSqlStore();
@@ -1533,7 +1539,12 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
             @click.stop
             @vue:mounted="($event: any) => $event.el.focus()"
           />
-          <span v-else class="min-w-0 flex-1 truncate">{{ displayLabel(node) }}</span>
+          <Tooltip v-else :disabled="!isTruncated">
+            <TooltipTrigger as-child>
+              <span ref="labelRef" class="min-w-0 flex-1 truncate">{{ displayLabel(node) }}</span>
+            </TooltipTrigger>
+            <TooltipContent side="right" :side-offset="8">{{ displayLabel(node) }}</TooltipContent>
+          </Tooltip>
           <span
             v-if="
               (node.type === 'group-tables' ||
