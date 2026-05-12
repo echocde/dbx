@@ -1081,6 +1081,13 @@ const {
 } = selection;
 
 const selectionSummary = computed(() => t("grid.selectedCells", { count: selectedCellCount.value }));
+
+function isRowActive(index: number): boolean {
+  const range = selectedRange.value;
+  if (!range) return false;
+  return index >= range.startRow && index <= range.endRow;
+}
+
 const contextRowItem = computed(() => (contextCell.value ? getRowItem(contextCell.value.rowId) : undefined));
 const contextColumn = computed(() => {
   if (!contextCell.value || contextCell.value.col < 0) return null;
@@ -2208,11 +2215,12 @@ defineExpose({
               >
                 <template #default="{ item, index }">
                   <div
-                    class="flex text-xs border-b border-border hover:bg-accent/50"
+                    class="flex text-xs border-b border-border"
                     :class="{
                       'bg-destructive/5 opacity-70': item.isDeleted,
-                      'bg-primary/5': item.isNew,
-                      'bg-muted/30': !item.isNew && !item.isDeleted && index % 2 === 1,
+                      'bg-primary/5': item.isNew && !isRowActive(index),
+                      'bg-muted/30': !item.isNew && !item.isDeleted && !isRowActive(index) && index % 2 === 1,
+                      'active-row': isRowActive(index) && !item.isDeleted,
                     }"
                     :style="{ height: '26px', width: 'var(--total-w)' }"
                   >
@@ -2700,6 +2708,10 @@ defineExpose({
 .cell-selected {
   background-color: color-mix(in oklab, var(--primary) 18%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
+}
+
+.active-row > div {
+  background-color: color-mix(in oklab, var(--primary) 10%, transparent);
 }
 
 .ddl-code :deep(.ddl-kw) {
