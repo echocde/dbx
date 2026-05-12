@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildRedisKeyTree,
+  collectRedisGroupKeyRaws,
   collectExpandedGroupIds,
   flattenVisibleRedisKeyTree,
   type RedisKeyTreeNode,
@@ -72,11 +73,24 @@ test("collectExpandedGroupIds and flattenVisibleRedisKeyTree expand all search p
 
   assert.deepEqual(
     rows.map(({ node, depth }) => `${depth}:${node.kind}:${node.label}`),
-    [
-      "0:group:user",
-      "1:group:profile",
-      "2:leaf:name",
-      "1:leaf:settings",
-    ],
+    ["0:group:user", "1:group:profile", "2:leaf:name", "1:leaf:settings"],
   );
+});
+
+test("collectRedisGroupKeyRaws returns every leaf key under a group", () => {
+  const tree = buildRedisKeyTree(
+    [
+      makeKey("user:profile:name", "k1"),
+      makeKey("user:profile:email", "k2"),
+      makeKey("user:settings", "k3"),
+      makeKey("session:1", "k4"),
+    ],
+    0,
+  );
+
+  const userGroup = tree.find((node) => node.kind === "group" && node.label === "user");
+  assert.ok(userGroup);
+  if (!userGroup || userGroup.kind !== "group") return;
+
+  assert.deepEqual(collectRedisGroupKeyRaws(userGroup), ["k2", "k1", "k3"]);
 });

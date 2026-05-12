@@ -34,6 +34,21 @@ pub struct RedisValue {
     pub scan_cursor: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedisCommandSafety {
+    Allowed,
+    Confirm,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedisCommandResult {
+    pub command: String,
+    pub safety: RedisCommandSafety,
+    pub value: serde_json::Value,
+}
+
 pub async fn connect(url: &str) -> Result<redis::aio::MultiplexedConnection, String> {
     let client = redis::Client::open(url).map_err(|e| format!("Redis connection failed: {e}"))?;
     let mut con = tokio::time::timeout(super::connection_timeout(), client.get_multiplexed_async_connection())
@@ -95,6 +110,153 @@ async fn list_keyspace_databases(con: &mut redis::aio::MultiplexedConnection) ->
 
 pub async fn select_db(con: &mut redis::aio::MultiplexedConnection, db: u32) -> Result<(), String> {
     redis::cmd("SELECT").arg(db).query_async(con).await.map_err(|e| e.to_string())
+}
+
+pub fn parse_command_argv(command_text: &str) -> Result<Vec<String>, String> {
+    let mut argv = Vec::new();
+    let mut current = String::new();
+    let mut chars = command_text.chars().peekable();
+    let mut quote: Option<char> = None;
+    let mut escaping = false;
+
+    while let Some(ch) = chars.next() {
+        if escaping {
+            current.push(match ch {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                other => other,
+            });
+            escaping = false;
+            continue;
+        }
+
+        if ch == '\\' {
+            escaping = true;
+            continue;
+        }
+
+        if let Some(q) = quote {
+            if ch == q {
+                quote = None;
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+
+        if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+            continue;
+        }
+
+        if ch.is_whitespace() {
+            if !current.is_empty() {
+                argv.push(std::mem::take(&mut current));
+            }
+            while matches!(chars.peek(), Some(next) if next.is_whitespace()) {
+                chars.next();
+            }
+            continue;
+        }
+
+        current.push(ch);
+    }
+
+    if escaping {
+        current.push('\\');
+    }
+    if quote.is_some() {
+        return Err("Redis command has an unterminated quote".to_string());
+    }
+    if !current.is_empty() {
+        argv.push(current);
+    }
+    if argv.is_empty() {
+        return Err("Redis command is empty".to_string());
+    }
+    Ok(argv)
+}
+
+pub fn classify_command(command: &str) -> RedisCommandSafety {
+    match command.to_ascii_uppercase().as_str() {
+        "KEYS" | "FLUSHALL" | "SHUTDOWN" | "CONFIG" | "SAVE" | "BGSAVE" | "SLAVEOF" | "REPLICAOF" | "MIGRATE"
+        | "MODULE" | "SCRIPT" | "EVAL" | "EVALSHA" => RedisCommandSafety::Blocked,
+        "DEL" | "UNLINK" | "EXPIRE" | "EXPIREAT" | "PEXPIRE" | "PEXPIREAT" | "PERSIST" | "RENAME" | "RENAMENX"
+        | "SET" | "SETEX" | "PSETEX" | "SETNX" | "MSET" | "MSETNX" | "HSET" | "HDEL" | "LPUSH" | "RPUSH" | "LPOP"
+        | "RPOP" | "LSET" | "LREM" | "SADD" | "SREM" | "ZADD" | "ZREM" | "XADD" | "XDEL" | "FLUSHDB" => {
+            RedisCommandSafety::Confirm
+        }
+        _ => RedisCommandSafety::Allowed,
+    }
+}
+
+pub fn redis_command_raw_to_json(value: RedisRawValue) -> serde_json::Value {
+    match value {
+        RedisRawValue::Nil => serde_json::Value::Null,
+        RedisRawValue::Array(values) => {
+            serde_json::Value::Array(values.into_iter().map(redis_command_raw_to_json).collect())
+        }
+        RedisRawValue::Map(values) => serde_json::Value::Array(
+            values
+                .into_iter()
+                .map(|(key, value)| {
+                    serde_json::json!({
+                        "key": redis_command_raw_to_json(key),
+                        "value": redis_command_raw_to_json(value),
+                    })
+                })
+                .collect(),
+        ),
+        RedisRawValue::Set(values) => {
+            serde_json::Value::Array(values.into_iter().map(redis_command_raw_to_json).collect())
+        }
+        RedisRawValue::Attribute { data, attributes } => serde_json::json!({
+            "data": redis_command_raw_to_json(*data),
+            "attributes": redis_command_raw_to_json(RedisRawValue::Map(attributes)),
+        }),
+        RedisRawValue::Push { kind, data } => serde_json::json!({
+            "kind": format!("{kind:?}"),
+            "data": redis_command_raw_to_json(RedisRawValue::Array(data)),
+        }),
+        RedisRawValue::BulkString(bytes) => serde_json::Value::String(redis_bytes_to_display(&bytes)),
+        RedisRawValue::SimpleString(value) => serde_json::Value::String(value),
+        RedisRawValue::Okay => serde_json::Value::String("OK".to_string()),
+        RedisRawValue::Int(value) => serde_json::Value::Number(value.into()),
+        RedisRawValue::Double(value) => {
+            serde_json::Number::from_f64(value).map_or(serde_json::Value::Null, serde_json::Value::Number)
+        }
+        RedisRawValue::Boolean(value) => serde_json::Value::Bool(value),
+        RedisRawValue::VerbatimString { text, .. } => {
+            serde_json::Value::String(redis_bytes_to_display(text.as_bytes()))
+        }
+        RedisRawValue::BigNumber(value) => serde_json::Value::String(value.to_string()),
+        RedisRawValue::ServerError(error) => serde_json::Value::String(format!("{error:?}")),
+    }
+}
+
+pub async fn flush_db(con: &mut redis::aio::MultiplexedConnection) -> Result<(), String> {
+    redis::cmd("FLUSHDB").query_async::<()>(con).await.map_err(|e| e.to_string())
+}
+
+pub async fn execute_command(
+    con: &mut redis::aio::MultiplexedConnection,
+    command_text: &str,
+) -> Result<RedisCommandResult, String> {
+    let argv = parse_command_argv(command_text)?;
+    let command = argv[0].to_ascii_uppercase();
+    let safety = classify_command(&command);
+    if safety == RedisCommandSafety::Blocked {
+        return Err(format!("Redis command is blocked for safety: {command}"));
+    }
+
+    let mut cmd = redis::cmd(&argv[0]);
+    for arg in argv.iter().skip(1) {
+        cmd.arg(arg);
+    }
+    let raw: RedisRawValue = cmd.query_async(con).await.map_err(|e| e.to_string())?;
+
+    Ok(RedisCommandResult { command, safety, value: redis_command_raw_to_json(raw) })
 }
 
 pub async fn scan_keys_page(
@@ -667,8 +829,9 @@ fn parse_scan_members(raw: RedisRawValue) -> Result<(u64, Vec<serde_json::Value>
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_database_count, parse_scan_keys, parse_stream_entries, redis_key_bytes_to_display,
-        redis_key_bytes_to_raw, redis_key_raw_to_bytes, redis_raw_to_json, redis_value_contains_binary, RedisRawValue,
+        classify_command, parse_command_argv, parse_database_count, parse_scan_keys, parse_stream_entries,
+        redis_command_raw_to_json, redis_key_bytes_to_display, redis_key_bytes_to_raw, redis_key_raw_to_bytes,
+        redis_raw_to_json, redis_value_contains_binary, RedisCommandSafety, RedisRawValue,
     };
 
     fn bulk(value: &str) -> RedisRawValue {
@@ -785,5 +948,38 @@ mod tests {
         let raw = RedisRawValue::BulkString(br#"C:\Users\path"#.to_vec());
 
         assert!(!redis_value_contains_binary(&raw));
+    }
+
+    #[test]
+    fn parses_command_text_with_quotes_and_escapes() {
+        let argv = parse_command_argv(r#"SET "user:1" "Ada \"Lovelace\"""#).unwrap();
+
+        assert_eq!(argv, vec!["SET", "user:1", "Ada \"Lovelace\""]);
+    }
+
+    #[test]
+    fn rejects_empty_command_text() {
+        assert_eq!(parse_command_argv("   ").unwrap_err(), "Redis command is empty");
+    }
+
+    #[test]
+    fn classifies_safe_confirmed_and_blocked_commands() {
+        assert_eq!(classify_command("GET"), RedisCommandSafety::Allowed);
+        assert_eq!(classify_command("set"), RedisCommandSafety::Confirm);
+        assert_eq!(classify_command("flushdb"), RedisCommandSafety::Confirm);
+        assert_eq!(classify_command("KEYS"), RedisCommandSafety::Blocked);
+        assert_eq!(classify_command("flushall"), RedisCommandSafety::Blocked);
+        assert_eq!(classify_command("eval"), RedisCommandSafety::Blocked);
+    }
+
+    #[test]
+    fn converts_command_results_to_json() {
+        let raw = RedisRawValue::Array(vec![
+            RedisRawValue::SimpleString("OK".to_string()),
+            RedisRawValue::Int(2),
+            RedisRawValue::Nil,
+        ]);
+
+        assert_eq!(redis_command_raw_to_json(raw), serde_json::json!(["OK", 2, null]));
     }
 }

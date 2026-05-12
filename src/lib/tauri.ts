@@ -365,6 +365,14 @@ export interface RedisScanResult {
   keys: RedisKeyInfo[];
 }
 
+export type RedisCommandSafety = "allowed" | "confirm" | "blocked";
+
+export interface RedisCommandResult {
+  command: string;
+  safety: RedisCommandSafety;
+  value: any;
+}
+
 export async function redisListDatabases(connectionId: string): Promise<number[]> {
   return invoke("redis_list_databases", { connectionId });
 }
@@ -447,6 +455,18 @@ export async function redisSetTtl(connectionId: string, db: number, keyRaw: stri
 
 export async function redisDeleteKeys(connectionId: string, db: number, keyRaws: string[]): Promise<number> {
   return invoke("redis_delete_keys", { connectionId, db, keyRaws });
+}
+
+export async function redisFlushDb(connectionId: string, db: number): Promise<void> {
+  return invoke("redis_flush_db", { connectionId, db });
+}
+
+export async function redisExecuteCommand(
+  connectionId: string,
+  db: number,
+  command: string,
+): Promise<RedisCommandResult> {
+  return invoke("redis_execute_command", { connectionId, db, command });
 }
 
 export async function redisLoadMore(

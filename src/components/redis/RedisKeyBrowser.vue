@@ -10,6 +10,9 @@ import {
   FolderClosed,
   FolderOpen,
   Trash2,
+  DatabaseZap,
+  Play,
+  Terminal,
 } from "lucide-vue-next";
 import { RecycleScroller } from "vue-virtual-scroller";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
@@ -25,9 +28,11 @@ import type { RedisKeyInfo } from "@/lib/api";
 import {
   buildRedisKeyTree,
   collectExpandedGroupIds,
+  collectRedisGroupKeyRaws,
   flattenVisibleRedisKeyTree,
   type RedisKeyTreeNode,
 } from "@/lib/redisKeyTree";
+import { classifyRedisCommandSafety } from "@/lib/redisCommandSafety";
 
 const { t } = useI18n();
 
@@ -44,7 +49,17 @@ const selectedKeyRaw = ref<string | null>(null);
 const hasMore = ref(false);
 const expandedGroupIds = ref<Set<string>>(new Set());
 const checkedKeys = ref<Set<string>>(new Set());
-const showBatchDeleteConfirm = ref(false);
+const pendingDanger = ref<
+  | { kind: "delete-keys"; title: string; keyRaws: string[] }
+  | { kind: "flush-db" }
+  | { kind: "command"; command: string }
+  | null
+>(null);
+const showDangerConfirm = ref(false);
+const commandText = ref("");
+const commandResult = ref<any>(null);
+const commandError = ref("");
+const commandRunning = ref(false);
 
 const PAGE_SIZE = 200;
 const keyGridStyle = {
@@ -54,6 +69,22 @@ const keyGridStyle = {
 const effectivePattern = computed(() => searchPattern.value.trim() || "*");
 const isSearchMode = computed(() => effectivePattern.value !== "*");
 const selectedKey = computed(() => flatKeys.value.find((key) => key.key_raw === selectedKeyRaw.value) ?? null);
+const dangerDetails = computed(() => {
+  if (!pendingDanger.value) return "";
+  if (pendingDanger.value.kind === "delete-keys") {
+    return t("redis.deleteGroupDetails", {
+      target: pendingDanger.value.title,
+      count: pendingDanger.value.keyRaws.length,
+    });
+  }
+  if (pendingDanger.value.kind === "flush-db") return t("redis.flushDbDetails", { db: props.db });
+  return pendingDanger.value.command;
+});
+const formattedCommandResult = computed(() => {
+  if (commandResult.value == null) return "";
+  if (typeof commandResult.value === "string") return commandResult.value;
+  return JSON.stringify(commandResult.value, null, 2);
+});
 const visibleRows = computed(() =>
   flattenVisibleRedisKeyTree(treeKeys.value, expandedGroupIds.value).map((row) => ({
     ...row,
@@ -139,18 +170,97 @@ function toggleCheck(keyRaw: string, event: Event) {
 
 function requestBatchDelete() {
   if (checkedKeys.value.size === 0) return;
-  showBatchDeleteConfirm.value = true;
+  pendingDanger.value = { kind: "delete-keys", title: t("redis.selectedKeys"), keyRaws: [...checkedKeys.value] };
+  showDangerConfirm.value = true;
 }
 
-async function applyBatchDelete() {
-  const keys = [...checkedKeys.value];
+function requestGroupDelete(node: RedisKeyTreeNode, event: Event) {
+  event.stopPropagation();
+  if (node.kind !== "group") return;
+  const keyRaws = collectRedisGroupKeyRaws(node);
+  if (keyRaws.length === 0) return;
+  pendingDanger.value = { kind: "delete-keys", title: node.pathSegments.join(":"), keyRaws };
+  showDangerConfirm.value = true;
+}
+
+function requestFlushDb() {
+  pendingDanger.value = { kind: "flush-db" };
+  showDangerConfirm.value = true;
+}
+
+function resetLoadedKeys() {
+  flatKeys.value = [];
+  treeKeys.value = [];
+  selectedKeyRaw.value = null;
+  checkedKeys.value = new Set();
+  expandedGroupIds.value = new Set();
+  hasMore.value = false;
+}
+
+async function deleteKeyRaws(keys: string[]) {
   await api.redisDeleteKeys(props.connectionId, props.db, keys);
-  flatKeys.value = flatKeys.value.filter((k) => !checkedKeys.value.has(k.key_raw));
-  if (selectedKeyRaw.value && checkedKeys.value.has(selectedKeyRaw.value)) {
+  const deleted = new Set(keys);
+  flatKeys.value = flatKeys.value.filter((k) => !deleted.has(k.key_raw));
+  if (selectedKeyRaw.value && deleted.has(selectedKeyRaw.value)) {
     selectedKeyRaw.value = null;
   }
   checkedKeys.value = new Set();
   rebuildTree(false);
+}
+
+async function runRedisCommand(command: string) {
+  commandRunning.value = true;
+  commandError.value = "";
+  commandResult.value = null;
+  try {
+    const result = await api.redisExecuteCommand(props.connectionId, props.db, command);
+    commandResult.value = result.value;
+    if (result.safety === "confirm") {
+      await loadKeys();
+    }
+  } catch (error) {
+    commandError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    commandRunning.value = false;
+  }
+}
+
+async function executeCommand() {
+  const command = commandText.value.trim();
+  if (!command) {
+    commandError.value = t("redis.commandEmpty");
+    commandResult.value = null;
+    return;
+  }
+
+  const safety = classifyRedisCommandSafety(command);
+  if (safety === "blocked") {
+    commandError.value = t("redis.commandBlocked");
+    commandResult.value = null;
+    return;
+  }
+  if (safety === "confirm") {
+    pendingDanger.value = { kind: "command", command };
+    showDangerConfirm.value = true;
+    return;
+  }
+  await runRedisCommand(command);
+}
+
+async function applyDangerAction() {
+  const pending = pendingDanger.value;
+  pendingDanger.value = null;
+  showDangerConfirm.value = false;
+  if (!pending) return;
+
+  if (pending.kind === "delete-keys") {
+    await deleteKeyRaws(pending.keyRaws);
+  } else if (pending.kind === "flush-db") {
+    await api.redisFlushDb(props.connectionId, props.db);
+    resetLoadedKeys();
+  } else {
+    await runRedisCommand(pending.command);
+  }
 }
 
 function typeColor(type: string): string {
@@ -213,6 +323,15 @@ onMounted(loadKeys);
             <Loader2 v-if="loading" class="h-3 w-3 animate-spin" />
             <RefreshCw v-else class="h-3 w-3" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-6 w-6 shrink-0 text-destructive"
+            :title="t('redis.flushDb')"
+            @click="requestFlushDb"
+          >
+            <DatabaseZap class="h-3 w-3" />
+          </Button>
           <span class="text-xs text-muted-foreground shrink-0 ml-1">{{
             loading && flatKeys.length === 0 ? t("redis.loadingKeys") : t("redis.keys", { count: flatKeys.length })
           }}</span>
@@ -225,6 +344,35 @@ onMounted(loadKeys);
           >
             <Trash2 class="w-3 h-3 mr-1" />{{ checkedKeys.size }}
           </Button>
+        </div>
+
+        <div class="min-h-9 flex items-center gap-1 px-2 border-b shrink-0">
+          <Terminal class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <Input
+            v-model="commandText"
+            class="h-6 text-xs border-0 shadow-none focus-visible:ring-0 font-mono"
+            :placeholder="t('redis.commandPlaceholder')"
+            @keydown.enter="executeCommand"
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-6 w-6 shrink-0"
+            :title="t('redis.executeCommand')"
+            :disabled="commandRunning"
+            @click="executeCommand"
+          >
+            <Loader2 v-if="commandRunning" class="h-3 w-3 animate-spin" />
+            <Play v-else class="h-3 w-3" />
+          </Button>
+        </div>
+
+        <div v-if="commandError || formattedCommandResult" class="border-b px-2 py-1 shrink-0 text-xs">
+          <pre
+            class="max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono"
+            :class="commandError ? 'text-destructive' : 'text-muted-foreground'"
+            >{{ commandError || formattedCommandResult }}</pre
+          >
         </div>
 
         <!-- Table header -->
@@ -274,6 +422,15 @@ onMounted(loadKeys);
                   />
                   <span class="truncate font-mono">{{ row.node.label }}</span>
                   <span class="text-muted-foreground ml-1">({{ countLeaves(row.node) }})</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="ml-auto h-5 w-5 shrink-0 text-destructive opacity-0 group-hover:opacity-100"
+                    :title="t('redis.deleteGroup')"
+                    @click="requestGroupDelete(row.node, $event)"
+                  >
+                    <Trash2 class="h-3 w-3" />
+                  </Button>
                 </template>
                 <template v-else>
                   <input
@@ -336,10 +493,10 @@ onMounted(loadKeys);
   </Splitpanes>
 
   <DangerConfirmDialog
-    v-model:open="showBatchDeleteConfirm"
+    v-model:open="showDangerConfirm"
     :message="t('dangerDialog.deleteMessage')"
-    :details="`${checkedKeys.size} keys`"
-    :confirm-label="t('dangerDialog.deleteConfirm')"
-    @confirm="applyBatchDelete"
+    :details="dangerDetails"
+    :confirm-label="pendingDanger?.kind === 'command' ? t('dangerDialog.confirm') : t('dangerDialog.deleteConfirm')"
+    @confirm="applyDangerAction"
   />
 </template>

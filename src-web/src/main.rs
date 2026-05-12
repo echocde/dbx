@@ -117,6 +117,9 @@ async fn main() {
         .route("/redis/list-remove", post(routes::redis::list_remove))
         .route("/redis/set-add", post(routes::redis::set_add))
         .route("/redis/set-remove", post(routes::redis::set_remove))
+        .route("/redis/delete-keys", post(routes::redis::delete_keys))
+        .route("/redis/flush-db", post(routes::redis::flush_db))
+        .route("/redis/execute-command", post(routes::redis::execute_command))
         // MongoDB
         .route("/mongo/list-databases", post(routes::mongo::list_databases))
         .route("/mongo/list-collections", post(routes::mongo::list_collections))

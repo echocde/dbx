@@ -129,6 +129,23 @@ export function collectExpandedGroupIds(nodes: RedisKeyTreeNode[]): Set<string> 
   return ids;
 }
 
+export function collectRedisGroupKeyRaws(group: RedisKeyTreeGroupNode): string[] {
+  const keyRaws: string[] = [];
+
+  const visit = (nodes: RedisKeyTreeNode[]) => {
+    for (const node of nodes) {
+      if (node.kind === "leaf") {
+        keyRaws.push(node.keyRaw);
+      } else {
+        visit(node.children);
+      }
+    }
+  };
+
+  visit(group.children);
+  return keyRaws;
+}
+
 export function flattenVisibleRedisKeyTree(
   nodes: RedisKeyTreeNode[],
   expandedGroupIds: ReadonlySet<string>,

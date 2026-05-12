@@ -114,6 +114,8 @@ export const redisZadd = forward("redisZadd");
 export const redisZrem = forward("redisZrem");
 export const redisSetTtl = forward("redisSetTtl");
 export const redisDeleteKeys = forward("redisDeleteKeys");
+export const redisFlushDb = forward("redisFlushDb");
+export const redisExecuteCommand = forward("redisExecuteCommand");
 export const redisLoadMore = forward("redisLoadMore");
 
 // MongoDB
@@ -152,6 +154,8 @@ export type {
   RedisKeyInfo,
   RedisValue,
   RedisScanResult,
+  RedisCommandSafety,
+  RedisCommandResult,
   MongoDocumentResult,
   HistoryEntry,
   SqlFileStatus,

@@ -684,6 +684,15 @@ export default {
     columnTTL: "TTL",
     binaryStringReadonlyHint:
       "Binary string values are shown as escaped text in read-only mode; editing raw bytes is not supported.",
+    selectedKeys: "Selected keys",
+    deleteGroup: "Delete group",
+    deleteGroupDetails: "{target}\n{count} keys",
+    flushDb: "Clear current DB",
+    flushDbDetails: "Redis db{db}",
+    commandPlaceholder: "Redis command, e.g. GET user:1",
+    executeCommand: "Execute command",
+    commandEmpty: "Enter a Redis command",
+    commandBlocked: "This Redis command is blocked for safety",
   },
   mongo: {
     documents: "{count} documents",

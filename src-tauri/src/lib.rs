@@ -120,6 +120,8 @@ pub fn run() {
             commands::redis_cmd::redis_zrem,
             commands::redis_cmd::redis_set_ttl,
             commands::redis_cmd::redis_delete_keys,
+            commands::redis_cmd::redis_flush_db,
+            commands::redis_cmd::redis_execute_command,
             commands::redis_cmd::redis_load_more,
             commands::saved_sql::load_saved_sql_library,
             commands::saved_sql::save_saved_sql_folder,

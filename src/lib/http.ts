@@ -26,6 +26,7 @@ import type {
   UpdateInfo,
   RedisValue,
   RedisScanResult,
+  RedisCommandResult,
   MongoDocumentResult,
   HistoryEntry,
   SqlFileRequest,
@@ -582,6 +583,18 @@ export async function redisSetTtl(connectionId: string, db: number, keyRaw: stri
 
 export async function redisDeleteKeys(connectionId: string, db: number, keyRaws: string[]): Promise<number> {
   return post("/api/redis/delete-keys", { connectionId, db, keyRaws });
+}
+
+export async function redisFlushDb(connectionId: string, db: number): Promise<void> {
+  return post("/api/redis/flush-db", { connectionId, db });
+}
+
+export async function redisExecuteCommand(
+  connectionId: string,
+  db: number,
+  command: string,
+): Promise<RedisCommandResult> {
+  return post("/api/redis/execute-command", { connectionId, db, command });
 }
 
 export async function redisLoadMore(

@@ -70,6 +70,29 @@ pub struct RedisSetRequest {
     pub member: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedisKeysRequest {
+    pub connection_id: String,
+    pub db: u32,
+    pub key_raws: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedisDbRequest {
+    pub connection_id: String,
+    pub db: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedisCommandRequest {
+    pub connection_id: String,
+    pub db: u32,
+    pub command: String,
+}
+
 pub async fn list_databases(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisConnectionRequest>,
@@ -201,4 +224,33 @@ pub async fn set_remove(
         .await
         .map_err(AppError)?;
     Ok(Json(()))
+}
+
+pub async fn delete_keys(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<RedisKeysRequest>,
+) -> Result<Json<u64>, AppError> {
+    let result =
+        dbx_core::redis_ops::redis_delete_keys_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raws)
+            .await
+            .map_err(AppError)?;
+    Ok(Json(result))
+}
+
+pub async fn flush_db(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<RedisDbRequest>,
+) -> Result<Json<()>, AppError> {
+    dbx_core::redis_ops::redis_flush_db_core(&state.app, &req.connection_id, req.db).await.map_err(AppError)?;
+    Ok(Json(()))
+}
+
+pub async fn execute_command(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<RedisCommandRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let result = dbx_core::redis_ops::redis_execute_command_core(&state.app, &req.connection_id, req.db, &req.command)
+        .await
+        .map_err(AppError)?;
+    Ok(Json(serde_json::to_value(result).map_err(|e| AppError(e.to_string()))?))
 }
