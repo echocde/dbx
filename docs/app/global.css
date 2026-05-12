@@ -870,6 +870,7 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 22px;
+  max-width: calc(var(--landing-max) - 56px);
   border: 1px solid rgba(155, 176, 205, 0.14);
   border-radius: 10px;
   padding-top: 28px;
@@ -900,6 +901,12 @@ a {
   color: var(--landing-muted);
   font-size: 14px;
   line-height: 1.65;
+}
+
+.landing-section-heading p {
+  max-width: 650px;
+  justify-self: end;
+  text-align: right;
 }
 
 .landing-inline-link {
@@ -1432,6 +1439,11 @@ a {
   .landing-support,
   .landing-final {
     display: block;
+  }
+
+  .landing-section-heading p {
+    max-width: none;
+    text-align: left;
   }
 
   .landing-inline-link {

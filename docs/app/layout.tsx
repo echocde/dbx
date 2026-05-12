@@ -15,5 +15,9 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return children;
+  return (
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="flex min-h-screen flex-col">{children}</body>
+    </html>
+  );
 }
