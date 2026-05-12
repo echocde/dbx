@@ -2,11 +2,12 @@
 import { ref, watch, shallowRef, computed } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
-import { FolderOpen, Loader2, Settings, Trash2 } from "lucide-vue-next";
+import { CircleHelp, FolderOpen, Loader2, Settings, Trash2 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -298,6 +299,9 @@ const aiEditModel = ref(settingsStore.aiConfig.model);
 const aiEditApiStyle = ref<AiApiStyle>(settingsStore.aiConfig.apiStyle || "completions");
 const aiEditProxyEnabled = ref(!!settingsStore.aiConfig.proxyEnabled);
 const aiEditProxyUrl = ref(settingsStore.aiConfig.proxyUrl || "");
+const aiEditEnableThinking = ref(settingsStore.aiConfig.enableThinking ?? true);
+
+const aiCompletionsMode = computed(() => aiEditApiStyle.value === "completions");
 
 const aiTesting = ref(false);
 const aiTestResult = ref<"" | "success" | "error">("");
@@ -311,6 +315,7 @@ function syncAiEditState() {
   aiEditApiStyle.value = settingsStore.aiConfig.apiStyle || "completions";
   aiEditProxyEnabled.value = !!settingsStore.aiConfig.proxyEnabled;
   aiEditProxyUrl.value = settingsStore.aiConfig.proxyUrl || "";
+  aiEditEnableThinking.value = settingsStore.aiConfig.enableThinking ?? true;
   aiTestResult.value = "";
   aiTestError.value = "";
 }
@@ -329,7 +334,8 @@ function aiHasChanges(): boolean {
     aiEditModel.value !== settingsStore.aiConfig.model ||
     aiEditApiStyle.value !== (settingsStore.aiConfig.apiStyle || "completions") ||
     aiEditProxyEnabled.value !== !!settingsStore.aiConfig.proxyEnabled ||
-    aiEditProxyUrl.value !== (settingsStore.aiConfig.proxyUrl || "")
+    aiEditProxyUrl.value !== (settingsStore.aiConfig.proxyUrl || "") ||
+    aiEditEnableThinking.value !== (settingsStore.aiConfig.enableThinking ?? true)
   );
 }
 
@@ -342,6 +348,7 @@ function aiApplySettings() {
     apiStyle: aiEditApiStyle.value,
     proxyEnabled: aiEditProxyEnabled.value,
     proxyUrl: aiEditProxyUrl.value,
+    enableThinking: aiEditEnableThinking.value,
   });
 }
 
@@ -715,6 +722,29 @@ watch(
                   @click="aiEditApiStyle = 'responses'"
                   >/responses</Button
                 >
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 items-center gap-3">
+              <Label class="text-right text-xs">{{ t("ai.enableThinking") }}</Label>
+              <div class="col-span-2 flex items-center gap-2">
+                <label class="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    v-model="aiEditEnableThinking"
+                    type="checkbox"
+                    class="h-4 w-4 shrink-0 accent-primary"
+                    :disabled="!aiCompletionsMode"
+                  />
+                  {{ aiEditEnableThinking ? t("ai.enableThinkingOn") : t("ai.enableThinkingOff") }}
+                </label>
+                <Popover>
+                  <PopoverTrigger as-child>
+                    <CircleHelp class="h-3.5 w-3.5 cursor-help text-muted-foreground hover:text-foreground" />
+                  </PopoverTrigger>
+                  <PopoverContent class="max-w-[320px] text-xs leading-relaxed" side="top" align="start">
+                    {{ t("ai.enableThinkingHint") }}
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 

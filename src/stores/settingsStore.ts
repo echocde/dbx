@@ -13,6 +13,7 @@ export interface AiConfig {
   apiStyle: AiApiStyle;
   proxyEnabled?: boolean;
   proxyUrl?: string;
+  enableThinking?: boolean;
 }
 
 const defaultConfigs: Record<AiProvider, Omit<AiConfig, "apiKey">> = {
