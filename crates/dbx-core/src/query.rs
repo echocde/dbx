@@ -675,6 +675,18 @@ async fn exec_tx_explicit_inner(
     schema: Option<&str>,
     start: std::time::Instant,
 ) -> Result<db::QueryResult, String> {
+    let conns = state.connections.read().await;
+    if let Some(crate::connection::PoolKind::Agent(client)) = conns.get(pool_key) {
+        let mut client = client.lock().await;
+        let params = serde_json::json!({
+            "statements": statements,
+            "schema": schema,
+        });
+        let result: db::QueryResult = client.call("execute_transaction", params).await?;
+        return Ok(db::QueryResult { execution_time_ms: start.elapsed().as_millis(), ..result });
+    }
+    drop(conns);
+
     do_execute(state, pool_key, "BEGIN", schema, None)
         .await
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
