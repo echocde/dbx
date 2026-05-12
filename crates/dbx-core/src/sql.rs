@@ -195,6 +195,47 @@ pub fn split_sql_statements(sql: &str) -> Vec<String> {
     statements
 }
 
+pub fn split_sql_batches(sql: &str) -> Vec<String> {
+    let mut batches = Vec::new();
+    let mut current_start = 0;
+    let lines: Vec<&str> = sql.split('\n').collect();
+    let mut offset = 0;
+
+    for line in &lines {
+        let line_start = offset;
+        let line_end = offset + line.len();
+        offset = line_end + 1; // +1 for the '\n'
+
+        let trimmed = line.trim();
+        if trimmed.eq_ignore_ascii_case("go")
+            || trimmed.to_ascii_lowercase().starts_with("go ") && trimmed[2..].trim().is_empty()
+        {
+            let batch = sql[current_start..line_start].trim();
+            if has_executable_sql(batch) {
+                batches.push(batch.to_string());
+            }
+            current_start = line_end.min(sql.len());
+            if current_start < sql.len() && sql.as_bytes()[current_start] == b'\n' {
+                current_start += 1;
+            }
+        }
+    }
+
+    let trailing = sql[current_start..].trim();
+    if has_executable_sql(trailing) {
+        batches.push(trailing.to_string());
+    }
+
+    if batches.is_empty() {
+        let trimmed = sql.trim();
+        if !trimmed.is_empty() {
+            batches.push(trimmed.to_string());
+        }
+    }
+
+    batches
+}
+
 pub fn statement_summary(statement: &str) -> String {
     const MAX_LEN: usize = 120;
 
@@ -461,5 +502,41 @@ mod tests {
     fn detects_mysql_executable_comment_keyword() {
         assert!(starts_with_executable_sql_keyword("/*!40101 SELECT 1 */", &["SELECT"]));
         assert!(starts_with_executable_sql_keyword("/*M! SELECT 1 */", &["SELECT"]));
+    }
+
+    #[test]
+    fn split_batches_by_go() {
+        assert_eq!(super::split_sql_batches("SELECT 1\nGO\nSELECT 2"), vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_batches_go_case_insensitive() {
+        assert_eq!(
+            super::split_sql_batches("SELECT 1\ngo\nSELECT 2\nGo\nSELECT 3"),
+            vec!["SELECT 1", "SELECT 2", "SELECT 3"]
+        );
+    }
+
+    #[test]
+    fn split_batches_go_with_surrounding_whitespace() {
+        assert_eq!(super::split_sql_batches("SELECT 1\n  GO  \nSELECT 2"), vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_batches_no_go_returns_whole() {
+        assert_eq!(
+            super::split_sql_batches("DECLARE @x INT = 1;\nSELECT @x;"),
+            vec!["DECLARE @x INT = 1;\nSELECT @x;"]
+        );
+    }
+
+    #[test]
+    fn split_batches_skips_empty_batches() {
+        assert_eq!(super::split_sql_batches("SELECT 1\nGO\n\nGO\nSELECT 2"), vec!["SELECT 1", "SELECT 2"]);
+    }
+
+    #[test]
+    fn split_batches_trailing_go() {
+        assert_eq!(super::split_sql_batches("SELECT 1\nGO"), vec!["SELECT 1"]);
     }
 }

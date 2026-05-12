@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::connection::{AppState, PoolKind};
 use crate::db;
-use crate::sql::{split_sql_statements, starts_with_executable_sql_keyword};
+use crate::sql::{split_sql_batches, split_sql_statements, starts_with_executable_sql_keyword};
 
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ROWS: usize = 10000;
@@ -337,6 +337,21 @@ pub async fn execute_multi_core(
     schema: Option<&str>,
     cancel_token: Option<CancellationToken>,
 ) -> Result<Vec<db::QueryResult>, String> {
+    let pool_key = if database.is_empty() {
+        connection_id.to_string()
+    } else {
+        state.get_or_create_pool(connection_id, Some(database)).await?
+    };
+
+    let is_sqlserver = {
+        let connections = state.connections.read().await;
+        matches!(connections.get(&pool_key), Some(PoolKind::SqlServer(_)))
+    };
+
+    if is_sqlserver {
+        return execute_multi_sqlserver(state, &pool_key, sql, cancel_token).await;
+    }
+
     let statements = split_sql_statements(sql);
     if statements.len() <= 1 {
         let single_sql = statements.into_iter().next().unwrap_or_default();
@@ -371,6 +386,71 @@ pub async fn execute_multi_core(
     }
 
     Ok(results)
+}
+
+async fn execute_multi_sqlserver(
+    state: &AppState,
+    pool_key: &str,
+    sql: &str,
+    cancel_token: Option<CancellationToken>,
+) -> Result<Vec<db::QueryResult>, String> {
+    let batches = split_sql_batches(sql);
+    let mut all_results = Vec::new();
+
+    for batch in &batches {
+        if is_canceled(&cancel_token) {
+            all_results.push(db::QueryResult {
+                columns: vec!["Error".to_string()],
+                rows: vec![vec![serde_json::Value::String(canceled_error())]],
+                affected_rows: 0,
+                execution_time_ms: 0,
+                truncated: false,
+            });
+            break;
+        }
+
+        let connections = state.connections.read().await;
+        let pool = connections.get(pool_key).ok_or("Connection not found")?;
+        let client = match pool {
+            PoolKind::SqlServer(c) => c.clone(),
+            _ => return Err("Expected SQL Server connection".to_string()),
+        };
+        drop(connections);
+
+        let mut client = match cancel_token.as_ref() {
+            Some(token) => tokio::select! {
+                biased;
+                _ = token.cancelled() => return Err(canceled_error()),
+                guard = client.lock() => guard,
+            },
+            None => client.lock().await,
+        };
+
+        match db::sqlserver::execute_batch(&mut client, batch).await {
+            Ok(results) => all_results.extend(results),
+            Err(e) => {
+                all_results.push(db::QueryResult {
+                    columns: vec!["Error".to_string()],
+                    rows: vec![vec![serde_json::Value::String(e)]],
+                    affected_rows: 0,
+                    execution_time_ms: 0,
+                    truncated: false,
+                });
+            }
+        }
+    }
+
+    if all_results.is_empty() {
+        all_results.push(db::QueryResult {
+            columns: vec![],
+            rows: vec![],
+            affected_rows: 0,
+            execution_time_ms: 0,
+            truncated: false,
+        });
+    }
+
+    Ok(all_results)
 }
 
 pub async fn execute_statements(

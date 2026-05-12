@@ -5,6 +5,7 @@ use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use super::{connection_timeout, CONNECTION_TIMEOUT_SECS};
+use crate::query::MAX_ROWS;
 use crate::sql::starts_with_executable_sql_keyword;
 use crate::types::{ColumnInfo, DatabaseInfo, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, TriggerInfo};
 
@@ -398,6 +399,41 @@ pub async fn execute_query(client: &mut SqlServerClient, sql: &str) -> Result<Qu
             truncated: false,
         })
     }
+}
+
+pub async fn execute_batch(client: &mut SqlServerClient, sql: &str) -> Result<Vec<QueryResult>, String> {
+    let start = Instant::now();
+    let stream = client.simple_query(sql).await.map_err(|e| e.to_string())?;
+    let result_sets = stream.into_results().await.map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    for rows in &result_sets {
+        if rows.is_empty() {
+            continue;
+        }
+        let columns: Vec<String> = rows[0].columns().iter().map(|c| c.name().to_string()).collect();
+        let truncated = rows.len() > MAX_ROWS;
+        let result_rows: Vec<Vec<serde_json::Value>> = rows.iter().take(MAX_ROWS).map(|row| row_to_json(row)).collect();
+        results.push(QueryResult {
+            columns,
+            rows: result_rows,
+            affected_rows: 0,
+            execution_time_ms: start.elapsed().as_millis(),
+            truncated,
+        });
+    }
+
+    if results.is_empty() {
+        results.push(QueryResult {
+            columns: vec![],
+            rows: vec![],
+            affected_rows: result_sets.len() as u64,
+            execution_time_ms: start.elapsed().as_millis(),
+            truncated: false,
+        });
+    }
+
+    Ok(results)
 }
 
 fn requires_simple_query_batch(sql: &str) -> bool {
