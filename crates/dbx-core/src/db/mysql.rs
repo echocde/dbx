@@ -249,17 +249,7 @@ pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Resul
 }
 
 pub async fn execute_query(pool: &MySqlPool, sql: &str, bare: bool) -> Result<QueryResult, String> {
-    execute_query_with_row_limit(pool, sql, bare, crate::query::MAX_ROWS).await
-}
-
-pub async fn execute_query_with_row_limit(
-    pool: &MySqlPool,
-    sql: &str,
-    bare: bool,
-    row_limit: usize,
-) -> Result<QueryResult, String> {
     let start = Instant::now();
-    let row_limit = row_limit.max(1);
 
     if starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "DESCRIBE", "EXPLAIN"]) {
         if bare {
@@ -279,14 +269,14 @@ pub async fn execute_query_with_row_limit(
                         .map(|i| mysql_value_to_json(&row, i, column_types.get(i).map(String::as_str).unwrap_or("")))
                         .collect(),
                 );
-                if result_rows.len() > row_limit {
+                if result_rows.len() > crate::query::MAX_ROWS {
                     break;
                 }
             }
 
-            let truncated = result_rows.len() > row_limit;
+            let truncated = result_rows.len() > crate::query::MAX_ROWS;
             if truncated {
-                result_rows.truncate(row_limit);
+                result_rows.truncate(crate::query::MAX_ROWS);
             }
 
             Ok(QueryResult {
@@ -311,14 +301,14 @@ pub async fn execute_query_with_row_limit(
                         .map(|i| mysql_value_to_json(&row, i, column_types.get(i).map(String::as_str).unwrap_or("")))
                         .collect(),
                 );
-                if result_rows.len() > row_limit {
+                if result_rows.len() > crate::query::MAX_ROWS {
                     break;
                 }
             }
 
-            let truncated = result_rows.len() > row_limit;
+            let truncated = result_rows.len() > crate::query::MAX_ROWS;
             if truncated {
-                result_rows.truncate(row_limit);
+                result_rows.truncate(crate::query::MAX_ROWS);
             }
 
             Ok(QueryResult {
@@ -422,11 +412,6 @@ pub async fn list_triggers(pool: &MySqlPool, database: &str, table: &str) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[allow(dead_code)]
-    fn mysql_limit_aware_execute_query_api_compiles(pool: &MySqlPool, sql: &str, bare: bool) {
-        let _ = execute_query_with_row_limit(pool, sql, bare, 7);
-    }
 
     #[test]
     fn numeric_metadata_accepts_unsigned_information_schema_values() {

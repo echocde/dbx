@@ -39,8 +39,6 @@ import type {
   TableImportSummary,
   TableImportProgress,
 } from "./tauri";
-import type { AgentRuntimeSnapshot } from "@/lib/agentRuntimeSnapshot";
-import type { AgentHandoffItem } from "@/lib/agentHandoff";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -290,20 +288,6 @@ export async function executeInTransaction(
 
 export async function cancelQuery(executionId: string): Promise<boolean> {
   return post("/api/query/cancel", { executionId });
-}
-
-export async function agentRuntimeUpdateSnapshot(_snapshot: AgentRuntimeSnapshot): Promise<void> {}
-
-export async function agentRuntimeLoadHandoffs(): Promise<AgentHandoffItem[]> {
-  return [];
-}
-
-export async function agentRuntimeMarkHandoffShown(_id: string): Promise<boolean> {
-  return false;
-}
-
-export async function agentRuntimeRejectHandoff(_id: string): Promise<boolean> {
-  return false;
 }
 
 // ---------------------------------------------------------------------------

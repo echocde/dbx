@@ -40,7 +40,6 @@ Thumbs.db
 
 # Temp
 tmp/
-.worktrees/
 
 # Logs
 *.log

@@ -69,10 +69,9 @@ import {
   quoteTableIdentifier,
 } from "@/lib/tableSelectSql";
 import { isHiddenGridColumn, usesSyntheticRowIdKey } from "@/lib/tableEditing";
-import { displayCellValue, type CellValue } from "@/lib/cellValue";
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
-import { useAgentRuntimeStore } from "@/stores/agentRuntimeStore";
+import { displayCellValue, type CellValue } from "@/lib/cellValue";
 
 import { useToast } from "@/composables/useToast";
 import { useDataGridExport } from "@/composables/useDataGridExport";
@@ -82,7 +81,6 @@ import { useDataGridEditor } from "@/composables/useDataGridEditor";
 
 const { t } = useI18n();
 const { toast } = useToast();
-const agentRuntimeStore = useAgentRuntimeStore();
 
 const props = defineProps<{
   result: QueryResult;
@@ -1136,22 +1134,6 @@ const activeCellDetail = computed(() => {
 const detailEditValue = ref("");
 const isEditingDetail = ref(false);
 
-watch(
-  selectedCells,
-  (data) => {
-    agentRuntimeStore.setSelection(
-      selectedCellCount.value > 0
-        ? {
-            type: "grid-cells",
-            range: selectedRange.value,
-            data,
-          }
-        : { type: "none" },
-    );
-  },
-  { deep: true },
-);
-
 function startDetailEdit() {
   const detail = activeCellDetail.value;
   if (!detail || !detail.isEditable) return;
@@ -1673,7 +1655,6 @@ watch(
 
 onUnmounted(() => {
   cleanupFrames();
-  agentRuntimeStore.setSelection({ type: "none" });
   onDdlResizeEnd();
   finishCellSelection();
   clearTimeout(_searchTimer);

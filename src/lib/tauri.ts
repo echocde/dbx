@@ -19,8 +19,6 @@ import type {
   SavedSqlFolder,
   SavedSqlLibrary,
 } from "@/types/database";
-import type { AgentRuntimeSnapshot } from "@/lib/agentRuntimeSnapshot";
-import type { AgentHandoffItem } from "@/lib/agentHandoff";
 import type { AiConfig } from "@/stores/settingsStore";
 
 export interface AiMessage {
@@ -80,22 +78,6 @@ export async function aiCancelStream(sessionId: string): Promise<boolean> {
 
 export async function loadAiConfig(): Promise<AiConfig | null> {
   return invoke("load_ai_config");
-}
-
-export async function agentRuntimeUpdateSnapshot(snapshot: AgentRuntimeSnapshot): Promise<void> {
-  return invoke("agent_runtime_update_snapshot", { snapshot });
-}
-
-export async function agentRuntimeLoadHandoffs(): Promise<AgentHandoffItem[]> {
-  return invoke("agent_runtime_load_handoffs");
-}
-
-export async function agentRuntimeMarkHandoffShown(id: string): Promise<boolean> {
-  return invoke("agent_runtime_mark_handoff_shown", { id });
-}
-
-export async function agentRuntimeRejectHandoff(id: string): Promise<boolean> {
-  return invoke("agent_runtime_reject_handoff", { id });
 }
 
 // --- AI Conversations ---
