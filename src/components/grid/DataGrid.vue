@@ -16,6 +16,8 @@ import {
   Save,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Search,
   Inbox,
   SearchX,
@@ -60,7 +62,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import type { QueryResult, ColumnInfo, DatabaseType } from "@/types/database";
 import * as api from "@/lib/api";
-import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
+import {
+  buildTableSelectSql,
+  qualifiedTableName,
+  normalizeWhereInput,
+  quoteTableIdentifier,
+} from "@/lib/tableSelectSql";
 import { isHiddenGridColumn, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
@@ -810,6 +817,12 @@ function currentOrderBy(): string | undefined {
   );
 }
 
+function firstPage() {
+  if (currentPage.value <= 1) return;
+  currentPage.value = 1;
+  resetGridVerticalScroll(true);
+  emit("paginate", 0, pageSize.value, currentWhereInput(), currentOrderBy());
+}
 function prevPage() {
   if (currentPage.value <= 1) return;
   currentPage.value--;
@@ -827,6 +840,30 @@ function changePageSize(size: number) {
   currentPage.value = 1;
   resetGridVerticalScroll(true);
   emit("paginate", 0, size, currentWhereInput(), currentOrderBy());
+}
+
+async function lastPage() {
+  if (!props.connectionId || !props.tableMeta) return;
+  const table = qualifiedTableName({
+    databaseType: props.databaseType,
+    schema: props.tableMeta.schema,
+    tableName: props.tableMeta.tableName,
+  });
+  const predicate = normalizeWhereInput(currentWhereInput());
+  const where = predicate ? ` WHERE (${predicate})` : "";
+  const sql = `SELECT COUNT(*) AS cnt FROM ${table}${where}`;
+  try {
+    const result = await api.executeQuery(props.connectionId, props.database ?? "", sql, props.tableMeta.schema);
+    const total = Number(result.rows?.[0]?.[0] ?? 0);
+    if (total <= 0) return;
+    const lastPageNum = Math.ceil(total / pageSize.value);
+    if (lastPageNum <= currentPage.value) return;
+    currentPage.value = lastPageNum;
+    resetGridVerticalScroll(true);
+    emit("paginate", (lastPageNum - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
+  } catch {
+    // COUNT query failed — ignore silently
+  }
 }
 
 // --- Editing (composable) ---
@@ -2585,12 +2622,18 @@ defineExpose({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="currentPage <= 1" @click="firstPage">
+          <ChevronsLeft class="h-3 w-3" />
+        </Button>
         <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="currentPage <= 1" @click="prevPage">
           <ChevronLeft class="h-3 w-3" />
         </Button>
         <span>{{ currentPage }}</span>
         <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="!isFullPage" @click="nextPage">
           <ChevronRight class="h-3 w-3" />
+        </Button>
+        <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="!isFullPage" @click="lastPage">
+          <ChevronsRight class="h-3 w-3" />
         </Button>
       </span>
 
