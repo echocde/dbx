@@ -8,7 +8,9 @@ use crate::db;
 use crate::db::proxy_tunnel::ProxyTunnelManager;
 use crate::db::ssh_tunnel::TunnelManager;
 use crate::external;
-use crate::models::connection::{parse_mongo_first_host, ConnectionConfig, DatabaseType};
+use crate::models::connection::{
+    parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host, ConnectionConfig, DatabaseType,
+};
 use crate::plugins::{PluginDriverSession, PluginRegistry};
 use crate::query_cancel::RunningQueries;
 use crate::storage::Storage;
@@ -292,7 +294,15 @@ impl AppState {
                 .await?;
                 PoolKind::Gaussdb(Arc::new(tokio::sync::Mutex::new(client)))
             }
-            DatabaseType::Jdbc => self.external_driver_pool("jdbc", &db_config).await?,
+            DatabaseType::Jdbc => {
+                let mut jdbc_config = db_config.clone();
+                if host != config.host || port != config.port {
+                    if let Some(ref url) = jdbc_config.connection_string {
+                        jdbc_config.connection_string = Some(rewrite_jdbc_url_host(url, &host, port));
+                    }
+                }
+                self.external_driver_pool("jdbc", &jdbc_config).await?
+            }
         };
 
         self.connections.write().await.insert(pool_key.clone(), pool);
@@ -316,6 +326,13 @@ impl AppState {
                         .as_deref()
                         .filter(|s| !s.is_empty())
                         .and_then(parse_mongo_first_host)
+                        .unwrap_or_else(|| (config.host.clone(), config.port))
+                } else if config.db_type == DatabaseType::Jdbc {
+                    config
+                        .connection_string
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .and_then(parse_jdbc_host_port)
                         .unwrap_or_else(|| (config.host.clone(), config.port))
                 } else {
                     (config.host.clone(), config.port)
@@ -349,6 +366,13 @@ impl AppState {
                 .as_deref()
                 .filter(|s| !s.is_empty())
                 .and_then(parse_mongo_first_host)
+                .unwrap_or_else(|| (config.host.clone(), config.port))
+        } else if config.db_type == DatabaseType::Jdbc {
+            config
+                .connection_string
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .and_then(parse_jdbc_host_port)
                 .unwrap_or_else(|| (config.host.clone(), config.port))
         } else {
             (config.host.clone(), config.port)

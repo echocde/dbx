@@ -387,6 +387,53 @@ fn rewrite_mongo_uri_host(uri: &str, new_host: &str, new_port: u16) -> String {
     result
 }
 
+pub fn parse_jdbc_host_port(url: &str) -> Option<(String, u16)> {
+    let rest = url.strip_prefix("jdbc:")?;
+
+    // jdbc:oracle:thin:@host:port:SID  or  jdbc:oracle:thin:@//host:port/service
+    if let Some(after) = rest.strip_prefix("oracle:") {
+        let at_pos = after.find('@')?;
+        let after_at = &after[at_pos + 1..];
+        let after_at = after_at.strip_prefix("//").unwrap_or(after_at);
+        let host_port = after_at.split(&['/', ':', '?'][..]).next()?;
+        let port_str = after_at.strip_prefix(host_port)?.strip_prefix(':')?.split(&[':', '/', ';', '?'][..]).next()?;
+        return Some((host_port.to_string(), port_str.parse().ok()?));
+    }
+
+    // jdbc:sqlserver://host:port;prop=val  or  jdbc:sqlserver://host\instance:port;...
+    if let Some(after) = rest.strip_prefix("sqlserver://") {
+        let authority = after.split(';').next().unwrap_or(after);
+        let authority = authority.split('\\').next().unwrap_or(authority);
+        return match authority.rsplit_once(':') {
+            Some((h, p)) => Some((h.to_string(), p.parse().ok()?)),
+            None => Some((authority.to_string(), 1433)),
+        };
+    }
+
+    // Generic: jdbc:subprotocol://[user:pass@]host:port[/path][?query]
+    let scheme_end = rest.find("://")?;
+    let after_scheme = &rest[scheme_end + 3..];
+    let authority = after_scheme.split('/').next().unwrap_or(after_scheme);
+    let authority = authority.split('?').next().unwrap_or(authority);
+    let host_port = match authority.rfind('@') {
+        Some(idx) => &authority[idx + 1..],
+        None => authority,
+    };
+    match host_port.rsplit_once(':') {
+        Some((h, p)) => Some((h.to_string(), p.parse().ok()?)),
+        None => None,
+    }
+}
+
+pub fn rewrite_jdbc_url_host(url: &str, new_host: &str, new_port: u16) -> String {
+    let Some((old_host, old_port)) = parse_jdbc_host_port(url) else {
+        return url.to_string();
+    };
+    let old_authority = format!("{old_host}:{old_port}");
+    let new_authority = format!("{new_host}:{new_port}");
+    url.replacen(&old_authority, &new_authority, 1)
+}
+
 fn encode_url_part(value: &str) -> String {
     utf8_percent_encode(value, NON_ALPHANUMERIC).to_string()
 }
@@ -721,5 +768,92 @@ mod tests {
         let url = config.connection_url_with_host("127.0.0.1", 54321);
 
         assert!(url.matches("directConnection").count() == 1);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_postgresql() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:postgresql://myhost:5432/mydb").unwrap();
+        assert_eq!(h, "myhost");
+        assert_eq!(p, 5432);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_mysql() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:mysql://db.example.com:3306/app?useSSL=false").unwrap();
+        assert_eq!(h, "db.example.com");
+        assert_eq!(p, 3306);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_with_userinfo() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:postgresql://user:pass@pghost:5433/db").unwrap();
+        assert_eq!(h, "pghost");
+        assert_eq!(p, 5433);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_oracle_thin() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:oracle:thin:@orahost:1521:ORCL").unwrap();
+        assert_eq!(h, "orahost");
+        assert_eq!(p, 1521);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_oracle_service() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:oracle:thin:@//orahost:1521/service").unwrap();
+        assert_eq!(h, "orahost");
+        assert_eq!(p, 1521);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_sqlserver() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:sqlserver://mshost:1433;databaseName=master").unwrap();
+        assert_eq!(h, "mshost");
+        assert_eq!(p, 1433);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_sqlserver_no_port() {
+        let (h, p) = super::parse_jdbc_host_port("jdbc:sqlserver://mshost;databaseName=master").unwrap();
+        assert_eq!(h, "mshost");
+        assert_eq!(p, 1433);
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_no_port_returns_none() {
+        assert!(super::parse_jdbc_host_port("jdbc:postgresql://myhost/mydb").is_none());
+    }
+
+    #[test]
+    fn parse_jdbc_host_port_invalid_returns_none() {
+        assert!(super::parse_jdbc_host_port("not-a-jdbc-url").is_none());
+    }
+
+    #[test]
+    fn rewrite_jdbc_url_postgresql() {
+        let url = "jdbc:postgresql://myhost:5432/mydb";
+        let rewritten = super::rewrite_jdbc_url_host(url, "127.0.0.1", 54321);
+        assert_eq!(rewritten, "jdbc:postgresql://127.0.0.1:54321/mydb");
+    }
+
+    #[test]
+    fn rewrite_jdbc_url_oracle() {
+        let url = "jdbc:oracle:thin:@orahost:1521:ORCL";
+        let rewritten = super::rewrite_jdbc_url_host(url, "127.0.0.1", 54321);
+        assert_eq!(rewritten, "jdbc:oracle:thin:@127.0.0.1:54321:ORCL");
+    }
+
+    #[test]
+    fn rewrite_jdbc_url_sqlserver() {
+        let url = "jdbc:sqlserver://mshost:1433;databaseName=master";
+        let rewritten = super::rewrite_jdbc_url_host(url, "127.0.0.1", 54321);
+        assert_eq!(rewritten, "jdbc:sqlserver://127.0.0.1:54321;databaseName=master");
+    }
+
+    #[test]
+    fn rewrite_jdbc_url_unparseable_returns_original() {
+        let url = "jdbc:custom:some-opaque-string";
+        let rewritten = super::rewrite_jdbc_url_host(url, "127.0.0.1", 54321);
+        assert_eq!(rewritten, url);
     }
 }

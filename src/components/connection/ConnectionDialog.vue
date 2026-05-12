@@ -422,10 +422,8 @@ const selectedDbIcon = computed(() => iconTypeMap[selectedType.value] || selecte
 const isJdbcConnection = computed(() => form.value.db_type === "jdbc");
 
 const connectionUrlPlaceholder = computed(() => getUrlPlaceholder(form.value.db_type));
-const canUseSsh = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "jdbc");
-const canUseProxy = computed(
-  () => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb" && form.value.db_type !== "jdbc",
-);
+const canUseSsh = computed(() => form.value.db_type !== "sqlite");
+const canUseProxy = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb");
 const testResultMessage = computed(() => {
   if (!testResult.value) return "";
   return testResult.value.ok ? t("connection.testSuccess") : testResult.value.message;
