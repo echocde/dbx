@@ -11,13 +11,16 @@ pub struct EsClient {
 }
 
 impl EsClient {
-    pub fn new(url: &str, username: Option<&str>, password: Option<&str>) -> Self {
+    pub fn new(url: &str, username: Option<&str>, password: Option<&str>, accept_invalid_certs: bool) -> Self {
         let auth = match (username, password) {
             (Some(u), Some(p)) if !u.is_empty() => Some((u.to_string(), p.to_string())),
             _ => None,
         };
-        let http =
-            HttpClient::builder().connect_timeout(connection_timeout()).build().unwrap_or_else(|_| HttpClient::new());
+        let http = HttpClient::builder()
+            .connect_timeout(connection_timeout())
+            .danger_accept_invalid_certs(accept_invalid_certs)
+            .build()
+            .unwrap_or_else(|_| HttpClient::new());
         Self { http, base_url: url.trim_end_matches('/').to_string(), auth }
     }
 

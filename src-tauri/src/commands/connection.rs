@@ -98,8 +98,12 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     .map(|_| "Connection successful".to_string())
             }
             DatabaseType::Elasticsearch => {
-                let client =
-                    db::elasticsearch_driver::EsClient::new(&url, Some(&config.username), Some(&config.password));
+                let client = db::elasticsearch_driver::EsClient::new(
+                    &url,
+                    Some(&config.username),
+                    Some(&config.password),
+                    config.ssl,
+                );
                 db::elasticsearch_driver::test_connection(&client).await.map(|_| "Connection successful".to_string())
             }
             DatabaseType::Dameng
@@ -208,8 +212,12 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             PoolKind::SqlServer(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
         }
         DatabaseType::Elasticsearch => {
-            let client =
-                db::elasticsearch_driver::EsClient::new(&url, Some(&db_config.username), Some(&db_config.password));
+            let client = db::elasticsearch_driver::EsClient::new(
+                &url,
+                Some(&db_config.username),
+                Some(&db_config.password),
+                db_config.ssl,
+            );
             db::elasticsearch_driver::test_connection(&client).await?;
             PoolKind::Elasticsearch(client)
         }

@@ -204,8 +204,13 @@ impl AppState {
                 PoolKind::SqlServer(Arc::new(tokio::sync::Mutex::new(client)))
             }
             DatabaseType::Elasticsearch => {
-                let client =
-                    db::elasticsearch_driver::EsClient::new(&url, Some(&db_config.username), Some(&db_config.password));
+                let accept_invalid_certs = db_config.ssl;
+                let client = db::elasticsearch_driver::EsClient::new(
+                    &url,
+                    Some(&db_config.username),
+                    Some(&db_config.password),
+                    accept_invalid_certs,
+                );
                 db::elasticsearch_driver::test_connection(&client).await?;
                 PoolKind::Elasticsearch(client)
             }
