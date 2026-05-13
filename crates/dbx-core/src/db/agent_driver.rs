@@ -22,8 +22,7 @@ impl AgentDriverClient {
     /// Blocks (async) until the agent writes `{"ready":true}` to stdout.
     pub async fn spawn(java_path: &str, jar_path: &str) -> Result<Self, String> {
         let mut child = Command::new(java_path)
-            .arg("-jar")
-            .arg(jar_path)
+            .args(["-XX:TieredStopAtLevel=1", "-XX:+UseSerialGC", "-jar", jar_path])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
