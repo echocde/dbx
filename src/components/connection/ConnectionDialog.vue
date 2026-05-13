@@ -17,6 +17,7 @@ import * as api from "@/lib/api";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { applyParsedConnectionUrl, parseConnectionUrl } from "@/lib/connectionUrl";
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connectionPresentation";
+import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
 import { ArrowLeft, ChevronRight, Copy, ExternalLink, FolderOpen, Grid3X3, Link2, List, Search } from "lucide-vue-next";
 
 type DbOption = { value: string; label: string };
@@ -1092,6 +1093,13 @@ function openExternalUrl(url: string) {
                   <div class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right">{{ databaseLabel }}</Label>
                     <Input v-model="form.database" class="col-span-3" :placeholder="databasePlaceholder" />
+                  </div>
+
+                  <div v-if="AGENT_DRIVER_TYPES.has(form.db_type)" class="grid grid-cols-4 items-center gap-4">
+                    <span />
+                    <p class="col-span-3 text-xs text-muted-foreground">
+                      需要在设置 → 驱动中安装对应的 Agent 驱动才能连接。
+                    </p>
                   </div>
 
                   <div v-if="form.db_type === 'oracle'" class="grid grid-cols-4 items-center gap-4">
