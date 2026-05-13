@@ -2,12 +2,15 @@
 import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { Clock, Copy, Database, RotateCcw, Search, Trash2, X } from "lucide-vue-next";
+import { RecycleScroller } from "vue-virtual-scroller";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useToast } from "@/composables/useToast";
 import { shouldClearHistory, shouldDeleteHistoryEntry } from "@/lib/historyActions";
+import { resolveHistoryActivityKind } from "@/lib/historyActivityKind";
+import { HISTORY_ROW_HEIGHT, HISTORY_SCROLL_BUFFER, shouldVirtualizeHistory } from "@/lib/historyVirtualList";
 import type { HistoryEntry } from "@/lib/api";
 import * as api from "@/lib/api";
 
@@ -44,7 +47,7 @@ const filtered = computed(() => {
 });
 
 function activityKind(entry: HistoryEntry) {
-  return entry.activity_kind || "query";
+  return resolveHistoryActivityKind(entry);
 }
 
 function restore(entry: HistoryEntry) {
@@ -195,46 +198,60 @@ onMounted(() => store.load());
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto">
-      <ContextMenu v-for="entry in filtered" :key="entry.id">
-        <ContextMenuTrigger as-child>
-          <div
-            class="px-3 py-2 border-b border-border/50 cursor-pointer hover:bg-accent/50 text-xs"
-            @click="selectedEntry = entry"
-          >
-            <div class="flex items-center gap-1 mb-0.5">
-              <span
-                class="inline-flex h-5 w-9 shrink-0 items-center justify-center rounded border px-1 text-[10px] leading-none text-muted-foreground"
+    <div class="min-h-0 flex-1">
+      <RecycleScroller
+        v-if="shouldVirtualizeHistory(filtered.length)"
+        class="h-full"
+        :items="filtered"
+        :item-size="HISTORY_ROW_HEIGHT"
+        :buffer="HISTORY_SCROLL_BUFFER"
+        :skip-hover="true"
+        key-field="id"
+      >
+        <template #default="{ item: entry }">
+          <ContextMenu>
+            <ContextMenuTrigger as-child>
+              <div
+                class="h-[72px] cursor-pointer border-b border-border/50 px-3 py-2 text-xs hover:bg-accent/50"
+                @click="selectedEntry = entry"
               >
-                {{ kindShortLabel(entry) }}
-              </span>
-              <span class="font-medium truncate">{{ entryTitle(entry) }}</span>
-              <span class="ml-auto text-muted-foreground shrink-0">{{ formatTime(entry.executed_at) }}</span>
-            </div>
-            <div class="font-mono text-muted-foreground truncate">{{ entrySubtitle(entry) }}</div>
-            <div class="flex items-center gap-2 mt-0.5">
-              <span class="inline-flex items-center gap-1 text-muted-foreground">
-                <Database class="h-3 w-3" />
-                {{ entry.connection_name }}<template v-if="entry.database"> / {{ entry.database }}</template>
-              </span>
-              <span :class="entry.success ? 'text-green-500' : 'text-red-500'">
-                {{ entry.success ? `${entry.execution_time_ms}ms` : t("history.failed") }}
-              </span>
-            </div>
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent class="w-44">
-          <ContextMenuItem @click="selectedEntry = entry">{{ t("history.viewDetails") }}</ContextMenuItem>
-          <ContextMenuItem @click="restore(entry)">{{ t("history.restore") }}</ContextMenuItem>
-          <ContextMenuItem @click="copyText(entry.sql)">{{ t("history.copy") }}</ContextMenuItem>
-          <ContextMenuItem v-if="entry.rollback_sql" @click="rollback(entry)">{{
-            t("history.rollback")
-          }}</ContextMenuItem>
-          <ContextMenuItem class="text-destructive" @click="confirmDeleteEntry(entry.id)">{{
-            t("history.delete")
-          }}</ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+                <div class="mb-0.5 flex items-center gap-1">
+                  <span
+                    class="inline-flex h-5 w-9 shrink-0 items-center justify-center rounded border px-1 text-[10px] leading-none text-muted-foreground"
+                  >
+                    {{ kindShortLabel(entry) }}
+                  </span>
+                  <span class="truncate font-medium">{{ entryTitle(entry) }}</span>
+                  <span class="ml-auto shrink-0 text-muted-foreground">{{ formatTime(entry.executed_at) }}</span>
+                </div>
+                <div class="truncate font-mono text-muted-foreground">{{ entrySubtitle(entry) }}</div>
+                <div class="mt-0.5 flex items-center gap-2">
+                  <span class="inline-flex min-w-0 items-center gap-1 text-muted-foreground">
+                    <Database class="h-3 w-3 shrink-0" />
+                    <span class="truncate">
+                      {{ entry.connection_name }}<template v-if="entry.database"> / {{ entry.database }}</template>
+                    </span>
+                  </span>
+                  <span class="ml-auto shrink-0" :class="entry.success ? 'text-green-500' : 'text-red-500'">
+                    {{ entry.success ? `${entry.execution_time_ms}ms` : t("history.failed") }}
+                  </span>
+                </div>
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent class="w-44">
+              <ContextMenuItem @click="selectedEntry = entry">{{ t("history.viewDetails") }}</ContextMenuItem>
+              <ContextMenuItem @click="restore(entry)">{{ t("history.restore") }}</ContextMenuItem>
+              <ContextMenuItem @click="copyText(entry.sql)">{{ t("history.copy") }}</ContextMenuItem>
+              <ContextMenuItem v-if="entry.rollback_sql" @click="rollback(entry)">{{
+                t("history.rollback")
+              }}</ContextMenuItem>
+              <ContextMenuItem class="text-destructive" @click="confirmDeleteEntry(entry.id)">{{
+                t("history.delete")
+              }}</ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        </template>
+      </RecycleScroller>
 
       <div v-if="filtered.length === 0" class="px-3 py-8 text-center text-muted-foreground text-xs">
         {{ t("history.empty") }}
