@@ -35,30 +35,16 @@ pub async fn fetch_latest_release() -> Result<TauriRelease, String> {
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
-    let mut last_err = String::new();
-    for proxy in crate::GITHUB_PROXIES {
-        let url = format!("{proxy}{LATEST_JSON_PATH}");
-        match client
-            .get(&url)
-            .header(reqwest::header::USER_AGENT, "dbx-update-checker")
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-        {
-            Ok(resp) => {
-                let mut release =
-                    resp.json::<TauriRelease>().await.map_err(|e| format!("Failed to parse update response: {e}"))?;
-                if let Ok(github) = fetch_github_release_metadata(&client, &release.version).await {
-                    release.github = Some(github);
-                }
-                return Ok(release);
-            }
-            Err(e) => {
-                last_err = format!("{e}");
-            }
-        }
+
+    let resp = crate::race_github_proxies(&client, LATEST_JSON_PATH, "dbx-update-checker")
+        .await
+        .map_err(|e| format!("Failed to check updates: {e}"))?;
+
+    let mut release = resp.json::<TauriRelease>().await.map_err(|e| format!("Failed to parse update response: {e}"))?;
+    if let Ok(github) = fetch_github_release_metadata(&client, &release.version).await {
+        release.github = Some(github);
     }
-    Err(format!("Failed to check updates: {last_err}"))
+    Ok(release)
 }
 
 async fn fetch_github_release_metadata(

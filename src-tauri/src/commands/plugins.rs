@@ -6,13 +6,7 @@ use serde::Serialize;
 
 use super::connection::AppState;
 
-const JDBC_PLUGIN_DOWNLOAD_VERSION: &str = "0.1.0";
-
-fn jdbc_plugin_download_urls() -> Vec<String> {
-    let asset = format!("dbx-jdbc-plugin-{JDBC_PLUGIN_DOWNLOAD_VERSION}.zip");
-    let latest_url = format!("https://github.com/t8y2/dbx/releases/latest/download/{asset}");
-    vec![format!("https://update.hwdns.net/{latest_url}"), format!("https://gh-proxy.org/{latest_url}"), latest_url]
-}
+const JDBC_PLUGIN_DOWNLOAD_URL: &str = "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-0.1.0.zip";
 
 #[tauri::command]
 pub async fn list_plugins(state: State<'_, Arc<AppState>>) -> Result<Vec<InstalledPlugin>, String> {
@@ -146,24 +140,13 @@ async fn download_jdbc_plugin_zip() -> Result<Vec<u8>, String> {
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .map_err(|err| err.to_string())?;
-    let mut last_error = String::new();
 
-    for url in jdbc_plugin_download_urls() {
-        match client.get(&url).header(reqwest::header::USER_AGENT, "dbx-jdbc-plugin-installer").send().await {
-            Ok(response) if response.status().is_success() => {
-                let bytes = response.bytes().await.map_err(|err| err.to_string())?;
-                return Ok(bytes.to_vec());
-            }
-            Ok(response) => {
-                last_error = format!("{url} returned {}", response.status());
-            }
-            Err(err) => {
-                last_error = format!("{url}: {err}");
-            }
-        }
-    }
+    let resp = dbx_core::race_github_proxies(&client, JDBC_PLUGIN_DOWNLOAD_URL, "dbx-jdbc-plugin-installer")
+        .await
+        .map_err(|err| format!("Failed to download JDBC plugin: {err}"))?;
 
-    Err(format!("Failed to download JDBC plugin: {last_error}"))
+    let bytes = resp.bytes().await.map_err(|err| err.to_string())?;
+    Ok(bytes.to_vec())
 }
 
 fn install_jdbc_plugin_zip(bytes: &[u8], plugin_dir: &std::path::Path) -> Result<(), String> {

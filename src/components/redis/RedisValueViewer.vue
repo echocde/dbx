@@ -9,6 +9,7 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/com
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import * as api from "@/lib/api";
 import type { RedisValue } from "@/lib/api";
+import { useToast } from "@/composables/useToast";
 import {
   canEditRedisMemberDetail,
   clampRedisMemberDetailSheetWidth,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/redisValuePresentation";
 
 const { t } = useI18n();
+const { toast } = useToast();
 
 const props = defineProps<{
   connectionId: string;

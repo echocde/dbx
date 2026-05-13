@@ -238,7 +238,17 @@ async function deleteJdbcDriver(path: string) {
 // ──────────── Lifecycle ────────────
 
 onMounted(async () => {
-  await refreshAgents();
+  const [jre, localDrivers] = await Promise.all([
+    invoke<boolean>("check_jre_installed"),
+    invoke<AgentDriverInfo[]>("list_installed_agents_local"),
+  ]);
+  jreInstalled.value = jre;
+  drivers.value = localDrivers;
+
+  invoke<AgentDriverInfo[]>("list_installed_agents").then((result) => {
+    drivers.value = result;
+  });
+
   unlisten = await listen<InstallProgress>("agent-install-progress", (event) => {
     if (event.payload.step === "done") {
       progress.value = null;

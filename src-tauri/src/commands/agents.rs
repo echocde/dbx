@@ -11,38 +11,34 @@ const REGISTRY_PATH: &str = "https://github.com/t8y2/dbx-agents/releases/latest/
 static REGISTRY_CACHE: std::sync::LazyLock<Mutex<Option<(std::time::Instant, AgentRegistry)>>> =
     std::sync::LazyLock::new(|| Mutex::new(None));
 
-#[tauri::command]
-pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AgentDriverInfo>, String> {
-    let am = &state.agent_manager;
+const AGENT_TYPES: &[(&str, &str)] = &[
+    ("dameng", "达梦 DM8"),
+    ("kingbase", "人大金仓 KingbaseES"),
+    ("vastbase", "Vastbase"),
+    ("goldendb", "GoldenDB"),
+    ("oracle", "Oracle"),
+    ("h2", "H2"),
+    ("snowflake", "Snowflake"),
+    ("trino", "Trino (Presto)"),
+    ("hive", "Apache Hive"),
+    ("db2", "IBM DB2"),
+    ("informix", "IBM Informix"),
+    ("neo4j", "Neo4j"),
+    ("cassandra", "Apache Cassandra"),
+    ("bigquery", "Google BigQuery"),
+    ("kylin", "Apache Kylin"),
+    ("sundb", "SunDB"),
+    ("gaussdb", "GaussDB"),
+];
+
+fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> Vec<AgentDriverInfo> {
     let local_state = am.load_state();
-    let registry = fetch_registry().await.ok();
-
-    let agent_types = [
-        ("dameng", "达梦 DM8"),
-        ("kingbase", "人大金仓 KingbaseES"),
-        ("vastbase", "Vastbase"),
-        ("goldendb", "GoldenDB"),
-        ("oracle", "Oracle"),
-        ("h2", "H2"),
-        ("snowflake", "Snowflake"),
-        ("trino", "Trino (Presto)"),
-        ("hive", "Apache Hive"),
-        ("db2", "IBM DB2"),
-        ("informix", "IBM Informix"),
-        ("neo4j", "Neo4j"),
-        ("cassandra", "Apache Cassandra"),
-        ("bigquery", "Google BigQuery"),
-        ("kylin", "Apache Kylin"),
-        ("sundb", "SunDB"),
-        ("gaussdb", "GaussDB"),
-    ];
-
-    Ok(agent_types
+    AGENT_TYPES
         .iter()
         .map(|(key, label)| {
             let installed = am.is_driver_installed(key);
             let local = local_state.installed_drivers.get(*key);
-            let remote = registry.as_ref().and_then(|r| r.drivers.get(*key));
+            let remote = registry.and_then(|r| r.drivers.get(*key));
             AgentDriverInfo {
                 db_type: key.to_string(),
                 label: label.to_string(),
@@ -56,7 +52,18 @@ pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Ve
                 },
             }
         })
-        .collect())
+        .collect()
+}
+
+#[tauri::command]
+pub async fn list_installed_agents_local(state: State<'_, Arc<AppState>>) -> Result<Vec<AgentDriverInfo>, String> {
+    Ok(build_agent_list(&state.agent_manager, None))
+}
+
+#[tauri::command]
+pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AgentDriverInfo>, String> {
+    let registry = fetch_registry().await.ok();
+    Ok(build_agent_list(&state.agent_manager, registry.as_ref()))
 }
 
 #[tauri::command]
@@ -175,27 +182,12 @@ async fn fetch_registry() -> Result<AgentRegistry, String> {
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
-    let mut last_err = String::new();
-    for proxy in dbx_core::GITHUB_PROXIES {
-        let url = format!("{proxy}{REGISTRY_PATH}");
-        match client
-            .get(&url)
-            .header(reqwest::header::USER_AGENT, "dbx-agent-manager")
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-        {
-            Ok(resp) => {
-                let reg: AgentRegistry = resp.json().await.map_err(|e| format!("Failed to parse registry: {e}"))?;
-                *REGISTRY_CACHE.lock().await = Some((std::time::Instant::now(), reg.clone()));
-                return Ok(reg);
-            }
-            Err(e) => {
-                last_err = format!("{e}");
-            }
-        }
-    }
-    Err(format!("Failed to fetch agent registry: {last_err}"))
+    let resp = dbx_core::race_github_proxies(&client, REGISTRY_PATH, "dbx-agent-manager")
+        .await
+        .map_err(|e| format!("Failed to fetch agent registry: {e}"))?;
+    let reg: AgentRegistry = resp.json().await.map_err(|e| format!("Failed to parse registry: {e}"))?;
+    *REGISTRY_CACHE.lock().await = Some((std::time::Instant::now(), reg.clone()));
+    Ok(reg)
 }
 
 async fn download_with_progress(
@@ -212,39 +204,24 @@ async fn download_with_progress(
         .timeout(std::time::Duration::from_secs(300))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
-    let mut last_err = String::new();
-    for proxy in dbx_core::GITHUB_PROXIES {
-        let full_url = format!("{proxy}{url}");
-        log::info!("[agent] downloading from {full_url}");
-        match client
-            .get(&full_url)
-            .header(reqwest::header::USER_AGENT, "dbx-agent-manager")
-            .send()
-            .await
-            .and_then(|r| r.error_for_status())
-        {
-            Ok(resp) => {
-                let content_length = resp.content_length().unwrap_or(total_size);
-                let mut file = std::fs::File::create(dest).map_err(|e| format!("Failed to create file: {e}"))?;
-                let mut downloaded: u64 = 0;
-                let mut bytes = resp;
-                while let Some(chunk) = bytes.chunk().await.map_err(|e| format!("Download stream error: {e}"))? {
-                    std::io::Write::write_all(&mut file, &chunk).map_err(|e| format!("Failed to write chunk: {e}"))?;
-                    downloaded += chunk.len() as u64;
-                    let _ = app.emit(
-                        "agent-install-progress",
-                        serde_json::json!({ "step": step, "downloaded": downloaded, "total": content_length }),
-                    );
-                }
-                return Ok(());
-            }
-            Err(e) => {
-                last_err = format!("{e}");
-                log::warn!("[agent] download failed from {full_url}: {last_err}");
-            }
-        }
+
+    let resp = dbx_core::race_github_proxies(&client, url, "dbx-agent-manager")
+        .await
+        .map_err(|e| format!("Failed to download {url}: {e}"))?;
+
+    let content_length = resp.content_length().unwrap_or(total_size);
+    let mut file = std::fs::File::create(dest).map_err(|e| format!("Failed to create file: {e}"))?;
+    let mut downloaded: u64 = 0;
+    let mut bytes = resp;
+    while let Some(chunk) = bytes.chunk().await.map_err(|e| format!("Download stream error: {e}"))? {
+        std::io::Write::write_all(&mut file, &chunk).map_err(|e| format!("Failed to write chunk: {e}"))?;
+        downloaded += chunk.len() as u64;
+        let _ = app.emit(
+            "agent-install-progress",
+            serde_json::json!({ "step": step, "downloaded": downloaded, "total": content_length }),
+        );
     }
-    Err(format!("Failed to download {url}: {last_err}"))
+    Ok(())
 }
 
 fn extract_archive(archive: &std::path::Path, dest: &std::path::Path) -> Result<(), String> {
