@@ -49,7 +49,7 @@ const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
 const savedSqlStore = useSavedSqlStore();
 const { message: toastMessage, visible: toastVisible, toast } = useToast();
-const { isDark, applyTheme, toggleTheme } = useTheme();
+const { isDark, themeMode, applyTheme, setThemeMode } = useTheme();
 const {
   checkingUpdates,
   updateInfo,
@@ -537,6 +537,7 @@ onUnmounted(() => {
       <div class="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
         <AppToolbar
           :is-dark="isDark"
+          :theme-mode="themeMode"
           :show-ai-panel="showAiPanel"
           :show-history="showHistory"
           :checking-updates="checkingUpdates"
@@ -544,7 +545,7 @@ onUnmounted(() => {
           :has-sql-file-connections="hasSqlFileConnections"
           @new-connection="showConnectionDialog = true"
           @new-query="newQuery"
-          @toggle-theme="toggleTheme"
+          @set-theme-mode="setThemeMode"
           @toggle-ai="toggleAiPanel"
           @toggle-history="showHistory = !showHistory"
           @open-github="openGitHub"

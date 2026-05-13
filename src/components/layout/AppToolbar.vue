@@ -7,6 +7,8 @@ import {
   Globe,
   Moon,
   Sun,
+  Monitor,
+  Check,
   History,
   Bot,
   ArrowLeftRight,
@@ -27,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import WindowControls from "@/components/layout/WindowControls.vue";
 import { useWindowControls } from "@/composables/useWindowControls";
 import { currentLocale, setLocale, type Locale } from "@/i18n";
+import type { AppThemeMode } from "@/lib/appTheme";
 
 const localeOptions: { value: Locale; flag: string; label: string }[] = [
   { value: "en", flag: "🇺🇸", label: "English" },
@@ -36,6 +39,7 @@ const localeOptions: { value: Locale; flag: string; label: string }[] = [
 
 defineProps<{
   isDark: boolean;
+  themeMode: AppThemeMode;
   showAiPanel: boolean;
   showHistory: boolean;
   checkingUpdates: boolean;
@@ -46,7 +50,7 @@ defineProps<{
 const emit = defineEmits<{
   "new-connection": [];
   "new-query": [];
-  "toggle-theme": [];
+  "set-theme-mode": [mode: AppThemeMode];
   "toggle-ai": [];
   "toggle-history": [];
   "open-github": [];
@@ -178,15 +182,44 @@ function onToolbarDblClick(e: MouseEvent) {
       <TooltipContent>AI</TooltipContent>
     </Tooltip>
 
-    <Tooltip>
-      <TooltipTrigger as-child>
-        <Button variant="ghost" size="icon" class="h-8 w-8" @click="emit('toggle-theme')">
-          <Moon v-if="!isDark" class="h-4 w-4" />
+    <DropdownMenu>
+      <DropdownMenuTrigger as-child>
+        <Button variant="ghost" size="icon" class="h-8 w-8" :title="t('toolbar.theme')">
+          <Monitor v-if="themeMode === 'system'" class="h-4 w-4" />
+          <Moon v-else-if="isDark" class="h-4 w-4" />
           <Sun v-else class="h-4 w-4" />
         </Button>
-      </TooltipTrigger>
-      <TooltipContent>{{ isDark ? "Light" : "Dark" }}</TooltipContent>
-    </Tooltip>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          class="gap-2"
+          :class="{ 'bg-accent': themeMode === 'light' }"
+          @select="emit('set-theme-mode', 'light')"
+        >
+          <Sun class="h-4 w-4" />
+          {{ t("toolbar.themeLight") }}
+          <Check v-if="themeMode === 'light'" class="ml-auto h-4 w-4" />
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          class="gap-2"
+          :class="{ 'bg-accent': themeMode === 'dark' }"
+          @select="emit('set-theme-mode', 'dark')"
+        >
+          <Moon class="h-4 w-4" />
+          {{ t("toolbar.themeDark") }}
+          <Check v-if="themeMode === 'dark'" class="ml-auto h-4 w-4" />
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          class="gap-2"
+          :class="{ 'bg-accent': themeMode === 'system' }"
+          @select="emit('set-theme-mode', 'system')"
+        >
+          <Monitor class="h-4 w-4" />
+          {{ t("toolbar.themeSystem") }}
+          <Check v-if="themeMode === 'system'" class="ml-auto h-4 w-4" />
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
 
     <DropdownMenu>
       <DropdownMenuTrigger as-child>
