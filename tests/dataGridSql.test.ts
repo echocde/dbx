@@ -83,3 +83,18 @@ test("rejects NULL writes to non-null table columns", () => {
 
   assert.equal(error, 'Column "CREATED_AT" does not allow NULL.');
 });
+
+test("allows NULL for MySQL auto increment columns when inserting rows", () => {
+  const error = validateDataGridSave({
+    databaseType: "mysql",
+    columns: ["id", "name"],
+    columnInfo: [
+      { name: "id", is_nullable: false, column_default: null, is_primary_key: true, extra: "auto_increment" },
+      { name: "name", is_nullable: false, column_default: null, is_primary_key: false, extra: null },
+    ],
+    dirtyRows: [],
+    newRows: [[null, "Ada"]],
+  });
+
+  assert.equal(error, undefined);
+});
