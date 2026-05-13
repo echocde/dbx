@@ -2,6 +2,7 @@
 import { ref, onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 
 interface AgentDriverInfo {
   db_type: string;
@@ -61,53 +62,60 @@ async function reinstallJre() {
 }
 
 function formatSize(bytes: number): string {
+  if (!bytes) return "";
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 </script>
 
 <template>
-  <div class="space-y-4 p-4">
-    <h3 class="text-lg font-medium">驱动管理</h3>
-
-    <div class="flex items-center gap-3 text-sm text-muted-foreground">
-      <span>JRE: {{ jreInstalled ? "✓ 已安装" : "未安装" }}</span>
-      <span v-if="!jreInstalled" class="text-xs">(首次安装驱动时自动下载)</span>
-      <Button
-        v-if="jreInstalled"
-        size="sm"
-        variant="ghost"
-        :disabled="reinstallingJre || installing !== null"
-        @click="reinstallJre"
-      >
-        {{ reinstallingJre ? "重装中..." : "重新安装 JRE" }}
-      </Button>
+  <div class="space-y-3">
+    <div class="space-y-1">
+      <Label>Agent 驱动</Label>
     </div>
 
-    <div class="space-y-2">
-      <div
-        v-for="driver in drivers"
-        :key="driver.db_type"
-        class="flex items-center justify-between rounded-md border p-3"
-      >
-        <div>
-          <span class="font-medium">{{ driver.label }}</span>
-          <span v-if="driver.installed" class="ml-2 text-xs text-muted-foreground">
-            v{{ driver.installed_version }}
-          </span>
-          <span class="ml-2 text-xs text-muted-foreground">{{ formatSize(driver.size) }}</span>
+    <div class="rounded-md border bg-muted/20 p-4">
+      <div class="flex min-h-8 items-center justify-between gap-3">
+        <div class="min-w-0 space-y-1">
+          <Label class="text-sm">JRE 运行时</Label>
+          <p v-if="!jreInstalled" class="text-xs text-muted-foreground">首次安装驱动时自动下载</p>
         </div>
-        <div>
+        <div class="flex shrink-0 items-center gap-3">
+          <span v-if="jreInstalled" class="text-xs text-green-600">已安装</span>
+          <span v-else class="text-xs text-muted-foreground">未安装</span>
           <Button
-            v-if="!driver.installed"
+            v-if="jreInstalled"
+            type="button"
+            variant="outline"
             size="sm"
-            :disabled="installing !== null"
-            @click="installDriver(driver.db_type)"
+            :disabled="reinstallingJre || installing !== null"
+            @click="reinstallJre"
           >
-            {{ installing === driver.db_type ? "安装中..." : "安装" }}
+            {{ reinstallingJre ? "重装中..." : "重新安装" }}
           </Button>
-          <div v-else class="flex items-center gap-2">
-            <span class="text-sm text-green-600">✓ 已安装</span>
-            <Button size="sm" variant="ghost" @click="uninstallDriver(driver.db_type)">卸载</Button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-md border">
+      <div v-if="drivers.length === 0" class="p-4 text-sm text-muted-foreground">加载中...</div>
+      <div v-else class="divide-y">
+        <div v-for="driver in drivers" :key="driver.db_type" class="flex items-center gap-3 p-3">
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium">{{ driver.label }}</div>
+            <div class="text-xs text-muted-foreground">
+              <span v-if="driver.installed">v{{ driver.installed_version }}</span>
+              <span v-if="driver.installed && formatSize(driver.size)"> · </span>
+              <span v-if="formatSize(driver.size)">{{ formatSize(driver.size) }}</span>
+            </div>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <span v-if="driver.installed" class="text-xs text-green-600">已安装</span>
+            <Button v-if="driver.installed" variant="ghost" size="sm" @click="uninstallDriver(driver.db_type)">
+              卸载
+            </Button>
+            <Button v-else size="sm" :disabled="installing !== null" @click="installDriver(driver.db_type)">
+              {{ installing === driver.db_type ? "安装中..." : "安装" }}
+            </Button>
           </div>
         </div>
       </div>
