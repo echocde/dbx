@@ -18,3 +18,15 @@ export function isCloseTabShortcut(event: ShortcutLikeEvent): boolean {
   if (!event.metaKey) return false;
   return event.key.toLowerCase() === "w";
 }
+
+export function isFocusSearchShortcut(event: ShortcutLikeEvent): boolean {
+  if (event.isComposing) return false;
+  if (event.altKey) return false;
+  if (!event.metaKey && !event.ctrlKey) return false;
+  return event.key.toLowerCase() === "f";
+}
+
+export function isCancelSearchShortcut(event: ShortcutLikeEvent): boolean {
+  if (event.isComposing) return false;
+  return event.key === "Escape";
+}

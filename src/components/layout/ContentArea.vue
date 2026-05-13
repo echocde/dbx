@@ -58,6 +58,8 @@ const columnInfoColumns = ref<ColumnInfo[]>([]);
 const columnInfoLoading = ref(false);
 const columnInfoError = ref<string | undefined>(undefined);
 const dataGridRef = ref<InstanceType<typeof DataGrid>>();
+const redisKeyBrowserRef = ref<InstanceType<typeof RedisKeyBrowser>>();
+const objectBrowserRef = ref<InstanceType<typeof ObjectBrowser>>();
 
 const activeSqlFormatDialect = computed<SqlFormatDialect>(() => {
   switch (props.activeConnection?.db_type) {
@@ -160,6 +162,15 @@ function onHandleCloseColumnPanel() {
   columnInfoColumns.value = [];
   columnInfoError.value = undefined;
 }
+
+function focusSearch(): boolean {
+  if (props.activeTab.mode === "redis") return redisKeyBrowserRef.value?.focusSearch() ?? false;
+  if (props.activeTab.mode === "objects") return objectBrowserRef.value?.focusSearch() ?? false;
+  if (props.activeTab.mode === "query" && props.activeOutputView !== "result") return false;
+  return dataGridRef.value?.focusSearch() ?? false;
+}
+
+defineExpose({ focusSearch });
 </script>
 
 <template>
@@ -433,7 +444,12 @@ function onHandleCloseColumnPanel() {
     <!-- Redis mode: key browser -->
     <template v-else-if="activeTab.mode === 'redis'">
       <div class="flex-1 min-h-0">
-        <RedisKeyBrowser :key="activeTab.id" :connection-id="activeTab.connectionId" :db="Number(activeTab.database)" />
+        <RedisKeyBrowser
+          ref="redisKeyBrowserRef"
+          :key="activeTab.id"
+          :connection-id="activeTab.connectionId"
+          :db="Number(activeTab.database)"
+        />
       </div>
     </template>
 
@@ -452,6 +468,7 @@ function onHandleCloseColumnPanel() {
     <!-- Objects mode: virtualized database object browser -->
     <template v-else-if="activeTab.mode === 'objects' && activeConnection">
       <ObjectBrowser
+        ref="objectBrowserRef"
         :key="`${activeTab.id}-${activeTab.objectBrowser?.schema || ''}`"
         :connection="activeConnection"
         :database="activeTab.database"

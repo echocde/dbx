@@ -33,6 +33,7 @@ import {
   type RedisKeyTreeNode,
 } from "@/lib/redisKeyTree";
 import { classifyRedisCommandSafety } from "@/lib/redisCommandSafety";
+import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 
 const { t } = useI18n();
 
@@ -45,6 +46,7 @@ const flatKeys = ref<RedisKeyInfo[]>([]);
 const treeKeys = ref<RedisKeyTreeNode[]>([]);
 const loading = ref(false);
 const loadingMore = ref(false);
+const rootRef = ref<HTMLElement>();
 const searchPattern = ref("*");
 const selectedKeyRaw = ref<string | null>(null);
 const hasMore = ref(false);
@@ -317,27 +319,53 @@ function onSearchInput() {
   searchTimer = setTimeout(loadKeys, 400);
 }
 
+function getSearchInput(): HTMLInputElement | null {
+  return rootRef.value?.querySelector<HTMLInputElement>("[data-redis-search-input]") ?? null;
+}
+
+function focusSearch(): boolean {
+  const input = getSearchInput();
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+function onSearchKeydown(event: KeyboardEvent) {
+  if (event.key === "Enter") {
+    void loadKeys();
+    return;
+  }
+  if (!isCancelSearchShortcut(event)) return;
+  event.preventDefault();
+  searchPattern.value = "*";
+  void loadKeys();
+}
+
 onUnmounted(() => {
   if (searchTimer) clearTimeout(searchTimer);
 });
 
 onMounted(loadKeys);
+
+defineExpose({ focusSearch });
 </script>
 
 <template>
   <Splitpanes class="h-full" horizontal>
     <!-- Key table (top) -->
     <Pane :size="selectedKey ? 50 : 100" :min-size="25">
-      <div class="h-full flex flex-col overflow-hidden">
+      <div ref="rootRef" class="h-full flex flex-col overflow-hidden">
         <!-- Toolbar -->
         <div class="h-9 flex items-center gap-1 px-2 border-b shrink-0">
           <Search class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           <Input
             v-model="searchPattern"
+            data-redis-search-input
             class="h-6 text-xs border-0 shadow-none focus-visible:ring-0"
             :placeholder="t('redis.pattern')"
             @input="onSearchInput"
-            @keydown.enter="loadKeys"
+            @keydown="onSearchKeydown"
           />
           <Button variant="ghost" size="icon" class="h-6 w-6 shrink-0" @click="loadKeys">
             <Loader2 v-if="loading" class="h-3 w-3 animate-spin" />

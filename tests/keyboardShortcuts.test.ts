@@ -1,6 +1,11 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { isCloseTabShortcut, isExecuteSqlShortcut } from "../src/lib/keyboardShortcuts.ts";
+import {
+  isCancelSearchShortcut,
+  isCloseTabShortcut,
+  isExecuteSqlShortcut,
+  isFocusSearchShortcut,
+} from "../src/lib/keyboardShortcuts.ts";
 
 test("matches Cmd+Enter for SQL execution", () => {
   assert.equal(isExecuteSqlShortcut({ key: "Enter", metaKey: true }), true);
@@ -24,4 +29,28 @@ test("matches Cmd+W for closing query tabs", () => {
 
 test("ignores Ctrl+W for closing query tabs", () => {
   assert.equal(isCloseTabShortcut({ key: "w", ctrlKey: true }), false);
+});
+
+test("matches Ctrl+F for focusing search", () => {
+  assert.equal(isFocusSearchShortcut({ key: "f", ctrlKey: true }), true);
+});
+
+test("matches Cmd+F for focusing search", () => {
+  assert.equal(isFocusSearchShortcut({ key: "F", metaKey: true }), true);
+});
+
+test("ignores focus search shortcut while composing", () => {
+  assert.equal(isFocusSearchShortcut({ key: "f", ctrlKey: true, isComposing: true }), false);
+});
+
+test("ignores Alt+F for focusing search", () => {
+  assert.equal(isFocusSearchShortcut({ key: "f", altKey: true }), false);
+});
+
+test("matches Escape for cancelling search", () => {
+  assert.equal(isCancelSearchShortcut({ key: "Escape" }), true);
+});
+
+test("ignores cancelling search while composing", () => {
+  assert.equal(isCancelSearchShortcut({ key: "Escape", isComposing: true }), false);
 });

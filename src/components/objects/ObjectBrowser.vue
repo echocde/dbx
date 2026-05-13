@@ -37,6 +37,7 @@ import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
+import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 
 type ObjectRow = {
   id: string;
@@ -66,6 +67,7 @@ const queryStore = useQueryStore();
 const schemas = ref<string[]>([]);
 const selectedSchema = ref<string | undefined>(props.schema);
 const rows = ref<ObjectRow[]>([]);
+const rootRef = ref<HTMLElement>();
 const search = ref("");
 const objectFilter = ref<ObjectFilter>("all");
 const loadingSchemas = ref(false);
@@ -411,6 +413,26 @@ function filterLabel(filter: ObjectFilter) {
   return `${t(key)} ${filterCount(filter)}`;
 }
 
+function getSearchInput(): HTMLInputElement | null {
+  return rootRef.value?.querySelector<HTMLInputElement>("[data-object-search-input]") ?? null;
+}
+
+function focusSearch(): boolean {
+  const input = getSearchInput();
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+function onSearchKeydown(event: KeyboardEvent) {
+  if (!isCancelSearchShortcut(event)) return;
+  event.preventDefault();
+  search.value = "";
+}
+
+defineExpose({ focusSearch });
+
 watch(
   () => [props.connection.id, props.database, props.schema] as const,
   () => {
@@ -422,7 +444,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col bg-background">
+  <div ref="rootRef" class="flex h-full min-h-0 flex-col bg-background">
     <div class="flex h-10 shrink-0 items-center gap-2 border-b px-3">
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <Table2 class="h-4 w-4 text-muted-foreground" />
@@ -435,7 +457,13 @@ watch(
       </div>
       <div class="flex min-w-[240px] flex-1 items-center gap-2">
         <Search class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <Input v-model="search" class="h-7 text-xs" :placeholder="t('objects.search')" />
+        <Input
+          v-model="search"
+          data-object-search-input
+          class="h-7 text-xs"
+          :placeholder="t('objects.search')"
+          @keydown="onSearchKeydown"
+        />
         <div v-if="showObjectFilter" class="flex h-7 shrink-0 items-center rounded border bg-muted/20 p-0.5">
           <button
             v-for="filter in objectFilters"

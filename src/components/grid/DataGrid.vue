@@ -72,6 +72,7 @@ import { isHiddenGridColumn, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
+import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 
 import { useToast } from "@/composables/useToast";
 import { useDataGridExport } from "@/composables/useDataGridExport";
@@ -460,6 +461,15 @@ function navigateSuggestion(delta: number) {
   suggestionIndex.value = Math.min(Math.max(suggestionIndex.value + delta, 0), searchSuggestions.value.length - 1);
 }
 
+function focusSearch(): boolean {
+  const input = searchInputRef.value;
+  if (!input) return false;
+  input.focus();
+  input.select();
+  updateSuggestionPosition();
+  return true;
+}
+
 const PAIRS: Record<string, string> = { "'": "'", '"': '"', "(": ")" };
 
 function onSearchKeydown(e: KeyboardEvent) {
@@ -503,7 +513,7 @@ function onSearchKeydown(e: KeyboardEvent) {
       acceptSuggestion();
       return;
     }
-    if (e.key === "Escape") {
+    if (isCancelSearchShortcut(e)) {
       e.preventDefault();
       dismissSuggestions();
       return;
@@ -519,7 +529,8 @@ function onSearchKeydown(e: KeyboardEvent) {
       return;
     }
   }
-  if (e.key === "Escape") {
+  if (isCancelSearchShortcut(e)) {
+    e.preventDefault();
     searchText.value = "";
   }
 }
@@ -1742,6 +1753,7 @@ defineExpose({
   onToolbarRollback,
   showDdl,
   toggleDdl,
+  focusSearch,
 });
 </script>
 

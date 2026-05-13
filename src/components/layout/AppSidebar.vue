@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Upload, Download, RefreshCw } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const connectionStore = useConnectionStore();
 const { toast } = useToast();
+const connectionTreeRef = ref<InstanceType<typeof ConnectionTree>>();
 
 async function refreshTree() {
   try {
@@ -35,6 +37,12 @@ async function refreshTree() {
     toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
   }
 }
+
+function focusSearch(): boolean {
+  return connectionTreeRef.value?.focusSearch() ?? false;
+}
+
+defineExpose({ focusSearch });
 </script>
 
 <template>
@@ -86,7 +94,7 @@ async function refreshTree() {
         </Tooltip>
       </div>
       <div class="flex-1 min-h-0">
-        <ConnectionTree />
+        <ConnectionTree ref="connectionTreeRef" />
       </div>
     </div>
     <div class="panel-resize-handle panel-resize-handle--right" @mousedown="emit('startResize', $event)" />

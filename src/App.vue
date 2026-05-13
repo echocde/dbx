@@ -34,7 +34,7 @@ import * as api from "@/lib/api";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
-import { isCloseTabShortcut, isExecuteSqlShortcut } from "@/lib/keyboardShortcuts";
+import { isCloseTabShortcut, isExecuteSqlShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { isPreviewTab } from "@/lib/tabPresentation";
 import { SQL_FILE_UNSUPPORTED_TYPES } from "@/lib/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/aiSqlExecutionPolicy";
@@ -80,6 +80,8 @@ const showAiPanel = ref(localStorage.getItem("dbx-ai-panel-open") !== "false");
 const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
   usePanelResize();
 const aiAssistantRef = ref<InstanceType<typeof AiAssistant> | null>(null);
+const appSidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null);
+const contentAreaRef = ref<InstanceType<typeof ContentArea> | null>(null);
 
 const selectedSql = ref("");
 const cursorPos = ref(0);
@@ -409,6 +411,14 @@ function onAiRequestAutoExecuteSql(sql: string) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
+  if (isFocusSearchShortcut(e)) {
+    const focused = contentAreaRef.value?.focusSearch() || appSidebarRef.value?.focusSearch();
+    if (focused) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
   if (isCloseTabShortcut(e)) {
     e.preventDefault();
     if (showDriverStore.value) {
@@ -574,6 +584,7 @@ onUnmounted(() => {
           "
         >
           <AppSidebar
+            ref="appSidebarRef"
             :sidebar-width="sidebarWidth"
             :classic-layout="isClassicLayout"
             @import="dialogs.onImportClick"
@@ -614,6 +625,7 @@ onUnmounted(() => {
                   @clear-default-database="clearActiveDefaultDatabase"
                 />
                 <ContentArea
+                  ref="contentAreaRef"
                   :active-tab="activeTab"
                   :active-connection="activeConnection"
                   :executable-sql="executableSql"

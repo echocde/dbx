@@ -5,6 +5,7 @@ import { Search, X, ListFilter, Check, FolderPlus } from "lucide-vue-next";
 import { useConnectionStore } from "@/stores/connectionStore";
 import type { TreeNode } from "@/types/database";
 import { matchSidebarLabel } from "@/lib/sidebarSearch";
+import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 import {
   SIDEBAR_TREE_ROW_HEIGHT,
   SIDEBAR_TREE_PRERENDER_COUNT,
@@ -30,6 +31,7 @@ const { t } = useI18n();
 const store = useConnectionStore();
 const searchQuery = ref("");
 const deferredSearchQuery = ref("");
+const searchInputRef = ref<HTMLInputElement>();
 const selectedTypes = ref<string[]>([]);
 const searchCollapsedIds = ref<Set<string>>(new Set());
 let searchTimer: number | undefined;
@@ -184,6 +186,22 @@ function onSearchToggle(node: TreeNode) {
   else next.delete(node.id);
   searchCollapsedIds.value = next;
 }
+
+function focusSearch(): boolean {
+  const input = searchInputRef.value;
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+function onSearchKeydown(event: KeyboardEvent) {
+  if (!isCancelSearchShortcut(event)) return;
+  event.preventDefault();
+  searchQuery.value = "";
+}
+
+defineExpose({ focusSearch });
 </script>
 
 <template>
@@ -193,12 +211,14 @@ function onSearchToggle(node: TreeNode) {
         <div class="relative flex-1">
           <Search class="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
           <input
+            ref="searchInputRef"
             v-model="searchQuery"
             autocapitalize="off"
             autocorrect="off"
             spellcheck="false"
             class="w-full h-6 pl-7 pr-6 text-xs rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
             :placeholder="t('grid.search')"
+            @keydown="onSearchKeydown"
           />
           <button
             v-if="searchQuery"
