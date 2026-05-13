@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use tokio::sync::Mutex;
 
-use dbx_core::agent_manager::{AgentDriverInfo, AgentManager, AgentRegistry, InstalledDriver, DEFAULT_JRE_KEY};
+use dbx_core::agent_manager::{
+    AgentDriverInfo, AgentManager, AgentRegistry, InstalledDriver, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY,
+};
 use dbx_core::connection::AppState;
 
 const REGISTRY_PATH: &str = "https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json";
@@ -84,7 +86,7 @@ pub async fn install_agent(
 
     let driver = registry.drivers.get(&db_type).ok_or_else(|| format!("Unknown driver type: {db_type}"))?;
     let jre_key = &driver.jre;
-    let needs_jre = !am.is_jre_installed(jre_key);
+    let needs_jre = am.load_state().java_runtime.mode == JavaRuntimeMode::Managed && !am.is_jre_installed(jre_key);
 
     if needs_jre {
         let jre_info =
@@ -159,6 +161,35 @@ pub async fn uninstall_agent(state: State<'_, Arc<AppState>>, db_type: String) -
 pub async fn check_jre_installed(state: State<'_, Arc<AppState>>, jre_key: Option<String>) -> Result<bool, String> {
     let key = jre_key.as_deref().unwrap_or(DEFAULT_JRE_KEY);
     Ok(state.agent_manager.is_jre_installed(key))
+}
+
+#[tauri::command]
+pub async fn get_agent_java_runtime_config(state: State<'_, Arc<AppState>>) -> Result<JavaRuntimeConfig, String> {
+    Ok(state.agent_manager.load_state().java_runtime)
+}
+
+#[tauri::command]
+pub async fn set_agent_java_runtime_config(
+    state: State<'_, Arc<AppState>>,
+    mut config: JavaRuntimeConfig,
+) -> Result<JavaRuntimeConfig, String> {
+    let am = &state.agent_manager;
+    if config.mode == JavaRuntimeMode::Custom || config.mode == JavaRuntimeMode::System {
+        let candidate_state = dbx_core::agent_manager::AgentState { java_runtime: config.clone(), ..am.load_state() };
+        let resolved = am.resolve_java_runtime(&candidate_state, DEFAULT_JRE_KEY)?;
+        if config.mode == JavaRuntimeMode::Custom {
+            config.custom_java_path = Some(resolved.to_string_lossy().to_string());
+        }
+    }
+    if config.mode != JavaRuntimeMode::Custom {
+        config.custom_java_path = None;
+    }
+
+    let mut local_state = am.load_state();
+    local_state.java_runtime = config.clone();
+    am.save_state(&local_state)?;
+    am.stop_daemons().await;
+    Ok(config)
 }
 
 #[tauri::command]

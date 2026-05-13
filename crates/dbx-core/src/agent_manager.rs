@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,85 @@ impl AgentRegistry {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn test_manager(name: &str) -> AgentManager {
+        let dir = std::env::temp_dir().join(format!("dbx-agent-manager-{name}-{}", uuid::Uuid::new_v4()));
+        AgentManager::new_with_base_dir(dir)
+    }
+
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, b"").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+    }
+
+    #[test]
+    fn resolves_managed_java_runtime_by_default() {
+        let manager = test_manager("managed");
+        let java = manager.jre_java_path("17");
+        touch(&java);
+
+        let state = AgentState::default();
+
+        assert_eq!(manager.resolve_java_runtime(&state, "17").unwrap(), java);
+    }
+
+    #[test]
+    fn resolves_custom_java_runtime_when_configured() {
+        let manager = test_manager("custom");
+        let custom_java = manager.base_dir().join("custom").join("bin").join("java");
+        touch(&custom_java);
+        let state = AgentState {
+            java_runtime: JavaRuntimeConfig {
+                mode: JavaRuntimeMode::Custom,
+                custom_java_path: Some(custom_java.to_string_lossy().to_string()),
+            },
+            ..AgentState::default()
+        };
+
+        assert_eq!(manager.resolve_java_runtime(&state, "17").unwrap(), custom_java);
+    }
+
+    #[test]
+    fn rejects_missing_custom_java_runtime() {
+        let manager = test_manager("missing-custom");
+        let state = AgentState {
+            java_runtime: JavaRuntimeConfig {
+                mode: JavaRuntimeMode::Custom,
+                custom_java_path: Some(manager.base_dir().join("missing-java").to_string_lossy().to_string()),
+            },
+            ..AgentState::default()
+        };
+
+        let err = manager.resolve_java_runtime(&state, "17").unwrap_err();
+
+        assert!(err.contains("Custom Java runtime does not exist"));
+    }
+
+    #[test]
+    fn resolves_system_java_runtime_from_path() {
+        let manager = test_manager("system");
+        let system_java = manager.base_dir().join("bin").join(if cfg!(windows) { "java.exe" } else { "java" });
+        touch(&system_java);
+        let path = std::env::join_paths([system_java.parent().unwrap()]).unwrap();
+
+        assert_eq!(resolve_system_java_path(Some(path.as_os_str())).unwrap(), system_java);
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JreInfo {
     pub version: String,
@@ -58,7 +138,7 @@ pub struct ArtifactInfo {
     pub size: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentState {
     #[serde(default)]
     pub jre_version: Option<String>,
@@ -66,6 +146,8 @@ pub struct AgentState {
     pub jre_versions: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub installed_drivers: std::collections::HashMap<String, InstalledDriver>,
+    #[serde(default)]
+    pub java_runtime: JavaRuntimeConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +156,23 @@ pub struct InstalledDriver {
     pub installed_at: String,
     #[serde(default = "default_jre_key")]
     pub jre: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum JavaRuntimeMode {
+    #[default]
+    Managed,
+    System,
+    Custom,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct JavaRuntimeConfig {
+    #[serde(default)]
+    pub mode: JavaRuntimeMode,
+    #[serde(default)]
+    pub custom_java_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,10 +197,11 @@ impl AgentManager {
     pub fn new() -> Self {
         let home =
             std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_else(|_| ".".to_string());
-        let mgr = Self {
-            base_dir: PathBuf::from(home).join(".dbx").join("agents"),
-            daemons: Mutex::new(std::collections::HashMap::new()),
-        };
+        Self::new_with_base_dir(PathBuf::from(home).join(".dbx").join("agents"))
+    }
+
+    pub fn new_with_base_dir(base_dir: PathBuf) -> Self {
+        let mgr = Self { base_dir, daemons: Mutex::new(std::collections::HashMap::new()) };
         mgr.migrate_legacy_jre();
         mgr
     }
@@ -146,9 +246,7 @@ impl AgentManager {
     }
 
     pub fn load_state(&self) -> AgentState {
-        std::fs::read_to_string(self.state_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(
-            AgentState { jre_version: None, jre_versions: Default::default(), installed_drivers: Default::default() },
-        )
+        std::fs::read_to_string(self.state_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
 
     pub fn save_state(&self, state: &AgentState) -> Result<(), String> {
@@ -164,6 +262,37 @@ impl AgentManager {
 
     pub fn is_driver_installed(&self, db_type: &str) -> bool {
         self.driver_jar_path(db_type).exists()
+    }
+
+    pub fn resolve_java_runtime(&self, state: &AgentState, jre_key: &str) -> Result<PathBuf, String> {
+        match state.java_runtime.mode {
+            JavaRuntimeMode::Managed => {
+                if !self.is_jre_installed(jre_key) {
+                    return Err(format!(
+                        "JRE {jre_key} runtime is not installed. Please install it from the Driver Manager."
+                    ));
+                }
+                Ok(self.jre_java_path(jre_key))
+            }
+            JavaRuntimeMode::System => resolve_system_java_path(None).ok_or_else(|| {
+                "System Java runtime was not found on PATH. Please install Java or choose a custom Java executable."
+                    .to_string()
+            }),
+            JavaRuntimeMode::Custom => {
+                let path = state
+                    .java_runtime
+                    .custom_java_path
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|path| !path.is_empty())
+                    .ok_or_else(|| "Custom Java runtime path is empty. Please choose a Java executable.".to_string())?;
+                resolve_custom_java_path(path)
+            }
+        }
+    }
+
+    pub async fn stop_daemons(&self) {
+        self.daemons.lock().await.clear();
     }
 
     pub fn db_type_to_agent_key(db_type: &DatabaseType, driver_profile: Option<&str>) -> Option<&'static str> {
@@ -185,14 +314,11 @@ impl AgentManager {
         let state = self.load_state();
         let jre_key = state.installed_drivers.get(key).map(|d| d.jre.as_str()).unwrap_or(DEFAULT_JRE_KEY);
 
-        if !self.is_jre_installed(jre_key) {
-            return Err(format!("JRE {jre_key} runtime is not installed. Please install it from the Driver Manager."));
-        }
         if !self.is_driver_installed(key) {
             return Err(format!("{key} driver is not installed. Please install it from the Driver Manager."));
         }
 
-        let java = self.jre_java_path(jre_key).to_string_lossy().to_string();
+        let java = self.resolve_java_runtime(&state, jre_key)?.to_string_lossy().to_string();
         let jar = self.driver_jar_path(key).to_string_lossy().to_string();
         AgentDriverClient::spawn(&java, &jar).await
     }
@@ -214,15 +340,10 @@ impl AgentManager {
             let state = self.load_state();
             let jre_key = state.installed_drivers.get(&key).map(|d| d.jre.as_str()).unwrap_or(DEFAULT_JRE_KEY);
 
-            if !self.is_jre_installed(jre_key) {
-                return Err(format!(
-                    "JRE {jre_key} runtime is not installed. Please install it from the Driver Manager."
-                ));
-            }
             if !self.is_driver_installed(&key) {
                 return Err(format!("{key} driver is not installed. Please install it from the Driver Manager."));
             }
-            let java = self.jre_java_path(jre_key).to_string_lossy().to_string();
+            let java = self.resolve_java_runtime(&state, jre_key)?.to_string_lossy().to_string();
             let jar = self.driver_jar_path(&key).to_string_lossy().to_string();
             let client = AgentDriverClient::spawn(&java, &jar).await?;
             daemons.insert(key.clone(), client);
@@ -236,7 +357,7 @@ impl AgentManager {
                 daemons.remove(&key);
                 let state = self.load_state();
                 let jre_key = state.installed_drivers.get(&key).map(|d| d.jre.as_str()).unwrap_or(DEFAULT_JRE_KEY);
-                let java = self.jre_java_path(jre_key).to_string_lossy().to_string();
+                let java = self.resolve_java_runtime(&state, jre_key)?.to_string_lossy().to_string();
                 let jar = self.driver_jar_path(&key).to_string_lossy().to_string();
                 let mut new_client = AgentDriverClient::spawn(&java, &jar).await?;
                 let result = new_client.call::<T>(method, params).await?;
@@ -274,5 +395,55 @@ impl AgentManager {
         } else {
             "unknown"
         }
+    }
+}
+
+fn java_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
+}
+
+fn resolve_custom_java_path(path: &str) -> Result<PathBuf, String> {
+    let raw = PathBuf::from(path);
+    if is_executable_file(&raw) {
+        return Ok(raw);
+    }
+
+    let flat = raw.join("bin").join(java_executable_name());
+    if is_executable_file(&flat) {
+        return Ok(flat);
+    }
+
+    let macos = raw.join("Contents").join("Home").join("bin").join(java_executable_name());
+    if is_executable_file(&macos) {
+        return Ok(macos);
+    }
+
+    Err(format!("Custom Java runtime does not exist or is not a Java executable: {}", raw.display()))
+}
+
+fn resolve_system_java_path(path_var: Option<&OsStr>) -> Option<PathBuf> {
+    let path_var = path_var.map(|p| p.to_owned()).or_else(|| std::env::var_os("PATH"))?;
+    std::env::split_paths(&path_var)
+        .map(|dir| dir.join(java_executable_name()))
+        .find(|candidate| is_executable_file(candidate))
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        return path.metadata().map(|meta| meta.permissions().mode() & 0o111 != 0).unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    {
+        true
     }
 }

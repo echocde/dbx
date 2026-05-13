@@ -8,6 +8,7 @@ import { FolderOpen, Trash2, Download, RotateCcw, Loader2, RefreshCw, Check } fr
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { useToast } from "@/composables/useToast";
@@ -39,11 +40,21 @@ interface InstallProgress {
   total?: number;
 }
 
+type JavaRuntimeMode = "managed" | "system" | "custom";
+
+interface JavaRuntimeConfig {
+  mode: JavaRuntimeMode;
+  custom_java_path: string | null;
+}
+
 const drivers = ref<AgentDriverInfo[]>([]);
 const installing = ref<string | null>(null);
 const reinstallingJre = ref<string | null>(null);
 const refreshing = ref(false);
 const progress = ref<InstallProgress | null>(null);
+const javaRuntimeConfig = ref<JavaRuntimeConfig>({ mode: "managed", custom_java_path: null });
+const customJavaPath = ref("");
+const savingJavaRuntime = ref(false);
 
 let unlisten: UnlistenFn | null = null;
 
@@ -88,6 +99,49 @@ async function forceRefresh() {
     await refreshAgents();
   } finally {
     refreshing.value = false;
+  }
+}
+
+async function loadJavaRuntimeConfig() {
+  const config = await invoke<JavaRuntimeConfig>("get_agent_java_runtime_config");
+  javaRuntimeConfig.value = config;
+  customJavaPath.value = config.custom_java_path ?? "";
+}
+
+function setJavaRuntimeMode(value: any) {
+  if (value === "managed" || value === "system" || value === "custom") {
+    javaRuntimeConfig.value.mode = value;
+  }
+}
+
+async function saveJavaRuntimeConfig() {
+  savingJavaRuntime.value = true;
+  try {
+    const config = await invoke<JavaRuntimeConfig>("set_agent_java_runtime_config", {
+      config: {
+        mode: javaRuntimeConfig.value.mode,
+        custom_java_path: javaRuntimeConfig.value.mode === "custom" ? customJavaPath.value.trim() || null : null,
+      },
+    });
+    javaRuntimeConfig.value = config;
+    customJavaPath.value = config.custom_java_path ?? "";
+    toast("Java 运行时设置已保存");
+  } catch (e: any) {
+    toast(`Java 运行时设置失败: ${e}`);
+  } finally {
+    savingJavaRuntime.value = false;
+  }
+}
+
+async function chooseCustomJavaPath() {
+  if (isWeb) return;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    title: "选择 Java 可执行文件",
+    multiple: false,
+  });
+  if (typeof selected === "string") {
+    customJavaPath.value = selected;
   }
 }
 
@@ -261,6 +315,7 @@ async function deleteJdbcDriver(path: string) {
 
 onMounted(async () => {
   drivers.value = await invoke<AgentDriverInfo[]>("list_installed_agents_local");
+  void loadJavaRuntimeConfig();
 
   invoke<AgentDriverInfo[]>("list_installed_agents").then((result) => {
     drivers.value = result;
@@ -306,6 +361,47 @@ onUnmounted(() => {
 
           <!-- Agent Tab -->
           <TabsContent value="agent" class="mt-5 space-y-5">
+            <!-- Java Runtime Mode -->
+            <div class="rounded-xl border bg-muted/20 p-4 space-y-3">
+              <div class="flex flex-wrap items-end gap-3">
+                <div class="min-w-[220px] flex-1 space-y-1.5">
+                  <Label>Java 运行时</Label>
+                  <Select :model-value="javaRuntimeConfig.mode" @update:model-value="setJavaRuntimeMode">
+                    <SelectTrigger class="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="managed">DBX 托管 JRE</SelectItem>
+                      <SelectItem value="system">系统 java</SelectItem>
+                      <SelectItem value="custom">自定义路径</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  class="h-8 shrink-0 text-xs"
+                  :disabled="savingJavaRuntime || (javaRuntimeConfig.mode === 'custom' && !customJavaPath.trim())"
+                  @click="saveJavaRuntimeConfig"
+                >
+                  {{ savingJavaRuntime ? "保存中..." : "保存" }}
+                </Button>
+              </div>
+              <div v-if="javaRuntimeConfig.mode === 'custom'" class="flex items-center gap-2">
+                <Input
+                  v-model="customJavaPath"
+                  class="h-8 flex-1 text-xs"
+                  placeholder="/path/to/java 或 /path/to/jdk"
+                  @keydown.enter.prevent="saveJavaRuntimeConfig"
+                />
+                <Button variant="outline" class="h-8 shrink-0 text-xs" @click="chooseCustomJavaPath">
+                  <FolderOpen class="h-3.5 w-3.5" />
+                  选择
+                </Button>
+              </div>
+              <p v-else-if="javaRuntimeConfig.mode === 'system'" class="text-xs text-muted-foreground">
+                使用当前环境 PATH 中的 java。
+              </p>
+            </div>
+
             <!-- JRE Runtime -->
             <div v-if="installedJres.length > 0" class="rounded-xl border bg-muted/20 p-4 space-y-2.5">
               <div v-for="jre in installedJres" :key="jre.key" class="flex items-center justify-between gap-3">
