@@ -59,6 +59,7 @@ const {
   isDownloadingUpdate,
   downloadProgress,
   updateReady,
+  hasUpdateAvailable,
   openUrl,
   checkUpdates,
   openLatestRelease,
@@ -68,6 +69,8 @@ const {
 const { setupFileDrop } = useFileDrop();
 
 const isDesktop = isTauriRuntime();
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+let updateCheckTimer: ReturnType<typeof setInterval> | undefined;
 const needsAuth = ref(!isDesktop);
 const authenticated = ref(isDesktop);
 const setupRequired = ref(false);
@@ -527,6 +530,7 @@ onMounted(async () => {
   initApp();
   setupFileDrop().catch(() => {});
   checkUpdates({ silent: true });
+  updateCheckTimer = setInterval(() => checkUpdates({ silent: true }), UPDATE_CHECK_INTERVAL_MS);
   api
     .getAppVersion()
     .then((v) => {
@@ -538,6 +542,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   cleanupTauriListeners();
+  if (updateCheckTimer) {
+    clearInterval(updateCheckTimer);
+  }
   window.removeEventListener("keydown", handleKeydown, true);
   document.removeEventListener("contextmenu", handleContextMenu);
 });
@@ -559,6 +566,7 @@ onUnmounted(() => {
           :show-history="showHistory"
           :show-driver-store="showDriverStore"
           :checking-updates="checkingUpdates"
+          :has-update-available="hasUpdateAvailable"
           :has-connections="connectionStore.connections.length > 0"
           :has-sql-file-connections="hasSqlFileConnections"
           @new-connection="showConnectionDialog = true"

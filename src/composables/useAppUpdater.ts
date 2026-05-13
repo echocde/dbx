@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { useToast } from "@/composables/useToast";
@@ -15,6 +15,7 @@ export function useAppUpdater() {
   const isDownloadingUpdate = ref(false);
   const downloadProgress = ref(0);
   const updateReady = ref(false);
+  const hasUpdateAvailable = computed(() => updateInfo.value?.update_available === true);
   const latestReleaseUrl = "https://github.com/t8y2/dbx/releases/latest";
 
   function openUrl(url: string) {
@@ -31,9 +32,12 @@ export function useAppUpdater() {
     updateCheckMessage.value = "";
     try {
       const info = await api.checkForUpdates();
+      const wasUpdateAvailable = hasUpdateAvailable.value;
       updateInfo.value = info;
       if (info.update_available) {
-        showUpdateDialog.value = true;
+        if (!options.silent || !wasUpdateAvailable) {
+          showUpdateDialog.value = true;
+        }
       } else if (!options.silent) {
         updateCheckMessage.value = t("updates.upToDate", { version: info.current_version });
         showUpdateDialog.value = true;
@@ -107,6 +111,7 @@ export function useAppUpdater() {
     isDownloadingUpdate,
     downloadProgress,
     updateReady,
+    hasUpdateAvailable,
     latestReleaseUrl,
     openUrl,
     checkUpdates,

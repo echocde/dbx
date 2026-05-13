@@ -45,6 +45,7 @@ defineProps<{
   showHistory: boolean;
   showDriverStore: boolean;
   checkingUpdates: boolean;
+  hasUpdateAvailable: boolean;
   hasConnections: boolean;
   hasSqlFileConnections: boolean;
 }>();
@@ -159,9 +160,19 @@ function onToolbarDblClick(e: MouseEvent) {
 
     <Tooltip>
       <TooltipTrigger as-child>
-        <Button variant="ghost" size="icon" class="h-8 w-8" :disabled="checkingUpdates" @click="emit('check-updates')">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="relative h-8 w-8"
+          :disabled="checkingUpdates"
+          @click="emit('check-updates')"
+        >
           <Loader2 v-if="checkingUpdates" class="h-4 w-4 animate-spin" />
           <CloudDownload v-else class="h-4 w-4" />
+          <span
+            v-if="hasUpdateAvailable"
+            class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-background"
+          />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{{ t("updates.check") }}</TooltipContent>
