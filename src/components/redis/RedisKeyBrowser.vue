@@ -44,9 +44,11 @@ const props = defineProps<{
 const flatKeys = ref<RedisKeyInfo[]>([]);
 const treeKeys = ref<RedisKeyTreeNode[]>([]);
 const loading = ref(false);
+const loadingMore = ref(false);
 const searchPattern = ref("*");
 const selectedKeyRaw = ref<string | null>(null);
 const hasMore = ref(false);
+const scanCursor = ref(0);
 const expandedGroupIds = ref<Set<string>>(new Set());
 const checkedKeys = ref<Set<string>>(new Set());
 const pendingDanger = ref<
@@ -117,23 +119,41 @@ function rebuildTree(expandAll = false) {
   }
 }
 
+async function scanNextPage() {
+  const result = await api.redisScanKeys(
+    props.connectionId,
+    props.db,
+    scanCursor.value,
+    effectivePattern.value,
+    PAGE_SIZE,
+  );
+  const existingKeys = new Set(flatKeys.value.map((key) => key.key_raw));
+  flatKeys.value = [...flatKeys.value, ...result.keys.filter((key) => !existingKeys.has(key.key_raw))];
+  scanCursor.value = result.cursor;
+  hasMore.value = result.cursor !== 0;
+  rebuildTree(isSearchMode.value);
+}
+
 async function loadKeys() {
   loading.value = true;
   flatKeys.value = [];
   selectedKeyRaw.value = null;
   checkedKeys.value = new Set();
+  scanCursor.value = 0;
   try {
-    let cur = 0;
-    do {
-      const result = await api.redisScanKeys(props.connectionId, props.db, cur, effectivePattern.value, PAGE_SIZE);
-      const existingKeys = new Set(flatKeys.value.map((key) => key.key_raw));
-      flatKeys.value = [...flatKeys.value, ...result.keys.filter((key) => !existingKeys.has(key.key_raw))];
-      cur = result.cursor;
-      hasMore.value = cur !== 0;
-      rebuildTree(isSearchMode.value);
-    } while (cur !== 0);
+    await scanNextPage();
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadMore() {
+  if (!hasMore.value || loadingMore.value) return;
+  loadingMore.value = true;
+  try {
+    await scanNextPage();
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -323,15 +343,6 @@ onMounted(loadKeys);
             <Loader2 v-if="loading" class="h-3 w-3 animate-spin" />
             <RefreshCw v-else class="h-3 w-3" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-6 w-6 shrink-0 text-destructive"
-            :title="t('redis.flushDb')"
-            @click="requestFlushDb"
-          >
-            <DatabaseZap class="h-3 w-3" />
-          </Button>
           <span class="text-xs text-muted-foreground shrink-0 ml-1">{{
             loading && flatKeys.length === 0 ? t("redis.loadingKeys") : t("redis.keys", { count: flatKeys.length })
           }}</span>
@@ -364,6 +375,16 @@ onMounted(loadKeys);
           >
             <Loader2 v-if="commandRunning" class="h-3 w-3 animate-spin" />
             <Play v-else class="h-3 w-3" />
+          </Button>
+          <div class="w-px h-4 bg-border shrink-0" />
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-6 w-6 shrink-0 text-destructive"
+            :title="t('redis.flushDb')"
+            @click="requestFlushDb"
+          >
+            <DatabaseZap class="h-3 w-3" />
           </Button>
         </div>
 
@@ -482,6 +503,12 @@ onMounted(loadKeys);
             </div>
           </template>
         </RecycleScroller>
+        <div v-if="hasMore" class="shrink-0 border-t px-2 py-1.5 flex items-center justify-center">
+          <Button variant="outline" size="sm" class="h-7 text-xs w-full" :disabled="loadingMore" @click="loadMore">
+            <Loader2 v-if="loadingMore" class="w-3 h-3 mr-1.5 animate-spin" />
+            {{ t("redis.loadMoreKeys") }}
+          </Button>
+        </div>
       </div>
     </Pane>
 
