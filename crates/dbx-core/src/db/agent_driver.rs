@@ -7,6 +7,8 @@ use serde_json::Value;
 
 const RPC_TIMEOUT_SECS: u64 = 30;
 const STARTUP_TIMEOUT_SECS: u64 = 15;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub struct AgentDriverClient {
     child: Child,
@@ -21,13 +23,28 @@ impl AgentDriverClient {
     /// The agent is started via `java -jar <jar_path>` with stdin/stdout piped.
     /// Blocks (async) until the agent writes `{"ready":true}` to stdout.
     pub async fn spawn(java_path: &str, jar_path: &str) -> Result<Self, String> {
-        let mut child = Command::new(java_path)
-            .args(["-XX:TieredStopAtLevel=1", "-XX:+UseSerialGC", "-jar", jar_path])
+        let mut command = Command::new(java_path);
+        command
+            .args([
+                "-Dfile.encoding=UTF-8",
+                "-Dsun.stdout.encoding=UTF-8",
+                "-Dsun.stderr.encoding=UTF-8",
+                "-XX:TieredStopAtLevel=1",
+                "-XX:+UseSerialGC",
+                "-jar",
+                jar_path,
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn agent process: {e}"))?;
+            .stderr(Stdio::inherit());
+
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+
+        let mut child = command.spawn().map_err(|e| format!("Failed to spawn agent process: {e}"))?;
 
         let child_stdin = child.stdin.take().ok_or("Failed to capture agent stdin")?;
         let child_stdout = child.stdout.take().ok_or("Failed to capture agent stdout")?;
@@ -39,8 +56,7 @@ impl AgentDriverClient {
         let ready_stdout = tokio::time::timeout(
             Duration::from_secs(STARTUP_TIMEOUT_SECS),
             tokio::task::spawn_blocking(move || {
-                let mut line = String::new();
-                stdout.read_line(&mut line).map_err(|e| format!("Failed to read startup line from agent: {e}"))?;
+                let line = read_agent_line(&mut stdout, "startup line")?;
                 let v: Value = serde_json::from_str(line.trim())
                     .map_err(|e| format!("Invalid JSON from agent during startup: {e}"))?;
                 if v.get("ready") != Some(&Value::Bool(true)) {
@@ -88,12 +104,10 @@ impl AgentDriverClient {
         let (returned_reader, result) = tokio::time::timeout(
             Duration::from_secs(RPC_TIMEOUT_SECS),
             tokio::task::spawn_blocking(move || {
-                let mut line = String::new();
-                let read_result =
-                    reader.read_line(&mut line).map_err(|e| format!("Failed to read response from agent: {e}"));
-                if let Err(e) = read_result {
-                    return (reader, Err(e));
-                }
+                let line = match read_agent_line(&mut reader, "response") {
+                    Ok(line) => line,
+                    Err(e) => return (reader, Err(e)),
+                };
 
                 let resp: Value = match serde_json::from_str(line.trim()) {
                     Ok(v) => v,
@@ -154,8 +168,33 @@ impl AgentDriverClient {
     }
 }
 
+fn read_agent_line<R: BufRead>(reader: &mut R, context: &str) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    reader.read_until(b'\n', &mut bytes).map_err(|e| format!("Failed to read {context} from agent: {e}"))?;
+    if bytes.is_empty() {
+        return Err(format!("Failed to read {context} from agent: end of stream"));
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 impl Drop for AgentDriverClient {
     fn drop(&mut self) {
         self.kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::read_agent_line;
+    use std::io::Cursor;
+
+    #[test]
+    fn decodes_non_utf8_agent_lines_lossily() {
+        let mut reader =
+            Cursor::new(vec![b'{', b'"', b'e', b'r', b'r', b'o', b'r', b'"', b':', 0xB2, 0xE2, b'}', b'\n']);
+
+        let line = read_agent_line(&mut reader, "response").expect("line should be readable");
+
+        assert_eq!(line, format!("{{\"error\":{}}}\n", "\u{fffd}\u{fffd}"));
     }
 }
