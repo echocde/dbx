@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watchEffect } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Play,
@@ -73,6 +73,13 @@ const activeSchemaOptions = computed(() => {
   const connection = props.activeConnection;
   if (!connection) return [];
   return getSchemaOptionsForDb(connection.id, schemaDatabaseKey.value);
+});
+
+watchEffect(() => {
+  const connection = props.activeConnection;
+  if (connection && showSchemaSelector.value && schemaDatabaseKey.value) {
+    loadSchemaOptions(connection.id, schemaDatabaseKey.value).catch(() => {});
+  }
 });
 
 const isActiveDatabaseDefault = computed(() => isDefaultDatabase(props.activeConnection, activeDatabaseValue.value));
