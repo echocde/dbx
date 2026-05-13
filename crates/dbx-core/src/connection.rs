@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -43,52 +42,11 @@ pub enum PoolKind {
     MongoDb(mongodb::Client),
     ClickHouse(db::clickhouse_driver::ChClient),
     SqlServer(Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>),
-    Oracle(Arc<OraclePool>),
     Elasticsearch(db::elasticsearch_driver::EsClient),
     Agent(Arc<tokio::sync::Mutex<db::agent_driver::AgentDriverClient>>),
     Gaussdb(Arc<tokio::sync::Mutex<db::gaussdb_driver::GaussdbClient>>),
     ExternalTabular(Arc<external::ExternalPool>),
     ExternalDriver { driver_id: String, config: ConnectionConfig, session: Arc<PluginDriverSession> },
-}
-
-pub struct OraclePool {
-    clients: Vec<Arc<tokio::sync::Mutex<db::oracle_driver::OracleClient>>>,
-    next: AtomicUsize,
-}
-
-impl OraclePool {
-    pub fn new(clients: Vec<db::oracle_driver::OracleClient>) -> Self {
-        Self {
-            clients: clients.into_iter().map(|client| Arc::new(tokio::sync::Mutex::new(client))).collect(),
-            next: AtomicUsize::new(0),
-        }
-    }
-
-    pub fn client(&self) -> Arc<tokio::sync::Mutex<db::oracle_driver::OracleClient>> {
-        let index = self.next.fetch_add(1, Ordering::Relaxed) % self.clients.len();
-        self.clients[index].clone()
-    }
-
-    pub fn primary(&self) -> Arc<tokio::sync::Mutex<db::oracle_driver::OracleClient>> {
-        self.clients[0].clone()
-    }
-}
-
-async fn connect_oracle_pool(
-    host: &str,
-    port: u16,
-    service: &str,
-    user: &str,
-    pass: &str,
-    sysdba: bool,
-) -> Result<OraclePool, String> {
-    let (first, second, third) = tokio::try_join!(
-        db::oracle_driver::connect(host, port, service, user, pass, sysdba),
-        db::oracle_driver::connect(host, port, service, user, pass, sysdba),
-        db::oracle_driver::connect(host, port, service, user, pass, sysdba),
-    )?;
-    let clients = vec![first, second, third];
-    Ok(OraclePool::new(clients))
 }
 
 pub struct AppState {
@@ -187,20 +145,7 @@ impl AppState {
 
         let conns = self.connections.read().await;
         if conns.contains_key(&pool_key) {
-            if let Some(PoolKind::Oracle(pool)) = conns.get(&pool_key) {
-                let client = pool.primary();
-                let conn = client.lock().await;
-                if conn.is_closed() {
-                    drop(conn);
-                    drop(conns);
-                    log::info!("[oracle] connection closed, reconnecting...");
-                    self.connections.write().await.remove(&pool_key);
-                } else {
-                    return Ok(pool_key);
-                }
-            } else {
-                return Ok(pool_key);
-            }
+            return Ok(pool_key);
         } else {
             drop(conns);
         }
@@ -259,25 +204,17 @@ impl AppState {
                 .await?;
                 PoolKind::SqlServer(Arc::new(tokio::sync::Mutex::new(client)))
             }
-            DatabaseType::Oracle => {
-                let pool = connect_oracle_pool(
-                    &host,
-                    port,
-                    db_config.database.as_deref().unwrap_or("ORCL"),
-                    &db_config.username,
-                    &db_config.password,
-                    db_config.sysdba,
-                )
-                .await?;
-                PoolKind::Oracle(Arc::new(pool))
-            }
             DatabaseType::Elasticsearch => {
                 let client =
                     db::elasticsearch_driver::EsClient::new(&url, Some(&db_config.username), Some(&db_config.password));
                 db::elasticsearch_driver::test_connection(&client).await?;
                 PoolKind::Elasticsearch(client)
             }
-            DatabaseType::Dameng | DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::Goldendb => {
+            DatabaseType::Dameng
+            | DatabaseType::Kingbase
+            | DatabaseType::Vastbase
+            | DatabaseType::Goldendb
+            | DatabaseType::Oracle => {
                 let mut client = self.agent_manager.spawn(&db_config.db_type).await?;
                 client
                     .call::<serde_json::Value>(
@@ -465,7 +402,11 @@ pub async fn probe_connection_endpoint(config: &ConnectionConfig, host: &str, po
         DatabaseType::Sqlite | DatabaseType::DuckDb => Ok(()),
         DatabaseType::MongoDb if config.connection_string.as_deref().is_some_and(|value| !value.is_empty()) => Ok(()),
         DatabaseType::Jdbc => Ok(()),
-        DatabaseType::Dameng | DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::Goldendb => Ok(()),
+        DatabaseType::Dameng
+        | DatabaseType::Kingbase
+        | DatabaseType::Vastbase
+        | DatabaseType::Goldendb
+        | DatabaseType::Oracle => Ok(()),
         _ => db::probe_tcp_endpoint(&format!("{:?}", config.db_type), host, port).await,
     }
 }

@@ -3,7 +3,7 @@ use tauri::State;
 
 pub use dbx_core::connection::{
     connection_url_for_endpoint, expand_tilde, metadata_connection_config, probe_connection_endpoint,
-    redacted_connection_url_for_endpoint, AppState, MysqlMode, OraclePool, PoolKind,
+    redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
 };
 use dbx_core::db;
 use dbx_core::models::connection::{rewrite_jdbc_url_host, ConnectionConfig, DatabaseType};
@@ -97,22 +97,16 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     .await
                     .map(|_| "Connection successful".to_string())
             }
-            DatabaseType::Oracle => db::oracle_driver::connect(
-                &host,
-                port,
-                config.database.as_deref().unwrap_or("ORCL"),
-                &config.username,
-                &config.password,
-                config.sysdba,
-            )
-            .await
-            .map(|_| "Connection successful".to_string()),
             DatabaseType::Elasticsearch => {
                 let client =
                     db::elasticsearch_driver::EsClient::new(&url, Some(&config.username), Some(&config.password));
                 db::elasticsearch_driver::test_connection(&client).await.map(|_| "Connection successful".to_string())
             }
-            DatabaseType::Dameng | DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::Goldendb => {
+            DatabaseType::Dameng
+            | DatabaseType::Kingbase
+            | DatabaseType::Vastbase
+            | DatabaseType::Goldendb
+            | DatabaseType::Oracle => {
                 state
                     .agent_manager
                     .call_daemon::<serde_json::Value>(
@@ -210,25 +204,17 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             .await?;
             PoolKind::SqlServer(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
         }
-        DatabaseType::Oracle => {
-            let client = db::oracle_driver::connect(
-                &host,
-                port,
-                db_config.database.as_deref().unwrap_or("ORCL"),
-                &db_config.username,
-                &db_config.password,
-                db_config.sysdba,
-            )
-            .await?;
-            PoolKind::Oracle(std::sync::Arc::new(OraclePool::new(vec![client])))
-        }
         DatabaseType::Elasticsearch => {
             let client =
                 db::elasticsearch_driver::EsClient::new(&url, Some(&db_config.username), Some(&db_config.password));
             db::elasticsearch_driver::test_connection(&client).await?;
             PoolKind::Elasticsearch(client)
         }
-        DatabaseType::Dameng | DatabaseType::Kingbase | DatabaseType::Vastbase | DatabaseType::Goldendb => {
+        DatabaseType::Dameng
+        | DatabaseType::Kingbase
+        | DatabaseType::Vastbase
+        | DatabaseType::Goldendb
+        | DatabaseType::Oracle => {
             let mut client = state.agent_manager.spawn(&db_config.db_type).await?;
             client
                 .call::<serde_json::Value>(
@@ -280,7 +266,6 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
                 PoolKind::MongoDb(_) => {}
                 PoolKind::ClickHouse(_) => {}
                 PoolKind::SqlServer(_) => {}
-                PoolKind::Oracle(_) => {}
                 PoolKind::Elasticsearch(_) => {}
                 PoolKind::Agent(_) => {}
                 PoolKind::Gaussdb(_) => {}

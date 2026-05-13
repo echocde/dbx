@@ -121,6 +121,7 @@ impl AgentManager {
             DatabaseType::Kingbase => Some("kingbase"),
             DatabaseType::Vastbase => Some("vastbase"),
             DatabaseType::Goldendb => Some("goldendb"),
+            DatabaseType::Oracle => Some("oracle"),
             _ => None,
         }
     }

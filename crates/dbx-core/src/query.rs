@@ -201,28 +201,6 @@ pub async fn do_execute(
             };
             wait_for_query(cancel_token, db::sqlserver::execute_query(&mut client, sql)).await.map(truncate_result)
         }
-        PoolKind::Oracle(pool) => {
-            let client = pool.client();
-            let schema = schema.map(|s| s.to_string());
-            drop(connections);
-            log::info!("[query][oracle:lock:start] schema={:?} sql={}", schema, sql);
-            let client = match cancel_token.as_ref() {
-                Some(token) => tokio::select! {
-                    biased;
-                    _ = token.cancelled() => return Err(canceled_error()),
-                    guard = client.lock() => guard,
-                },
-                None => client.lock().await,
-            };
-            log::info!("[query][oracle:lock:done] schema={:?}", schema);
-            if let Some(schema) = schema {
-                wait_for_query(cancel_token, db::oracle_driver::execute_query_with_schema(&*client, &schema, sql))
-                    .await
-                    .map(truncate_result)
-            } else {
-                wait_for_query(cancel_token, db::oracle_driver::execute_query(&*client, sql)).await.map(truncate_result)
-            }
-        }
         PoolKind::Elasticsearch(client) => {
             let client = client.clone();
             let sql = sql.to_string();
@@ -531,7 +509,6 @@ pub async fn execute_statements_in_transaction(
             PoolKind::DuckDb(_)
             | PoolKind::Redis(_)
             | PoolKind::MongoDb(_)
-            | PoolKind::Oracle(_)
             | PoolKind::Elasticsearch(_)
             | PoolKind::ExternalTabular(_)
             | PoolKind::ExternalDriver { .. } => TxPath::None,

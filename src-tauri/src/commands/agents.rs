@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tauri::State;
+use tauri::{Emitter, State};
 
 use dbx_core::agent_manager::{AgentDriverInfo, AgentManager, AgentRegistry, InstalledDriver};
 use dbx_core::connection::AppState;
@@ -43,23 +43,46 @@ pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Ve
 }
 
 #[tauri::command]
-pub async fn install_agent(state: State<'_, Arc<AppState>>, db_type: String) -> Result<(), String> {
+pub async fn install_agent(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    db_type: String,
+) -> Result<(), String> {
     let am = &state.agent_manager;
     let registry = fetch_registry().await?;
+    let needs_jre = !am.is_jre_installed();
 
-    if !am.is_jre_installed() {
+    if needs_jre {
         let platform = AgentManager::current_platform();
         let jre_info =
             registry.jre.platforms.get(platform).ok_or_else(|| format!("No JRE available for platform: {platform}"))?;
         let jre_archive = am.base_dir().join("jre-download.tar.gz");
-        download_with_proxy(&jre_info.url, &jre_archive).await?;
+        let _ = app.emit(
+            "agent-install-progress",
+            serde_json::json!({
+                "step": "jre", "downloaded": 0u64, "total": jre_info.size,
+            }),
+        );
+        download_with_progress(&app, "jre", &jre_info.url, &jre_archive, jre_info.size).await?;
+        let _ = app.emit(
+            "agent-install-progress",
+            serde_json::json!({
+                "step": "jre-extract", "downloaded": 0u64, "total": 0u64,
+            }),
+        );
         extract_archive(&jre_archive, &am.base_dir().join("jre"))?;
         std::fs::remove_file(&jre_archive).ok();
     }
 
     let driver = registry.drivers.get(&db_type).ok_or_else(|| format!("Unknown driver type: {db_type}"))?;
     let jar_path = am.driver_jar_path(&db_type);
-    download_with_proxy(&driver.jar.url, &jar_path).await?;
+    let _ = app.emit(
+        "agent-install-progress",
+        serde_json::json!({
+            "step": "driver", "downloaded": 0u64, "total": driver.jar.size,
+        }),
+    );
+    download_with_progress(&app, "driver", &driver.jar.url, &jar_path, driver.jar.size).await?;
 
     let mut local_state = am.load_state();
     local_state.jre_version = Some(registry.jre.version.clone());
@@ -68,6 +91,7 @@ pub async fn install_agent(state: State<'_, Arc<AppState>>, db_type: String) -> 
         InstalledDriver { version: driver.version.clone(), installed_at: chrono::Utc::now().to_rfc3339() },
     );
     am.save_state(&local_state)?;
+    let _ = app.emit("agent-install-progress", serde_json::json!({ "step": "done" }));
     Ok(())
 }
 
@@ -94,7 +118,7 @@ pub async fn check_jre_installed(state: State<'_, Arc<AppState>>) -> Result<bool
 }
 
 #[tauri::command]
-pub async fn reinstall_jre(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub async fn reinstall_jre(app: tauri::AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     let am = &state.agent_manager;
     let jre_dir = am.base_dir().join("jre");
     if jre_dir.exists() {
@@ -105,12 +129,13 @@ pub async fn reinstall_jre(state: State<'_, Arc<AppState>>) -> Result<(), String
     let jre_info =
         registry.jre.platforms.get(platform).ok_or_else(|| format!("No JRE available for platform: {platform}"))?;
     let jre_archive = am.base_dir().join("jre-download.tar.gz");
-    download_with_proxy(&jre_info.url, &jre_archive).await?;
+    download_with_progress(&app, "jre", &jre_info.url, &jre_archive, jre_info.size).await?;
     extract_archive(&jre_archive, &jre_dir)?;
     std::fs::remove_file(&jre_archive).ok();
     let mut local_state = am.load_state();
     local_state.jre_version = Some(registry.jre.version.clone());
     am.save_state(&local_state)?;
+    let _ = app.emit("agent-install-progress", serde_json::json!({ "step": "done" }));
     Ok(())
 }
 
@@ -140,7 +165,13 @@ async fn fetch_registry() -> Result<AgentRegistry, String> {
     Err(format!("Failed to fetch agent registry: {last_err}"))
 }
 
-async fn download_with_proxy(url: &str, dest: &std::path::Path) -> Result<(), String> {
+async fn download_with_progress(
+    app: &tauri::AppHandle,
+    step: &str,
+    url: &str,
+    dest: &std::path::Path,
+    total_size: u64,
+) -> Result<(), String> {
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -160,8 +191,18 @@ async fn download_with_proxy(url: &str, dest: &std::path::Path) -> Result<(), St
             .and_then(|r| r.error_for_status())
         {
             Ok(resp) => {
-                let bytes = resp.bytes().await.map_err(|e| format!("Download read failed: {e}"))?;
-                std::fs::write(dest, &bytes).map_err(|e| format!("Failed to write file: {e}"))?;
+                let content_length = resp.content_length().unwrap_or(total_size);
+                let mut file = std::fs::File::create(dest).map_err(|e| format!("Failed to create file: {e}"))?;
+                let mut downloaded: u64 = 0;
+                let mut bytes = resp;
+                while let Some(chunk) = bytes.chunk().await.map_err(|e| format!("Download stream error: {e}"))? {
+                    std::io::Write::write_all(&mut file, &chunk).map_err(|e| format!("Failed to write chunk: {e}"))?;
+                    downloaded += chunk.len() as u64;
+                    let _ = app.emit(
+                        "agent-install-progress",
+                        serde_json::json!({ "step": step, "downloaded": downloaded, "total": content_length }),
+                    );
+                }
                 return Ok(());
             }
             Err(e) => {

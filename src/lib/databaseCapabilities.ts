@@ -96,7 +96,7 @@ export const TREE_SCHEMA_TYPES = new Set<DatabaseType>(["postgres", "redshift", 
 
 export const PG_LIKE_STRUCTURE_TYPES = new Set<DatabaseType>(["postgres", "redshift", "gaussdb"]);
 
-export const AGENT_DRIVER_TYPES = new Set<DatabaseType>(["dameng", "kingbase", "vastbase", "goldendb"]);
+export const AGENT_DRIVER_TYPES = new Set<DatabaseType>(["dameng", "kingbase", "vastbase", "goldendb", "oracle"]);
 
 export const TRANSFER_SQL_TYPES = new Set<DatabaseType>([
   "mysql",
