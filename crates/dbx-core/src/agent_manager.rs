@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
+use crate::database_capabilities;
 use crate::db::agent_driver::AgentDriverClient;
 use crate::models::connection::DatabaseType;
 
@@ -166,33 +167,11 @@ impl AgentManager {
     }
 
     pub fn db_type_to_agent_key(db_type: &DatabaseType, driver_profile: Option<&str>) -> Option<&'static str> {
-        match db_type {
-            DatabaseType::Dameng => Some("dameng"),
-            DatabaseType::Kingbase => Some("kingbase"),
-            DatabaseType::Vastbase => Some("vastbase"),
-            DatabaseType::Goldendb => Some("goldendb"),
-            DatabaseType::Oracle => match driver_profile {
-                Some("oracle-10g") => Some("oracle-10g"),
-                _ => Some("oracle"),
-            },
-            DatabaseType::H2 => Some("h2"),
-            DatabaseType::Snowflake => Some("snowflake"),
-            DatabaseType::Trino => Some("trino"),
-            DatabaseType::Hive => Some("hive"),
-            DatabaseType::Db2 => Some("db2"),
-            DatabaseType::Informix => Some("informix"),
-            DatabaseType::Neo4j => Some("neo4j"),
-            DatabaseType::Cassandra => Some("cassandra"),
-            DatabaseType::Bigquery => Some("bigquery"),
-            DatabaseType::Kylin => Some("kylin"),
-            DatabaseType::Sundb => Some("sundb"),
-            DatabaseType::Gaussdb => Some("gaussdb"),
-            _ => None,
-        }
+        database_capabilities::agent_key(db_type, driver_profile)
     }
 
     pub fn is_agent_type(db_type: &DatabaseType) -> bool {
-        Self::db_type_to_agent_key(db_type, None).is_some()
+        database_capabilities::is_agent_type(db_type)
     }
 
     pub async fn spawn(

@@ -5,6 +5,7 @@ pub use dbx_core::connection::{
     connection_url_for_endpoint, expand_tilde, metadata_connection_config, probe_connection_endpoint,
     redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
 };
+use dbx_core::database_capabilities;
 use dbx_core::db;
 use dbx_core::models::connection::{rewrite_jdbc_url_host, ConnectionConfig, DatabaseType};
 
@@ -106,23 +107,7 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                 );
                 db::elasticsearch_driver::test_connection(&client).await.map(|_| "Connection successful".to_string())
             }
-            DatabaseType::Dameng
-            | DatabaseType::Kingbase
-            | DatabaseType::Vastbase
-            | DatabaseType::Goldendb
-            | DatabaseType::Oracle
-            | DatabaseType::H2
-            | DatabaseType::Snowflake
-            | DatabaseType::Trino
-            | DatabaseType::Hive
-            | DatabaseType::Db2
-            | DatabaseType::Informix
-            | DatabaseType::Neo4j
-            | DatabaseType::Cassandra
-            | DatabaseType::Bigquery
-            | DatabaseType::Kylin
-            | DatabaseType::Sundb
-            | DatabaseType::Gaussdb => {
+            db_type if database_capabilities::is_agent_type(&db_type) => {
                 state
                     .agent_manager
                     .call_daemon::<serde_json::Value>(
@@ -149,6 +134,7 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                 }
                 state.test_external_driver("jdbc", &jdbc_config).await
             }
+            db_type => Err(format!("Unsupported database type: {db_type:?}")),
         },
     };
 
@@ -222,23 +208,7 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             db::elasticsearch_driver::test_connection(&client).await?;
             PoolKind::Elasticsearch(client)
         }
-        DatabaseType::Dameng
-        | DatabaseType::Kingbase
-        | DatabaseType::Vastbase
-        | DatabaseType::Goldendb
-        | DatabaseType::Oracle
-        | DatabaseType::H2
-        | DatabaseType::Snowflake
-        | DatabaseType::Trino
-        | DatabaseType::Hive
-        | DatabaseType::Db2
-        | DatabaseType::Informix
-        | DatabaseType::Neo4j
-        | DatabaseType::Cassandra
-        | DatabaseType::Bigquery
-        | DatabaseType::Kylin
-        | DatabaseType::Sundb
-        | DatabaseType::Gaussdb => {
+        db_type if database_capabilities::is_agent_type(&db_type) => {
             let mut client = state.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;
             client
                 .call::<serde_json::Value>(
@@ -255,6 +225,7 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             PoolKind::Agent(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
         }
         DatabaseType::Jdbc => state.external_driver_pool("jdbc", &db_config).await?,
+        db_type => return Err(format!("Unsupported database type: {db_type:?}")),
     };
 
     state.connections.write().await.insert(id.clone(), pool);

@@ -77,7 +77,7 @@ import {
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
-import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
+import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 
 import { useToast } from "@/composables/useToast";
 import { useDataGridExport } from "@/composables/useDataGridExport";
@@ -224,6 +224,8 @@ const sortColIndex = ref<number | null>(null);
 const sortDir = ref<"asc" | "desc">("asc");
 const searchText = ref("");
 const deferredClientSearchText = ref("");
+const searchOverlayVisible = ref(false);
+const currentMatchIndex = ref(-1);
 let _searchTimer: ReturnType<typeof setTimeout> | undefined;
 
 const searchSuggestions = ref<string[]>([]);
@@ -467,12 +469,21 @@ function navigateSuggestion(delta: number) {
 }
 
 function focusSearch(): boolean {
-  const input = searchInputRef.value;
-  if (!input) return false;
-  input.focus();
-  input.select();
-  updateSuggestionPosition();
+  searchOverlayVisible.value = true;
+  nextTick(() => {
+    const input = searchInputRef.value;
+    if (!input) return;
+    input.focus();
+    input.select();
+    updateSuggestionPosition();
+  });
   return true;
+}
+
+function closeSearch() {
+  searchOverlayVisible.value = false;
+  searchText.value = "";
+  searchSuggestions.value = [];
 }
 
 const PAIRS: Record<string, string> = { "'": "'", '"': '"', "(": ")" };
@@ -536,7 +547,12 @@ function onSearchKeydown(e: KeyboardEvent) {
   }
   if (isCancelSearchShortcut(e)) {
     e.preventDefault();
-    searchText.value = "";
+    closeSearch();
+    return;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    navigateMatch(e.shiftKey ? -1 : 1);
   }
 }
 
@@ -1068,6 +1084,67 @@ const displayItems = computed<RowItem[]>(() => {
   return items.filter((item) => matchesRowStatusFilter(item.status, rowStatusFilter.value));
 });
 
+interface SearchMatch {
+  displayRow: number;
+  col: number;
+}
+
+const searchMatches = computed<SearchMatch[]>(() => {
+  const q = deferredClientSearchText.value;
+  if (!q) return [];
+  const items = displayItems.value;
+  const matches: SearchMatch[] = [];
+  for (let r = 0; r < items.length; r++) {
+    const data = items[r].data;
+    for (let c = 0; c < data.length; c++) {
+      if (data[c] !== null && String(data[c]).toLowerCase().includes(q)) {
+        matches.push({ displayRow: r, col: c });
+      }
+    }
+  }
+  return matches;
+});
+
+const searchMatchSet = computed(() => {
+  const set = new Set<string>();
+  for (const m of searchMatches.value) {
+    set.add(`${m.displayRow}:${m.col}`);
+  }
+  return set;
+});
+
+watch(searchMatches, (matches) => {
+  currentMatchIndex.value = matches.length > 0 ? 0 : -1;
+});
+
+function cellIsSearchMatch(displayRow: number, col: number): boolean {
+  return searchMatchSet.value.has(`${displayRow}:${col}`);
+}
+
+function cellIsCurrentMatch(displayRow: number, col: number): boolean {
+  const idx = currentMatchIndex.value;
+  if (idx < 0 || idx >= searchMatches.value.length) return false;
+  const m = searchMatches.value[idx];
+  return m.displayRow === displayRow && m.col === col;
+}
+
+function navigateMatch(delta: number) {
+  const total = searchMatches.value.length;
+  if (total === 0) return;
+  currentMatchIndex.value = (currentMatchIndex.value + delta + total) % total;
+  scrollToCurrentMatch();
+}
+
+function scrollToCurrentMatch() {
+  const idx = currentMatchIndex.value;
+  if (idx < 0 || idx >= searchMatches.value.length) return;
+  const match = searchMatches.value[idx];
+  const scrollEl = gridRef.value;
+  if (!scrollEl) return;
+  const rowEl = scrollEl.querySelector(`[data-row-index="${match.displayRow}"]`) as HTMLElement | null;
+  if (rowEl) rowEl.scrollIntoView({ block: "center" });
+}
+
 function getRowItem(rowId: number): RowItem | undefined {
   return displayItems.value.find((item) => item.id === rowId);
 }
@@ -1575,6 +1652,11 @@ function cutSelection() {
 }
 
 async function onGridKeydown(event: KeyboardEvent) {
+  if (isFocusSearchShortcut(event)) {
+    event.preventDefault();
+    focusSearch();
+    return;
+  }
   if (eventTargetAllowsNativeClipboard(event)) return;
   if (clipboardShortcut(event, "c")) {
     if (!hasCellSelection.value) return;
@@ -1862,64 +1944,24 @@ defineExpose({
                 </SelectContent>
               </Select>
             </div>
-            <div class="flex-1 flex items-center gap-1 px-2 py-0.5 min-w-0">
-              <Search class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <input
-                ref="searchInputRef"
-                v-model="searchText"
-                autocapitalize="off"
-                autocorrect="off"
-                spellcheck="false"
-                class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground"
-                :placeholder="t('grid.search')"
-                @keydown="onSearchKeydown"
-                @click="updateSuggestionPosition"
-              />
-              <span
-                ref="measureRef"
-                class="invisible absolute left-0 top-0 text-xs whitespace-pre pointer-events-none"
-                aria-hidden="true"
-              />
-              <!-- Suggestion dropdown -->
-              <div
-                v-if="searchSuggestions.length > 0"
-                class="absolute top-full mt-0.5 z-50 min-w-[180px] rounded-md border bg-popover text-popover-foreground shadow-md"
-                :style="{ left: suggestionLeft + 24 + 'px' }"
-              >
-                <div
-                  v-for="(sug, idx) in searchSuggestions"
-                  :key="sug"
-                  class="flex items-center px-3 py-1.5 text-xs cursor-pointer"
-                  :class="idx === suggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'"
-                  @mousedown.prevent="
-                    suggestionIndex = idx;
-                    acceptSuggestion();
-                  "
-                  @mouseenter="suggestionIndex = idx"
+            <template v-if="hasLocalColumnFilters">
+              <div class="flex items-center gap-1 px-2 py-0.5 min-w-0">
+                <button
+                  type="button"
+                  class="flex shrink-0 items-center gap-1 rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+                  :title="t('grid.clearLocalFilters')"
+                  @click="clearLocalFilter()"
                 >
-                  <Search class="w-3 h-3 mr-2 text-muted-foreground shrink-0" />
-                  <span>{{ sug }}</span>
-                </div>
+                  <Filter class="h-3 w-3" />
+                  {{ localFilterCount }}
+                  <X class="h-3 w-3" />
+                </button>
               </div>
-              <span v-if="hasActiveFilter" class="text-xs text-muted-foreground shrink-0 px-1">
-                {{ displayItems.length }}/{{ totalFilterableRowCount }}
-              </span>
-              <button
-                v-if="hasLocalColumnFilters"
-                type="button"
-                class="flex shrink-0 items-center gap-1 rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
-                :title="t('grid.clearLocalFilters')"
-                @click="clearLocalFilter()"
-              >
-                <Filter class="h-3 w-3" />
-                {{ localFilterCount }}
-                <X class="h-3 w-3" />
-              </button>
-            </div>
+            </template>
 
             <template v-if="canUseWhereSearch">
               <div class="flex-1 flex items-center gap-1 px-2 py-0.5 border-l min-w-0 relative">
-                <span class="text-foreground/60 text-xs font-medium select-none shrink-0">WHERE</span>
+                <span class="text-blue-600 dark:text-blue-400 text-xs font-medium select-none shrink-0">WHERE</span>
                 <input
                   ref="whereFilterInputRef"
                   v-model="whereFilterInput"
@@ -1970,7 +2012,9 @@ defineExpose({
                 </button>
               </div>
               <div class="flex-1 flex items-center gap-1 px-2 py-0.5 border-l border-r min-w-0 relative">
-                <span class="text-foreground/60 text-xs font-medium select-none shrink-0">ORDER BY</span>
+                <span class="text-orange-600 dark:text-orange-400 text-xs font-medium select-none shrink-0"
+                  >ORDER BY</span
+                >
                 <input
                   ref="orderByInputRef"
                   v-model="orderByInput"
@@ -2085,6 +2129,62 @@ defineExpose({
           <!-- Content area: table + DDL drawer -->
           <div class="flex-1 flex min-h-0 overflow-hidden">
             <div class="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+              <!-- Search overlay (Ctrl+F) -->
+              <Transition
+                enter-active-class="transition-opacity duration-150"
+                leave-active-class="transition-opacity duration-100"
+                enter-from-class="opacity-0"
+                leave-to-class="opacity-0"
+              >
+                <div
+                  v-if="searchOverlayVisible"
+                  class="absolute top-1 right-2 z-20 flex items-center gap-1 px-2 py-1 bg-background border rounded-md shadow-md"
+                >
+                  <Search class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <input
+                    ref="searchInputRef"
+                    v-model="searchText"
+                    autocapitalize="off"
+                    autocorrect="off"
+                    spellcheck="false"
+                    class="w-48 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground"
+                    :placeholder="t('grid.search')"
+                    @keydown="onSearchKeydown"
+                    @click="updateSuggestionPosition"
+                  />
+                  <span
+                    ref="measureRef"
+                    class="invisible absolute left-0 top-0 text-xs whitespace-pre pointer-events-none"
+                    aria-hidden="true"
+                  />
+                  <div
+                    v-if="searchSuggestions.length > 0"
+                    class="absolute top-full right-0 mt-0.5 z-50 min-w-[180px] rounded-md border bg-popover text-popover-foreground shadow-md"
+                  >
+                    <div
+                      v-for="(sug, idx) in searchSuggestions"
+                      :key="sug"
+                      class="flex items-center px-3 py-1.5 text-xs cursor-pointer"
+                      :class="idx === suggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'"
+                      @mousedown.prevent="
+                        suggestionIndex = idx;
+                        acceptSuggestion();
+                      "
+                      @mouseenter="suggestionIndex = idx"
+                    >
+                      <Search class="w-3 h-3 mr-2 text-muted-foreground shrink-0" />
+                      <span>{{ sug }}</span>
+                    </div>
+                  </div>
+                  <span v-if="searchMatches.length > 0" class="text-xs text-muted-foreground shrink-0">
+                    {{ currentMatchIndex + 1 }}/{{ searchMatches.length }}
+                  </span>
+                  <span v-else-if="deferredClientSearchText" class="text-xs text-muted-foreground shrink-0"> 0 </span>
+                  <button class="text-muted-foreground hover:text-foreground shrink-0" @click="closeSearch">
+                    <X class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </Transition>
               <!-- Sticky header -->
               <div
                 ref="headerRef"
@@ -2348,6 +2448,7 @@ defineExpose({
                       'active-row': isRowActive(index) && !item.isDeleted,
                     }"
                     :style="{ height: '26px', width: 'var(--total-w)' }"
+                    :data-row-index="index"
                   >
                     <div
                       class="shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50"
@@ -2376,6 +2477,11 @@ defineExpose({
                         'text-muted-foreground italic': isNull(item.data[actualColIdx]),
                         'bg-yellow-500/10': item.isDirtyCol[actualColIdx],
                         'cell-selected': cellIsSelected(index, visibleColIdx),
+                        'bg-yellow-200/60 dark:bg-yellow-500/20': cellIsSearchMatch(index, actualColIdx),
+                        'ring-2 ring-inset ring-yellow-500 bg-yellow-300/60 dark:bg-yellow-500/40': cellIsCurrentMatch(
+                          index,
+                          actualColIdx,
+                        ),
                         'tabular-nums': typeof item.data[actualColIdx] === 'number',
                         'cursor-text hover:bg-accent/50': canEditRowItem(item),
                         'line-through': item.isDeleted,

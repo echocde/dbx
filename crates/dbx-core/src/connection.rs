@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::database_capabilities;
 use crate::db;
 use crate::db::proxy_tunnel::ProxyTunnelManager;
 use crate::db::ssh_tunnel::TunnelManager;
@@ -61,7 +62,7 @@ pub struct AppState {
 
 pub fn metadata_connection_config(config: &ConnectionConfig) -> ConnectionConfig {
     let mut db_config = config.clone();
-    if matches!(db_config.db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if database_capabilities::is_metadata_connection_scoped(&db_config.db_type) {
         db_config.database = None;
     }
     db_config
@@ -122,17 +123,7 @@ impl AppState {
             configs.get(connection_id).map(|c| c.db_type.clone())
         };
 
-        let is_single_conn = matches!(
-            db_type,
-            Some(DatabaseType::Sqlite)
-                | Some(DatabaseType::DuckDb)
-                | Some(DatabaseType::Oracle)
-                | Some(DatabaseType::Dameng)
-                | Some(DatabaseType::Kingbase)
-                | Some(DatabaseType::Vastbase)
-                | Some(DatabaseType::Goldendb)
-                | Some(DatabaseType::Jdbc)
-        );
+        let is_single_conn = db_type.as_ref().is_some_and(database_capabilities::is_single_connection_pool);
         let pool_key = if is_single_conn {
             connection_id.to_string()
         } else {
@@ -357,15 +348,8 @@ impl AppState {
             configs
                 .get(connection_id)
                 .map(|c| {
-                    matches!(
-                        c.db_type,
-                        DatabaseType::Oracle
-                            | DatabaseType::Elasticsearch
-                            | DatabaseType::Dameng
-                            | DatabaseType::Kingbase
-                            | DatabaseType::Vastbase
-                            | DatabaseType::Goldendb
-                    )
+                    database_capabilities::is_single_connection_pool(&c.db_type)
+                        || c.db_type == DatabaseType::Elasticsearch
                 })
                 .unwrap_or(false)
         };
@@ -404,29 +388,15 @@ pub fn redacted_connection_url_for_endpoint(config: &ConnectionConfig, host: &st
 }
 
 pub async fn probe_connection_endpoint(config: &ConnectionConfig, host: &str, port: u16) -> Result<(), String> {
-    match config.db_type {
-        DatabaseType::Sqlite | DatabaseType::DuckDb => Ok(()),
-        DatabaseType::MongoDb if config.connection_string.as_deref().is_some_and(|value| !value.is_empty()) => Ok(()),
-        DatabaseType::Jdbc => Ok(()),
-        DatabaseType::Dameng
-        | DatabaseType::Kingbase
-        | DatabaseType::Vastbase
-        | DatabaseType::Goldendb
-        | DatabaseType::Oracle
-        | DatabaseType::H2
-        | DatabaseType::Snowflake
-        | DatabaseType::Trino
-        | DatabaseType::Hive
-        | DatabaseType::Db2
-        | DatabaseType::Informix
-        | DatabaseType::Neo4j
-        | DatabaseType::Cassandra
-        | DatabaseType::Bigquery
-        | DatabaseType::Kylin
-        | DatabaseType::Sundb
-        | DatabaseType::Gaussdb => Ok(()),
-        _ => db::probe_tcp_endpoint(&format!("{:?}", config.db_type), host, port).await,
+    if config.db_type == DatabaseType::MongoDb
+        && config.connection_string.as_deref().is_some_and(|value| !value.is_empty())
+    {
+        return Ok(());
     }
+    if database_capabilities::skips_tcp_probe(&config.db_type) {
+        return Ok(());
+    }
+    db::probe_tcp_endpoint(&format!("{:?}", config.db_type), host, port).await
 }
 
 async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &sqlx::mysql::MySqlPool) -> MysqlMode {
