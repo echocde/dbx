@@ -1050,7 +1050,7 @@ const sortedRows = computed(() => {
   if (q) {
     const rows = props.result.rows;
     indices = indices.filter((sourceIndex) => {
-      const data = rowDataWithChanges(rows[sourceIndex], sourceIndex);
+      const data = rows[sourceIndex];
       return data.some((cell) => cell !== null && String(cell).toLowerCase().includes(q));
     });
   }
@@ -1180,7 +1180,6 @@ const hasVisibleRows = computed(() => displayItems.value.length > 0);
 const hasActiveFilter = computed(
   () => !!deferredClientSearchText.value || rowStatusFilter.value !== "all" || hasLocalColumnFilters.value,
 );
-const totalFilterableRowCount = computed(() => props.result.rows.length + newRows.value.length);
 const emptyTitle = computed(() => (hasActiveFilter.value ? t("grid.noFilteredRows") : t("grid.noRows")));
 const emptyDescription = computed(() =>
   hasActiveFilter.value ? t("grid.noFilteredRowsDescription") : t("grid.noRowsDescription"),
@@ -2475,8 +2474,9 @@ defineExpose({
                       :style="{ width: `var(--col-w-${visibleColIdx})` }"
                       :class="{
                         'text-muted-foreground italic': isNull(item.data[actualColIdx]),
-                        'bg-yellow-500/10': item.isDirtyCol[actualColIdx],
-                        'cell-selected': cellIsSelected(index, visibleColIdx),
+                        'bg-yellow-500/10 cell-dirty': item.isDirtyCol[actualColIdx],
+                        'cell-selected': cellIsSelected(index, visibleColIdx) && !item.isDirtyCol[actualColIdx],
+                        'cell-selected-dirty': cellIsSelected(index, visibleColIdx) && item.isDirtyCol[actualColIdx],
                         'bg-yellow-200/60 dark:bg-yellow-500/20': cellIsSearchMatch(index, actualColIdx),
                         'ring-2 ring-inset ring-yellow-500 bg-yellow-300/60 dark:bg-yellow-500/40': cellIsCurrentMatch(
                           index,
@@ -2990,7 +2990,12 @@ defineExpose({
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
 }
 
-.active-row > div {
+.cell-selected-dirty {
+  background-color: color-mix(in oklab, oklch(0.8 0.15 85) 30%, color-mix(in oklab, var(--primary) 12%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
+}
+
+.active-row > div:not(.cell-dirty) {
   background-color: color-mix(in oklab, var(--primary) 10%, transparent);
 }
 

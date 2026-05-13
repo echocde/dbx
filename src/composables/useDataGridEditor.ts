@@ -98,16 +98,9 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     canEditExistingRows = computed(() => true),
     onExecuteSql,
     customSave,
-    sql,
-    searchText,
-    whereFilterInput,
-    orderByInput,
     rowStatusFilter,
     initialEditColumn,
     getRowItem,
-    pageSize,
-    currentPage,
-    emit,
   } = options;
 
   const editingCell = ref<{ rowId: number; col: number } | null>(null);
@@ -559,15 +552,6 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
       deletedRows.value.clear();
       exitTransaction();
       isSaving.value = false;
-      emit(
-        "reload",
-        sql.value,
-        searchText.value,
-        whereFilterInput.value.trim() || undefined,
-        orderByInput.value.trim() || undefined,
-        pageSize.value,
-        (currentPage.value - 1) * pageSize.value,
-      );
       return;
     }
 
@@ -641,20 +625,19 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     } catch (e) {
       console.warn("[DBX] failed to record data grid history", e);
     }
+    for (const [sourceIndex, changes] of dirtyRows.value) {
+      const row = result.value.rows[sourceIndex];
+      if (row) {
+        for (const [colIdx, value] of changes) {
+          row[colIdx] = value;
+        }
+      }
+    }
     dirtyRows.value.clear();
     newRows.value = [];
     deletedRows.value.clear();
     exitTransaction();
     isSaving.value = false;
-    emit(
-      "reload",
-      sql.value,
-      searchText.value,
-      whereFilterInput.value.trim() || undefined,
-      orderByInput.value.trim() || undefined,
-      pageSize.value,
-      (currentPage.value - 1) * pageSize.value,
-    );
   }
 
   function discardChanges() {
