@@ -990,8 +990,14 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
-  async function listCompletionTables(connectionId: string, database: string): Promise<SqlCompletionTable[]> {
-    const cacheKey = `${connectionId}:${database}`;
+  async function listCompletionTables(
+    connectionId: string,
+    database: string,
+    filter = "",
+    limit?: number,
+  ): Promise<SqlCompletionTable[]> {
+    const normalizedFilter = filter.trim().toLowerCase();
+    const cacheKey = `${connectionId}:${database}:${normalizedFilter}:${limit ?? ""}`;
     if (completionTablesCache.value[cacheKey]) {
       return completionTablesCache.value[cacheKey];
     }
@@ -1000,6 +1006,29 @@ export const useConnectionStore = defineStore("connection", () => {
 
     if (isSchemaAwareDatabase(connectionId)) {
       const schemas = await api.listSchemas(connectionId, database);
+      if (normalizedFilter || limit) {
+        const limitedTables: SqlCompletionTable[] = [];
+        for (const schema of schemas) {
+          try {
+            const remaining = limit ? Math.max(limit - limitedTables.length, 0) : undefined;
+            if (remaining === 0) break;
+            const tables = await api.listTables(connectionId, database, schema, normalizedFilter, remaining);
+            limitedTables.push(
+              ...tables.map((table) => ({
+                name: table.name,
+                schema,
+                type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
+              })),
+            );
+          } catch {
+            /* ignore schema failures */
+          }
+        }
+        completionTablesCache.value[cacheKey] = limitedTables;
+        evictOldestCacheEntries(completionTablesCache.value, COMPLETION_CACHE_MAX);
+        return completionTablesCache.value[cacheKey];
+      }
+
       const tableGroups = await Promise.all(
         schemas.map(async (schema) => {
           try {
@@ -1019,7 +1048,7 @@ export const useConnectionStore = defineStore("connection", () => {
       return completionTablesCache.value[cacheKey];
     }
 
-    const tables = await api.listTables(connectionId, database, database);
+    const tables = await api.listTables(connectionId, database, database, normalizedFilter, limit);
     completionTablesCache.value[cacheKey] = tables.map((table) => ({
       name: table.name,
       type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),

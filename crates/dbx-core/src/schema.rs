@@ -199,6 +199,8 @@ pub async fn list_tables_core(
     connection_id: &str,
     database: &str,
     schema: &str,
+    filter: Option<&str>,
+    limit: Option<usize>,
 ) -> Result<Vec<db::TableInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
 
@@ -237,7 +239,7 @@ pub async fn list_tables_core(
         if let Some(client) = extract_sqlserver(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            return db::sqlserver::list_tables(&mut client, schema).await;
+            return db::sqlserver::list_tables(&mut client, schema, filter, limit).await;
         }
         if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
@@ -252,15 +254,29 @@ pub async fn list_tables_core(
     match pool {
         PoolKind::Mysql(p, mode) => {
             if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::list_tables(p, schema).await
+                db::ob_oracle::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
             } else {
-                db::mysql::list_tables(p, schema).await
+                db::mysql::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
             }
         }
-        PoolKind::Postgres(p) => db::postgres::list_tables(p, schema).await,
-        PoolKind::Sqlite(p) => db::sqlite::list_tables(p, schema).await,
+        PoolKind::Postgres(p) => {
+            db::postgres::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
+        }
+        PoolKind::Sqlite(p) => {
+            db::sqlite::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
+        }
         _ => Ok(vec![]),
     }
+}
+
+fn filter_table_infos(tables: Vec<db::TableInfo>, filter: Option<&str>, limit: Option<usize>) -> Vec<db::TableInfo> {
+    let filter = filter.unwrap_or("").to_lowercase();
+    let limit = limit.unwrap_or(usize::MAX);
+    tables
+        .into_iter()
+        .filter(|table| filter.is_empty() || table.name.to_lowercase().contains(&filter))
+        .take(limit)
+        .collect()
 }
 
 pub async fn list_objects_core(
@@ -298,7 +314,7 @@ pub async fn list_objects_core(
         }
     }
 
-    Ok(list_tables_core(state, connection_id, database, schema)
+    Ok(list_tables_core(state, connection_id, database, schema, None, None)
         .await?
         .into_iter()
         .map(|table| db::ObjectInfo {

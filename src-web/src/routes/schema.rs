@@ -13,6 +13,8 @@ pub struct SchemaQuery {
     pub database: Option<String>,
     pub schema: Option<String>,
     pub table: Option<String>,
+    pub filter: Option<String>,
+    pub limit: Option<usize>,
     pub object_type: Option<dbx_core::db::ObjectSourceKind>,
 }
 
@@ -39,8 +41,16 @@ pub async fn list_tables(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let database = q.database.as_deref().unwrap_or("");
     let schema = q.schema.as_deref().unwrap_or("");
-    let result =
-        dbx_core::schema::list_tables_core(&state.app, &q.connection_id, database, schema).await.map_err(AppError)?;
+    let result = dbx_core::schema::list_tables_core(
+        &state.app,
+        &q.connection_id,
+        database,
+        schema,
+        q.filter.as_deref(),
+        q.limit,
+    )
+    .await
+    .map_err(AppError)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError(e.to_string()))?))
 }
 

@@ -74,7 +74,8 @@ pub async fn export_database_sql_core(
 
     // 3. List tables
     let all_tables =
-        crate::schema::list_tables_core(state, &request.connection_id, &request.database, &request.schema).await?;
+        crate::schema::list_tables_core(state, &request.connection_id, &request.database, &request.schema, None, None)
+            .await?;
 
     // 4. Create file
     let mut file = std::fs::File::create(&request.file_path).map_err(|e| format!("Failed to write file: {e}"))?;

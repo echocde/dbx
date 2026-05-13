@@ -39,6 +39,7 @@ const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 24;
+const MAX_COMPLETION_TABLES = 200;
 let editorViewModule: typeof import("@codemirror/view") | null = null;
 let fontThemeComp: import("@codemirror/state").Compartment | null = null;
 let codeMirrorTheme: import("@codemirror/state").Compartment | null = null;
@@ -126,9 +127,17 @@ async function provideSqlCompletions(currentState: import("@codemirror/state").E
   try {
     const fullDoc = currentState.doc.toString();
     const completionContext = getSqlCompletionContext(fullDoc, position);
-    const tables = await connectionStore.listCompletionTables(props.connectionId, props.database);
+    const shouldLoadTables = completionContext.suggestTables || !!completionContext.qualifier;
+    const tables = shouldLoadTables
+      ? await connectionStore.listCompletionTables(
+          props.connectionId,
+          props.database,
+          completionContext.qualifier || completionContext.prefix,
+          MAX_COMPLETION_TABLES,
+        )
+      : cachedTables;
 
-    // Collect referenced tables — enrich with schema from cached tables list
+    // Collect referenced tables — enrich with schema from filtered table lookup
     let refs = completionContext.referencedTables.map((rt) => {
       // If no schema, look it up in the cached tables
       if (!rt.schema) {
@@ -139,6 +148,20 @@ async function provideSqlCompletions(currentState: import("@codemirror/state").E
       }
       return rt;
     });
+    const unresolvedRefs = refs.filter((rt) => !rt.schema);
+    if (unresolvedRefs.length > 0) {
+      const lookupGroups = await Promise.all(
+        unresolvedRefs.map((rt) =>
+          connectionStore.listCompletionTables(props.connectionId!, props.database!, rt.name, 20),
+        ),
+      );
+      const lookupTables = lookupGroups.flat();
+      refs = refs.map((rt) => {
+        if (rt.schema) return rt;
+        const matched = lookupTables.find((table) => table.name.toLowerCase() === rt.name.toLowerCase());
+        return matched?.schema ? { ...rt, schema: matched.schema } : rt;
+      });
+    }
 
     // If no referenced tables but qualifier exists, infer table from tables list
     if (refs.length === 0 && completionContext.qualifier) {
@@ -200,13 +223,7 @@ async function provideSqlCompletions(currentState: import("@codemirror/state").E
 }
 
 async function refreshCompletionCache() {
-  if (!props.connectionId || !props.database) return;
-  try {
-    cachedTables = await connectionStore.listCompletionTables(props.connectionId, props.database);
-  } catch {
-    cachedTables = [];
-  }
-  // Clear column cache when connection/database changes
+  cachedTables = [];
   cachedColumnsByTable.clear();
 }
 
@@ -370,7 +387,12 @@ onMounted(async () => {
             try {
               // Ensure table cache is populated
               if (cachedTables.length === 0) {
-                cachedTables = await connectionStore.listCompletionTables(props.connectionId!, props.database!);
+                cachedTables = await connectionStore.listCompletionTables(
+                  props.connectionId!,
+                  props.database!,
+                  identifier,
+                  MAX_COMPLETION_TABLES,
+                );
               }
 
               // 1. Check if it's a table name
@@ -463,8 +485,7 @@ onMounted(async () => {
 
   view.value = new EditorView({ state, parent: editorRef.value });
 
-  // Fetch completion data
-  refreshCompletionCache();
+  cachedTables = [];
 });
 
 watch(

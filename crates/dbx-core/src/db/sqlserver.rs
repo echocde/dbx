@@ -114,14 +114,25 @@ pub async fn list_schemas(client: &mut SqlServerClient) -> Result<Vec<String>, S
     Ok(rows.iter().map(|row| row.get::<&str, _>(0).unwrap_or("").to_string()).collect())
 }
 
-pub async fn list_tables(client: &mut SqlServerClient, schema: &str) -> Result<Vec<TableInfo>, String> {
+pub async fn list_tables(
+    client: &mut SqlServerClient,
+    schema: &str,
+    filter: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<TableInfo>, String> {
+    let top = limit.map(|value| format!("TOP ({}) ", value.min(1000))).unwrap_or_default();
+    let filter_clause = filter
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!(" AND o.name LIKE '%{}%' ESCAPE '\\' ", escape_like_literal(value.trim())))
+        .unwrap_or_default();
     let sql = format!(
-        "SELECT o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END \
+        "SELECT {top}o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END \
          FROM sys.objects o \
          JOIN sys.schemas s ON s.schema_id = o.schema_id \
          WHERE s.name = '{}' \
            AND o.type IN ('U','V') \
            AND o.is_ms_shipped = 0 \
+           {filter_clause}\
          ORDER BY o.name",
         schema.replace('\'', "''")
     );
@@ -135,6 +146,10 @@ pub async fn list_tables(client: &mut SqlServerClient, schema: &str) -> Result<V
             comment: None,
         })
         .collect())
+}
+
+fn escape_like_literal(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('\'', "''").replace('%', "\\%").replace('_', "\\_").replace('[', "\\[")
 }
 
 pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<Vec<crate::types::ObjectInfo>, String> {

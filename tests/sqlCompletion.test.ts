@@ -13,16 +13,22 @@ const tables: SqlCompletionTable[] = [
 ];
 
 const columnsByTable = new Map<string, SqlCompletionColumn[]>([
-  ["public.users", [
-    { name: "id", table: "users", schema: "public", dataType: "bigint" },
-    { name: "name", table: "users", schema: "public", dataType: "varchar" },
-    { name: "email", table: "users", schema: "public", dataType: "varchar" },
-  ]],
-  ["public.orders", [
-    { name: "id", table: "orders", schema: "public", dataType: "bigint" },
-    { name: "user_id", table: "orders", schema: "public", dataType: "bigint" },
-    { name: "status", table: "orders", schema: "public", dataType: "varchar" },
-  ]],
+  [
+    "public.users",
+    [
+      { name: "id", table: "users", schema: "public", dataType: "bigint" },
+      { name: "name", table: "users", schema: "public", dataType: "varchar" },
+      { name: "email", table: "users", schema: "public", dataType: "varchar" },
+    ],
+  ],
+  [
+    "public.orders",
+    [
+      { name: "id", table: "orders", schema: "public", dataType: "bigint" },
+      { name: "user_id", table: "orders", schema: "public", dataType: "bigint" },
+      { name: "status", table: "orders", schema: "public", dataType: "varchar" },
+    ],
+  ],
 ]);
 
 test("suggests SQL keywords for generic keyword input", () => {
@@ -115,4 +121,23 @@ test("always includes keywords alongside table suggestions", () => {
 
   assert.ok(items.some((item) => item.type === "table"));
   assert.ok(items.some((item) => item.type === "keyword" && item.label === "USING"));
+});
+
+test("limits table suggestions for large schemas after filtering by prefix", () => {
+  const largeTables: SqlCompletionTable[] = Array.from({ length: 500 }, (_, index) => ({
+    name: `erp_invoice_${String(index).padStart(4, "0")}`,
+    schema: "dbo",
+    type: "table",
+  }));
+
+  const sql = "select * from erp_invoice_";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: largeTables,
+    columnsByTable,
+  });
+
+  const tableItems = items.filter((item) => item.type === "table");
+  assert.equal(tableItems.length, 200);
+  assert.equal(tableItems[0]?.label, "erp_invoice_0000");
+  assert.equal(tableItems.at(-1)?.label, "erp_invoice_0199");
 });

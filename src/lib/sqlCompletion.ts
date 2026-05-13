@@ -133,6 +133,7 @@ const SQL_KEYWORDS = [
 
 const TABLE_TRIGGER_KEYWORDS = new Set(["from", "join", "update", "into", "table", "describe", "explain", "apply"]);
 const JOIN_MODIFIERS = new Set(["left", "right", "inner", "outer", "cross", "full", "natural"]);
+const MAX_TABLE_COMPLETION_ITEMS = 200;
 
 export interface SqlCompletionTable {
   name: string;
@@ -463,6 +464,7 @@ function unquoteIdentifier(value: string): string {
 function buildTableItems(prefix: string, tables: SqlCompletionTable[]): SqlCompletionItem[] {
   return tables
     .filter((table) => matchesPrefix(table.name, prefix))
+    .slice(0, MAX_TABLE_COMPLETION_ITEMS)
     .map((table) => ({
       label: table.name,
       type: "table" as const,
