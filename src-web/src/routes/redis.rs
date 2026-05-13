@@ -195,6 +195,18 @@ pub async fn list_push(
     Ok(Json(()))
 }
 
+pub async fn list_set(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<RedisListRequest>,
+) -> Result<Json<()>, AppError> {
+    let index = req.index.unwrap_or(0);
+    let value = req.value.as_deref().unwrap_or("");
+    dbx_core::redis_ops::redis_list_set_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, index, value)
+        .await
+        .map_err(AppError)?;
+    Ok(Json(()))
+}
+
 pub async fn list_remove(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisListRequest>,

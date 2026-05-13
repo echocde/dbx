@@ -114,6 +114,7 @@ async fn main() {
         .route("/redis/hash-set", post(routes::redis::hash_set))
         .route("/redis/hash-del", post(routes::redis::hash_del))
         .route("/redis/list-push", post(routes::redis::list_push))
+        .route("/redis/list-set", post(routes::redis::list_set))
         .route("/redis/list-remove", post(routes::redis::list_remove))
         .route("/redis/set-add", post(routes::redis::set_add))
         .route("/redis/set-remove", post(routes::redis::set_remove))

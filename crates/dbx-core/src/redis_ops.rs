@@ -186,6 +186,26 @@ pub async fn redis_list_push_in_db_core(
     }
 }
 
+pub async fn redis_list_set_in_db_core(
+    state: &AppState,
+    connection_id: &str,
+    db: u32,
+    key_raw: &str,
+    index: i64,
+    value: &str,
+) -> Result<(), String> {
+    let connections = state.connections.read().await;
+    match connections.get(connection_id).ok_or("Not found")? {
+        PoolKind::Redis(con) => {
+            let mut con = con.lock().await;
+            let key = redis_driver::redis_key_raw_to_bytes(key_raw)?;
+            redis_driver::select_db(&mut con, db).await?;
+            redis_driver::list_set(&mut con, &key, index, value).await
+        }
+        _ => Err("Not a Redis connection".to_string()),
+    }
+}
+
 pub async fn redis_list_remove_core(
     state: &AppState,
     connection_id: &str,

@@ -27,6 +27,7 @@ const assetIcons: Record<string, string> = {
   snowflake: "snowflake",
   h2: "h2",
   dm: "dm",
+  dameng: "dm",
   presto: "presto",
   hive: "hive",
   apache_kylin: "apache_kylin",

@@ -628,6 +628,15 @@ pub async fn list_push(con: &mut redis::aio::MultiplexedConnection, key: &[u8], 
     redis::cmd("RPUSH").arg(key).arg(value).query_async::<()>(con).await.map_err(|e| e.to_string())
 }
 
+pub async fn list_set(
+    con: &mut redis::aio::MultiplexedConnection,
+    key: &[u8],
+    index: i64,
+    value: &str,
+) -> Result<(), String> {
+    redis::cmd("LSET").arg(key).arg(index).arg(value).query_async::<()>(con).await.map_err(|e| e.to_string())
+}
+
 pub async fn list_remove(con: &mut redis::aio::MultiplexedConnection, key: &[u8], index: i64) -> Result<(), String> {
     let placeholder = "__DELETED_PLACEHOLDER__";
     redis::cmd("LSET").arg(key).arg(index).arg(placeholder).query_async::<()>(con).await.map_err(|e| e.to_string())?;

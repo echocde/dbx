@@ -113,6 +113,7 @@ pub fn run() {
             commands::redis_cmd::redis_hash_set,
             commands::redis_cmd::redis_hash_del,
             commands::redis_cmd::redis_list_push,
+            commands::redis_cmd::redis_list_set,
             commands::redis_cmd::redis_list_remove,
             commands::redis_cmd::redis_set_add,
             commands::redis_cmd::redis_set_remove,
@@ -148,6 +149,7 @@ pub fn run() {
             commands::agents::uninstall_agent,
             commands::agents::check_jre_installed,
             commands::agents::reinstall_jre,
+            commands::agents::invalidate_agent_registry_cache,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

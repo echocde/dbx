@@ -135,6 +135,12 @@ pub async fn check_jre_installed(state: State<'_, Arc<AppState>>) -> Result<bool
 }
 
 #[tauri::command]
+pub async fn invalidate_agent_registry_cache() -> Result<(), String> {
+    *REGISTRY_CACHE.lock().await = None;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn reinstall_jre(app: tauri::AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     let am = &state.agent_manager;
     let jre_dir = am.base_dir().join("jre");

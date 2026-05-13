@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useI18n } from "vue-i18n";
-import { FolderOpen, Trash2, Download, RotateCcw, Loader2 } from "lucide-vue-next";
+import { FolderOpen, Trash2, Download, RotateCcw, Loader2, RefreshCw } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +41,7 @@ const drivers = ref<AgentDriverInfo[]>([]);
 const jreInstalled = ref(false);
 const installing = ref<string | null>(null);
 const reinstallingJre = ref(false);
+const refreshing = ref(false);
 const progress = ref<InstallProgress | null>(null);
 
 let unlisten: UnlistenFn | null = null;
@@ -66,6 +67,16 @@ const progressPercent = computed(() => {
 async function refreshAgents() {
   jreInstalled.value = await invoke<boolean>("check_jre_installed");
   drivers.value = await invoke<AgentDriverInfo[]>("list_installed_agents");
+}
+
+async function forceRefresh() {
+  refreshing.value = true;
+  try {
+    await invoke("invalidate_agent_registry_cache");
+    await refreshAgents();
+  } finally {
+    refreshing.value = false;
+  }
 }
 
 async function installDriver(dbType: string) {
@@ -249,10 +260,22 @@ onUnmounted(() => {
     <div class="flex-1 min-h-0 overflow-y-auto">
       <div class="max-w-4xl mx-auto px-6 py-6">
         <Tabs default-value="agent">
-          <TabsList class="w-fit">
-            <TabsTrigger value="agent">内置驱动</TabsTrigger>
-            <TabsTrigger value="jdbc">JDBC 驱动</TabsTrigger>
-          </TabsList>
+          <div class="flex items-center justify-between">
+            <TabsList class="w-fit">
+              <TabsTrigger value="agent">内置驱动</TabsTrigger>
+              <TabsTrigger value="jdbc">JDBC 驱动</TabsTrigger>
+            </TabsList>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 text-xs gap-1 text-muted-foreground"
+              :disabled="refreshing"
+              @click="forceRefresh"
+            >
+              <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
+              刷新
+            </Button>
+          </div>
 
           <!-- Agent Tab -->
           <TabsContent value="agent" class="mt-5 space-y-5">
@@ -306,9 +329,29 @@ onUnmounted(() => {
                 <div class="min-w-0 flex-1">
                   <div class="text-sm font-medium">{{ driver.label }}</div>
                 </div>
-                <div class="text-xs text-muted-foreground text-right shrink-0">
-                  <span v-if="driver.installed">v{{ driver.installed_version }}</span>
-                  <span v-else-if="formatSize(driver.size)">{{ formatSize(driver.size) }}</span>
+                <div class="flex shrink-0 items-center gap-1.5">
+                  <template v-if="driver.installed">
+                    <span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                      >v{{ driver.installed_version }}</span
+                    >
+                    <span
+                      v-if="driver.update_available"
+                      class="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-600"
+                      >→ v{{ driver.version }}</span
+                    >
+                  </template>
+                  <template v-else>
+                    <span
+                      v-if="driver.version"
+                      class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                      >v{{ driver.version }}</span
+                    >
+                  </template>
+                  <span
+                    v-if="formatSize(driver.size)"
+                    class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                    >{{ formatSize(driver.size) }}</span
+                  >
                 </div>
                 <div class="flex shrink-0 items-center gap-2">
                   <Button

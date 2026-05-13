@@ -88,6 +88,18 @@ pub async fn redis_list_push(
 }
 
 #[tauri::command]
+pub async fn redis_list_set(
+    state: State<'_, Arc<AppState>>,
+    connection_id: String,
+    db: u32,
+    key_raw: String,
+    index: i64,
+    value: String,
+) -> Result<(), String> {
+    dbx_core::redis_ops::redis_list_set_in_db_core(&state, &connection_id, db, &key_raw, index, &value).await
+}
+
+#[tauri::command]
 pub async fn redis_list_remove(
     state: State<'_, Arc<AppState>>,
     connection_id: String,
