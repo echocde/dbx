@@ -20,7 +20,7 @@ import {
 import type { SqlCompletionColumn, SqlCompletionTable } from "@/lib/sqlCompletion";
 import * as api from "@/lib/api";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
-import { isSchemaAware, TREE_SCHEMA_TYPES } from "@/lib/databaseCapabilities";
+import { isSchemaAware, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
 import { buildDatabaseTreeNodes } from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
 import {
@@ -932,7 +932,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const config = getConfig(node.connectionId);
       if (config?.db_type === "sqlserver") {
         await loadSqlServerDatabaseObjects(node.connectionId, node.database, options);
-      } else if (config?.db_type && TREE_SCHEMA_TYPES.has(config.db_type)) {
+      } else if (usesTreeSchemaMode(config?.db_type)) {
         await loadSchemas(node.connectionId, node.database, options);
       } else {
         await loadTables(node.connectionId, node.database, undefined, options);

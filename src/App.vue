@@ -36,7 +36,7 @@ import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { isCloseTabShortcut, isExecuteSqlShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { isPreviewTab } from "@/lib/tabPresentation";
-import { SQL_FILE_UNSUPPORTED_TYPES } from "@/lib/databaseCapabilities";
+import { supportsSqlFileExecution } from "@/lib/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/aiSqlExecutionPolicy";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -145,7 +145,7 @@ const { setupTauriListeners, cleanupTauriListeners } = useTauriEvents({ openTabl
 const appVersion = ref("");
 const isClassicLayout = computed(() => settingsStore.editorSettings.appLayout === "classic");
 const hasSqlFileConnections = computed(() =>
-  connectionStore.connections.some((c) => !SQL_FILE_UNSUPPORTED_TYPES.has(c.db_type)),
+  connectionStore.connections.some((c) => supportsSqlFileExecution(c.db_type)),
 );
 const connectionStats = computed(() => ({
   total: connectionStore.connections.length,

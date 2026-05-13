@@ -12,7 +12,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import * as api from "@/lib/api";
 import { buildDatabaseSearchSql, buildSearchResultWhere, findMatchedSearchColumns } from "@/lib/databaseSearch";
 import type { DatabaseType, TableInfo } from "@/types/database";
-import { SCHEMA_AWARE_TYPES } from "@/lib/databaseCapabilities";
+import { isSchemaAware } from "@/lib/databaseCapabilities";
 
 const props = defineProps<{
   open: boolean;
@@ -114,10 +114,6 @@ function resetSearchState() {
   generalError.value = "";
   limitedTables.value = false;
   currentExecutionId.value = "";
-}
-
-function isSchemaAware(databaseType?: DatabaseType): boolean {
-  return !!databaseType && SCHEMA_AWARE_TYPES.has(databaseType);
 }
 
 function isSearchableTable(table: TableInfo): boolean {

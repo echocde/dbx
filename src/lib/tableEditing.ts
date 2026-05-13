@@ -1,32 +1,34 @@
 import type { ColumnInfo, DatabaseType } from "@/types/database";
+import { getDatabaseCapability } from "./databaseCapabilities";
 
 export const DBX_ROWID_COLUMN = "__DBX_ROWID";
 export const DBX_NEO4J_ELEMENT_ID_COLUMN = "__DBX_ELEMENT_ID";
 
 export function editablePrimaryKeys(databaseType: DatabaseType | undefined, columns: ColumnInfo[]): string[] {
   const primaryKeys = columns.filter((column) => column.is_primary_key).map((column) => column.name);
-  if (databaseType === "oracle" && primaryKeys.length === 0) return [DBX_ROWID_COLUMN];
-  if (databaseType === "neo4j" && primaryKeys.length === 0) return [DBX_NEO4J_ELEMENT_ID_COLUMN];
+  const syntheticKey = getDatabaseCapability(databaseType).syntheticKey;
+  if (syntheticKey === "oracle-rowid" && primaryKeys.length === 0) return [DBX_ROWID_COLUMN];
+  if (syntheticKey === "neo4j-element-id" && primaryKeys.length === 0) return [DBX_NEO4J_ELEMENT_ID_COLUMN];
   return primaryKeys;
 }
 
 export function isTableDataEditable(databaseType: DatabaseType | undefined, primaryKeys: string[]): boolean {
-  if (databaseType === "hive") return true;
-  if (databaseType === "trino") return true;
+  if (getDatabaseCapability(databaseType).tableData.insert) return true;
   return primaryKeys.length > 0;
 }
 
 export function supportsDataGridTransaction(databaseType: DatabaseType | undefined): boolean {
-  return databaseType !== "hive" && databaseType !== "trino";
+  return getDatabaseCapability(databaseType).tableData.transaction;
 }
 
 export function canEditExistingTableRows(
   databaseType: DatabaseType | undefined,
   hiveTableTransactional?: boolean,
-  primaryKeys: string[] = [],
+  primaryKeys?: string[],
 ): boolean {
-  if (databaseType === "hive") return hiveTableTransactional === true;
-  if (databaseType === "trino") return primaryKeys.length > 0;
+  const tableData = getDatabaseCapability(databaseType).tableData;
+  if (tableData.requiresTransactionalTableForExistingRows && hiveTableTransactional !== true) return false;
+  if (tableData.updateRequiresPrimaryKey && primaryKeys && primaryKeys.length === 0) return false;
   return true;
 }
 

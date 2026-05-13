@@ -12,7 +12,7 @@ import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/api";
 import type { TransferProgress, TransferMode } from "@/lib/api";
 import type { DatabaseType } from "@/types/database";
-import { TRANSFER_SQL_TYPES, isSchemaAware } from "@/lib/databaseCapabilities";
+import { isSchemaAware, supportsTransfer } from "@/lib/databaseCapabilities";
 import { nextTransferTerminalState } from "@/lib/transferProgressState";
 import { ArrowRightLeft, Check, X, Loader2, Square, CheckSquare } from "lucide-vue-next";
 
@@ -26,7 +26,7 @@ const props = defineProps<{
 
 const store = useConnectionStore();
 
-const sqlConnections = computed(() => store.connections.filter((c) => TRANSFER_SQL_TYPES.has(c.db_type)));
+const sqlConnections = computed(() => store.connections.filter((c) => supportsTransfer(c.db_type)));
 
 // Source state
 const sourceConnectionId = ref("");

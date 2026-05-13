@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useConnectionStore } from "@/stores/connectionStore";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/api";
-import { DIAGRAM_SQL_TYPES, SCHEMA_AWARE_TYPES } from "@/lib/databaseCapabilities";
+import { DIAGRAM_SQL_TYPES, isSchemaAware as isSchemaAwareDatabase } from "@/lib/databaseCapabilities";
 import {
   buildDiagramRelationships,
   filterDiagramTables,
@@ -91,9 +91,7 @@ const sqlConnections = computed(() =>
 
 const selectedConnection = computed(() => (connectionId.value ? store.getConfig(connectionId.value) : undefined));
 
-const isSchemaAware = computed(
-  () => !!selectedConnection.value && SCHEMA_AWARE_TYPES.has(selectedConnection.value.db_type),
-);
+const isSchemaAware = computed(() => isSchemaAwareDatabase(selectedConnection.value?.db_type));
 
 const allRelationships = computed(() => buildDiagramRelationships(tables.value));
 

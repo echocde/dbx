@@ -17,7 +17,7 @@ import * as api from "@/lib/api";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { applyParsedConnectionUrl, parseConnectionUrl } from "@/lib/connectionUrl";
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connectionPresentation";
-import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
+import { supportsDriverManagement } from "@/lib/databaseCapabilities";
 import { ArrowLeft, ChevronRight, Copy, ExternalLink, FolderOpen, Grid3X3, Link2, List, Search } from "lucide-vue-next";
 
 type DbOption = { value: string; label: string };
@@ -1130,7 +1130,7 @@ function openExternalUrl(url: string) {
                     <Input v-model="form.database" class="col-span-3" :placeholder="databasePlaceholder" />
                   </div>
 
-                  <div v-if="AGENT_DRIVER_TYPES.has(form.db_type)" class="grid grid-cols-4 items-center gap-4">
+                  <div v-if="supportsDriverManagement(form.db_type)" class="grid grid-cols-4 items-center gap-4">
                     <span />
                     <p class="col-span-3 text-xs text-muted-foreground">
                       需要在顶部导航栏「驱动管理」中安装对应的驱动才能连接。
