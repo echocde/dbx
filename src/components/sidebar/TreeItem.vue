@@ -69,16 +69,18 @@ import {
 } from "@/lib/tableSelectSql";
 import { editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import {
-  SQL_FILE_UNSUPPORTED_TYPES,
-  DIAGRAM_SUPPORTED_TYPES,
-  DATABASE_SEARCH_SUPPORTED_TYPES,
-  TABLE_IMPORT_SUPPORTED_TYPES,
-  TABLE_STRUCTURE_SUPPORTED_TYPES,
-  FIELD_LINEAGE_SUPPORTED_TYPES,
-  TREE_SCHEMA_TYPES,
-  PG_LIKE_STRUCTURE_TYPES,
-  CREATE_DATABASE_SUPPORTED_TYPES,
   isSchemaAware,
+  supportsDatabaseCreation,
+  supportsDatabaseSearch,
+  supportsFieldLineage,
+  supportsObjectBrowser,
+  supportsSchemaDiagram,
+  supportsSqlFileExecution,
+  supportsTableImport,
+  supportsTableTruncate,
+  supportsTableStructureEditing,
+  usesPostgresLikeStructureCopy,
+  usesTreeSchemaMode,
   usesFetchFirst,
 } from "@/lib/databaseCapabilities";
 import { treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/treeNodeClick";
@@ -282,7 +284,7 @@ async function toggle() {
       const config = connectionStore.getConfig(node.connectionId);
       if (config?.db_type === "sqlserver") {
         await connectionStore.loadSqlServerDatabaseObjects(node.connectionId, node.database);
-      } else if (config?.db_type && TREE_SCHEMA_TYPES.has(config.db_type)) {
+      } else if (usesTreeSchemaMode(config?.db_type)) {
         await connectionStore.loadSchemas(node.connectionId, node.database);
       } else {
         await connectionStore.loadTables(node.connectionId, node.database);
@@ -573,8 +575,7 @@ async function confirmDropObject() {
 const isTableNotView = computed(() => props.node.type === "table");
 
 const supportsTruncate = computed(() => {
-  const dbType = currentDatabaseType();
-  return dbType !== "sqlite" && dbType !== "duckdb";
+  return supportsTableTruncate(currentDatabaseType());
 });
 
 const canCreateTable = computed(() => {
@@ -582,29 +583,28 @@ const canCreateTable = computed(() => {
   return (
     (props.node.type === "database" || props.node.type === "schema") &&
     !!props.node.database &&
-    !!config &&
-    TABLE_STRUCTURE_SUPPORTED_TYPES.has(config.db_type)
+    supportsTableStructureEditing(config?.db_type)
   );
 });
 
 const canCreateDatabase = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
-  return props.node.type === "connection" && !!config && CREATE_DATABASE_SUPPORTED_TYPES.has(config.db_type);
+  return props.node.type === "connection" && supportsDatabaseCreation(config?.db_type);
 });
 
 const canDropDatabase = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
-  return props.node.type === "database" && !!config && CREATE_DATABASE_SUPPORTED_TYPES.has(config.db_type);
+  return props.node.type === "database" && supportsDatabaseCreation(config?.db_type);
 });
 
 const canCreateSchema = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
-  return props.node.type === "database" && !!config && TREE_SCHEMA_TYPES.has(config.db_type);
+  return props.node.type === "database" && usesTreeSchemaMode(config?.db_type);
 });
 
 const canDropSchema = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
-  return props.node.type === "schema" && !!config && TREE_SCHEMA_TYPES.has(config.db_type);
+  return props.node.type === "schema" && usesTreeSchemaMode(config?.db_type);
 });
 
 function buildDropTableSql(): string {
@@ -798,7 +798,7 @@ async function confirmDuplicateStructure() {
     let sql: string;
     if (dbType === "mysql") {
       sql = `CREATE TABLE ${target} LIKE ${source};`;
-    } else if (dbType && PG_LIKE_STRUCTURE_TYPES.has(dbType)) {
+    } else if (usesPostgresLikeStructureCopy(dbType)) {
       sql = `CREATE TABLE ${target} (LIKE ${source} INCLUDING ALL);`;
     } else if (dbType === "sqlserver") {
       sql = `SELECT TOP 0 * INTO ${target} FROM ${source};`;
@@ -1100,37 +1100,26 @@ const nodeConfig = computed(() =>
 );
 const canPin = computed(() => pinnableTypes.has(props.node.type));
 const canOpenSqlFileExecution = computed(() => {
-  return !!nodeConfig.value && !SQL_FILE_UNSUPPORTED_TYPES.has(nodeConfig.value.db_type);
+  return supportsSqlFileExecution(nodeConfig.value?.db_type);
 });
 const canOpenDiagram = computed(() => {
-  return !!props.node.database && !!nodeConfig.value && DIAGRAM_SUPPORTED_TYPES.has(nodeConfig.value.db_type);
+  return !!props.node.database && supportsSchemaDiagram(nodeConfig.value?.db_type);
 });
 const canOpenDatabaseSearch = computed(() => {
-  return !!props.node.database && !!nodeConfig.value && DATABASE_SEARCH_SUPPORTED_TYPES.has(nodeConfig.value.db_type);
+  return !!props.node.database && supportsDatabaseSearch(nodeConfig.value?.db_type);
 });
 const canOpenObjectBrowser = computed(() => {
   return (
     (props.node.type === "database" || props.node.type === "schema" || props.node.type === "object-browser") &&
-    !!nodeConfig.value &&
-    nodeConfig.value.db_type !== "redis" &&
-    nodeConfig.value.db_type !== "mongodb" &&
-    nodeConfig.value.db_type !== "elasticsearch"
+    supportsObjectBrowser(nodeConfig.value?.db_type)
   );
 });
 const canOpenTableImport = computed(() => {
-  return (
-    props.node.type === "table" &&
-    !!props.node.database &&
-    !!nodeConfig.value &&
-    TABLE_IMPORT_SUPPORTED_TYPES.has(nodeConfig.value.db_type)
-  );
+  return props.node.type === "table" && !!props.node.database && supportsTableImport(nodeConfig.value?.db_type);
 });
 const canOpenStructureEditor = computed(() => {
   return (
-    props.node.type === "table" &&
-    !!props.node.database &&
-    !!nodeConfig.value &&
-    TABLE_STRUCTURE_SUPPORTED_TYPES.has(nodeConfig.value.db_type)
+    props.node.type === "table" && !!props.node.database && supportsTableStructureEditing(nodeConfig.value?.db_type)
   );
 });
 const canOpenFieldLineage = computed(() => {
@@ -1138,8 +1127,7 @@ const canOpenFieldLineage = computed(() => {
     props.node.type === "column" &&
     !!props.node.database &&
     !!props.node.tableName &&
-    !!nodeConfig.value &&
-    FIELD_LINEAGE_SUPPORTED_TYPES.has(nodeConfig.value.db_type)
+    supportsFieldLineage(nodeConfig.value?.db_type)
   );
 });
 const isPinned = computed(() => props.node.pinned || connectionStore.isTreeNodePinned(props.node.id));
@@ -1386,6 +1374,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
       <div>
         <div
           class="group flex min-w-0 items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative"
+          style="contain: layout style paint"
           :class="{
             'ring-1 ring-primary/50 bg-primary/5': showDropInside,
             'opacity-50': isDragging,
