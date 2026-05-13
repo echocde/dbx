@@ -14,7 +14,6 @@ export const SCHEMA_AWARE_TYPES = new Set<DatabaseType>([
   "snowflake",
   "trino",
   "db2",
-  "informix",
 ]);
 
 export const SQL_FILE_UNSUPPORTED_TYPES = new Set<DatabaseType>(["redis", "mongodb", "elasticsearch"]);

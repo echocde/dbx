@@ -2,8 +2,8 @@ use std::sync::Arc;
 use tauri::State;
 
 pub use dbx_core::connection::{
-    connection_url_for_endpoint, expand_tilde, metadata_connection_config, probe_connection_endpoint,
-    redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
+    agent_connect_params, connection_url_for_endpoint, expand_tilde, metadata_connection_config,
+    probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
 };
 use dbx_core::database_capabilities;
 use dbx_core::db;
@@ -114,13 +114,7 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                         &config.db_type,
                         config.driver_profile.as_deref(),
                         "test_connection",
-                        serde_json::json!({
-                            "host": host,
-                            "port": port,
-                            "database": config.database.as_deref().unwrap_or(""),
-                            "username": config.username,
-                            "password": config.password,
-                        }),
+                        agent_connect_params(&config, &host, port, config.database.as_deref().unwrap_or("")),
                     )
                     .await?;
                 Ok("Connection successful".to_string())
@@ -213,13 +207,7 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             client
                 .call::<serde_json::Value>(
                     "connect",
-                    serde_json::json!({
-                        "host": host,
-                        "port": port,
-                        "database": db_config.effective_database().unwrap_or(""),
-                        "username": db_config.username,
-                        "password": db_config.password,
-                    }),
+                    agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")),
                 )
                 .await?;
             PoolKind::Agent(std::sync::Arc::new(tokio::sync::Mutex::new(client)))

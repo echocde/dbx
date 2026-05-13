@@ -50,6 +50,18 @@ test("builds Hive table data queries with backtick identifiers", () => {
   assert.equal(sql, "SELECT * FROM `departments` ORDER BY `dept id` ASC LIMIT 100;");
 });
 
+test("builds Informix table data queries without database-qualified delimited identifiers", () => {
+  const sql = buildTableSelectSql({
+    databaseType: "informix",
+    schema: "testdb",
+    tableName: "dbx_grid_edit_probe",
+    primaryKeys: ["id"],
+    limit: 100,
+  });
+
+  assert.equal(sql, "SELECT * FROM dbx_grid_edit_probe ORDER BY id ASC LIMIT 100;");
+});
+
 test("expands Hive table data queries into aliased table columns", () => {
   const sql = buildTableSelectSql({
     databaseType: "hive",

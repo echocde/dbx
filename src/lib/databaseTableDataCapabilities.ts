@@ -42,6 +42,15 @@ const DATABASE_CAPABILITY_OVERRIDES: Partial<Record<DatabaseType, Partial<Databa
       transaction: false,
     },
   },
+  informix: {
+    tableData: {
+      insert: true,
+      updateRequiresPrimaryKey: true,
+      deleteRequiresPrimaryKey: true,
+      requiresTransactionalTableForExistingRows: false,
+      transaction: true,
+    },
+  },
   neo4j: {
     syntheticKey: "neo4j-element-id",
   },

@@ -98,6 +98,28 @@ test("builds Trino insert statements with schema-qualified identifiers", () => {
   assert.deepEqual(statements, ['INSERT INTO "tiny"."nation" ("nationkey", "name") VALUES (100, \'Atlantis\');']);
 });
 
+test("builds Informix grid save statements without delimited identifiers", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "informix",
+    tableMeta: {
+      schema: "testdb",
+      tableName: "dbx_grid_edit_probe",
+      primaryKeys: ["id"],
+    },
+    columns: ["id", "name"],
+    rows: [[1, "before"]],
+    dirtyRows: [[0, [[1, "after"]]]],
+    deletedRows: [0],
+    newRows: [[2, "new"]],
+  });
+
+  assert.deepEqual(statements, [
+    "UPDATE dbx_grid_edit_probe SET name = 'after' WHERE id = 1;",
+    "DELETE FROM dbx_grid_edit_probe WHERE id = 1;",
+    "INSERT INTO dbx_grid_edit_probe (id, name) VALUES (2, 'new');",
+  ]);
+});
+
 test("uses Oracle ROWID as a synthetic key without writing it as a normal column", () => {
   const statements = buildDataGridSaveStatements({
     databaseType: "oracle",

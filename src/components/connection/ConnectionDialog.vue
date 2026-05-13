@@ -1166,6 +1166,7 @@ function openExternalUrl(url: string) {
                       form.db_type === 'mysql' ||
                       form.db_type === 'postgres' ||
                       form.db_type === 'redshift' ||
+                      form.db_type === 'informix' ||
                       form.db_type === 'kingbase' ||
                       form.db_type === 'vastbase' ||
                       form.db_type === 'goldendb'
@@ -1176,7 +1177,13 @@ function openExternalUrl(url: string) {
                     <Input
                       v-model="form.url_params"
                       class="col-span-3"
-                      :placeholder="form.db_type === 'mysql' ? 'charset=utf8mb4' : 'sslmode=disable'"
+                      :placeholder="
+                        form.db_type === 'mysql'
+                          ? 'charset=utf8mb4'
+                          : form.db_type === 'informix'
+                            ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
+                            : 'sslmode=disable'
+                      "
                     />
                   </div>
                 </template>

@@ -227,13 +227,7 @@ impl AppState {
                 client
                     .call::<serde_json::Value>(
                         "connect",
-                        serde_json::json!({
-                            "host": host,
-                            "port": port,
-                            "database": db_config.effective_database().unwrap_or(""),
-                            "username": db_config.username,
-                            "password": db_config.password,
-                        }),
+                        agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")),
                     )
                     .await?;
                 PoolKind::Agent(Arc::new(tokio::sync::Mutex::new(client)))
@@ -387,6 +381,17 @@ pub fn redacted_connection_url_for_endpoint(config: &ConnectionConfig, host: &st
     }
 }
 
+pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> serde_json::Value {
+    serde_json::json!({
+        "host": host,
+        "port": port,
+        "database": database,
+        "username": config.username,
+        "password": config.password,
+        "url_params": config.url_params.as_deref().unwrap_or(""),
+    })
+}
+
 pub async fn probe_connection_endpoint(config: &ConnectionConfig, host: &str, port: u16) -> Result<(), String> {
     if config.db_type == DatabaseType::MongoDb
         && config.connection_string.as_deref().is_some_and(|value| !value.is_empty())
@@ -415,7 +420,7 @@ async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &sqlx::mysql::My
 
 #[cfg(test)]
 mod tests {
-    use super::{database_connection_config, metadata_connection_config, AppState};
+    use super::{agent_connect_params, database_connection_config, metadata_connection_config, AppState};
     use crate::models::connection::{ConnectionConfig, DatabaseType, ProxyType};
     use crate::schema;
     use crate::storage::Storage;
@@ -456,6 +461,23 @@ mod tests {
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
         }
+    }
+
+    #[test]
+    fn agent_connect_params_include_url_params() {
+        let mut config = mysql_config(Some("testdb"));
+        config.username = "informix".to_string();
+        config.password = "in4mix".to_string();
+        config.url_params = Some("INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8".to_string());
+
+        let params = agent_connect_params(&config, "172.26.128.159", 20013, "testdb");
+
+        assert_eq!(params["host"], "172.26.128.159");
+        assert_eq!(params["port"], 20013);
+        assert_eq!(params["database"], "testdb");
+        assert_eq!(params["username"], "informix");
+        assert_eq!(params["password"], "in4mix");
+        assert_eq!(params["url_params"], "INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8");
     }
 
     async fn test_app_state() -> (AppState, std::path::PathBuf) {
