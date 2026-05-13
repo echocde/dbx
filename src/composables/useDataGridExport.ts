@@ -39,6 +39,8 @@ export interface UseDataGridExportOptions {
   getRowItem: (rowId: number) => RowItem | undefined;
   quoteIdent: (name: string) => string;
   escapeVal: (value: CellValue) => string;
+  selectedRowIds: Ref<Set<number>> | ComputedRef<Set<number>>;
+  hasRowSelection: ComputedRef<boolean>;
 }
 
 export function useDataGridExport(options: UseDataGridExportOptions) {
@@ -57,6 +59,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     getRowItem,
     quoteIdent,
     escapeVal,
+    selectedRowIds,
+    hasRowSelection,
   } = options;
 
   function copyText(text: string) {
@@ -94,6 +98,18 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   }
 
   function copyRow() {
+    if (hasRowSelection.value && selectedRowIds.value.size > 0) {
+      const items = displayItems.value.filter((item) => selectedRowIds.value.has(item.id));
+      const objects = items.map((item) => {
+        const obj: Record<string, unknown> = {};
+        columns.value.forEach((col, i) => {
+          obj[col] = item.data[i];
+        });
+        return obj;
+      });
+      copyText(JSON.stringify(objects, null, 2));
+      return;
+    }
     if (!contextCell.value) return;
     const item = getRowItem(contextCell.value.rowId);
     if (!item) return;
@@ -109,6 +125,17 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
       ? (tableMeta.value.schema ? `${quoteIdent(tableMeta.value.schema)}.` : "") + quoteIdent(tableMeta.value.tableName)
       : "table_name";
     const cols = columns.value.map((c) => quoteIdent(c)).join(", ");
+
+    if (hasRowSelection.value && selectedRowIds.value.size > 0) {
+      const items = displayItems.value.filter((item) => selectedRowIds.value.has(item.id));
+      const statements = items.map((item) => {
+        const vals = item.data.map((v) => escapeVal(v)).join(", ");
+        return `INSERT INTO ${table} (${cols}) VALUES (${vals});`;
+      });
+      copyText(statements.join("\n"));
+      return;
+    }
+
     const range = selectedRange.value;
     if (range && range.startRow !== range.endRow) {
       const items = displayItems.value.slice(range.startRow, range.endRow + 1);
@@ -119,6 +146,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
       copyText(statements.join("\n"));
       return;
     }
+
     if (!contextCell.value) return;
     const item = getRowItem(contextCell.value.rowId);
     if (!item) return;

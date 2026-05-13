@@ -384,6 +384,21 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     });
   }
 
+  function cloneRows(rowIds: number[]) {
+    const primaryKeys = tableMeta.value?.primaryKeys ?? [];
+    const columns = result.value.columns;
+    rowStatusFilter.value = rowStatusFilterAfterAddingRow(rowStatusFilter.value);
+    for (const rowId of rowIds) {
+      const item = getRowItem(rowId);
+      if (!item) continue;
+      const clonedData = item.data.map((val, i) => (primaryKeys.includes(columns[i]) ? null : val));
+      newRows.value.push(clonedData);
+    }
+    if (useTransaction.value && !transactionActive.value) {
+      enterTransaction();
+    }
+  }
+
   function applyDeleteRow(rowId: number) {
     const item = getRowItem(rowId);
     if (!item) return;
@@ -401,13 +416,26 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
 
   const showDeleteRowConfirm = ref(false);
   const pendingDeleteRowId = ref<number | null>(null);
+  const pendingDeleteRowIds = ref<number[]>([]);
 
   function requestDeleteRow(rowId: number) {
     pendingDeleteRowId.value = rowId;
     showDeleteRowConfirm.value = true;
   }
 
+  function requestDeleteRows(rowIds: number[]) {
+    pendingDeleteRowIds.value = rowIds;
+    showDeleteRowConfirm.value = true;
+  }
+
   function confirmDeleteRow() {
+    if (pendingDeleteRowIds.value.length > 0) {
+      for (const rowId of pendingDeleteRowIds.value) {
+        applyDeleteRow(rowId);
+      }
+      pendingDeleteRowIds.value = [];
+      return;
+    }
     if (pendingDeleteRowId.value === null) return;
     applyDeleteRow(pendingDeleteRowId.value);
     pendingDeleteRowId.value = null;
@@ -642,10 +670,13 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     onEditKeydown,
     addRow,
     cloneRow,
+    cloneRows,
     applyDeleteRow,
     showDeleteRowConfirm,
     pendingDeleteRowId,
+    pendingDeleteRowIds,
     requestDeleteRow,
+    requestDeleteRows,
     confirmDeleteRow,
     restoreRow,
     deleteSelectedRow,

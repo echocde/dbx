@@ -246,7 +246,7 @@ onMounted(() => store.load());
         <DialogHeader>
           <DialogTitle>{{ selectedEntry ? entryTitle(selectedEntry) : t("history.viewDetails") }}</DialogTitle>
         </DialogHeader>
-        <div v-if="selectedEntry" class="space-y-4">
+        <div v-if="selectedEntry" class="space-y-4 overflow-y-auto max-h-[60vh]">
           <div class="grid grid-cols-[120px_1fr] gap-x-3 gap-y-2 text-sm">
             <template v-for="[label, value] in detailsRows(selectedEntry)" :key="label">
               <div class="text-muted-foreground">{{ label }}</div>

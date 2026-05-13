@@ -287,6 +287,11 @@ export default {
     addRow: "Agregar fila",
     cloneRow: "Clonar fila",
     deleteRow: "Eliminar fila",
+    deleteRows: "Eliminar {count} filas",
+    cloneRows: "Clonar {count} filas",
+    copyRows: "Copiar {count} filas (JSON)",
+    copyRowsInsert: "Copiar {count} filas como INSERT",
+    selectedRows: "{count} filas seleccionadas",
     restoreRow: "Restaurar fila",
     statusClean: "Sin cambios",
     statusNew: "Elementos nuevos",
@@ -803,6 +808,8 @@ export default {
     deleteConfirm: "Confirmar eliminación",
     deleteRowMessage:
       "Esta fila quedará marcada para eliminación y se borrará de la base de datos al guardar. ¿Continuar?",
+    deleteRowsMessage:
+      "Estas {count} filas se marcarán para eliminación y se eliminarán de la base de datos después de guardar. ¿Continuar?",
     deleteRowDetails: "Tabla: {table}",
     deleteRowDetailsNoTable: "Fila actual del resultado",
     redisKeyDetails: "Clave Redis: {key}",

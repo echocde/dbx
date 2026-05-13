@@ -927,6 +927,9 @@ const {
   requestDeleteRow,
   confirmDeleteRow,
   restoreRow,
+  pendingDeleteRowIds,
+  requestDeleteRows,
+  cloneRows,
   saveChanges,
   discardChanges,
   rowDataWithChanges,
@@ -1040,10 +1043,6 @@ const deleteRowDetails = computed(() =>
     : t("dangerDialog.deleteRowDetailsNoTable"),
 );
 
-function deleteSelectedRow() {
-  if (!contextCell.value) return;
-  requestDeleteRow(contextCell.value.rowId);
-}
 const hasVisibleRows = computed(() => displayItems.value.length > 0);
 const hasActiveFilter = computed(
   () => !!deferredClientSearchText.value || rowStatusFilter.value !== "all" || hasLocalColumnFilters.value,
@@ -1074,17 +1073,27 @@ const {
   hasCellSelection,
   clearCellSelection,
   selectSingleCell,
-  selectRow,
   finishCellSelection,
-  beginCellSelection,
   extendCellSelection,
   cellIsSelected,
   selectedRangeStart,
+  selectedRowIds,
+  hasRowSelection,
+  selectedRowCount,
+  clearRowSelection,
+  handleRowClick,
+  handleDataCellMousedown,
+  isRowSelected,
 } = selection;
 
-const selectionSummary = computed(() => t("grid.selectedCells", { count: selectedCellCount.value }));
+const selectionSummary = computed(() => {
+  if (hasRowSelection.value) return t("grid.selectedRows", { count: selectedRowCount.value });
+  return t("grid.selectedCells", { count: selectedCellCount.value });
+});
 
 function isRowActive(index: number): boolean {
+  const item = displayItems.value[index];
+  if (item && isRowSelected(item.id)) return true;
   const range = selectedRange.value;
   if (!range) return false;
   return index >= range.startRow && index <= range.endRow;
@@ -1407,6 +1416,8 @@ const {
   getRowItem: (rowId: number) => visibleDisplayItems.value.find((item) => item.id === rowId),
   quoteIdent,
   escapeVal,
+  selectedRowIds,
+  hasRowSelection,
 });
 
 // --- Cell selection and detail ---
@@ -1541,6 +1552,7 @@ watch(
       resetGridVerticalScroll();
     }
     clearCellSelection();
+    clearRowSelection();
     showCellDetail.value = false;
     detailCell.value = null;
     showTranspose.value = false;
@@ -1552,6 +1564,10 @@ watch(
 // --- Context menu handlers ---
 function onCellContext(rowId: number, rowIndex: number, colIdx: number, visibleColIdx: number) {
   contextCell.value = { rowId, rowIndex, col: colIdx };
+  if (hasRowSelection.value && isRowSelected(rowId)) {
+    return;
+  }
+  clearRowSelection();
   if (!cellIsSelected(rowIndex, visibleColIdx)) {
     selectSingleCell(rowIndex, visibleColIdx);
   }
@@ -1559,7 +1575,11 @@ function onCellContext(rowId: number, rowIndex: number, colIdx: number, visibleC
 
 function onRowContext(rowId: number, rowIndex: number) {
   contextCell.value = { rowId, rowIndex, col: -1 };
-  selectRow(rowIndex);
+  if (!isRowSelected(rowId)) {
+    clearCellSelection();
+    selectedRowIds.value = new Set([rowId]);
+    selection.lastClickedRowIndex.value = rowIndex;
+  }
 }
 
 const sqlOneLiner = computed(() => props.sql?.replace(/\s+/g, " ").trim() || "");
@@ -2229,9 +2249,18 @@ defineExpose({
                   >
                     <div
                       class="shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50"
-                      :class="rowNumberStatusClass(item)"
+                      :class="[
+                        rowNumberStatusClass(item),
+                        {
+                          'text-primary font-semibold !bg-primary/15':
+                            isRowSelected(item.id) &&
+                            item.status !== 'new' &&
+                            item.status !== 'edited' &&
+                            item.status !== 'deleted',
+                        },
+                      ]"
                       :style="{ width: 'var(--row-num-w)' }"
-                      @click="selectRow(index)"
+                      @click="handleRowClick(index, item.id, $event)"
                       @contextmenu="onRowContext(item.id, index)"
                     >
                       {{ index + 1 }}
@@ -2249,7 +2278,7 @@ defineExpose({
                         'cursor-text hover:bg-accent/50': editable && !item.isDeleted,
                         'line-through': item.isDeleted,
                       }"
-                      @mousedown="beginCellSelection(index, visibleColIdx, $event)"
+                      @mousedown="handleDataCellMousedown(index, visibleColIdx, item.id, $event)"
                       @mouseenter="extendCellSelection(index, visibleColIdx)"
                       @dblclick="editable && !item.isDeleted && startEdit(item.id, actualColIdx)"
                       @contextmenu="onCellContext(item.id, index, actualColIdx, visibleColIdx)"
@@ -2540,8 +2569,20 @@ defineExpose({
           <ContextMenuSubTrigger> <Copy class="w-3.5 h-3.5 mr-2" /> {{ t("grid.copy") }} </ContextMenuSubTrigger>
           <ContextMenuSubContent class="w-max max-w-[min(80vw,18rem)]">
             <ContextMenuItem v-if="contextColumn" @click="copyCell">{{ t("grid.copyCell") }}</ContextMenuItem>
-            <ContextMenuItem @click="copyRow">{{ t("grid.copyRow") }}</ContextMenuItem>
-            <ContextMenuItem @click="copyRowAsInsert">{{ t("grid.copyRowInsert") }}</ContextMenuItem>
+            <ContextMenuItem @click="copyRow">
+              {{
+                hasRowSelection && selectedRowCount > 1
+                  ? t("grid.copyRows", { count: selectedRowCount })
+                  : t("grid.copyRow")
+              }}
+            </ContextMenuItem>
+            <ContextMenuItem @click="copyRowAsInsert">
+              {{
+                hasRowSelection && selectedRowCount > 1
+                  ? t("grid.copyRowsInsert", { count: selectedRowCount })
+                  : t("grid.copyRowInsert")
+              }}
+            </ContextMenuItem>
             <ContextMenuItem @click="copyAll">{{ t("grid.copyAll") }}</ContextMenuItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
@@ -2563,14 +2604,36 @@ defineExpose({
         </ContextMenuSub>
         <ContextMenuSeparator />
         <template v-if="editable && contextRowItem">
-          <ContextMenuItem @click="cloneRow(contextRowItem.id)">
-            <CopyPlus class="w-3.5 h-3.5 mr-2" /> {{ t("grid.cloneRow") }}
+          <ContextMenuItem
+            @click="
+              hasRowSelection && selectedRowCount > 1 ? cloneRows([...selectedRowIds]) : cloneRow(contextRowItem.id)
+            "
+          >
+            <CopyPlus class="w-3.5 h-3.5 mr-2" />
+            {{
+              hasRowSelection && selectedRowCount > 1
+                ? t("grid.cloneRows", { count: selectedRowCount })
+                : t("grid.cloneRow")
+            }}
           </ContextMenuItem>
           <ContextMenuItem v-if="contextRowItem.isDeleted" @click="restoreRow(contextRowItem.id)">
             <Undo2 class="w-3.5 h-3.5 mr-2" /> {{ t("grid.restoreRow") }}
           </ContextMenuItem>
-          <ContextMenuItem v-else class="text-destructive" @click="deleteSelectedRow">
-            <Trash2 class="w-3.5 h-3.5 mr-2" /> {{ t("grid.deleteRow") }}
+          <ContextMenuItem
+            v-else
+            class="text-destructive"
+            @click="
+              hasRowSelection && selectedRowCount > 1
+                ? requestDeleteRows([...selectedRowIds])
+                : requestDeleteRow(contextRowItem.id)
+            "
+          >
+            <Trash2 class="w-3.5 h-3.5 mr-2" />
+            {{
+              hasRowSelection && selectedRowCount > 1
+                ? t("grid.deleteRows", { count: selectedRowCount })
+                : t("grid.deleteRow")
+            }}
           </ContextMenuItem>
           <ContextMenuSeparator />
         </template>
@@ -2676,9 +2739,17 @@ defineExpose({
 
     <DangerConfirmDialog
       v-model:open="showDeleteRowConfirm"
-      :message="t('dangerDialog.deleteRowMessage')"
+      :message="
+        pendingDeleteRowIds.length > 1
+          ? t('dangerDialog.deleteRowsMessage', { count: pendingDeleteRowIds.length })
+          : t('dangerDialog.deleteRowMessage')
+      "
       :details="deleteRowDetails"
-      :confirm-label="t('grid.deleteRow')"
+      :confirm-label="
+        pendingDeleteRowIds.length > 1
+          ? t('grid.deleteRows', { count: pendingDeleteRowIds.length })
+          : t('grid.deleteRow')
+      "
       @confirm="confirmDeleteRow"
     />
   </div>
