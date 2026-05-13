@@ -80,6 +80,24 @@ test("builds Hive grid save statements without primary keys using row predicates
   ]);
 });
 
+test("builds Trino insert statements with schema-qualified identifiers", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "trino",
+    tableMeta: {
+      schema: "tiny",
+      tableName: "nation",
+      primaryKeys: [],
+    },
+    columns: ["nationkey", "name"],
+    rows: [],
+    dirtyRows: [],
+    deletedRows: [],
+    newRows: [[100, "Atlantis"]],
+  });
+
+  assert.deepEqual(statements, ['INSERT INTO "tiny"."nation" ("nationkey", "name") VALUES (100, \'Atlantis\');']);
+});
+
 test("uses Oracle ROWID as a synthetic key without writing it as a normal column", () => {
   const statements = buildDataGridSaveStatements({
     databaseType: "oracle",

@@ -812,7 +812,9 @@ const tableUsesSyntheticRowId = computed(() =>
   usesSyntheticRowIdKey(props.databaseType, props.tableMeta?.primaryKeys ?? []),
 );
 const hiveTableTransactional = ref<boolean | undefined>(undefined);
-const canEditExistingRows = computed(() => canEditExistingTableRows(props.databaseType, hiveTableTransactional.value));
+const canEditExistingRows = computed(() =>
+  canEditExistingTableRows(props.databaseType, hiveTableTransactional.value, props.tableMeta?.primaryKeys ?? []),
+);
 watch(
   () => [props.databaseType, props.connectionId, props.database, props.tableMeta?.schema, props.tableMeta?.tableName],
   async () => {
@@ -2033,7 +2035,7 @@ defineExpose({
                 {{ t("grid.refresh") }}
               </Button>
               <Button
-                v-if="useTransaction && editable && (tableMeta || customSave)"
+                v-if="editable && (tableMeta || customSave)"
                 variant="ghost"
                 size="sm"
                 class="h-5 text-xs px-1.5 shrink-0"

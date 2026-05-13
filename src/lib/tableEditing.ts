@@ -12,18 +12,21 @@ export function editablePrimaryKeys(databaseType: DatabaseType | undefined, colu
 
 export function isTableDataEditable(databaseType: DatabaseType | undefined, primaryKeys: string[]): boolean {
   if (databaseType === "hive") return true;
+  if (databaseType === "trino") return true;
   return primaryKeys.length > 0;
 }
 
 export function supportsDataGridTransaction(databaseType: DatabaseType | undefined): boolean {
-  return databaseType !== "hive";
+  return databaseType !== "hive" && databaseType !== "trino";
 }
 
 export function canEditExistingTableRows(
   databaseType: DatabaseType | undefined,
   hiveTableTransactional?: boolean,
+  primaryKeys: string[] = [],
 ): boolean {
   if (databaseType === "hive") return hiveTableTransactional === true;
+  if (databaseType === "trino") return primaryKeys.length > 0;
   return true;
 }
 

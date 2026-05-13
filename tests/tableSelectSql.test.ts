@@ -28,6 +28,17 @@ test("builds a schema-qualified PostgreSQL table WHERE query", () => {
   assert.equal(sql, 'SELECT * FROM "public"."orders" WHERE (amount > 10) LIMIT 50 OFFSET 100;');
 });
 
+test("builds schema-qualified Trino table data queries", () => {
+  const sql = buildTableSelectSql({
+    databaseType: "trino",
+    schema: "tiny",
+    tableName: "nation",
+    limit: 100,
+  });
+
+  assert.equal(sql, 'SELECT * FROM "tiny"."nation" LIMIT 100;');
+});
+
 test("builds Hive table data queries with backtick identifiers", () => {
   const sql = buildTableSelectSql({
     databaseType: "hive",

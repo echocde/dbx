@@ -38,12 +38,14 @@ test("does not synthesize ROWID for non-Oracle keyless tables", () => {
 
 test("allows Hive table data editing even without declared primary keys", () => {
   assert.equal(isTableDataEditable("hive", []), true);
+  assert.equal(isTableDataEditable("trino", []), true);
   assert.equal(isTableDataEditable("mysql", []), false);
   assert.equal(isTableDataEditable("postgres", ["id"]), true);
 });
 
 test("does not use transactional grid saves for Hive", () => {
   assert.equal(supportsDataGridTransaction("hive"), false);
+  assert.equal(supportsDataGridTransaction("trino"), false);
   assert.equal(supportsDataGridTransaction("postgres"), true);
 });
 
@@ -51,6 +53,8 @@ test("allows existing row edits for Hive only when the table is transactional", 
   assert.equal(canEditExistingTableRows("hive", true), true);
   assert.equal(canEditExistingTableRows("hive", false), false);
   assert.equal(canEditExistingTableRows("hive", undefined), false);
+  assert.equal(canEditExistingTableRows("trino", undefined, []), false);
+  assert.equal(canEditExistingTableRows("trino", undefined, ["id"]), true);
   assert.equal(canEditExistingTableRows("postgres", undefined), true);
 });
 
