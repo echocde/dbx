@@ -123,6 +123,42 @@ test("always includes keywords alongside table suggestions", () => {
   assert.ok(items.some((item) => item.type === "keyword" && item.label === "USING"));
 });
 
+test("suggests SQL Server IF keyword for conditional DDL", () => {
+  const sql = "DROP TABLE I";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.ok(items.some((item) => item.type === "keyword" && item.label === "IF"));
+});
+
+test("suggests SQL Server IIF and CHOOSE scalar functions", () => {
+  const iifItems = buildSqlCompletionItems("SELECT II", "SELECT II".length, {
+    tables,
+    columnsByTable,
+  });
+  const chooseItems = buildSqlCompletionItems("SELECT CHO", "SELECT CHO".length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.ok(iifItems.some((item) => item.type === "keyword" && item.label === "IIF"));
+  assert.ok(chooseItems.some((item) => item.type === "keyword" && item.label === "CHOOSE"));
+});
+
+test("suggests SQL Server data types in CREATE TABLE column definitions", () => {
+  const sql = "CREATE TABLE dbo.jobs (id ";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.ok(items.some((item) => item.type === "keyword" && item.label === "INT"));
+  assert.ok(items.some((item) => item.type === "keyword" && item.label === "BIGINT"));
+  assert.ok(items.some((item) => item.type === "keyword" && item.label === "NVARCHAR"));
+});
+
 test("limits table suggestions for large schemas after filtering by prefix", () => {
   const largeTables: SqlCompletionTable[] = Array.from({ length: 500 }, (_, index) => ({
     name: `erp_invoice_${String(index).padStart(4, "0")}`,
