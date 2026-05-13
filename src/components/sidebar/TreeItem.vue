@@ -501,6 +501,7 @@ async function confirmDelete() {
     try {
       await connectionStore.disconnect(node.connectionId);
       await connectionStore.removeConnection(node.connectionId);
+      toast(t("connection.deleted"), 2000);
     } catch (e: any) {
       toast(t("connection.saveFailed", { message: e?.message || String(e) }), 5000);
     }
@@ -509,6 +510,7 @@ async function confirmDelete() {
 
 function copyName() {
   navigator.clipboard.writeText(props.node.label);
+  toast(t("connection.copied"), 2000);
 }
 
 async function duplicateConnection() {
@@ -518,6 +520,7 @@ async function duplicateConnection() {
   if (!config) return;
   const newConfig = { ...config, id: uuid(), name: `${config.name} (Copy)` };
   await connectionStore.addConnection(newConfig);
+  toast(t("connection.duplicated"), 2000);
 }
 
 // --- Table Management Operations ---
@@ -954,6 +957,7 @@ function disconnectConnection() {
     connectionStore.disconnect(props.node.connectionId);
     props.node.isExpanded = false;
     props.node.children = [];
+    toast(t("connection.disconnected"), 2000);
   }
 }
 
@@ -1220,6 +1224,7 @@ function newConnectionInGroup() {
 function confirmDeleteGroup() {
   connectionStore.deleteConnectionGroup(props.node.id);
   showDeleteGroupConfirm.value = false;
+  toast(t("connection.groupDeleted"), 2000);
 }
 
 const showDeleteGroupConfirm = ref(false);
