@@ -349,9 +349,17 @@ where
 
 fn resolve_plugin_executable(plugin_dir: &Path, executable: &str) -> PathBuf {
     let path = PathBuf::from(executable);
-    if path.is_absolute() {
-        path
-    } else {
-        plugin_dir.join(path)
+    let resolved = if path.is_absolute() { path } else { plugin_dir.join(path) };
+
+    #[cfg(windows)]
+    {
+        if !resolved.exists() {
+            let bat = resolved.with_extension("bat");
+            if bat.exists() {
+                return bat;
+            }
+        }
     }
+
+    resolved
 }
