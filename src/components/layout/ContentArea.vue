@@ -205,7 +205,8 @@ function onHandleCloseColumnPanel() {
                 activeTab.isExecuting ||
                 activeTab.isExplaining
               "
-              class="h-8 shrink-0 border-b bg-muted/20 px-2 flex items-center gap-1"
+              class="h-8 shrink-0 border-b bg-muted/20 px-2 flex items-center gap-1 overflow-x-auto"
+              style="scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch"
             >
               <Button
                 size="sm"
@@ -223,7 +224,7 @@ function onHandleCloseColumnPanel() {
                   :key="rIdx"
                   size="sm"
                   :variant="activeTab.activeResultIndex === rIdx ? 'default' : 'ghost'"
-                  class="h-6 px-2 text-xs"
+                  class="h-6 px-2 text-xs shrink-0"
                   @click="queryStore.setActiveResultIndex(activeTab.id, rIdx)"
                 >
                   {{ t("tabs.resultN", { n: rIdx + 1 }) }}
