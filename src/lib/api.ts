@@ -111,6 +111,7 @@ export const redisDeleteKey = forward("redisDeleteKey");
 export const redisHashSet = forward("redisHashSet");
 export const redisHashDel = forward("redisHashDel");
 export const redisListPush = forward("redisListPush");
+export const redisListSet = forward("redisListSet");
 export const redisListRemove = forward("redisListRemove");
 export const redisSetAdd = forward("redisSetAdd");
 export const redisSetRemove = forward("redisSetRemove");

@@ -597,6 +597,16 @@ export async function redisListPush(connectionId: string, db: number, keyRaw: st
   return post("/api/redis/list-push", { connectionId, db, keyRaw, value });
 }
 
+export async function redisListSet(
+  connectionId: string,
+  db: number,
+  keyRaw: string,
+  index: number,
+  value: string,
+): Promise<void> {
+  return post("/api/redis/list-set", { connectionId, db, keyRaw, index, value });
+}
+
 export async function redisListRemove(connectionId: string, db: number, keyRaw: string, index: number): Promise<void> {
   return post("/api/redis/list-remove", { connectionId, db, keyRaw, index });
 }
