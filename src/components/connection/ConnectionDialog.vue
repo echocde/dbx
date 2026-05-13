@@ -358,6 +358,7 @@ const iconTypeMap: Record<string, string> = {
   clickhouse: "clickhouse",
   sqlserver: "sqlserver",
   oracle: "oracle",
+  "oracle-10g": "oracle",
   elasticsearch: "elasticsearch",
   mariadb: "mariadb",
   tidb: "tidb",
@@ -400,7 +401,6 @@ const dbOptions = [
   { value: "clickhouse", label: "ClickHouse" },
   { value: "sqlserver", label: "SQL Server" },
   { value: "oracle", label: "Oracle" },
-  { value: "oracle-10g", label: "Oracle 10g" },
   { value: "elasticsearch", label: "Elasticsearch" },
   { value: "mariadb", label: "MariaDB" },
   { value: "dm", label: "DM (Dameng)" },
@@ -1135,6 +1135,22 @@ function openExternalUrl(url: string) {
                     <p class="col-span-3 text-xs text-muted-foreground">
                       需要在顶部导航栏「驱动管理」中安装对应的驱动才能连接。
                     </p>
+                  </div>
+
+                  <div v-if="form.db_type === 'oracle'" class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">版本</Label>
+                    <Select
+                      :model-value="selectedType === 'oracle-10g' ? 'oracle-10g' : 'oracle'"
+                      @update:model-value="(val) => applyProfile(String(val), true)"
+                    >
+                      <SelectTrigger class="col-span-3 h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="oracle">Oracle 11g+</SelectItem>
+                        <SelectItem value="oracle-10g">Oracle 10g</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div v-if="form.db_type === 'oracle'" class="grid grid-cols-4 items-center gap-4">

@@ -316,6 +316,17 @@ onUnmounted(() => {
                   <span v-if="jre.installed" class="text-xs text-green-600">已安装</span>
                   <span v-else class="text-xs text-muted-foreground">未安装</span>
                   <Button
+                    v-if="!jre.installed"
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    :disabled="reinstallingJre !== null || installing !== null"
+                    @click="reinstallJre(jre.key)"
+                  >
+                    <Download class="h-3.5 w-3.5 mr-1" />
+                    {{ reinstallingJre === jre.key ? "安装中..." : "安装" }}
+                  </Button>
+                  <Button
                     v-if="jre.installed"
                     type="button"
                     variant="outline"
@@ -372,8 +383,9 @@ onUnmounted(() => {
                 </div>
                 <div class="flex shrink-0 items-center gap-1.5">
                   <span
-                    v-if="driver.jre && driver.jre !== '17'"
-                    class="rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] text-blue-600"
+                    v-if="driver.jre"
+                    class="rounded-full px-2 py-0.5 text-[11px]"
+                    :class="driver.jre !== '17' ? 'bg-blue-500/10 text-blue-600' : 'bg-muted text-muted-foreground'"
                     >JRE {{ driver.jre }}</span
                   >
                   <template v-if="driver.installed">
