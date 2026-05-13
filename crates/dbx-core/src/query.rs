@@ -227,17 +227,6 @@ pub async fn do_execute(
             .await
             .map(truncate_result)
         }
-        PoolKind::Gaussdb(client) => {
-            let client = client.clone();
-            let sql = sql.to_string();
-            drop(connections);
-            wait_for_query(cancel_token, async move {
-                let mut client = client.lock().await;
-                db::gaussdb_driver::execute_query(&mut client, &sql).await
-            })
-            .await
-            .map(truncate_result)
-        }
         PoolKind::ExternalTabular(ext_pool) => {
             if !starts_with_executable_sql_keyword(sql, &["SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN", "PRAGMA"]) {
                 return Err("External data sources are read-only. Only SELECT queries are supported.".to_string());
@@ -476,7 +465,7 @@ pub async fn execute_statements(
 /// Execute multiple SQL statements within a single transaction.
 /// For sqlx-based pools (Postgres/MySQL/SQLite), uses the Transaction API to
 /// guarantee all statements run on the same physical connection.
-/// For custom drivers (ClickHouse/SqlServer/Agent/Gaussdb), uses explicit
+/// For custom drivers (ClickHouse/SqlServer/Agent), uses explicit
 /// BEGIN/COMMIT/ROLLBACK on the already-single-connection client.
 /// For databases that don't support explicit transactions (Redis, MongoDB, Oracle),
 /// executes statements sequentially without transaction.
@@ -503,9 +492,7 @@ pub async fn execute_statements_in_transaction(
             PoolKind::Postgres(pg) => TxPath::Pg(pg.clone()),
             PoolKind::Mysql(mp, _mode) => TxPath::Mysql(mp.clone(), false),
             PoolKind::Sqlite(sq) => TxPath::Sqlite(sq.clone()),
-            PoolKind::ClickHouse(_) | PoolKind::SqlServer(_) | PoolKind::Agent(_) | PoolKind::Gaussdb(_) => {
-                TxPath::Explicit
-            }
+            PoolKind::ClickHouse(_) | PoolKind::SqlServer(_) | PoolKind::Agent(_) => TxPath::Explicit,
             PoolKind::DuckDb(_)
             | PoolKind::Redis(_)
             | PoolKind::MongoDb(_)

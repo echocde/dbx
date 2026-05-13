@@ -162,6 +162,17 @@ export const useConnectionStore = defineStore("connection", () => {
       kingbase: "KingBase",
       vastbase: "Vastbase",
       goldendb: "GoldenDB",
+      h2: "H2",
+      snowflake: "Snowflake",
+      trino: "Trino",
+      hive: "Hive",
+      db2: "DB2",
+      informix: "Informix",
+      neo4j: "Neo4j",
+      cassandra: "Cassandra",
+      bigquery: "BigQuery",
+      kylin: "Kylin",
+      sundb: "SunDB",
     };
 
     const profile = config.driver_profile || config.db_type;

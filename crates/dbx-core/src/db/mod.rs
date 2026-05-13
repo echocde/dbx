@@ -3,7 +3,6 @@ pub mod clickhouse_driver;
 pub mod duckdb_driver;
 pub mod elasticsearch_driver;
 pub mod file_validator;
-pub mod gaussdb_driver;
 pub mod mongo_driver;
 pub mod mysql;
 pub mod ob_oracle;

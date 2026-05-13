@@ -106,7 +106,19 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
             | DatabaseType::Kingbase
             | DatabaseType::Vastbase
             | DatabaseType::Goldendb
-            | DatabaseType::Oracle => {
+            | DatabaseType::Oracle
+            | DatabaseType::H2
+            | DatabaseType::Snowflake
+            | DatabaseType::Trino
+            | DatabaseType::Hive
+            | DatabaseType::Db2
+            | DatabaseType::Informix
+            | DatabaseType::Neo4j
+            | DatabaseType::Cassandra
+            | DatabaseType::Bigquery
+            | DatabaseType::Kylin
+            | DatabaseType::Sundb
+            | DatabaseType::Gaussdb => {
                 state
                     .agent_manager
                     .call_daemon::<serde_json::Value>(
@@ -123,15 +135,6 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     .await?;
                 Ok("Connection successful".to_string())
             }
-            DatabaseType::Gaussdb => db::gaussdb_driver::connect(
-                &host,
-                port,
-                config.database.as_deref().unwrap_or(""),
-                &config.username,
-                &config.password,
-            )
-            .await
-            .map(|_| "Connection successful".to_string()),
             DatabaseType::Jdbc => {
                 let mut jdbc_config = config.clone();
                 if host != config.host || port != config.port {
@@ -214,7 +217,19 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
         | DatabaseType::Kingbase
         | DatabaseType::Vastbase
         | DatabaseType::Goldendb
-        | DatabaseType::Oracle => {
+        | DatabaseType::Oracle
+        | DatabaseType::H2
+        | DatabaseType::Snowflake
+        | DatabaseType::Trino
+        | DatabaseType::Hive
+        | DatabaseType::Db2
+        | DatabaseType::Informix
+        | DatabaseType::Neo4j
+        | DatabaseType::Cassandra
+        | DatabaseType::Bigquery
+        | DatabaseType::Kylin
+        | DatabaseType::Sundb
+        | DatabaseType::Gaussdb => {
             let mut client = state.agent_manager.spawn(&db_config.db_type).await?;
             client
                 .call::<serde_json::Value>(
@@ -229,17 +244,6 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
                 )
                 .await?;
             PoolKind::Agent(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
-        }
-        DatabaseType::Gaussdb => {
-            let client = db::gaussdb_driver::connect(
-                &host,
-                port,
-                db_config.database.as_deref().unwrap_or(""),
-                &db_config.username,
-                &db_config.password,
-            )
-            .await?;
-            PoolKind::Gaussdb(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
         }
         DatabaseType::Jdbc => state.external_driver_pool("jdbc", &db_config).await?,
     };
@@ -268,7 +272,6 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
                 PoolKind::SqlServer(_) => {}
                 PoolKind::Elasticsearch(_) => {}
                 PoolKind::Agent(_) => {}
-                PoolKind::Gaussdb(_) => {}
                 PoolKind::ExternalTabular(_) => {}
                 PoolKind::ExternalDriver { .. } => {}
             }

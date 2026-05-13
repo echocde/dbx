@@ -17,6 +17,17 @@ export type DatabaseType =
   | "kingbase"
   | "vastbase"
   | "goldendb"
+  | "h2"
+  | "snowflake"
+  | "trino"
+  | "hive"
+  | "db2"
+  | "informix"
+  | "neo4j"
+  | "cassandra"
+  | "bigquery"
+  | "kylin"
+  | "sundb"
   | "jdbc";
 
 export interface ConnectionConfig {

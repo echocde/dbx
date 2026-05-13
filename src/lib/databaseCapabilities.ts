@@ -10,6 +10,10 @@ export const SCHEMA_AWARE_TYPES = new Set<DatabaseType>([
   "kingbase",
   "vastbase",
   "jdbc",
+  "h2",
+  "snowflake",
+  "db2",
+  "informix",
 ]);
 
 export const SQL_FILE_UNSUPPORTED_TYPES = new Set<DatabaseType>(["redis", "mongodb", "elasticsearch"]);
@@ -26,6 +30,8 @@ export const DIAGRAM_SUPPORTED_TYPES = new Set<DatabaseType>([
   "kingbase",
   "vastbase",
   "goldendb",
+  "h2",
+  "db2",
 ]);
 
 export const DATABASE_SEARCH_SUPPORTED_TYPES = new Set<DatabaseType>([
@@ -42,6 +48,17 @@ export const DATABASE_SEARCH_SUPPORTED_TYPES = new Set<DatabaseType>([
   "kingbase",
   "vastbase",
   "goldendb",
+  "h2",
+  "snowflake",
+  "trino",
+  "hive",
+  "db2",
+  "informix",
+  "neo4j",
+  "cassandra",
+  "bigquery",
+  "kylin",
+  "sundb",
 ]);
 
 export const TABLE_IMPORT_SUPPORTED_TYPES = new Set<DatabaseType>([
@@ -96,7 +113,25 @@ export const TREE_SCHEMA_TYPES = new Set<DatabaseType>(["postgres", "redshift", 
 
 export const PG_LIKE_STRUCTURE_TYPES = new Set<DatabaseType>(["postgres", "redshift", "gaussdb"]);
 
-export const AGENT_DRIVER_TYPES = new Set<DatabaseType>(["dameng", "kingbase", "vastbase", "goldendb", "oracle"]);
+export const AGENT_DRIVER_TYPES = new Set<DatabaseType>([
+  "dameng",
+  "kingbase",
+  "vastbase",
+  "goldendb",
+  "oracle",
+  "h2",
+  "snowflake",
+  "trino",
+  "hive",
+  "db2",
+  "informix",
+  "neo4j",
+  "cassandra",
+  "bigquery",
+  "kylin",
+  "sundb",
+  "gaussdb",
+]);
 
 export const TRANSFER_SQL_TYPES = new Set<DatabaseType>([
   "mysql",

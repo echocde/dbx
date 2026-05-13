@@ -31,6 +31,8 @@ const assetIcons: Record<string, string> = {
   hive: "hive",
   apache_kylin: "apache_kylin",
   sundb: "sundb",
+  trino: "presto",
+  kylin: "apache_kylin",
   cockroachdb: "cockroachdb",
   db2: "db2",
   bigquery: "bigquery",

@@ -117,6 +117,21 @@ pub enum DatabaseType {
     Vastbase,
     Goldendb,
     Gaussdb,
+    #[serde(rename = "h2")]
+    H2,
+    Snowflake,
+    Trino,
+    Hive,
+    #[serde(rename = "db2")]
+    Db2,
+    Informix,
+    #[serde(rename = "neo4j")]
+    Neo4j,
+    Cassandra,
+    #[serde(rename = "bigquery")]
+    Bigquery,
+    Kylin,
+    Sundb,
     Jdbc,
 }
 
@@ -216,6 +231,17 @@ impl ConnectionConfig {
             DatabaseType::Vastbase => format!("vastbase://{host}:{port}{db_part}"),
             DatabaseType::Goldendb => format!("goldendb://{host}:{port}{db_part}"),
             DatabaseType::Gaussdb => format!("gaussdb://{host}:{port}{db_part}"),
+            DatabaseType::H2 => format!("h2://{host}:{port}{db_part}"),
+            DatabaseType::Snowflake => format!("snowflake://{host}/{db_part}"),
+            DatabaseType::Trino => format!("trino://{host}:{port}{db_part}"),
+            DatabaseType::Hive => format!("hive://{host}:{port}{db_part}"),
+            DatabaseType::Db2 => format!("db2://{host}:{port}{db_part}"),
+            DatabaseType::Informix => format!("informix://{host}:{port}{db_part}"),
+            DatabaseType::Neo4j => format!("neo4j://{host}:{port}{db_part}"),
+            DatabaseType::Cassandra => format!("cassandra://{host}:{port}{db_part}"),
+            DatabaseType::Bigquery => format!("bigquery://{host}/{db_part}"),
+            DatabaseType::Kylin => format!("kylin://{host}:{port}{db_part}"),
+            DatabaseType::Sundb => format!("sundb://{host}:{port}{db_part}"),
             DatabaseType::Jdbc => "jdbc:<redacted>".to_string(),
         }
     }
@@ -295,6 +321,39 @@ impl ConnectionConfig {
             }
             DatabaseType::Gaussdb => {
                 format!("gaussdb://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::H2 => {
+                format!("h2://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Snowflake => {
+                format!("snowflake://{}:{}@{host}/{db_part}", username, password)
+            }
+            DatabaseType::Trino => {
+                format!("trino://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Hive => {
+                format!("hive://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Db2 => {
+                format!("db2://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Informix => {
+                format!("informix://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Neo4j => {
+                format!("neo4j://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Cassandra => {
+                format!("cassandra://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Bigquery => {
+                format!("bigquery://{}:{}@{host}/{db_part}", username, password)
+            }
+            DatabaseType::Kylin => {
+                format!("kylin://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Sundb => {
+                format!("sundb://{}:{}@{host}:{port}{db_part}", username, password)
             }
             DatabaseType::Jdbc => {
                 self.connection_string.as_deref().filter(|value| !value.is_empty()).unwrap_or("jdbc:").to_string()

@@ -44,7 +44,6 @@ pub enum PoolKind {
     SqlServer(Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>),
     Elasticsearch(db::elasticsearch_driver::EsClient),
     Agent(Arc<tokio::sync::Mutex<db::agent_driver::AgentDriverClient>>),
-    Gaussdb(Arc<tokio::sync::Mutex<db::gaussdb_driver::GaussdbClient>>),
     ExternalTabular(Arc<external::ExternalPool>),
     ExternalDriver { driver_id: String, config: ConnectionConfig, session: Arc<PluginDriverSession> },
 }
@@ -214,7 +213,19 @@ impl AppState {
             | DatabaseType::Kingbase
             | DatabaseType::Vastbase
             | DatabaseType::Goldendb
-            | DatabaseType::Oracle => {
+            | DatabaseType::Oracle
+            | DatabaseType::H2
+            | DatabaseType::Snowflake
+            | DatabaseType::Trino
+            | DatabaseType::Hive
+            | DatabaseType::Db2
+            | DatabaseType::Informix
+            | DatabaseType::Neo4j
+            | DatabaseType::Cassandra
+            | DatabaseType::Bigquery
+            | DatabaseType::Kylin
+            | DatabaseType::Sundb
+            | DatabaseType::Gaussdb => {
                 let mut client = self.agent_manager.spawn(&db_config.db_type).await?;
                 client
                     .call::<serde_json::Value>(
@@ -229,17 +240,6 @@ impl AppState {
                     )
                     .await?;
                 PoolKind::Agent(Arc::new(tokio::sync::Mutex::new(client)))
-            }
-            DatabaseType::Gaussdb => {
-                let client = db::gaussdb_driver::connect(
-                    &host,
-                    port,
-                    db_config.effective_database().unwrap_or("postgres"),
-                    &db_config.username,
-                    &db_config.password,
-                )
-                .await?;
-                PoolKind::Gaussdb(Arc::new(tokio::sync::Mutex::new(client)))
             }
             DatabaseType::Jdbc => {
                 let mut jdbc_config = db_config.clone();
@@ -406,7 +406,19 @@ pub async fn probe_connection_endpoint(config: &ConnectionConfig, host: &str, po
         | DatabaseType::Kingbase
         | DatabaseType::Vastbase
         | DatabaseType::Goldendb
-        | DatabaseType::Oracle => Ok(()),
+        | DatabaseType::Oracle
+        | DatabaseType::H2
+        | DatabaseType::Snowflake
+        | DatabaseType::Trino
+        | DatabaseType::Hive
+        | DatabaseType::Db2
+        | DatabaseType::Informix
+        | DatabaseType::Neo4j
+        | DatabaseType::Cassandra
+        | DatabaseType::Bigquery
+        | DatabaseType::Kylin
+        | DatabaseType::Sundb
+        | DatabaseType::Gaussdb => Ok(()),
         _ => db::probe_tcp_endpoint(&format!("{:?}", config.db_type), host, port).await,
     }
 }

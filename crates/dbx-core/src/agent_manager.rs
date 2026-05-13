@@ -122,6 +122,18 @@ impl AgentManager {
             DatabaseType::Vastbase => Some("vastbase"),
             DatabaseType::Goldendb => Some("goldendb"),
             DatabaseType::Oracle => Some("oracle"),
+            DatabaseType::H2 => Some("h2"),
+            DatabaseType::Snowflake => Some("snowflake"),
+            DatabaseType::Trino => Some("trino"),
+            DatabaseType::Hive => Some("hive"),
+            DatabaseType::Db2 => Some("db2"),
+            DatabaseType::Informix => Some("informix"),
+            DatabaseType::Neo4j => Some("neo4j"),
+            DatabaseType::Cassandra => Some("cassandra"),
+            DatabaseType::Bigquery => Some("bigquery"),
+            DatabaseType::Kylin => Some("kylin"),
+            DatabaseType::Sundb => Some("sundb"),
+            DatabaseType::Gaussdb => Some("gaussdb"),
             _ => None,
         }
     }

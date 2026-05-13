@@ -18,6 +18,19 @@ pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Ve
         ("kingbase", "人大金仓 KingbaseES"),
         ("vastbase", "Vastbase"),
         ("goldendb", "GoldenDB"),
+        ("oracle", "Oracle"),
+        ("h2", "H2"),
+        ("snowflake", "Snowflake"),
+        ("trino", "Trino (Presto)"),
+        ("hive", "Apache Hive"),
+        ("db2", "IBM DB2"),
+        ("informix", "IBM Informix"),
+        ("neo4j", "Neo4j"),
+        ("cassandra", "Apache Cassandra"),
+        ("bigquery", "Google BigQuery"),
+        ("kylin", "Apache Kylin"),
+        ("sundb", "SunDB"),
+        ("gaussdb", "GaussDB"),
     ];
 
     Ok(agent_types
