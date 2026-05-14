@@ -530,8 +530,10 @@ onMounted(async () => {
   }
   initApp();
   setupFileDrop().catch(() => {});
-  checkUpdates({ silent: true });
-  updateCheckTimer = setInterval(() => checkUpdates({ silent: true }), UPDATE_CHECK_INTERVAL_MS);
+  setTimeout(() => {
+    checkUpdates({ silent: true });
+    updateCheckTimer = setInterval(() => checkUpdates({ silent: true }), UPDATE_CHECK_INTERVAL_MS);
+  }, 10_000);
   api
     .getAppVersion()
     .then((v) => {
