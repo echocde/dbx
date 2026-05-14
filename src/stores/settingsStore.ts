@@ -50,6 +50,7 @@ export interface EditorSettings {
   executeMode: "all" | "current";
   wordWrap: boolean;
   appLayout: "separated" | "classic";
+  pageSize: number;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -81,6 +82,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   executeMode: "all",
   wordWrap: false,
   appLayout: "classic",
+  pageSize: 100,
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
@@ -99,6 +101,7 @@ function loadEditorSettings(): EditorSettings {
         executeMode: parsed.executeMode ?? DEFAULT_EDITOR_SETTINGS.executeMode,
         wordWrap: parsed.wordWrap ?? DEFAULT_EDITOR_SETTINGS.wordWrap,
         appLayout: parsed.appLayout ?? DEFAULT_EDITOR_SETTINGS.appLayout,
+        pageSize: parsed.pageSize ?? DEFAULT_EDITOR_SETTINGS.pageSize,
       };
     }
   } catch {

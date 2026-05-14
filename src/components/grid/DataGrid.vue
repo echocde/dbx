@@ -84,8 +84,10 @@ import { useDataGridExport } from "@/composables/useDataGridExport";
 import { useDataGridColumnResize } from "@/composables/useDataGridColumnResize";
 import { useDataGridSelection } from "@/composables/useDataGridSelection";
 import { useDataGridEditor } from "@/composables/useDataGridEditor";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const { t } = useI18n();
+const settingsStore = useSettingsStore();
 const { toast } = useToast();
 
 const props = defineProps<{
@@ -825,7 +827,7 @@ watch(
 );
 
 // --- Pagination ---
-const pageSize = ref(100);
+const pageSize = ref(settingsStore.editorSettings.pageSize);
 const currentPage = ref(1);
 const isFullPage = computed(() => props.result.rows.length >= pageSize.value);
 const isResultsContext = computed(() => props.context === "results");
@@ -909,6 +911,7 @@ function nextPage() {
 }
 function changePageSize(size: number) {
   pageSize.value = size;
+  settingsStore.updateEditorSettings({ pageSize: size });
   currentPage.value = 1;
   resetGridVerticalScroll(true);
   emit("paginate", 0, size, currentWhereInput(), currentOrderBy());
