@@ -40,6 +40,7 @@ const emit = defineEmits<{
   connectStarted: [name: string];
   connectSucceeded: [name: string];
   connectFailed: [message: string];
+  openDriverStore: [];
 }>();
 
 const store = useConnectionStore();
@@ -1155,7 +1156,11 @@ function openExternalUrl(url: string) {
                   <div v-if="shouldShowAgentDriverInstallHint" class="grid grid-cols-4 items-center gap-4">
                     <span />
                     <p class="col-span-3 text-xs text-muted-foreground">
-                      需要在顶部导航栏「驱动管理」中安装对应的驱动才能连接。
+                      需要在顶部导航栏「<a
+                        class="underline cursor-pointer text-primary hover:text-primary/80"
+                        @click="emit('openDriverStore')"
+                        >驱动管理</a
+                      >」中安装对应的驱动才能连接。
                     </p>
                   </div>
 

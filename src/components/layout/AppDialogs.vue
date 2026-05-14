@@ -39,6 +39,7 @@ const emit = defineEmits<{
   connectStarted: [name: string];
   connectSucceeded: [name: string];
   connectFailed: [message: string];
+  openDriverStore: [];
   structureEditorSaved: [];
   openLineageTarget: [
     target: {
@@ -100,6 +101,7 @@ watch(
     @connect-started="emit('connectStarted', $event)"
     @connect-succeeded="emit('connectSucceeded', $event)"
     @connect-failed="emit('connectFailed', $event)"
+    @open-driver-store="emit('openDriverStore')"
   />
   <EditorSettingsDialog
     :open="showSettingsDialog"

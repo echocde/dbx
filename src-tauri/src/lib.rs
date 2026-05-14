@@ -47,6 +47,20 @@ pub fn run() {
                 }
             }
 
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(Some(monitor)) = window.current_monitor() {
+                    let monitor_size = monitor.size();
+                    if let Ok(window_size) = window.outer_size() {
+                        if window_size.width > monitor_size.width || window_size.height > monitor_size.height {
+                            let scale = monitor.scale_factor();
+                            let _ = window
+                                .set_size(tauri::PhysicalSize::new((1280.0 * scale) as u32, (800.0 * scale) as u32));
+                            let _ = window.center();
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {

@@ -751,6 +751,10 @@ onUnmounted(() => {
           @connect-failed="
             (msg: string) => toast(t('connection.connectFailed', { message: translateBackendError(t, msg) }), 5000)
           "
+          @open-driver-store="
+            showConnectionDialog = false;
+            showDriverStore = true;
+          "
           @structure-editor-saved="onStructureEditorSaved(onReloadData, toast)"
           @open-lineage-target="openLineageTarget"
           @open-database-search-target="openDatabaseSearchTarget"
