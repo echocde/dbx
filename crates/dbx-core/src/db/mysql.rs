@@ -155,7 +155,7 @@ fn mysql_value_to_json(row: &MySqlRow, idx: usize, type_name: &str) -> serde_jso
 }
 
 pub async fn connect(url: &str) -> Result<MySqlPool, String> {
-    super::with_connection_timeout("MySQL", async {
+    let result = super::with_connection_timeout("MySQL", async {
         MySqlPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(super::connection_timeout())
@@ -164,7 +164,38 @@ pub async fn connect(url: &str) -> Result<MySqlPool, String> {
             .await
             .map_err(|e| format!("MySQL connection failed: {e}"))
     })
-    .await
+    .await;
+
+    if let Err(ref e) = result {
+        if e.contains("HandshakeFailure") || e.contains("handshake") {
+            if let Some(fallback_url) = ssl_fallback_url(url) {
+                log::info!("SSL handshake failed, retrying with ssl-mode=disabled");
+                return super::with_connection_timeout("MySQL", async {
+                    MySqlPoolOptions::new()
+                        .max_connections(5)
+                        .acquire_timeout(super::connection_timeout())
+                        .idle_timeout(Duration::from_secs(300))
+                        .connect(&fallback_url)
+                        .await
+                        .map_err(|e| format!("MySQL connection failed: {e}"))
+                })
+                .await;
+            }
+        }
+    }
+
+    result
+}
+
+fn ssl_fallback_url(url: &str) -> Option<String> {
+    if url.contains("ssl-mode=preferred") {
+        Some(url.replace("ssl-mode=preferred", "ssl-mode=disabled"))
+    } else if !url.contains("ssl-mode=") {
+        let sep = if url.contains('?') { "&" } else { "?" };
+        Some(format!("{url}{sep}ssl-mode=disabled"))
+    } else {
+        None
+    }
 }
 
 pub async fn connect_bare(url: &str) -> Result<MySqlPool, String> {
