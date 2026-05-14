@@ -71,12 +71,16 @@ async fn ch_query(client: &ChClient, sql: &str, database: Option<&str>) -> Resul
 }
 
 pub async fn test_connection(client: &ChClient) -> Result<(), String> {
-    let url = format!("{}/ping", client.base_url);
+    let url = format!("{}/?query=SELECT%201", client.base_url);
     let req = build_request(client, client.http.get(&url));
-    with_connection_timeout("ClickHouse", async {
+    let resp = with_connection_timeout("ClickHouse", async {
         req.send().await.map_err(|e| format!("ClickHouse connection failed: {e}"))
     })
     .await?;
+    if !resp.status().is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("ClickHouse error: {body}"));
+    }
     Ok(())
 }
 
