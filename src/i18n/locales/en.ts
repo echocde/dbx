@@ -758,6 +758,8 @@ export default {
     edit: "Edit",
     documentView: "Document View",
     tableView: "Table View",
+    filterPlaceholder: "Filter...",
+    sortPlaceholder: "Sort...",
   },
   history: {
     title: "History",

@@ -41,12 +41,31 @@ pub async fn find_documents(
     collection: &str,
     skip: u64,
     limit: i64,
+    filter: Option<&str>,
+    sort: Option<&str>,
 ) -> Result<MongoDocumentResult, String> {
     let col = client.database(database).collection::<Document>(collection);
 
-    let total = col.count_documents(doc! {}).await.map_err(|e| e.to_string())?;
+    let filter_doc: Document = match filter {
+        Some(f) if !f.trim().is_empty() => {
+            let json: serde_json::Value = serde_json::from_str(f).map_err(|e| format!("Invalid filter JSON: {e}"))?;
+            mongodb::bson::to_document(&json).map_err(|e| format!("Invalid filter: {e}"))?
+        }
+        _ => doc! {},
+    };
 
-    let mut cursor = col.find(doc! {}).skip(skip).limit(limit).await.map_err(|e| e.to_string())?;
+    let total = col.count_documents(filter_doc.clone()).await.map_err(|e| e.to_string())?;
+
+    let mut find = col.find(filter_doc).skip(skip).limit(limit);
+    if let Some(s) = sort {
+        if !s.trim().is_empty() {
+            let json: serde_json::Value = serde_json::from_str(s).map_err(|e| format!("Invalid sort JSON: {e}"))?;
+            let sort_doc = mongodb::bson::to_document(&json).map_err(|e| format!("Invalid sort: {e}"))?;
+            find = find.sort(sort_doc);
+        }
+    }
+
+    let mut cursor = find.await.map_err(|e| e.to_string())?;
 
     let mut documents = Vec::new();
     while cursor.advance().await.map_err(|e| e.to_string())? {

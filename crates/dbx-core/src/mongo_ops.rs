@@ -31,10 +31,14 @@ pub async fn mongo_find_documents_core(
     collection: &str,
     skip: u64,
     limit: i64,
+    filter: Option<&str>,
+    sort: Option<&str>,
 ) -> Result<MongoDocumentResult, String> {
     let connections = state.connections.read().await;
     match connections.get(connection_id).ok_or("Not found")? {
-        PoolKind::MongoDb(client) => mongo_driver::find_documents(client, database, collection, skip, limit).await,
+        PoolKind::MongoDb(client) => {
+            mongo_driver::find_documents(client, database, collection, skip, limit, filter, sort).await
+        }
         PoolKind::Elasticsearch(client) => {
             let client = client.clone();
             drop(connections);

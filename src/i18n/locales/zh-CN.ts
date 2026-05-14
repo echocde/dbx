@@ -743,6 +743,8 @@ export default {
     edit: "编辑",
     documentView: "文档视图",
     tableView: "表格视图",
+    filterPlaceholder: "过滤条件...",
+    sortPlaceholder: "排序条件...",
   },
   history: {
     title: "历史",

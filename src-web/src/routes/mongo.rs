@@ -28,6 +28,8 @@ pub struct MongoFindRequest {
     pub collection: String,
     pub skip: Option<u64>,
     pub limit: Option<i64>,
+    pub filter: Option<String>,
+    pub sort: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -88,6 +90,8 @@ pub async fn find_documents(
         &req.collection,
         req.skip.unwrap_or(0),
         req.limit.unwrap_or(50),
+        req.filter.as_deref(),
+        req.sort.as_deref(),
     )
     .await
     .map_err(AppError)?;

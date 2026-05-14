@@ -2,7 +2,7 @@
 import { computed, ref, onMounted } from "vue";
 import { uuid } from "@/lib/utils";
 import { useI18n } from "vue-i18n";
-import { RefreshCw, Trash2, Plus, Save, ChevronLeft, ChevronRight, Table2, Braces } from "lucide-vue-next";
+import { RefreshCw, Trash2, Plus, Save, ChevronLeft, ChevronRight, Table2, Braces, X } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
@@ -37,6 +37,8 @@ const error = ref("");
 const editFields = ref<EditNode[]>([]);
 const showDeleteConfirm = ref(false);
 const viewMode = ref<"document" | "table">("document");
+const filterInput = ref("");
+const sortInput = ref("");
 
 type PendingDelete = { kind: "document"; index: number } | { kind: "field"; index: number; name: string };
 
@@ -145,12 +147,16 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
+    const filter = filterInput.value.trim() || undefined;
+    const sort = sortInput.value.trim() || undefined;
     const result = await api.mongoFindDocuments(
       props.connectionId,
       props.database,
       props.collection,
       page.value * pageSize,
       pageSize,
+      filter,
+      sort,
     );
     documents.value = result.documents.map(asRecord);
     total.value = result.total;
@@ -159,6 +165,11 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+function applyFilter() {
+  page.value = 0;
+  load();
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -440,8 +451,7 @@ onMounted(load);
         </Button>
       </div>
 
-      <span>{{ t("mongo.documents", { count: total }) }}</span>
-      <span class="flex-1" />
+      <span class="shrink-0 ml-1">{{ t("mongo.documents", { count: total }) }}</span>
 
       <Button v-if="viewMode === 'document'" variant="ghost" size="icon" class="h-5 w-5" @click="startNew"
         ><Plus class="h-3 w-3"
@@ -476,7 +486,54 @@ onMounted(load);
       editable
       :custom-save="gridSave"
       @reload="load"
-    />
+    >
+      <template #search-bar>
+        <div class="flex-1 flex items-center gap-1 px-2 py-0.5 border-l min-w-0">
+          <span class="text-blue-600 dark:text-blue-400 text-xs font-medium select-none shrink-0">find</span>
+          <input
+            v-model="filterInput"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60 font-mono"
+            placeholder="{}"
+            @keydown.enter="applyFilter"
+          />
+          <button
+            v-if="filterInput.trim()"
+            class="text-muted-foreground hover:text-foreground shrink-0"
+            @click="
+              filterInput = '';
+              applyFilter();
+            "
+          >
+            <X class="w-3 h-3" />
+          </button>
+        </div>
+        <div class="flex items-center gap-1 px-2 py-0.5 border-l border-r min-w-0" style="flex: 0.6">
+          <span class="text-orange-600 dark:text-orange-400 text-xs font-medium select-none shrink-0">sort</span>
+          <input
+            v-model="sortInput"
+            autocapitalize="off"
+            autocorrect="off"
+            spellcheck="false"
+            class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60 font-mono"
+            placeholder="{}"
+            @keydown.enter="applyFilter"
+          />
+          <button
+            v-if="sortInput.trim()"
+            class="text-muted-foreground hover:text-foreground shrink-0"
+            @click="
+              sortInput = '';
+              applyFilter();
+            "
+          >
+            <X class="w-3 h-3" />
+          </button>
+        </div>
+      </template>
+    </DataGrid>
 
     <!-- Document view (split pane) -->
     <Splitpanes v-else class="flex-1 min-h-0">

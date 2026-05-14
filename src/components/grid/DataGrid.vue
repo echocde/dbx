@@ -829,8 +829,10 @@ const tableUsesSyntheticRowId = computed(() =>
   usesSyntheticRowIdKey(props.databaseType, props.tableMeta?.primaryKeys ?? []),
 );
 const hiveTableTransactional = ref<boolean | undefined>(undefined);
-const canEditExistingRows = computed(() =>
-  canEditExistingTableRows(props.databaseType, hiveTableTransactional.value, props.tableMeta?.primaryKeys ?? []),
+const canEditExistingRows = computed(
+  () =>
+    !!props.customSave ||
+    canEditExistingTableRows(props.databaseType, hiveTableTransactional.value, props.tableMeta?.primaryKeys ?? []),
 );
 watch(
   () => [props.databaseType, props.connectionId, props.database, props.tableMeta?.schema, props.tableMeta?.tableName],
@@ -2081,7 +2083,9 @@ defineExpose({
               </div>
             </template>
 
-            <div class="flex shrink-0 items-center gap-1 px-1">
+            <slot name="search-bar" />
+
+            <div class="flex shrink-0 items-center gap-1 px-1 ml-auto">
               <Button
                 variant="ghost"
                 size="sm"

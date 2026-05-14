@@ -516,8 +516,10 @@ export async function mongoFindDocuments(
   collection: string,
   skip: number,
   limit: number,
+  filter?: string,
+  sort?: string,
 ): Promise<MongoDocumentResult> {
-  return invoke("mongo_find_documents", { connectionId, database, collection, skip, limit });
+  return invoke("mongo_find_documents", { connectionId, database, collection, skip, limit, filter, sort });
 }
 
 export async function mongoInsertDocument(

@@ -682,8 +682,10 @@ export async function mongoFindDocuments(
   collection: string,
   skip: number,
   limit: number,
+  filter?: string,
+  sort?: string,
 ): Promise<MongoDocumentResult> {
-  return post("/api/mongo/find-documents", { connectionId, database, collection, skip, limit });
+  return post("/api/mongo/find-documents", { connectionId, database, collection, skip, limit, filter, sort });
 }
 
 export async function mongoInsertDocument(
