@@ -114,6 +114,8 @@ export const TREE_SCHEMA_TYPES = new Set<DatabaseType>([
   "redshift",
   "sqlserver",
   "gaussdb",
+  "kingbase",
+  "vastbase",
   "jdbc",
   "trino",
   "h2",
