@@ -78,7 +78,8 @@ pub async fn update_document(
     doc_json: &str,
 ) -> Result<u64, String> {
     let oid = mongodb::bson::oid::ObjectId::parse_str(id).map_err(|e| format!("Invalid ObjectId: {e}"))?;
-    let new_doc: Document = serde_json::from_str(doc_json).map_err(|e| format!("Invalid JSON: {e}"))?;
+    let mut new_doc: Document = serde_json::from_str(doc_json).map_err(|e| format!("Invalid JSON: {e}"))?;
+    new_doc.remove("_id");
     let col = client.database(database).collection::<Document>(collection);
     let result = col.replace_one(doc! { "_id": oid }, new_doc).await.map_err(|e| e.to_string())?;
     Ok(result.modified_count)
