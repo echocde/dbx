@@ -2482,7 +2482,7 @@ defineExpose({
                       :class="[
                         rowNumberStatusClass(item),
                         {
-                          'text-primary font-semibold !bg-primary/15':
+                          'text-primary font-semibold !bg-primary/25':
                             isRowSelected(item.id) &&
                             item.status !== 'new' &&
                             item.status !== 'edited' &&
@@ -3019,17 +3019,17 @@ defineExpose({
 }
 
 .cell-selected {
-  background-color: color-mix(in oklab, var(--primary) 18%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
+  background-color: color-mix(in oklab, var(--primary) 25%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent);
 }
 
 .cell-selected-dirty {
-  background-color: color-mix(in oklab, oklch(0.8 0.15 85) 30%, color-mix(in oklab, var(--primary) 12%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 55%, transparent);
+  background-color: color-mix(in oklab, oklch(0.8 0.15 85) 30%, color-mix(in oklab, var(--primary) 18%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent);
 }
 
 .active-row > div:not(.cell-dirty) {
-  background-color: color-mix(in oklab, var(--primary) 10%, transparent);
+  background-color: color-mix(in oklab, var(--primary) 15%, transparent);
 }
 
 .ddl-code :deep(.ddl-kw) {
