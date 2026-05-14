@@ -391,10 +391,15 @@ function applyLocalFilter() {
   if (!draft) return;
   const allKeys = new Set(localFilterAllOptions.value.map((option) => option.key));
   const next = { ...localColumnFilters.value };
-  if (draft.values.size === 0 || draft.values.size === allKeys.size) {
+  let selected = draft.values;
+  if (localFilterSearch.value.trim()) {
+    const visibleKeys = new Set(localFilterOptions.value.map((o) => o.key));
+    selected = new Set([...draft.values].filter((k) => visibleKeys.has(k)));
+  }
+  if (selected.size === 0 || selected.size === allKeys.size) {
     delete next[draft.columnIndex];
   } else {
-    next[draft.columnIndex] = new Set(draft.values);
+    next[draft.columnIndex] = new Set(selected);
   }
   localColumnFilters.value = next;
   closeLocalFilter();

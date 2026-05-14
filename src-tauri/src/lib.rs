@@ -5,6 +5,7 @@ mod models;
 use commands::connection::AppState;
 use dbx_core::storage::Storage;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
