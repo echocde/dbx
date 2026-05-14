@@ -141,6 +141,81 @@ pub async fn install_agent(
 }
 
 #[tauri::command]
+pub async fn upgrade_all_agents(app: tauri::AppHandle, state: State<'_, Arc<AppState>>) -> Result<u32, String> {
+    let am = &state.agent_manager;
+    let registry = fetch_registry().await?;
+    let agents = build_agent_list(am, Some(&registry));
+    let updatable: Vec<&AgentDriverInfo> = agents.iter().filter(|a| a.update_available).collect();
+    let total_drivers = updatable.len() as u32;
+    if total_drivers == 0 {
+        return Ok(0);
+    }
+
+    for (i, agent) in updatable.iter().enumerate() {
+        let current = (i + 1) as u32;
+        let db_type = &agent.db_type;
+        let driver = registry.drivers.get(db_type).ok_or_else(|| format!("Unknown driver type: {db_type}"))?;
+        let jre_key = &driver.jre;
+        let needs_jre = am.load_state().java_runtime.mode == JavaRuntimeMode::Managed && !am.is_jre_installed(jre_key);
+
+        if needs_jre {
+            let jre_info =
+                registry.resolve_jre(jre_key).ok_or_else(|| format!("No JRE definition for version: {jre_key}"))?;
+            let platform = AgentManager::current_platform();
+            let platform_jre = jre_info
+                .platforms
+                .get(platform)
+                .ok_or_else(|| format!("No JRE {jre_key} available for platform: {platform}"))?;
+            let jre_archive = am.base_dir().join("jre-download.tar.gz");
+            let _ = app.emit(
+                "agent-install-progress",
+                serde_json::json!({
+                    "step": "jre", "downloaded": 0u64, "total": platform_jre.size,
+                    "db_type": db_type, "current": current, "total_drivers": total_drivers,
+                }),
+            );
+            download_with_progress(&app, "jre", &platform_jre.url, &jre_archive, platform_jre.size).await?;
+            let _ = app.emit(
+                "agent-install-progress",
+                serde_json::json!({
+                    "step": "jre-extract", "downloaded": 0u64, "total": 0u64,
+                    "db_type": db_type, "current": current, "total_drivers": total_drivers,
+                }),
+            );
+            extract_archive(&jre_archive, &am.jre_dir(jre_key))?;
+            std::fs::remove_file(&jre_archive).ok();
+        }
+
+        let jar_path = am.driver_jar_path(db_type);
+        let _ = app.emit(
+            "agent-install-progress",
+            serde_json::json!({
+                "step": "driver", "downloaded": 0u64, "total": driver.jar.size,
+                "db_type": db_type, "current": current, "total_drivers": total_drivers,
+            }),
+        );
+        download_with_progress(&app, "driver", &driver.jar.url, &jar_path, driver.jar.size).await?;
+
+        let mut local_state = am.load_state();
+        if let Some(jre_info) = registry.resolve_jre(jre_key) {
+            local_state.jre_versions.insert(jre_key.clone(), jre_info.version.clone());
+        }
+        local_state.installed_drivers.insert(
+            db_type.clone(),
+            InstalledDriver {
+                version: driver.version.clone(),
+                installed_at: chrono::Utc::now().to_rfc3339(),
+                jre: jre_key.clone(),
+            },
+        );
+        am.save_state(&local_state)?;
+    }
+
+    let _ = app.emit("agent-install-progress", serde_json::json!({ "step": "all-done" }));
+    Ok(total_drivers)
+}
+
+#[tauri::command]
 pub async fn uninstall_agent(state: State<'_, Arc<AppState>>, db_type: String) -> Result<(), String> {
     let am = &state.agent_manager;
     let jar_path = am.driver_jar_path(&db_type);

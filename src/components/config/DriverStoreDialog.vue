@@ -49,6 +49,10 @@ interface JavaRuntimeConfig {
 
 const drivers = ref<AgentDriverInfo[]>([]);
 const installing = ref<string | null>(null);
+const upgradingAll = ref(false);
+const upgradingCurrent = ref("");
+const upgradingIndex = ref(0);
+const upgradingTotal = ref(0);
 const reinstallingJre = ref<string | null>(null);
 const refreshing = ref(false);
 const progress = ref<InstallProgress | null>(null);
@@ -79,7 +83,11 @@ const progressText = computed(() => {
   const pct = Math.round(((p.downloaded ?? 0) / p.total) * 100);
   const dl = formatSize(p.downloaded ?? 0);
   const total = formatSize(p.total);
-  return `${label}  ${dl} / ${total}  (${pct}%)`;
+  const prefix =
+    upgradingAll.value && upgradingCurrent.value
+      ? `[${upgradingIndex.value}/${upgradingTotal.value}] ${upgradingCurrent.value} — `
+      : "";
+  return `${prefix}${label}  ${dl} / ${total}  (${pct}%)`;
 });
 
 const progressPercent = computed(() => {
@@ -87,6 +95,8 @@ const progressPercent = computed(() => {
   if (!p || !p.total) return 0;
   return Math.round(((p.downloaded ?? 0) / p.total) * 100);
 });
+
+const updatableCount = computed(() => drivers.value.filter((d) => d.update_available).length);
 
 async function refreshAgents() {
   drivers.value = await invoke<AgentDriverInfo[]>("list_installed_agents");
@@ -157,6 +167,24 @@ async function installDriver(dbType: string) {
     toast(`${label} 驱动安装失败: ${e}`);
   } finally {
     installing.value = null;
+    progress.value = null;
+  }
+}
+
+async function upgradeAll() {
+  upgradingAll.value = true;
+  progress.value = null;
+  try {
+    const count = await invoke<number>("upgrade_all_agents");
+    await refreshAgents();
+    toast(`${count} 个驱动升级完成`);
+  } catch (e: any) {
+    toast(`批量升级失败: ${e}`);
+  } finally {
+    upgradingAll.value = false;
+    upgradingCurrent.value = "";
+    upgradingIndex.value = 0;
+    upgradingTotal.value = 0;
     progress.value = null;
   }
 }
@@ -322,10 +350,16 @@ onMounted(async () => {
   });
 
   unlisten = await listen<InstallProgress>("agent-install-progress", (event) => {
-    if (event.payload.step === "done") {
+    const payload = event.payload as any;
+    if (payload.step === "done" || payload.step === "all-done") {
       progress.value = null;
     } else {
-      progress.value = event.payload;
+      progress.value = payload;
+    }
+    if (payload.db_type && payload.total_drivers) {
+      upgradingCurrent.value = drivers.value.find((d) => d.db_type === payload.db_type)?.label ?? payload.db_type;
+      upgradingIndex.value = payload.current ?? 0;
+      upgradingTotal.value = payload.total_drivers ?? 0;
     }
   });
   void loadJdbcDrivers();
@@ -466,6 +500,19 @@ onUnmounted(() => {
             <!-- Driver List -->
             <div v-if="drivers.length === 0" class="py-12 text-center text-sm text-muted-foreground">加载中...</div>
             <div v-else class="rounded-md border divide-y">
+              <div v-if="updatableCount > 0" class="flex items-center justify-between px-4 py-2 bg-muted/30">
+                <span class="text-xs text-muted-foreground">{{ updatableCount }} 个驱动可更新</span>
+                <Button
+                  size="sm"
+                  class="h-7 text-xs"
+                  :disabled="installing !== null || upgradingAll"
+                  @click="upgradeAll"
+                >
+                  <Loader2 v-if="upgradingAll" class="h-3 w-3 animate-spin mr-1" />
+                  <Download v-else class="h-3 w-3 mr-1" />
+                  {{ upgradingAll ? `升级中 (${upgradingIndex}/${upgradingTotal})` : "全部升级" }}
+                </Button>
+              </div>
               <div
                 v-for="driver in drivers"
                 :key="driver.db_type"
@@ -512,7 +559,7 @@ onUnmounted(() => {
                     v-if="!driver.installed"
                     size="sm"
                     class="h-7 text-xs"
-                    :disabled="installing !== null"
+                    :disabled="installing !== null || upgradingAll"
                     @click="installDriver(driver.db_type)"
                   >
                     <Loader2 v-if="installing === driver.db_type" class="h-3 w-3 animate-spin mr-1" />
@@ -526,7 +573,7 @@ onUnmounted(() => {
                       size="sm"
                       variant="outline"
                       class="h-7 text-xs"
-                      :disabled="installing !== null"
+                      :disabled="installing !== null || upgradingAll"
                       @click="installDriver(driver.db_type)"
                     >
                       {{ installing === driver.db_type ? "更新中..." : "更新" }}
@@ -535,6 +582,7 @@ onUnmounted(() => {
                       variant="ghost"
                       size="sm"
                       class="h-7 text-xs text-muted-foreground hover:text-destructive"
+                      :disabled="upgradingAll"
                       @click="uninstallDriver(driver.db_type)"
                     >
                       卸载

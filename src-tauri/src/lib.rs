@@ -147,6 +147,7 @@ pub fn run() {
             commands::agents::list_installed_agents,
             commands::agents::list_installed_agents_local,
             commands::agents::install_agent,
+            commands::agents::upgrade_all_agents,
             commands::agents::uninstall_agent,
             commands::agents::check_jre_installed,
             commands::agents::get_agent_java_runtime_config,
