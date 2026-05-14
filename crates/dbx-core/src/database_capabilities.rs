@@ -22,6 +22,7 @@ pub fn agent_key(db_type: &DatabaseType, driver_profile: Option<&str>) -> Option
         DatabaseType::Kylin => Some("kylin"),
         DatabaseType::Sundb => Some("sundb"),
         DatabaseType::Gaussdb => Some("gaussdb"),
+        DatabaseType::MongoDb => Some("mongodb"),
         _ => None,
     }
 }

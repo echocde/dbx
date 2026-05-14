@@ -171,11 +171,20 @@ impl AppState {
                 let con = db::duckdb_driver::connect_path(&expand_tilde(&db_config.host))?;
                 PoolKind::DuckDb(con)
             }
-            DatabaseType::MongoDb => {
-                let client = db::mongo_driver::connect(&url).await?;
-                db::mongo_driver::test_connection(&client).await?;
-                PoolKind::MongoDb(client)
-            }
+            DatabaseType::MongoDb => match db::mongo_driver::connect(&url).await {
+                Ok(client) => {
+                    db::mongo_driver::test_connection(&client).await?;
+                    PoolKind::MongoDb(client)
+                }
+                Err(e) if e.contains("wire version") => {
+                    log::info!("Native MongoDB driver failed ({e}), falling back to agent driver");
+                    let connect_params = serde_json::json!({ "connection": agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")) });
+                    let mut client = self.agent_manager.spawn(&DatabaseType::MongoDb, None).await?;
+                    client.call::<serde_json::Value>("connect", connect_params).await?;
+                    PoolKind::Agent(Arc::new(tokio::sync::Mutex::new(client)))
+                }
+                Err(e) => return Err(e),
+            },
             DatabaseType::ClickHouse => {
                 let username = if db_config.username.is_empty() { None } else { Some(db_config.username.clone()) };
                 let password = if db_config.password.is_empty() { None } else { Some(db_config.password.clone()) };

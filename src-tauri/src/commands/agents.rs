@@ -32,6 +32,7 @@ const AGENT_TYPES: &[(&str, &str)] = &[
     ("kylin", "Apache Kylin"),
     ("sundb", "SunDB"),
     ("gaussdb", "GaussDB"),
+    ("mongodb", "MongoDB (Legacy)"),
 ];
 
 fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> Vec<AgentDriverInfo> {
