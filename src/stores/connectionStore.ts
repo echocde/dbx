@@ -565,13 +565,33 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
-      const cacheKey = schemaCacheKey(connectionId, "databases");
-      if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
 
-      const databases = await api.listDatabases(connectionId);
-      const children = withSavedSqlRoot(connectionId, buildDatabaseTreeNodes(connectionId, databases), node);
-      setChildren(node, children);
-      await savePersistedTreeChildren(cacheKey, children);
+      const config = getConfig(connectionId);
+      if (config?.db_type === "dameng" || config?.db_type === "oracle") {
+        const effectiveDb = config.database || "";
+        const cacheKey = schemaCacheKey(connectionId, effectiveDb, "schemas");
+        if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+        const schemas = await api.listSchemas(connectionId, effectiveDb);
+        const schemaNodes: TreeNode[] = schemas.map((s) => ({
+          id: `${connectionId}:${s}:${s}`,
+          label: s,
+          type: "schema" as const,
+          connectionId,
+          database: s,
+          schema: s,
+          isExpanded: false,
+          children: [],
+        }));
+        setChildren(node, withSavedSqlRoot(connectionId, schemaNodes, node));
+        await savePersistedTreeChildren(cacheKey, schemaNodes);
+      } else {
+        const cacheKey = schemaCacheKey(connectionId, "databases");
+        if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+        const databases = await api.listDatabases(connectionId);
+        const children = withSavedSqlRoot(connectionId, buildDatabaseTreeNodes(connectionId, databases), node);
+        setChildren(node, children);
+        await savePersistedTreeChildren(cacheKey, children);
+      }
       node.isExpanded = true;
     } finally {
       node.isLoading = false;
