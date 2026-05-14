@@ -326,6 +326,7 @@ function runRowClickAction() {
 }
 
 function onClick(event: MouseEvent) {
+  connectionStore.selectedTreeNodeId = props.node.id;
   if (event.detail > 1) return;
   runRowClickAction();
 }
@@ -1181,6 +1182,7 @@ const connectionColor = computed(() => {
 const isActiveConnectionScope = computed(
   () => !!props.node.connectionId && connectionStore.activeConnectionId === props.node.connectionId,
 );
+const isSelected = computed(() => connectionStore.selectedTreeNodeId === props.node.id);
 const rowStyle = computed(() => {
   const color = connectionColor.value;
   return {
@@ -1374,14 +1376,16 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     <ContextMenuTrigger as-child>
       <div>
         <div
-          class="group flex min-w-0 items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative"
+          class="group flex min-w-0 items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
           style="contain: layout style paint"
           :class="{
             'ring-1 ring-primary/50 bg-primary/5': showDropInside,
             'opacity-50': isDragging,
-            'rounded-none': connectionColor,
-            'rounded-sm': !connectionColor,
+            'rounded-none': connectionColor && !isSelected,
+            'rounded-sm': !connectionColor && !isSelected,
+            'tree-item-active rounded-md': isSelected,
           }"
+          :tabindex="isSelected ? 0 : -1"
           :style="rowStyle"
           @click="onClick"
           @dblclick="onDoubleClick"
@@ -1966,3 +1970,21 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     @confirm="confirmDropSchema"
   />
 </template>
+
+<style>
+/* Unfocused: subtle gray */
+.tree-item-active {
+  background-color: oklch(0.94 0 0) !important;
+}
+:root.dark .tree-item-active {
+  background-color: oklch(0.26 0 0) !important;
+}
+
+/* Focused: soft blue */
+.sidebar-tree:focus-within .tree-item-active {
+  background-color: oklch(0.91 0.03 250) !important;
+}
+:root.dark .sidebar-tree:focus-within .tree-item-active {
+  background-color: oklch(0.35 0.06 250) !important;
+}
+</style>

@@ -114,6 +114,7 @@ pub fn extract_agent(
 }
 
 pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Result<Vec<db::DatabaseInfo>, String> {
+    log::info!("[list_databases] connection_id={connection_id}");
     {
         let connections = state.connections.read().await;
         if extract_external(&connections, connection_id).is_some() {

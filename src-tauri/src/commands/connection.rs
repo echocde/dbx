@@ -216,6 +216,7 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
         DatabaseType::ClickHouse => {
             let username = if db_config.username.is_empty() { None } else { Some(db_config.username.clone()) };
             let password = if db_config.password.is_empty() { None } else { Some(db_config.password.clone()) };
+            log::info!("[connect_db] ClickHouse url={url} user={:?} has_pass={}", username, password.is_some());
             let client = db::clickhouse_driver::ChClient::new(&url, username, password);
             db::clickhouse_driver::test_connection(&client).await?;
             PoolKind::ClickHouse(client)

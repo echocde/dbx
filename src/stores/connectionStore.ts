@@ -47,6 +47,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const connections = ref<ConnectionConfig[]>([]);
   const isDesktop = isTauriRuntime();
   const activeConnectionId = ref<string | null>(!isDesktop ? localStorage.getItem("dbx-active-connection") : null);
+  const selectedTreeNodeId = ref<string | null>(null);
 
   watch(activeConnectionId, (id) => {
     if (isDesktop) return;
@@ -1436,6 +1437,7 @@ export const useConnectionStore = defineStore("connection", () => {
   return {
     connections,
     activeConnectionId,
+    selectedTreeNodeId,
     treeNodes,
     refreshAllTree,
     refreshSavedSqlTree,

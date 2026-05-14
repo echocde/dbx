@@ -273,7 +273,7 @@ defineExpose({ focusSearch });
     </div>
     <RecycleScroller
       v-if="flatNodes.length > 0 && useVirtualTree"
-      class="connection-tree-scroller min-h-0 flex-1 overflow-y-auto overflow-x-auto"
+      class="sidebar-tree connection-tree-scroller min-h-0 flex-1 overflow-y-auto overflow-x-auto"
       :items="flatNodes"
       :item-size="SIDEBAR_TREE_ROW_HEIGHT"
       :buffer="SIDEBAR_TREE_SCROLL_BUFFER"
@@ -294,7 +294,7 @@ defineExpose({ focusSearch });
         />
       </template>
     </RecycleScroller>
-    <div v-else-if="flatNodes.length > 0" class="min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+    <div v-else-if="flatNodes.length > 0" class="sidebar-tree min-h-0 flex-1 overflow-y-auto overflow-x-auto">
       <TreeItem
         v-for="item in flatNodes"
         :key="item.id"

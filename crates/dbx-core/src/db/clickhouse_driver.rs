@@ -61,10 +61,13 @@ async fn ch_query(client: &ChClient, sql: &str, database: Option<&str>) -> Resul
     if let Some(db) = database {
         url.push_str(&format!("&database={}", db));
     }
+    log::info!("[clickhouse] query url={url} user={:?} has_pass={}", client.username, client.password.is_some());
     let req = build_request(client, client.http.post(&url).body(sql.to_string()));
     let resp = req.send().await.map_err(|e| format!("ClickHouse request failed: {e}"))?;
+    log::info!("[clickhouse] response status={}", resp.status());
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
+        log::error!("[clickhouse] error body: {body}");
         return Err(format!("ClickHouse error: {body}"));
     }
     resp.json::<ChJsonResult>().await.map_err(|e| format!("ClickHouse parse error: {e}"))
