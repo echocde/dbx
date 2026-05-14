@@ -402,6 +402,10 @@ export const useConnectionStore = defineStore("connection", () => {
       const parent = findParentNode(treeNodes.value, id);
       if (parent?.children) {
         parent.children = orderPinnedFirst(parent.children, (child) => !!child.pinned);
+        const sqlRootIdx = parent.children.findIndex((c) => c.type === "saved-sql-root");
+        if (sqlRootIdx > 0) {
+          parent.children.unshift(...parent.children.splice(sqlRootIdx, 1));
+        }
       }
     }
   }
