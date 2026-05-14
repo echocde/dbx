@@ -466,10 +466,16 @@ function onLoginSuccess() {
 }
 
 function initApp() {
+  const t0 = performance.now();
+  console.log("[STARTUP] initApp begin");
   savedSqlStore
     .initFromStorage()
-    .then(() => connectionStore.initFromDisk())
     .then(() => {
+      console.log(`[STARTUP]   savedSqlStore.initFromStorage: ${(performance.now() - t0).toFixed(0)}ms`);
+      return connectionStore.initFromDisk();
+    })
+    .then(() => {
+      console.log(`[STARTUP]   connectionStore.initFromDisk: ${(performance.now() - t0).toFixed(0)}ms`);
       reconnectRestoredTabs();
     })
     .catch((e: any) => {
@@ -501,6 +507,8 @@ function handleContextMenu(e: MouseEvent) {
 }
 
 onMounted(async () => {
+  console.log("[STARTUP] onMounted begin");
+  const mountStart = performance.now();
   applyTheme();
   window.addEventListener("keydown", handleKeydown, true);
   if (isDesktop) {
@@ -541,6 +549,7 @@ onMounted(async () => {
     })
     .catch(() => {});
   setupTauriListeners();
+  console.log(`[STARTUP] onMounted sync done: ${(performance.now() - mountStart).toFixed(0)}ms`);
 });
 
 onUnmounted(() => {

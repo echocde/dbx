@@ -12,6 +12,8 @@ use tauri::{Manager, RunEvent};
 pub fn run() {
     rustls::crypto::aws_lc_rs::default_provider().install_default().expect("Failed to install rustls crypto provider");
 
+    let startup_begin = Instant::now();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -19,7 +21,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .setup(|app| {
+        .setup(move |app| {
+            let setup_start = Instant::now();
+            eprintln!("[STARTUP] plugins registered in {:?}", startup_begin.elapsed());
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
@@ -29,17 +34,23 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir).expect("Failed to create data dir");
             let db_path = data_dir.join("dbx.db");
 
+            let t = Instant::now();
             let storage = tauri::async_runtime::block_on(async {
                 let s = Storage::open(&db_path).await.expect("Failed to open storage");
+                eprintln!("[STARTUP]   Storage::open in {:?}", t.elapsed());
+                let t2 = Instant::now();
                 s.migrate_from_json(&data_dir).await.expect("Failed to migrate JSON data");
+                eprintln!("[STARTUP]   migrate_from_json in {:?}", t2.elapsed());
                 s
             });
+            eprintln!("[STARTUP] storage ready in {:?}", t.elapsed());
 
             let state = Arc::new(AppState::new_with_plugin_dir(storage, data_dir.join("plugins")));
             app.manage(state.clone());
 
             let app_handle = app.handle().clone();
             commands::mcp_bridge::start(app_handle, state);
+            eprintln!("[STARTUP] setup complete in {:?} (total {:?})", setup_start.elapsed(), startup_begin.elapsed());
 
             #[cfg(not(target_os = "macos"))]
             {
