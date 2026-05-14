@@ -131,6 +131,12 @@ export default {
     connecting: "Conectando a {name}...",
     connectSuccess: "Conectado a {name}",
     connectFailed: "Error de conexión: {message}",
+    driverNotInstalled: "El controlador {driver} no está instalado. Instálelo desde el Administrador de controladores.",
+    jreNotInstalled: "El entorno JRE {jre} no está instalado. Instálelo desde el Administrador de controladores.",
+    systemJavaNotFound: "No se encontró Java en el PATH del sistema. Instale Java o elija un ejecutable personalizado.",
+    customJavaPathEmpty: "La ruta de Java personalizada está vacía. Elija un ejecutable de Java.",
+    jdbcPluginNotInstalled:
+      "El plugin JDBC no está instalado. Instale el plugin JDBC opcional para usar esta conexión.",
     lastError: "Error de conexión",
     clearError: "Limpiar error de conexión",
     saveFailed: "Error al guardar la conexión: {message}",

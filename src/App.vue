@@ -30,6 +30,7 @@ import { useNavigationTargets } from "@/composables/useNavigationTargets";
 import { useDataGridActions } from "@/composables/useDataGridActions";
 import { useTauriEvents } from "@/composables/useTauriEvents";
 import "@/i18n";
+import { translateBackendError } from "@/i18n/backend-errors";
 import * as api from "@/lib/api";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
@@ -288,7 +289,7 @@ async function newQuery() {
     const options = await getDatabaseOptions(connId);
     queryStore.updateDatabase(tabId, resolveDefaultDatabase(conn, options));
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -302,7 +303,7 @@ async function openConnectionQuery(connectionId: string) {
     const options = await getDatabaseOptions(connectionId);
     queryStore.updateDatabase(tabId, resolveDefaultDatabase(connection, options));
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -339,7 +340,7 @@ async function changeActiveConnection(connectionId: string) {
     const options = await getDatabaseOptions(connectionId);
     queryStore.updateDatabase(tab.id, resolveDefaultDatabase(connection, options));
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -747,7 +748,9 @@ onUnmounted(() => {
           @danger-confirm="onDangerConfirm"
           @connect-started="(name: string) => toast(t('connection.connecting', { name }), 30000)"
           @connect-succeeded="(name: string) => toast(t('connection.connectSuccess', { name }), 2000)"
-          @connect-failed="(msg: string) => toast(t('connection.connectFailed', { message: msg }), 5000)"
+          @connect-failed="
+            (msg: string) => toast(t('connection.connectFailed', { message: translateBackendError(t, msg) }), 5000)
+          "
           @structure-editor-saved="onStructureEditorSaved(onReloadData, toast)"
           @open-lineage-target="openLineageTarget"
           @open-database-search-target="openDatabaseSearchTarget"

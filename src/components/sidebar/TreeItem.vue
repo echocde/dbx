@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { translateBackendError } from "@/i18n/backend-errors";
 import {
   Database,
   Table,
@@ -304,7 +305,7 @@ async function toggle() {
     }
   } catch (e: any) {
     if (!wasExpanded) node.isExpanded = false;
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -358,7 +359,7 @@ async function openObjectBrowser() {
       await toggle();
     }
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -460,7 +461,7 @@ async function newQuery() {
     const options = await getDatabaseOptions(node.connectionId);
     queryStore.createTab(node.connectionId, resolveDefaultDatabase(connection, options), undefined, "query");
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -488,7 +489,7 @@ async function refresh() {
   try {
     await connectionStore.refreshTreeNode(props.node);
   } catch (e: any) {
-    toast(t("connection.connectFailed", { message: e?.message || String(e) }), 5000);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
