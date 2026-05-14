@@ -9,6 +9,7 @@ use dbx_core::agent_manager::{
 use dbx_core::connection::AppState;
 
 const REGISTRY_PATH: &str = "https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json";
+const REGISTRY_R2_PATH: &str = "agents/agent-registry.json";
 
 static REGISTRY_CACHE: std::sync::LazyLock<Mutex<Option<(std::time::Instant, AgentRegistry)>>> =
     std::sync::LazyLock::new(|| Mutex::new(None));
@@ -104,7 +105,15 @@ pub async fn install_agent(
                 "step": "jre", "downloaded": 0u64, "total": platform_jre.size,
             }),
         );
-        download_with_progress(&app, "jre", &platform_jre.url, &jre_archive, platform_jre.size).await?;
+        download_with_progress(
+            &app,
+            "jre",
+            &platform_jre.url,
+            &github_url_to_r2_path(&platform_jre.url, "jre"),
+            &jre_archive,
+            platform_jre.size,
+        )
+        .await?;
         let _ = app.emit(
             "agent-install-progress",
             serde_json::json!({
@@ -122,7 +131,15 @@ pub async fn install_agent(
             "step": "driver", "downloaded": 0u64, "total": driver.jar.size,
         }),
     );
-    download_with_progress(&app, "driver", &driver.jar.url, &jar_path, driver.jar.size).await?;
+    download_with_progress(
+        &app,
+        "driver",
+        &driver.jar.url,
+        &github_url_to_r2_path(&driver.jar.url, "driver"),
+        &jar_path,
+        driver.jar.size,
+    )
+    .await?;
 
     let mut local_state = am.load_state();
     if let Some(jre_info) = registry.resolve_jre(jre_key) {
@@ -175,7 +192,15 @@ pub async fn upgrade_all_agents(app: tauri::AppHandle, state: State<'_, Arc<AppS
                     "db_type": db_type, "current": current, "total_drivers": total_drivers,
                 }),
             );
-            download_with_progress(&app, "jre", &platform_jre.url, &jre_archive, platform_jre.size).await?;
+            download_with_progress(
+                &app,
+                "jre",
+                &platform_jre.url,
+                &github_url_to_r2_path(&platform_jre.url, "jre"),
+                &jre_archive,
+                platform_jre.size,
+            )
+            .await?;
             let _ = app.emit(
                 "agent-install-progress",
                 serde_json::json!({
@@ -195,7 +220,15 @@ pub async fn upgrade_all_agents(app: tauri::AppHandle, state: State<'_, Arc<AppS
                 "db_type": db_type, "current": current, "total_drivers": total_drivers,
             }),
         );
-        download_with_progress(&app, "driver", &driver.jar.url, &jar_path, driver.jar.size).await?;
+        download_with_progress(
+            &app,
+            "driver",
+            &driver.jar.url,
+            &github_url_to_r2_path(&driver.jar.url, "driver"),
+            &jar_path,
+            driver.jar.size,
+        )
+        .await?;
 
         let mut local_state = am.load_state();
         if let Some(jre_info) = registry.resolve_jre(jre_key) {
@@ -311,7 +344,15 @@ pub async fn reinstall_jre(
     let platform_jre =
         jre_info.platforms.get(platform).ok_or_else(|| format!("No JRE {key} available for platform: {platform}"))?;
     let jre_archive = am.base_dir().join("jre-download.tar.gz");
-    download_with_progress(&app, "jre", &platform_jre.url, &jre_archive, platform_jre.size).await?;
+    download_with_progress(
+        &app,
+        "jre",
+        &platform_jre.url,
+        &github_url_to_r2_path(&platform_jre.url, "jre"),
+        &jre_archive,
+        platform_jre.size,
+    )
+    .await?;
     extract_archive(&jre_archive, &jre_dir)?;
     std::fs::remove_file(&jre_archive).ok();
     let mut local_state = am.load_state();
@@ -334,7 +375,7 @@ async fn fetch_registry() -> Result<AgentRegistry, String> {
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
-    let resp = dbx_core::race_github_proxies(&client, REGISTRY_PATH, "dbx-agent-manager")
+    let resp = dbx_core::race_download(&client, REGISTRY_PATH, REGISTRY_R2_PATH, "dbx-agent-manager")
         .await
         .map_err(|e| format!("Failed to fetch agent registry: {e}"))?;
     let reg: AgentRegistry = resp.json().await.map_err(|e| format!("Failed to parse registry: {e}"))?;
@@ -342,10 +383,20 @@ async fn fetch_registry() -> Result<AgentRegistry, String> {
     Ok(reg)
 }
 
+fn github_url_to_r2_path(github_url: &str, category: &str) -> String {
+    let filename = github_url.rsplit('/').next().unwrap_or(github_url);
+    match category {
+        "jre" => format!("agents/jre/{filename}"),
+        "driver" => format!("agents/drivers/{filename}"),
+        _ => format!("agents/{filename}"),
+    }
+}
+
 async fn download_with_progress(
     app: &tauri::AppHandle,
     step: &str,
     url: &str,
+    r2_path: &str,
     dest: &std::path::Path,
     total_size: u64,
 ) -> Result<(), String> {
@@ -357,7 +408,7 @@ async fn download_with_progress(
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
-    let resp = dbx_core::race_github_proxies(&client, url, "dbx-agent-manager")
+    let resp = dbx_core::race_download(&client, url, r2_path, "dbx-agent-manager")
         .await
         .map_err(|e| format!("Failed to download {url}: {e}"))?;
 

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 const LATEST_JSON_PATH: &str = "https://github.com/t8y2/dbx/releases/latest/download/latest.json";
+const LATEST_JSON_R2_PATH: &str = "releases/latest/latest.json";
 const GITHUB_RELEASE_API_PREFIX: &str = "https://api.github.com/repos/t8y2/dbx/releases/tags/v";
 const RELEASE_URL_PREFIX: &str = "https://github.com/t8y2/dbx/releases/tag/v";
 
@@ -36,7 +37,7 @@ pub async fn fetch_latest_release() -> Result<TauriRelease, String> {
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
-    let resp = crate::race_github_proxies(&client, LATEST_JSON_PATH, "dbx-update-checker")
+    let resp = crate::race_download(&client, LATEST_JSON_PATH, LATEST_JSON_R2_PATH, "dbx-update-checker")
         .await
         .map_err(|e| format!("Failed to check updates: {e}"))?;
 
