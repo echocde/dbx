@@ -171,7 +171,7 @@ impl ConnectionConfig {
                 .driver_profile
                 .as_deref()
                 .map(|p| p.to_lowercase())
-                .is_some_and(|p| matches!(p.as_str(), "doris" | "starrocks" | "selectdb" | "tdengine"))
+                .is_some_and(|p| matches!(p.as_str(), "doris" | "starrocks" | "selectdb" | "tdengine" | "oceanbase"))
     }
 
     pub fn connection_url(&self) -> String {
@@ -632,6 +632,15 @@ mod tests {
             config.connection_url(),
             "mysql://user%40tenant%23cluster:secret@10.1.2.3:2883?ssl-mode=preferred&charset=utf8mb4"
         );
+    }
+
+    #[test]
+    fn oceanbase_profile_uses_bare_mysql_connection_options() {
+        let mut config = mysql_config("user@tenant#cluster", "secret", None);
+        config.driver_profile = Some("oceanbase".to_string());
+
+        assert!(config.needs_bare_mysql());
+        assert_eq!(config.connection_url(), "mysql://user%40tenant%23cluster:secret@10.1.2.3:2883?ssl-mode=disabled");
     }
 
     #[test]
