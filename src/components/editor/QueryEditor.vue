@@ -8,10 +8,12 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import {
   buildSqlCompletionItemsFromContext,
+  getSqlFunctionSignatureHelp,
   getSqlCompletionContext,
   shouldAutoOpenSqlCompletion,
 } from "@/lib/sqlCompletion";
 import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigation";
+import { lineColumnToOffset, parseSqlErrorLocation } from "@/lib/sqlDiagnostics";
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import { shortcutToCodeMirrorKey } from "@/lib/shortcutRegistry";
 import type { SqlCompletionColumn } from "@/lib/sqlCompletion";
@@ -23,6 +25,7 @@ const props = defineProps<{
   dialect?: "mysql" | "postgres" | "sqlserver";
   formatDialect?: SqlFormatDialect;
   formatRequestId?: number;
+  executionError?: string;
   readOnly?: boolean;
   forceWordWrap?: boolean;
 }>();
@@ -52,6 +55,10 @@ let codeMirrorTheme: import("@codemirror/state").Compartment | null = null;
 let wordWrapComp: import("@codemirror/state").Compartment | null = null;
 let readOnlyComp: import("@codemirror/state").Compartment | null = null;
 let runKeymapComp: import("@codemirror/state").Compartment | null = null;
+let diagnosticComp: import("@codemirror/state").Compartment | null = null;
+let buildSqlDiagnosticExtension: (() => import("@codemirror/state").Extension) | null = null;
+let buildSqlSignatureExtension: (() => import("@codemirror/state").Extension) | null = null;
+let codeMirrorSnippetCompletion: typeof import("@codemirror/autocomplete").snippetCompletion;
 
 // Completion cache
 let cachedTables: Array<{ name: string; schema?: string; type?: "table" | "view" }> = [];
@@ -149,6 +156,184 @@ function selectedSqlFromView(currentView: EditorViewType): string {
 
 function executableSqlFromView(currentView: EditorViewType): string {
   return resolveExecutableSql(currentView.state.doc.toString(), selectedSqlFromView(currentView));
+}
+
+function identifierRangeAt(sql: string, pos: number): { from: number; to: number; text: string } | null {
+  const isIdentifierChar = (ch: string | undefined) => !!ch && /[\w$.]/.test(ch);
+  if (!isIdentifierChar(sql[pos]) && !isIdentifierChar(sql[pos - 1])) return null;
+
+  let from = pos;
+  while (from > 0 && isIdentifierChar(sql[from - 1])) from--;
+  let to = pos;
+  while (to < sql.length && isIdentifierChar(sql[to])) to++;
+
+  const text = sql.slice(from, to).replace(/^\.+|\.+$/g, "");
+  if (!text || isSqlKeyword(text)) return null;
+  return { from, to, text };
+}
+
+function completionCacheKey(table: { name: string; schema?: string }) {
+  return table.schema ? `${table.schema}.${table.name}` : table.name;
+}
+
+async function ensureColumnsForTable(table: { name: string; schema?: string }) {
+  const cacheKey = completionCacheKey(table);
+  if (cachedColumnsByTable.has(cacheKey) || !props.connectionId || !props.database) return;
+  const columns = await connectionStore.listCompletionColumns(
+    props.connectionId,
+    props.database,
+    table.name,
+    table.schema,
+  );
+  cachedColumnsByTable.set(cacheKey, columns);
+}
+
+function createHoverDom(title: string, detail: string, rows: string[] = []) {
+  const dom = document.createElement("div");
+  dom.className = "rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md";
+
+  const heading = document.createElement("div");
+  heading.className = "font-medium";
+  heading.textContent = title;
+  dom.appendChild(heading);
+
+  const detailNode = document.createElement("div");
+  detailNode.className = "mt-1 text-muted-foreground";
+  detailNode.textContent = detail;
+  dom.appendChild(detailNode);
+
+  for (const row of rows) {
+    const rowNode = document.createElement("div");
+    rowNode.className = "mt-1 font-mono text-muted-foreground";
+    rowNode.textContent = row;
+    dom.appendChild(rowNode);
+  }
+
+  return dom;
+}
+
+function createSignatureDom(signature: ReturnType<typeof getSqlFunctionSignatureHelp>) {
+  const dom = document.createElement("div");
+  dom.className = "rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md";
+  if (!signature) return dom;
+
+  const signatureNode = document.createElement("div");
+  signatureNode.className = "font-mono";
+
+  const nameNode = document.createElement("span");
+  nameNode.className = "text-muted-foreground";
+  nameNode.textContent = `${signature.name}(`;
+  signatureNode.appendChild(nameNode);
+
+  signature.parameters.forEach((parameter, index) => {
+    if (index > 0) {
+      const comma = document.createElement("span");
+      comma.className = "text-muted-foreground";
+      comma.textContent = ", ";
+      signatureNode.appendChild(comma);
+    }
+    const parameterNode = document.createElement("span");
+    parameterNode.className =
+      index === signature.activeParameter ? "font-semibold text-foreground" : "text-muted-foreground";
+    parameterNode.textContent = parameter;
+    signatureNode.appendChild(parameterNode);
+  });
+
+  const closeNode = document.createElement("span");
+  closeNode.className = "text-muted-foreground";
+  closeNode.textContent = ")";
+  signatureNode.appendChild(closeNode);
+  dom.appendChild(signatureNode);
+
+  return dom;
+}
+
+async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) {
+  if (!props.connectionId || !props.database) return null;
+
+  const sql = currentView.state.doc.toString();
+  const range = identifierRangeAt(sql, pos);
+  if (!range) return null;
+
+  const identifier = range.text;
+  const parts = identifier.split(".");
+  const name = parts[parts.length - 1] ?? identifier;
+  const qualifier = parts.length > 1 ? parts[parts.length - 2] : undefined;
+
+  try {
+    if (cachedTables.length === 0) {
+      cachedTables = await connectionStore.listCompletionTables(
+        props.connectionId,
+        props.database,
+        name,
+        MAX_COMPLETION_TABLES,
+      );
+    }
+
+    let table = matchTable(identifier, cachedTables) ?? matchTable(name, cachedTables);
+    if (!table) {
+      const hoverTables = await connectionStore.listCompletionTables(
+        props.connectionId,
+        props.database,
+        name,
+        MAX_COMPLETION_TABLES,
+      );
+      cachedTables = [...cachedTables, ...hoverTables];
+      table = matchTable(identifier, hoverTables) ?? matchTable(name, hoverTables);
+    }
+    if (table && (!qualifier || table.schema?.toLowerCase() === qualifier.toLowerCase() || table.name === name)) {
+      return {
+        pos: range.from,
+        end: range.to,
+        create: () => ({
+          dom: createHoverDom(table.name, table.schema ? `table in ${table.schema}` : "table"),
+        }),
+      };
+    }
+
+    const context = getSqlCompletionContext(sql, pos);
+    const candidates = qualifier
+      ? context.referencedTables.filter(
+          (rt) =>
+            rt.alias?.toLowerCase() === qualifier.toLowerCase() || rt.name.toLowerCase() === qualifier.toLowerCase(),
+        )
+      : context.referencedTables;
+
+    for (const refTable of candidates) {
+      await ensureColumnsForTable(refTable);
+      const columns = cachedColumnsByTable.get(completionCacheKey(refTable)) ?? [];
+      const column = columns.find((col) => col.name.toLowerCase() === name.toLowerCase());
+      if (!column) continue;
+      return {
+        pos: range.from,
+        end: range.to,
+        create: () => ({
+          dom: createHoverDom(column.name, column.dataType || "column", [
+            column.schema ? `${column.schema}.${column.table}` : column.table,
+          ]),
+        }),
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function sqlErrorDecorationRange(currentState: import("@codemirror/state").EditorState) {
+  if (!props.executionError) return [];
+  const location = parseSqlErrorLocation(props.executionError);
+  if (!location) return [];
+  const offset = lineColumnToOffset(currentState.doc.toString(), location);
+  if (offset == null) return [];
+  return [
+    {
+      from: offset,
+      to: Math.min(offset + 1, currentState.doc.length),
+      message: props.executionError,
+    },
+  ];
 }
 
 async function formatCurrentSql() {
@@ -290,12 +475,21 @@ async function provideSqlCompletions(
 
     return {
       from: position - completionContext.prefix.length,
-      options: items.map((item) => ({
-        label: item.label,
-        type: item.type === "keyword" ? "keyword" : item.type === "table" ? "class" : "property",
-        detail: item.detail,
-        boost: item.boost,
-      })),
+      options: items.map((item) =>
+        item.type === "snippet" && item.apply
+          ? codeMirrorSnippetCompletion(item.apply, {
+              label: item.label,
+              type: "snippet",
+              detail: item.detail,
+              boost: item.boost,
+            })
+          : {
+              label: item.label,
+              type: item.type === "keyword" ? "keyword" : item.type === "table" ? "class" : "property",
+              detail: item.detail,
+              boost: item.boost,
+            },
+      ),
       validFor: /^[\w$]*$/,
     };
   } catch {
@@ -312,11 +506,11 @@ onMounted(async () => {
   if (!editorRef.value) return;
 
   const [
-    { EditorView, keymap, rectangularSelection },
-    { EditorState, Compartment, Prec },
+    { EditorView, keymap, rectangularSelection, hoverTooltip, showTooltip, Decoration },
+    { EditorState, Compartment, Prec, StateField },
     { sql, MSSQL, MySQL, PostgreSQL, SQLDialect },
     { basicSetup },
-    { autocompletion, startCompletion, closeBrackets, closeBracketsKeymap },
+    { autocompletion, startCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion },
     { indentWithTab },
     { bracketMatching },
   ] = await Promise.all([
@@ -329,11 +523,54 @@ onMounted(async () => {
     import("@codemirror/language"),
   ]);
   editorViewModule = { EditorView, keymap, rectangularSelection } as typeof import("@codemirror/view");
+  codeMirrorSnippetCompletion = snippetCompletion;
   fontThemeComp = new Compartment();
   codeMirrorTheme = new Compartment();
   wordWrapComp = new Compartment();
   readOnlyComp = new Compartment();
   runKeymapComp = new Compartment();
+  diagnosticComp = new Compartment();
+
+  const diagnosticTheme = EditorView.baseTheme({
+    ".cm-sql-error": {
+      textDecoration: "underline wavy var(--destructive)",
+      textUnderlineOffset: "3px",
+    },
+  });
+
+  buildSqlDiagnosticExtension = () => {
+    const buildDecorations = (state: import("@codemirror/state").EditorState) =>
+      Decoration.set(
+        sqlErrorDecorationRange(state).map((range) =>
+          Decoration.mark({
+            class: "cm-sql-error",
+            attributes: { title: range.message },
+          }).range(range.from, range.to),
+        ),
+      );
+
+    const field = StateField.define({
+      create: buildDecorations,
+      update(value, transaction) {
+        return transaction.docChanged ? buildDecorations(transaction.state) : value;
+      },
+      provide: (field) => EditorView.decorations.from(field),
+    });
+
+    return [field, diagnosticTheme];
+  };
+
+  buildSqlSignatureExtension = () =>
+    showTooltip.compute(["doc", "selection"], (currentState) => {
+      const signature = getSqlFunctionSignatureHelp(currentState.doc.toString(), currentState.selection.main.head);
+      if (!signature) return null;
+      return {
+        pos: currentState.selection.main.head,
+        above: false,
+        clip: false,
+        create: () => ({ dom: createSignatureDom(signature) }),
+      };
+    });
 
   const ss = settingsStore.editorSettings;
 
@@ -361,6 +598,9 @@ onMounted(async () => {
       codeMirrorTheme.of(theme),
       closeBrackets(),
       bracketMatching(),
+      hoverTooltip((currentView, pos) => resolveSqlHoverTooltip(currentView, pos)),
+      buildSqlSignatureExtension(),
+      diagnosticComp.of(buildSqlDiagnosticExtension()),
       Prec.highest(keymap.of([...closeBracketsKeymap, indentWithTab])),
       runKeymapComp.of(runKeymapExtension(keymap)),
       wordWrapComp.of(props.forceWordWrap || ss.wordWrap ? EditorView.lineWrapping : []),
@@ -550,6 +790,16 @@ watch(
   () => props.formatRequestId,
   (val, oldVal) => {
     if (val && val !== oldVal) formatCurrentSql();
+  },
+);
+
+watch(
+  () => props.executionError,
+  () => {
+    if (!view.value || !diagnosticComp || !buildSqlDiagnosticExtension) return;
+    view.value.dispatch({
+      effects: diagnosticComp.reconfigure(buildSqlDiagnosticExtension()),
+    });
   },
 );
 

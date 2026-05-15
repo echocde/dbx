@@ -92,6 +92,12 @@ const hasNumericData = computed(() => {
   return r.columns.some((_, idx) => r.rows.some((row) => typeof row[idx] === "number"));
 });
 
+const activeQueryError = computed(() => {
+  const result = props.activeTab.result;
+  if (!result?.columns.includes("Error")) return "";
+  return String(result.rows[0]?.[0] ?? "");
+});
+
 // Column info panel handlers
 async function onHandleClickColumn(
   matchedCols: Array<{ name: string; table: string; schema?: string }>,
@@ -190,6 +196,7 @@ defineExpose({ focusSearch });
               :dialect="editorDialect"
               :format-dialect="activeSqlFormatDialect"
               :format-request-id="formatSqlRequestId"
+              :execution-error="activeQueryError"
               @update:model-value="emit('editorUpdate', $event)"
               @selection-change="emit('editorSelectionChange', $event)"
               @cursor-change="emit('editorCursorChange', $event)"

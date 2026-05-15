@@ -261,6 +261,60 @@ const TABLE_TRIGGER_KEYWORDS = new Set(["from", "join", "update", "into", "table
 const JOIN_MODIFIERS = new Set(["left", "right", "inner", "outer", "cross", "full", "natural"]);
 const MAX_TABLE_COMPLETION_ITEMS = 200;
 
+const SQL_SNIPPETS: Array<{ label: string; prefix: string; apply: string; detail: string }> = [
+  {
+    label: "select *",
+    prefix: "sel",
+    apply: "SELECT *\nFROM ${table}\nLIMIT 100;",
+    detail: "SELECT template",
+  },
+  {
+    label: "insert into",
+    prefix: "ins",
+    apply: "INSERT INTO ${table} (${columns})\nVALUES (${values});",
+    detail: "INSERT template",
+  },
+  {
+    label: "update set",
+    prefix: "upd",
+    apply: "UPDATE ${table}\nSET ${column} = ${value}\nWHERE ${condition};",
+    detail: "UPDATE template",
+  },
+  {
+    label: "common table expression",
+    prefix: "cte",
+    apply: "WITH ${name} AS (\n  SELECT ${columns}\n  FROM ${table}\n)\nSELECT *\nFROM ${name};",
+    detail: "CTE template",
+  },
+  {
+    label: "join",
+    prefix: "join",
+    apply: "JOIN ${table} ON ${left_column} = ${right_column}",
+    detail: "JOIN template",
+  },
+];
+
+const SQL_FUNCTION_SIGNATURES = new Map<string, string[]>([
+  ["COUNT", ["expression"]],
+  ["SUM", ["expression"]],
+  ["AVG", ["expression"]],
+  ["MIN", ["expression"]],
+  ["MAX", ["expression"]],
+  ["DATE_FORMAT", ["date", "format"]],
+  ["DATEDIFF", ["date1", "date2"]],
+  ["TIMESTAMPDIFF", ["unit", "datetime_expr1", "datetime_expr2"]],
+  ["DATE_ADD", ["date", "interval"]],
+  ["DATE_SUB", ["date", "interval"]],
+  ["SUBSTRING", ["string", "start", "length"]],
+  ["SUBSTR", ["string", "start", "length"]],
+  ["CONCAT", ["value", "...values"]],
+  ["COALESCE", ["value", "...values"]],
+  ["CAST", ["expression", "type"]],
+  ["ROUND", ["number", "decimals"]],
+  ["IFNULL", ["expression", "fallback"]],
+  ["NULLIF", ["expression1", "expression2"]],
+]);
+
 export interface SqlCompletionTable {
   name: string;
   schema?: string;
@@ -276,8 +330,9 @@ export interface SqlCompletionColumn {
 
 export interface SqlCompletionItem {
   label: string;
-  type: "keyword" | "table" | "column";
+  type: "keyword" | "table" | "column" | "snippet";
   detail?: string;
+  apply?: string;
   boost: number;
 }
 
@@ -293,7 +348,17 @@ export interface SqlCompletionContext {
   suggestTables: boolean;
   suggestColumns: boolean;
   suggestKeywords: boolean;
+  suggestJoinConditions: boolean;
+  prioritizeSelectAliases: boolean;
+  selectAliases: string[];
   referencedTables: SqlCompletionReferencedTable[];
+}
+
+export interface SqlFunctionSignatureHelp {
+  name: string;
+  signature: string;
+  activeParameter: number;
+  parameters: string[];
 }
 
 export function buildSqlCompletionItems(
@@ -317,6 +382,17 @@ export function buildSqlCompletionItemsFromContext(
 ): SqlCompletionItem[] {
   const items: SqlCompletionItem[] = [];
 
+  items.push(...buildSnippetItems(context.prefix));
+  items.push(...buildFunctionSnippetItems(context.prefix));
+
+  if (context.prioritizeSelectAliases) {
+    items.push(...buildSelectAliasItems(context));
+  }
+
+  if (context.suggestJoinConditions) {
+    items.push(...buildJoinConditionItems(context, input.columnsByTable));
+  }
+
   // Always suggest keywords (regardless of qualifier)
   if (context.suggestKeywords) {
     items.push(...buildKeywordItems(context.prefix));
@@ -336,7 +412,29 @@ export function buildSqlCompletionItemsFromContext(
 export function shouldAutoOpenSqlCompletion(sql: string, cursor: number): boolean {
   const previousChar = sql[cursor - 1];
   if (!previousChar) return false;
+  if (/\bon\s+$/i.test(sql.slice(0, cursor))) return true;
   return /[\w$.]/.test(previousChar);
+}
+
+export function getSqlFunctionSignatureHelp(sql: string, cursor: number): SqlFunctionSignatureHelp | null {
+  const beforeCursor = sql.slice(0, cursor);
+  const openParenIndex = findActiveFunctionOpenParen(beforeCursor);
+  if (openParenIndex == null) return null;
+
+  const beforeParen = beforeCursor.slice(0, openParenIndex).trimEnd();
+  const name = /([A-Za-z_][\w$]*)$/.exec(beforeParen)?.[1]?.toUpperCase();
+  if (!name) return null;
+
+  const parameters = SQL_FUNCTION_SIGNATURES.get(name);
+  if (!parameters) return null;
+
+  const activeParameter = countTopLevelCommas(beforeCursor.slice(openParenIndex + 1));
+  return {
+    name,
+    signature: `${name}(${parameters.join(", ")})`,
+    activeParameter: Math.min(activeParameter, Math.max(0, parameters.length - 1)),
+    parameters,
+  };
 }
 
 /**
@@ -409,6 +507,8 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
 
   // Check if we're in a context where columns are expected
   const inColumnContext = isInColumnContext(beforeCursor);
+  const inJoinConditionContext = isInJoinConditionContext(beforeCursor);
+  const prioritizeSelectAliases = isInOrderOrGroupByContext(beforeCursor);
 
   return {
     prefix,
@@ -421,6 +521,9 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
     suggestColumns: !!qualifier || (inColumnContext && referencedTables.length > 0),
     // Always suggest keywords
     suggestKeywords: true,
+    suggestJoinConditions: inJoinConditionContext && referencedTables.length >= 2,
+    prioritizeSelectAliases,
+    selectAliases: prioritizeSelectAliases ? extractSelectAliases(fullStatement) : [],
     referencedTables,
   };
 }
@@ -454,6 +557,31 @@ function isInColumnContext(beforeCursor: string): boolean {
   }
 
   return false;
+}
+
+function isInJoinConditionContext(beforeCursor: string): boolean {
+  const cleaned = beforeCursor
+    .replace(/'[^']*'/g, "''")
+    .replace(/"[^"]*"/g, "''")
+    .toLowerCase();
+  const lastJoinIndex = cleaned.lastIndexOf(" join ");
+  const currentJoinSegment = lastJoinIndex >= 0 ? cleaned.slice(lastJoinIndex) : cleaned;
+  if (!/\bon\b/.test(currentJoinSegment)) return false;
+  return /\b(?:on|and)\s+[a-z0-9_$]*$/i.test(currentJoinSegment);
+}
+
+function isInOrderOrGroupByContext(beforeCursor: string): boolean {
+  const cleaned = beforeCursor
+    .replace(/'[^']*'/g, "''")
+    .replace(/"[^"]*"/g, '""')
+    .toLowerCase();
+  const lastOrderBy = cleaned.lastIndexOf("order by");
+  const lastGroupBy = cleaned.lastIndexOf("group by");
+  const lastContext = Math.max(lastOrderBy, lastGroupBy);
+  if (lastContext < 0) return false;
+
+  const segment = cleaned.slice(lastContext);
+  return !/\b(?:where|having|limit|offset|union|intersect|except|join|from)\b/.test(segment);
 }
 
 function extractReferencedTables(sql: string): SqlCompletionReferencedTable[] {
@@ -577,6 +705,104 @@ function extractReferencedTables(sql: string): SqlCompletionReferencedTable[] {
   return referenced;
 }
 
+function extractSelectAliases(sql: string): string[] {
+  const selectList = extractSelectList(sql);
+  if (!selectList) return [];
+
+  const aliases: string[] = [];
+  const seen = new Set<string>();
+  for (const expression of splitTopLevel(selectList, ",")) {
+    const alias = extractSelectAlias(expression);
+    if (!alias) continue;
+    const key = alias.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    aliases.push(alias);
+  }
+
+  return aliases;
+}
+
+function extractSelectList(sql: string): string | null {
+  const lower = sql.toLowerCase();
+  const selectIndex = lower.search(/\bselect\b/);
+  if (selectIndex < 0) return null;
+
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  for (let i = selectIndex + "select".length; i < sql.length; i++) {
+    const ch = sql[i];
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote) continue;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (
+      depth === 0 &&
+      lower.slice(i, i + "from".length) === "from" &&
+      !isIdentifierPart(sql[i - 1]) &&
+      !isIdentifierPart(sql[i + "from".length])
+    ) {
+      return sql.slice(selectIndex + "select".length, i).trim();
+    }
+  }
+
+  return null;
+}
+
+function extractSelectAlias(expression: string): string | null {
+  const trimmed = expression.trim();
+  const explicitAlias = /\bas\s+([A-Za-z_][\w$]*)$/i.exec(trimmed)?.[1];
+  if (explicitAlias) return explicitAlias;
+
+  const implicitAlias = /(?:^|[\s)])([A-Za-z_][\w$]*)$/.exec(trimmed)?.[1];
+  if (!implicitAlias) return null;
+  const expressionWithoutAlias = trimmed.slice(0, trimmed.length - implicitAlias.length).trimEnd();
+  if (!expressionWithoutAlias || /^[A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)?$/.test(trimmed)) return null;
+  return implicitAlias;
+}
+
+function isIdentifierPart(ch: string | undefined): boolean {
+  return !!ch && /[A-Za-z0-9_$]/.test(ch);
+}
+
+function splitTopLevel(text: string, separator: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote) continue;
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (ch === separator && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+
+  parts.push(text.slice(start));
+  return parts;
+}
+
 function splitQualifiedName(input: string): [string | undefined, string | undefined] {
   const parts = input
     .split(".")
@@ -672,12 +898,134 @@ function buildColumnItems(
     }));
 }
 
-function buildKeywordItems(prefix: string): SqlCompletionItem[] {
-  return SQL_KEYWORDS.filter((keyword) => matchesPrefix(keyword, prefix)).map((keyword) => ({
-    label: keyword,
-    type: "keyword" as const,
-    boost: computeBoost(keyword, prefix),
+function buildJoinConditionItems(
+  context: SqlCompletionContext,
+  columnsByTable: Map<string, SqlCompletionColumn[]>,
+): SqlCompletionItem[] {
+  const refs = context.referencedTables;
+  if (refs.length < 2) return [];
+
+  const latest = refs[refs.length - 1];
+  const previousRefs = refs.slice(0, -1);
+  const items: SqlCompletionItem[] = [];
+
+  for (const previous of previousRefs) {
+    const previousColumns = columnsForReferencedTable(previous, columnsByTable);
+    const latestColumns = columnsForReferencedTable(latest, columnsByTable);
+    items.push(...buildJoinConditionItemsForPair(previous, previousColumns, latest, latestColumns, context.prefix));
+  }
+
+  return items;
+}
+
+function columnsForReferencedTable(
+  table: SqlCompletionReferencedTable,
+  columnsByTable: Map<string, SqlCompletionColumn[]>,
+): SqlCompletionColumn[] {
+  const keys = table.schema ? [`${table.schema}.${table.name}`, table.name] : [table.name];
+  for (const key of keys) {
+    const columns = columnsByTable.get(key);
+    if (columns) return columns;
+  }
+  return [];
+}
+
+function buildJoinConditionItemsForPair(
+  left: SqlCompletionReferencedTable,
+  leftColumns: SqlCompletionColumn[],
+  right: SqlCompletionReferencedTable,
+  rightColumns: SqlCompletionColumn[],
+  prefix: string,
+): SqlCompletionItem[] {
+  const items: SqlCompletionItem[] = [];
+  const leftRef = left.alias || left.name;
+  const rightRef = right.alias || right.name;
+  const leftTableKey = singularTableName(left.name);
+  const rightTableKey = singularTableName(right.name);
+
+  for (const leftColumn of leftColumns) {
+    for (const rightColumn of rightColumns) {
+      const leftName = leftColumn.name.toLowerCase();
+      const rightName = rightColumn.name.toLowerCase();
+      const leftLabel = `${leftRef}.${leftColumn.name}`;
+      const rightLabel = `${rightRef}.${rightColumn.name}`;
+      let boost = 0;
+
+      if (leftName === "id" && rightName === `${leftTableKey}_id`) {
+        boost = 2300;
+      } else if (rightName === "id" && leftName === `${rightTableKey}_id`) {
+        boost = 2300;
+      } else if (leftName !== "id" && leftName === rightName) {
+        boost = 1700;
+      }
+
+      if (!boost) continue;
+      const label = `${leftLabel} = ${rightLabel}`;
+      if (prefix && !matchesPrefix(label, prefix)) continue;
+      items.push({
+        label,
+        type: "snippet",
+        detail: "JOIN condition",
+        apply: label,
+        boost,
+      });
+    }
+  }
+
+  return items;
+}
+
+function singularTableName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith("ies") && lower.length > 3) return `${lower.slice(0, -3)}y`;
+  if (lower.endsWith("s") && lower.length > 1) return lower.slice(0, -1);
+  return lower;
+}
+
+function buildSnippetItems(prefix: string): SqlCompletionItem[] {
+  if (!prefix) return [];
+  return SQL_SNIPPETS.filter(
+    (snippet) => matchesPrefix(snippet.prefix, prefix) || matchesPrefix(snippet.label, prefix),
+  ).map((snippet) => ({
+    label: snippet.label,
+    type: "snippet" as const,
+    detail: snippet.detail,
+    apply: snippet.apply,
+    boost: computeBoost(snippet.prefix, prefix) - 1100,
   }));
+}
+
+function buildFunctionSnippetItems(prefix: string): SqlCompletionItem[] {
+  return [...SQL_FUNCTION_SIGNATURES.entries()]
+    .filter(([name]) => matchesPrefix(name, prefix))
+    .map(([name, parameters]) => ({
+      label: name,
+      type: "snippet" as const,
+      detail: "function",
+      apply: `${name}(${parameters.map((parameter) => `\${${parameter}}`).join(", ")})`,
+      boost: computeBoost(name, prefix) + 300,
+    }));
+}
+
+function buildSelectAliasItems(context: SqlCompletionContext): SqlCompletionItem[] {
+  return context.selectAliases
+    .filter((alias) => matchesPrefix(alias, context.prefix))
+    .map((alias, index) => ({
+      label: alias,
+      type: "column" as const,
+      detail: "SELECT alias",
+      boost: computeBoost(alias, context.prefix) + 3500 - index,
+    }));
+}
+
+function buildKeywordItems(prefix: string): SqlCompletionItem[] {
+  return SQL_KEYWORDS.filter((keyword) => !SQL_FUNCTION_SIGNATURES.has(keyword) && matchesPrefix(keyword, prefix)).map(
+    (keyword) => ({
+      label: keyword,
+      type: "keyword" as const,
+      boost: computeBoost(keyword, prefix),
+    }),
+  );
 }
 
 function matchesPrefix(candidate: string, prefix: string): boolean {
@@ -687,8 +1035,11 @@ function matchesPrefix(candidate: string, prefix: string): boolean {
 
 function computeBoost(candidate: string, prefix: string): number {
   if (!prefix) return 1;
-  const startsWith = candidate.toLowerCase().startsWith(prefix.toLowerCase());
-  return (startsWith ? 1000 : 100) - candidate.length;
+  const candidateLower = candidate.toLowerCase();
+  const prefixLower = prefix.toLowerCase();
+  if (candidateLower === prefixLower) return 3000 - candidate.length;
+  if (candidateLower.startsWith(prefixLower)) return 2000 - candidate.length;
+  return 100 - candidate.length;
 }
 
 function dedupeAndSort(items: SqlCompletionItem[]): SqlCompletionItem[] {
@@ -701,4 +1052,58 @@ function dedupeAndSort(items: SqlCompletionItem[]): SqlCompletionItem[] {
       seen.add(key);
       return true;
     });
+}
+
+function findActiveFunctionOpenParen(sqlBeforeCursor: string): number | null {
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = sqlBeforeCursor.length - 1; i >= 0; i--) {
+    const ch = sqlBeforeCursor[i];
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote) continue;
+
+    if (ch === ")") {
+      depth++;
+    } else if (ch === "(") {
+      if (depth === 0) return i;
+      depth--;
+    }
+  }
+
+  return null;
+}
+
+function countTopLevelCommas(text: string): number {
+  let count = 0;
+  let depth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (ch === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (inSingleQuote || inDoubleQuote) continue;
+
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    else if (ch === "," && depth === 0) count++;
+  }
+
+  return count;
 }

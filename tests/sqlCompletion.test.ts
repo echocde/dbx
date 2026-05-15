@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
   buildSqlCompletionItems,
+  getSqlFunctionSignatureHelp,
   shouldAutoOpenSqlCompletion,
   type SqlCompletionColumn,
   type SqlCompletionTable,
@@ -51,6 +52,19 @@ test("suggests matching table names after FROM", () => {
 
   assert.deepEqual(
     items.slice(0, 2).map((item) => item.label),
+    ["users", "user_profiles"],
+  );
+});
+
+test("ranks prefix matches above substring matches for table names", () => {
+  const sql = "select * from user";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.filter((item) => item.type === "table").map((item) => item.label),
     ["users", "user_profiles"],
   );
 });
@@ -172,6 +186,12 @@ test("auto-opens completion after word characters and explicit dot qualifiers", 
   }
 });
 
+test("auto-opens completion after ON whitespace for join conditions", () => {
+  const sql = "select * from public.users u join public.orders o on ";
+
+  assert.equal(shouldAutoOpenSqlCompletion(sql, sql.length), true);
+});
+
 test("limits table suggestions for large schemas after filtering by prefix", () => {
   const largeTables: SqlCompletionTable[] = Array.from({ length: 500 }, (_, index) => ({
     name: `erp_invoice_${String(index).padStart(4, "0")}`,
@@ -189,4 +209,121 @@ test("limits table suggestions for large schemas after filtering by prefix", () 
   assert.equal(tableItems.length, 200);
   assert.equal(tableItems[0]?.label, "erp_invoice_0000");
   assert.equal(tableItems.at(-1)?.label, "erp_invoice_0199");
+});
+
+test("suggests SQL snippets for common abbreviations", () => {
+  const items = buildSqlCompletionItems("sel", 3, {
+    tables,
+    columnsByTable,
+  });
+
+  const snippet = items.find((item) => item.type === "snippet" && item.label === "select *");
+  assert.ok(snippet);
+  assert.equal(snippet.apply, "SELECT *\nFROM ${table}\nLIMIT 100;");
+});
+
+test("suggests DATE_FORMAT as parameter snippet", () => {
+  const sql = "select date_";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  const snippet = items.find((item) => item.type === "snippet" && item.label === "DATE_FORMAT");
+  assert.ok(snippet);
+  assert.equal(snippet.detail, "function");
+  assert.equal(snippet.apply, "DATE_FORMAT(${date}, ${format})");
+});
+
+test("matches alias qualifier case-insensitively", () => {
+  const sql = "select O. from public.orders o";
+  const cursor = "select O.".length;
+  const items = buildSqlCompletionItems(sql, cursor, {
+    tables,
+    columnsByTable,
+  });
+
+  const columnItems = items.filter((item) => item.type === "column");
+  assert.deepEqual(
+    columnItems.map((item) => item.label),
+    ["id", "user_id", "status"],
+  );
+});
+
+test("suggests referenced columns after ORDER BY", () => {
+  const sql = "select name from public.users u order by na";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "name");
+  assert.equal(items[0]?.type, "column");
+});
+
+test("prioritizes select aliases in ORDER BY completion", () => {
+  const sql = "select u.name as display_name, count(*) order_count from public.users u order by ";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.slice(0, 2).map((item) => [item.label, item.detail]),
+    [
+      ["display_name", "SELECT alias"],
+      ["order_count", "SELECT alias"],
+    ],
+  );
+});
+
+test("prioritizes select aliases in GROUP BY completion", () => {
+  const sql = "select u.name as display_name from public.users u group by ";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "display_name");
+  assert.equal(items[0]?.detail, "SELECT alias");
+});
+
+test("suggests likely join condition snippets after ON", () => {
+  const sql = "select * from public.users u join public.orders o on ";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  const joinCondition = items.find((item) => item.type === "snippet" && item.label === "u.id = o.user_id");
+  assert.ok(joinCondition);
+  assert.equal(joinCondition.apply, "u.id = o.user_id");
+});
+
+test("suggests likely join condition snippets when joined table owns the id column", () => {
+  const sql = "select * from public.orders o join public.users u on ";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  const joinCondition = items.find((item) => item.type === "snippet" && item.label === "o.user_id = u.id");
+  assert.ok(joinCondition);
+  assert.equal(joinCondition.apply, "o.user_id = u.id");
+});
+
+test("returns function signature help inside function arguments", () => {
+  const sql = "select date_format(created_at, ";
+  const signature = getSqlFunctionSignatureHelp(sql, sql.length);
+
+  assert.deepEqual(signature, {
+    name: "DATE_FORMAT",
+    signature: "DATE_FORMAT(date, format)",
+    activeParameter: 1,
+    parameters: ["date", "format"],
+  });
+});
+
+test("returns null signature help outside function calls", () => {
+  assert.equal(getSqlFunctionSignatureHelp("select created_at from users", "select created_at".length), null);
 });
