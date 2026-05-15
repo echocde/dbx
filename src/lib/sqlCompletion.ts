@@ -333,6 +333,12 @@ export function buildSqlCompletionItemsFromContext(
   return dedupeAndSort(items);
 }
 
+export function shouldAutoOpenSqlCompletion(sql: string, cursor: number): boolean {
+  const previousChar = sql[cursor - 1];
+  if (!previousChar) return false;
+  return /[\w$.]/.test(previousChar);
+}
+
 /**
  * Find the start position of the SQL statement containing the cursor.
  * Respects semicolons and string literals.

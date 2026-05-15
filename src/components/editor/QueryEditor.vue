@@ -6,7 +6,11 @@ import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { formatSqlText, type SqlFormatDialect } from "@/lib/sqlFormatter";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { buildSqlCompletionItemsFromContext, getSqlCompletionContext } from "@/lib/sqlCompletion";
+import {
+  buildSqlCompletionItemsFromContext,
+  getSqlCompletionContext,
+  shouldAutoOpenSqlCompletion,
+} from "@/lib/sqlCompletion";
 import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigation";
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import type { SqlCompletionColumn } from "@/lib/sqlCompletion";
@@ -122,11 +126,17 @@ async function formatCurrentSql() {
   }
 }
 
-async function provideSqlCompletions(currentState: import("@codemirror/state").EditorState, position: number) {
+async function provideSqlCompletions(
+  currentState: import("@codemirror/state").EditorState,
+  position: number,
+  explicit: boolean,
+) {
   if (!props.connectionId || !props.database) return null;
 
   try {
     const fullDoc = currentState.doc.toString();
+    if (!explicit && !shouldAutoOpenSqlCompletion(fullDoc, position)) return null;
+
     const completionContext = getSqlCompletionContext(fullDoc, position);
     const shouldLoadTables = completionContext.suggestTables || !!completionContext.qualifier;
     let tables = shouldLoadTables
@@ -338,7 +348,9 @@ onMounted(async () => {
       sql({ dialect }),
       autocompletion({
         activateOnTyping: true,
-        override: [async (context: CompletionContext) => provideSqlCompletions(context.state, context.pos)],
+        override: [
+          async (context: CompletionContext) => provideSqlCompletions(context.state, context.pos, context.explicit),
+        ],
       }),
       codeMirrorTheme.of(theme),
       closeBrackets(),

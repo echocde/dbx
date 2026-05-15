@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
   buildSqlCompletionItems,
+  shouldAutoOpenSqlCompletion,
   type SqlCompletionColumn,
   type SqlCompletionTable,
 } from "../src/lib/sqlCompletion.ts";
@@ -157,6 +158,18 @@ test("suggests SQL Server data types in CREATE TABLE column definitions", () => 
   assert.ok(items.some((item) => item.type === "keyword" && item.label === "INT"));
   assert.ok(items.some((item) => item.type === "keyword" && item.label === "BIGINT"));
   assert.ok(items.some((item) => item.type === "keyword" && item.label === "NVARCHAR"));
+});
+
+test("does not auto-open completion after structural punctuation", () => {
+  for (const sql of ["select count(*)", "select * from users;", "select * from users,"]) {
+    assert.equal(shouldAutoOpenSqlCompletion(sql, sql.length), false, sql);
+  }
+});
+
+test("auto-opens completion after word characters and explicit dot qualifiers", () => {
+  for (const sql of ["sel", "select * from us", "select u."]) {
+    assert.equal(shouldAutoOpenSqlCompletion(sql, sql.length), true, sql);
+  }
 });
 
 test("limits table suggestions for large schemas after filtering by prefix", () => {
