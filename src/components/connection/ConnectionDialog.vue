@@ -161,6 +161,7 @@ const driverProfiles: Record<
   },
   gaussdb: { type: "gaussdb", port: 5432, user: "gaussdb", label: "GaussDB", icon: "gaussdb" },
   kingbase: { type: "kingbase", port: 54321, user: "system", label: "KingBase", icon: "kingbase" },
+  highgo: { type: "highgo", port: 5866, user: "highgo", label: "瀚高 HighGo", icon: "highgo" },
   vastbase: { type: "vastbase", port: 5432, user: "vastbase", label: "Vastbase", icon: "vastbase" },
   doris: { type: "mysql", port: 9030, user: "root", label: "Doris", icon: "doris", urlParams: "" },
   selectdb: {
@@ -338,6 +339,7 @@ function defaultDatabaseForProfile() {
   if (form.value.db_type === "redshift") return "dev";
   if (form.value.db_type === "gaussdb") return "postgres";
   if (selectedType.value === "cockroachdb") return "defaultdb";
+  if (form.value.db_type === "highgo") return "highgo";
   if (form.value.db_type === "postgres" || form.value.db_type === "kingbase" || form.value.db_type === "vastbase")
     return "postgres";
   if (form.value.db_type === "sqlserver") return "master";
@@ -370,6 +372,7 @@ const iconTypeMap: Record<string, string> = {
   opengauss: "opengauss",
   gaussdb: "gaussdb",
   kingbase: "kingbase",
+  highgo: "highgo",
   vastbase: "vastbase",
   doris: "doris",
   selectdb: "selectdb",
@@ -417,6 +420,7 @@ const dbOptions = [
   { value: "tdengine", label: "TDengine" },
   { value: "opengauss", label: "openGauss" },
   { value: "kingbase", label: "KingBase" },
+  { value: "highgo", label: "瀚高 HighGo" },
   { value: "vastbase", label: "Vastbase" },
   { value: "redshift", label: "Redshift" },
   { value: "cockroachdb", label: "CockroachDB" },
@@ -906,10 +910,15 @@ function openExternalUrl(url: string) {
 
                 <div class="grid grid-cols-4 items-center gap-4">
                   <Label class="text-right">{{ t("connection.type") }}</Label>
-                  <div class="col-span-3 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                  <button
+                    type="button"
+                    class="col-span-3 flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 hover:bg-muted/40 cursor-pointer transition"
+                    @click="backToDatabasePicker()"
+                  >
                     <DatabaseIcon :db-type="selectedDbIcon" class="h-4 w-4 shrink-0" />
-                    <span class="min-w-0 flex-1 truncate text-sm">{{ selectedProfile().label }}</span>
-                  </div>
+                    <span class="min-w-0 flex-1 truncate text-sm text-left">{{ selectedProfile().label }}</span>
+                    <Pencil class="h-3 w-3 text-muted-foreground" />
+                  </button>
                 </div>
 
                 <div v-if="isCustomCompatibleProfile()" class="grid grid-cols-4 items-center gap-4">
@@ -1195,6 +1204,7 @@ function openExternalUrl(url: string) {
                       form.db_type === 'redshift' ||
                       form.db_type === 'informix' ||
                       form.db_type === 'kingbase' ||
+                      form.db_type === 'highgo' ||
                       form.db_type === 'vastbase' ||
                       form.db_type === 'goldendb'
                     "

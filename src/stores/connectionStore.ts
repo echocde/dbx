@@ -23,6 +23,7 @@ import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { isSchemaAware, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
 import { buildDatabaseTreeNodes } from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
+import { shouldMarkDisconnected } from "@/lib/connectionHealth";
 import {
   buildGroupedObjectTreeNodes,
   buildTableTreeNodes,
@@ -153,6 +154,14 @@ export const useConnectionStore = defineStore("connection", () => {
     return message;
   }
 
+  function recordMetadataLoadError(connectionId: string, error: unknown) {
+    if (shouldMarkDisconnected(error)) {
+      connectedIds.value.delete(connectionId);
+      if (activeConnectionId.value === connectionId) activeConnectionId.value = null;
+    }
+    recordConnectionError(connectionId, error);
+  }
+
   function normalizeConnection(config: ConnectionConfig): ConnectionConfig {
     const labelMap: Record<string, string> = {
       mysql: "MySQL",
@@ -171,6 +180,7 @@ export const useConnectionStore = defineStore("connection", () => {
       dameng: "DM (Dameng)",
       gaussdb: "GaussDB",
       kingbase: "KingBase",
+      highgo: "瀚高 HighGo",
       vastbase: "Vastbase",
       goldendb: "GoldenDB",
       h2: "H2",
@@ -194,6 +204,8 @@ export const useConnectionStore = defineStore("connection", () => {
       dbType = "redshift" as ConnectionConfig["db_type"];
     } else if (profile === "kingbase" && dbType === "postgres") {
       dbType = "kingbase" as ConnectionConfig["db_type"];
+    } else if (profile === "highgo" && dbType === "postgres") {
+      dbType = "highgo" as ConnectionConfig["db_type"];
     } else if (profile === "vastbase" && dbType === "postgres") {
       dbType = "vastbase" as ConnectionConfig["db_type"];
     } else if (profile === "goldendb" && dbType === "mysql") {
@@ -588,6 +600,9 @@ export const useConnectionStore = defineStore("connection", () => {
         await savePersistedTreeChildren(cacheKey, children);
       }
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -620,6 +635,9 @@ export const useConnectionStore = defineStore("connection", () => {
         ),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -665,6 +683,9 @@ export const useConnectionStore = defineStore("connection", () => {
         ),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -690,6 +711,9 @@ export const useConnectionStore = defineStore("connection", () => {
         })),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -720,6 +744,9 @@ export const useConnectionStore = defineStore("connection", () => {
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -744,6 +771,9 @@ export const useConnectionStore = defineStore("connection", () => {
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -774,6 +804,9 @@ export const useConnectionStore = defineStore("connection", () => {
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -865,6 +898,9 @@ export const useConnectionStore = defineStore("connection", () => {
         })),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -894,6 +930,9 @@ export const useConnectionStore = defineStore("connection", () => {
         })),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -923,6 +962,9 @@ export const useConnectionStore = defineStore("connection", () => {
         })),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }
@@ -952,6 +994,9 @@ export const useConnectionStore = defineStore("connection", () => {
         })),
       );
       node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
     } finally {
       node.isLoading = false;
     }

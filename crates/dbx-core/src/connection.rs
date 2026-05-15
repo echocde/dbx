@@ -223,6 +223,7 @@ impl AppState {
             }
             DatabaseType::Dameng
             | DatabaseType::Kingbase
+            | DatabaseType::Highgo
             | DatabaseType::Vastbase
             | DatabaseType::Goldendb
             | DatabaseType::Oracle
@@ -371,8 +372,38 @@ impl AppState {
                 None => connection_id.to_string(),
             }
         };
-        self.connections.write().await.remove(&pool_key);
+        if self.uses_forwarded_transport(connection_id).await {
+            self.remove_connection_pools(connection_id).await;
+            self.reset_connection_transport(connection_id).await;
+        } else {
+            self.connections.write().await.remove(&pool_key);
+        }
         self.get_or_create_pool(connection_id, database).await
+    }
+
+    pub async fn reset_connection_transport(&self, connection_id: &str) {
+        self.tunnels.stop_tunnel(connection_id).await;
+        self.proxy_tunnels.stop_tunnel(connection_id).await;
+    }
+
+    pub async fn remove_connection_pools(&self, connection_id: &str) {
+        let mut conns = self.connections.write().await;
+        let keys_to_remove: Vec<String> = conns
+            .keys()
+            .filter(|k| *k == connection_id || k.starts_with(&format!("{connection_id}:")))
+            .cloned()
+            .collect();
+        for key in keys_to_remove {
+            conns.remove(&key);
+        }
+    }
+
+    async fn uses_forwarded_transport(&self, connection_id: &str) -> bool {
+        let configs = self.configs.read().await;
+        configs.get(connection_id).is_some_and(|config| {
+            (config.ssh_enabled && !config.ssh_host.is_empty())
+                || (config.proxy_enabled && !config.proxy_host.is_empty())
+        })
     }
 }
 
@@ -436,7 +467,7 @@ async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &sqlx::mysql::My
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_connect_params, database_connection_config, metadata_connection_config, AppState};
+    use super::{agent_connect_params, database_connection_config, metadata_connection_config, AppState, PoolKind};
     use crate::models::connection::{ConnectionConfig, DatabaseType, ProxyType};
     use crate::schema;
     use crate::storage::Storage;
@@ -562,6 +593,28 @@ mod tests {
         let databases = schema::list_databases_core(&state, "sqlite-conn").await.unwrap();
         assert_eq!(databases.len(), 1);
         assert_eq!(databases[0].name, "main");
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn remove_connection_pools_clears_base_and_database_scoped_pools() {
+        let (state, dir) = test_app_state().await;
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect(":memory:").await.unwrap();
+
+        {
+            let mut conns = state.connections.write().await;
+            conns.insert("conn".to_string(), PoolKind::Sqlite(pool.clone()));
+            conns.insert("conn:analytics".to_string(), PoolKind::Sqlite(pool.clone()));
+            conns.insert("other".to_string(), PoolKind::Sqlite(pool));
+        }
+
+        state.remove_connection_pools("conn").await;
+
+        let conns = state.connections.read().await;
+        assert!(!conns.contains_key("conn"));
+        assert!(!conns.contains_key("conn:analytics"));
+        assert!(conns.contains_key("other"));
 
         let _ = std::fs::remove_dir_all(dir);
     }

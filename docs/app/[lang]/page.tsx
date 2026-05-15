@@ -86,6 +86,7 @@ const databaseSupport = [
   { name: 'TDengine', icon: '/icons/database/tdengine.svg', tone: '#2f6fff' },
   { name: 'openGauss', icon: '/icons/database/opengauss.svg', tone: '#1488c9' },
   { name: 'KingBase', icon: '/icons/database/kingbase.svg', tone: '#e1212d' },
+  { name: 'HighGo', initials: 'HG', tone: '#005bac' },
   { name: 'CockroachDB', icon: '/icons/database/cockroachdb.svg', tone: '#6933ff' },
   { name: 'More', initials: '···', tone: '#6ea8ff' },
 ];

@@ -164,6 +164,9 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
     let id = config.id.clone();
     let db_config = metadata_connection_config(&config);
 
+    state.remove_connection_pools(&id).await;
+    state.reset_connection_transport(&id).await;
+
     let (host, port) = state.connection_host_port(&id, &db_config).await?;
     probe_connection_endpoint(&db_config, &host, port).await?;
     let url = connection_url_for_endpoint(&db_config, &host, port);
@@ -287,7 +290,6 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
     }
     drop(conns);
     state.configs.write().await.remove(&connection_id);
-    state.tunnels.stop_tunnel(&connection_id).await;
-    state.proxy_tunnels.stop_tunnel(&connection_id).await;
+    state.reset_connection_transport(&connection_id).await;
     Ok(())
 }

@@ -114,6 +114,7 @@ pub enum DatabaseType {
     Redshift,
     Dameng,
     Kingbase,
+    Highgo,
     Vastbase,
     Goldendb,
     Gaussdb,
@@ -161,6 +162,7 @@ impl ConnectionConfig {
             DatabaseType::Redshift => Some("dev"),
             DatabaseType::Gaussdb => Some("postgres"),
             DatabaseType::Kingbase | DatabaseType::Vastbase => Some("postgres"),
+            DatabaseType::Highgo => Some("highgo"),
             _ => None,
         }
     }
@@ -231,6 +233,7 @@ impl ConnectionConfig {
             }
             DatabaseType::Dameng => format!("dm://{host}:{port}{db_part}"),
             DatabaseType::Kingbase => format!("kingbase://{host}:{port}{db_part}"),
+            DatabaseType::Highgo => format!("highgo://{host}:{port}{db_part}"),
             DatabaseType::Vastbase => format!("vastbase://{host}:{port}{db_part}"),
             DatabaseType::Goldendb => format!("goldendb://{host}:{port}{db_part}"),
             DatabaseType::Gaussdb => format!("gaussdb://{host}:{port}{db_part}"),
@@ -318,6 +321,9 @@ impl ConnectionConfig {
             }
             DatabaseType::Kingbase => {
                 format!("kingbase://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Highgo => {
+                format!("highgo://{}:{}@{host}:{port}{db_part}", username, password)
             }
             DatabaseType::Vastbase => {
                 format!("vastbase://{}:{}@{host}:{port}{db_part}", username, password)

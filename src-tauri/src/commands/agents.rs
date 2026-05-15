@@ -17,6 +17,7 @@ static REGISTRY_CACHE: std::sync::LazyLock<Mutex<Option<(std::time::Instant, Age
 const AGENT_TYPES: &[(&str, &str)] = &[
     ("dameng", "达梦 DM8"),
     ("kingbase", "人大金仓 KingbaseES"),
+    ("highgo", "瀚高 HighGo"),
     ("vastbase", "Vastbase"),
     ("goldendb", "GoldenDB"),
     ("oracle", "Oracle"),

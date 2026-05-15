@@ -15,6 +15,7 @@ export type DatabaseType =
   | "dameng"
   | "gaussdb"
   | "kingbase"
+  | "highgo"
   | "vastbase"
   | "goldendb"
   | "h2"
