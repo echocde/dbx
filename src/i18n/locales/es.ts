@@ -983,6 +983,8 @@ export default {
     title: "Configuración",
     editorTab: "Editor",
     appearanceTab: "Apariencia",
+    redisTab: "Redis",
+    aiTab: "IA",
     jdbcTab: "Drivers JDBC",
     securityTab: "Seguridad",
     aboutTab: "Acerca de",

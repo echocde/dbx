@@ -26,6 +26,7 @@ import RedisValueViewer from "./RedisValueViewer.vue";
 import * as api from "@/lib/api";
 import type { RedisKeyInfo } from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import {
   buildRedisKeyTree,
   collectExpandedGroupIds,
@@ -38,6 +39,7 @@ import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 
 const { t } = useI18n();
 const connectionStore = useConnectionStore();
+const settingsStore = useSettingsStore();
 
 const props = defineProps<{
   connectionId: string;
@@ -67,7 +69,6 @@ const commandResult = ref<any>(null);
 const commandError = ref("");
 const commandRunning = ref(false);
 
-const PAGE_SIZE = 200;
 const keyGridStyle = {
   gridTemplateColumns: "minmax(12rem, 0.35fr) 80px 1fr 60px 60px",
 };
@@ -129,7 +130,7 @@ async function scanNextPage() {
     props.db,
     scanCursor.value,
     effectivePattern.value,
-    PAGE_SIZE,
+    settingsStore.editorSettings.redisScanPageSize,
   );
   const existingKeys = new Set(flatKeys.value.map((key) => key.key_raw));
   flatKeys.value = [...flatKeys.value, ...result.keys.filter((key) => !existingKeys.has(key.key_raw))];

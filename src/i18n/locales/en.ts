@@ -1005,6 +1005,7 @@ export default {
     title: "Settings",
     editorTab: "Editor",
     appearanceTab: "Appearance",
+    redisTab: "Redis",
     aiTab: "AI",
     jdbcTab: "JDBC Drivers",
     securityTab: "Security",

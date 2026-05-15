@@ -51,6 +51,7 @@ export interface EditorSettings {
   wordWrap: boolean;
   appLayout: "separated" | "classic";
   pageSize: number;
+  redisScanPageSize: number;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -83,10 +84,24 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   wordWrap: false,
   appLayout: "classic",
   pageSize: 100,
+  redisScanPageSize: 1000,
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
 const OLD_FONT_SIZE_KEY = "dbx-query-editor-font-size";
+
+export function normalizeEditorSettings(settings: Partial<EditorSettings>): EditorSettings {
+  return {
+    fontFamily: settings.fontFamily ?? DEFAULT_EDITOR_SETTINGS.fontFamily,
+    fontSize: settings.fontSize ?? DEFAULT_EDITOR_SETTINGS.fontSize,
+    theme: settings.theme ?? DEFAULT_EDITOR_SETTINGS.theme,
+    executeMode: settings.executeMode ?? DEFAULT_EDITOR_SETTINGS.executeMode,
+    wordWrap: settings.wordWrap ?? DEFAULT_EDITOR_SETTINGS.wordWrap,
+    appLayout: settings.appLayout ?? DEFAULT_EDITOR_SETTINGS.appLayout,
+    pageSize: settings.pageSize ?? DEFAULT_EDITOR_SETTINGS.pageSize,
+    redisScanPageSize: settings.redisScanPageSize ?? DEFAULT_EDITOR_SETTINGS.redisScanPageSize,
+  };
+}
 
 function loadEditorSettings(): EditorSettings {
   // Try new format first
@@ -94,15 +109,7 @@ function loadEditorSettings(): EditorSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<EditorSettings>;
-      return {
-        fontFamily: parsed.fontFamily ?? DEFAULT_EDITOR_SETTINGS.fontFamily,
-        fontSize: parsed.fontSize ?? DEFAULT_EDITOR_SETTINGS.fontSize,
-        theme: parsed.theme ?? DEFAULT_EDITOR_SETTINGS.theme,
-        executeMode: parsed.executeMode ?? DEFAULT_EDITOR_SETTINGS.executeMode,
-        wordWrap: parsed.wordWrap ?? DEFAULT_EDITOR_SETTINGS.wordWrap,
-        appLayout: parsed.appLayout ?? DEFAULT_EDITOR_SETTINGS.appLayout,
-        pageSize: parsed.pageSize ?? DEFAULT_EDITOR_SETTINGS.pageSize,
-      };
+      return normalizeEditorSettings(parsed);
     }
   } catch {
     /* ignore */

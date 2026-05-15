@@ -987,6 +987,7 @@ export default {
     title: "设置",
     editorTab: "编辑器",
     appearanceTab: "外观",
+    redisTab: "Redis",
     aiTab: "AI",
     jdbcTab: "JDBC 驱动",
     securityTab: "安全",
