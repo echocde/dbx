@@ -813,6 +813,77 @@ mod object_source_tests {
     }
 }
 
+#[cfg(test)]
+mod ddl_tests {
+    use super::*;
+
+    #[test]
+    fn detects_unknown_agent_get_table_ddl_method_errors() {
+        assert!(is_unknown_agent_method_error(
+            "Agent RPC error (-1): Unknown method: get_table_ddl. recent stderr: ..."
+        ));
+        assert!(!is_unknown_agent_method_error("Agent RPC error (-1): permission denied"));
+    }
+
+    #[test]
+    fn builds_postgres_like_table_ddl_from_agent_metadata() {
+        let columns = vec![
+            db::ColumnInfo {
+                name: "id".to_string(),
+                data_type: "integer".to_string(),
+                is_nullable: false,
+                column_default: Some("nextval('departments_id_seq'::regclass)".to_string()),
+                is_primary_key: true,
+                extra: None,
+                comment: None,
+                numeric_precision: None,
+                numeric_scale: None,
+                character_maximum_length: None,
+            },
+            db::ColumnInfo {
+                name: "name".to_string(),
+                data_type: "varchar(128)".to_string(),
+                is_nullable: false,
+                column_default: None,
+                is_primary_key: false,
+                extra: None,
+                comment: None,
+                numeric_precision: None,
+                numeric_scale: None,
+                character_maximum_length: None,
+            },
+        ];
+        let indexes = vec![db::IndexInfo {
+            name: "idx_departments_name".to_string(),
+            columns: vec!["name".to_string()],
+            is_unique: true,
+            is_primary: false,
+            filter: None,
+            index_type: Some("btree".to_string()),
+            included_columns: None,
+            comment: None,
+        }];
+        let fkeys = vec![db::ForeignKeyInfo {
+            name: "fk_departments_parent".to_string(),
+            column: "parent_id".to_string(),
+            ref_table: "departments".to_string(),
+            ref_column: "id".to_string(),
+        }];
+
+        let ddl = build_postgres_like_table_ddl("public", "departments", &columns, &indexes, &fkeys);
+
+        assert!(ddl.contains("CREATE TABLE \"public\".\"departments\""));
+        assert!(ddl.contains("\"id\" integer NOT NULL DEFAULT nextval('departments_id_seq'::regclass)"));
+        assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+        assert!(ddl.contains(
+            "CONSTRAINT \"fk_departments_parent\" FOREIGN KEY (\"parent_id\") REFERENCES \"departments\"(\"id\")"
+        ));
+        assert!(ddl.contains(
+            "CREATE UNIQUE INDEX \"idx_departments_name\" ON \"public\".\"departments\" USING btree (\"name\");"
+        ));
+    }
+}
+
 pub async fn mysql_ddl(pool: &sqlx::mysql::MySqlPool, table: &str) -> Result<String, String> {
     use sqlx::Row;
     let sql = format!("SHOW CREATE TABLE `{}`", table.replace('`', "``"));

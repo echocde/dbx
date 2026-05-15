@@ -92,7 +92,7 @@ export default {
   connection: {
     title: "新建连接",
     name: "名称",
-    namePlaceholder: "我的数据库",
+    namePlaceholder: "连接名称，留空则自动生成",
     type: "类型",
     host: "主机",
     filePath: "文件路径",

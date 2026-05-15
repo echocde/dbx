@@ -93,7 +93,7 @@ export default {
   connection: {
     title: "New Connection",
     name: "Name",
-    namePlaceholder: "My Database",
+    namePlaceholder: "Connection name, auto-generated if empty",
     type: "Type",
     host: "Host",
     filePath: "File Path",

@@ -515,8 +515,17 @@ async function testConnection() {
   }
 }
 
+function generateConnectionName(): string {
+  const label = selectedProfile().label;
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `${label}_${rand}`;
+}
+
 function connectionConfigForSubmit(id: string): ConnectionConfig {
   const config: ConnectionConfig = { ...form.value, id };
+  if (!config.name?.trim()) {
+    config.name = generateConnectionName();
+  }
   const sshTimeout = Number(config.ssh_connect_timeout_secs);
   config.ssh_connect_timeout_secs = Number.isFinite(sshTimeout) && sshTimeout > 0 ? sshTimeout : 5;
   const proxyPort = Number(config.proxy_port);
@@ -1431,7 +1440,6 @@ function openExternalUrl(url: string) {
             @click="save"
             :disabled="
               isSaving ||
-              !form.name ||
               (!form.host &&
                 !(mongoUseUrl && form.connection_string) &&
                 !(form.db_type === 'jdbc' && form.connection_string))
