@@ -53,6 +53,7 @@ const editWordWrap = ref(settingsStore.editorSettings.wordWrap);
 const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
+const editSidebarActivation = ref(settingsStore.editorSettings.sidebarActivation);
 const redisScanPageSizeOptions = [200, 1000, 5000, 10000];
 
 // Sync from store when dialog opens
@@ -68,6 +69,7 @@ watch(
       editAppLayout.value = settingsStore.editorSettings.appLayout;
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
       editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
+      editSidebarActivation.value = settingsStore.editorSettings.sidebarActivation;
     }
   },
 );
@@ -89,7 +91,8 @@ function hasChanges(): boolean {
     editWordWrap.value !== settingsStore.editorSettings.wordWrap ||
     editAppLayout.value !== settingsStore.editorSettings.appLayout ||
     editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
-    JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts)
+    JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts) ||
+    editSidebarActivation.value !== settingsStore.editorSettings.sidebarActivation
   );
 }
 
@@ -104,6 +107,7 @@ function applySettings() {
     appLayout: editAppLayout.value,
     redisScanPageSize: editRedisScanPageSize.value,
     shortcuts: editShortcuts.value,
+    sidebarActivation: editSidebarActivation.value,
   });
   emit("update:open", false);
 }
@@ -117,6 +121,7 @@ function resetDefaults() {
   editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
   editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
+  editSidebarActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarActivation;
 }
 
 function onExecuteModeChange(v: any) {
@@ -161,13 +166,18 @@ function setAppLayout(value: "separated" | "classic") {
   editAppLayout.value = value;
 }
 
+function setSidebarActivation(value: "single" | "double") {
+  editSidebarActivation.value = value;
+}
+
 const activeSettingsTab = ref("editor");
 const isWeb = !isTauriRuntime();
 const displayedAppVersion = computed(() => (props.appVersion ? `v${props.appVersion}` : ""));
-type SettingsCategory = "editor" | "appearance" | "redis" | "shortcuts" | "ai" | "security" | "about";
+type SettingsCategory = "editor" | "appearance" | "navigation" | "redis" | "shortcuts" | "ai" | "security" | "about";
 const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[]>(() => [
   { value: "editor", label: t("settings.editorTab") },
   { value: "appearance", label: t("settings.appearanceTab") },
+  { value: "navigation", label: t("settings.navigationTab") },
   { value: "redis", label: t("settings.redisTab") },
   { value: "shortcuts", label: t("settings.shortcutsTab") },
   { value: "ai", label: t("settings.aiTab") },
@@ -458,7 +468,7 @@ watch(
           </button>
         </nav>
 
-        <div class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden pr-1">
+        <div class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-1">
           <section v-if="activeSettingsTab === 'editor'" class="flex min-h-full flex-col gap-5 py-2">
             <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
               <!-- Font Family -->
@@ -592,8 +602,8 @@ watch(
                 <Button
                   type="button"
                   variant="outline"
-                  class="h-auto justify-start p-3"
-                  :class="editAppLayout === 'separated' ? 'border-blue-300 border-2 ring-2 ring-blue-300/50' : ''"
+                  class="h-auto justify-start border p-3"
+                  :class="editAppLayout === 'separated' ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
                   @click="setAppLayout('separated')"
                 >
                   <div class="text-left">
@@ -604,13 +614,62 @@ watch(
                 <Button
                   type="button"
                   variant="outline"
-                  class="h-auto justify-start p-3"
-                  :class="editAppLayout === 'classic' ? 'border-blue-300 border-2 ring-2 ring-blue-300/50' : ''"
+                  class="h-auto justify-start border p-3"
+                  :class="editAppLayout === 'classic' ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
                   @click="setAppLayout('classic')"
                 >
                   <div class="text-left">
                     <div class="text-sm font-medium">{{ t("settings.appLayoutClassic") }}</div>
                     <div class="text-xs text-muted-foreground">{{ t("settings.appLayoutClassicDescription") }}</div>
+                  </div>
+                </Button>
+              </div>
+            </div>
+
+            <DialogFooter class="mt-auto border-t-0 bg-transparent gap-3 sm:gap-3">
+              <Button variant="outline" @click="resetDefaults">
+                {{ t("settings.resetDefaults") }}
+              </Button>
+              <div class="flex-1" />
+              <Button variant="outline" @click="emit('update:open', false)">
+                {{ t("common.close") }}
+              </Button>
+              <Button :disabled="!hasChanges() || hasShortcutConflicts" @click="applySettings">
+                {{ t("settings.apply") }}
+              </Button>
+            </DialogFooter>
+          </section>
+
+          <section v-else-if="activeSettingsTab === 'navigation'" class="flex min-h-full flex-col gap-5 py-2">
+            <div class="space-y-2">
+              <Label>{{ t("settings.sidebarActivation") }}</Label>
+              <div class="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  class="h-auto justify-start border p-3"
+                  :class="editSidebarActivation === 'single' ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
+                  @click="setSidebarActivation('single')"
+                >
+                  <div class="text-left">
+                    <div class="text-sm font-medium">{{ t("settings.sidebarActivationSingle") }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ t("settings.sidebarActivationSingleDescription") }}
+                    </div>
+                  </div>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  class="h-auto justify-start border p-3"
+                  :class="editSidebarActivation === 'double' ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
+                  @click="setSidebarActivation('double')"
+                >
+                  <div class="text-left">
+                    <div class="text-sm font-medium">{{ t("settings.sidebarActivationDouble") }}</div>
+                    <div class="text-xs text-muted-foreground">
+                      {{ t("settings.sidebarActivationDoubleDescription") }}
+                    </div>
                   </div>
                 </Button>
               </div>

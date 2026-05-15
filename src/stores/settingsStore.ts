@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import * as api from "@/lib/api";
 import { normalizeShortcutSettings, type ShortcutSettings } from "@/lib/shortcutRegistry";
+import type { SidebarActivation } from "@/lib/treeNodeClick";
 
 export type AiProvider = "claude" | "openai" | "custom";
 export type AiApiStyle = "completions" | "responses";
@@ -54,6 +55,7 @@ export interface EditorSettings {
   pageSize: number;
   redisScanPageSize: number;
   shortcuts: ShortcutSettings;
+  sidebarActivation: SidebarActivation;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -88,6 +90,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   pageSize: 100,
   redisScanPageSize: 1000,
   shortcuts: normalizeShortcutSettings(),
+  sidebarActivation: "single",
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
@@ -104,6 +107,10 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
     pageSize: settings.pageSize ?? DEFAULT_EDITOR_SETTINGS.pageSize,
     redisScanPageSize: settings.redisScanPageSize ?? DEFAULT_EDITOR_SETTINGS.redisScanPageSize,
     shortcuts: normalizeShortcutSettings(settings.shortcuts),
+    sidebarActivation:
+      settings.sidebarActivation === "single" || settings.sidebarActivation === "double"
+        ? settings.sidebarActivation
+        : DEFAULT_EDITOR_SETTINGS.sidebarActivation,
   };
 }
 

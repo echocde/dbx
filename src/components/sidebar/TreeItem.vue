@@ -57,6 +57,7 @@ import {
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useToast } from "@/composables/useToast";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
 import type { DatabaseType, TreeNode, TreeNodeType } from "@/types/database";
@@ -108,6 +109,7 @@ const isTruncated = computed(() => {
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 const savedSqlStore = useSavedSqlStore();
+const settingsStore = useSettingsStore();
 const { toast } = useToast();
 const { getDatabaseOptions } = useDatabaseOptions();
 const showVisibleDatabasesDialog = ref(false);
@@ -322,7 +324,7 @@ function runRowClickAction() {
     void openObjectBrowser();
     return;
   }
-  const action = treeNodeRowAction(node.type, canExpand.value);
+  const action = treeNodeRowAction(node.type, canExpand.value, settingsStore.editorSettings.sidebarActivation);
   if (action === "open-data") {
     openData();
   } else if (node.type === "procedure" || node.type === "function") {
@@ -336,14 +338,28 @@ function runRowClickAction() {
 
 function onClick(event: MouseEvent) {
   connectionStore.selectedTreeNodeId = props.node.id;
+  if (settingsStore.editorSettings.sidebarActivation === "double") return;
   if (event.detail > 1) return;
   runRowClickAction();
 }
 
 function onDoubleClick() {
-  const action = treeNodeRowDoubleClickAction(props.node.type, canOpenObjectBrowser.value);
+  const action = treeNodeRowDoubleClickAction(
+    props.node.type,
+    canOpenObjectBrowser.value,
+    settingsStore.editorSettings.sidebarActivation,
+    canExpand.value,
+  );
   if (action === "open-object-browser") {
     void openObjectBrowser();
+  } else if (action === "open-data") {
+    openData();
+  } else if (action === "open-source") {
+    void viewObjectSource();
+  } else if (action === "open-saved-sql") {
+    openSavedSqlFile();
+  } else if (action === "toggle") {
+    toggle();
   }
 }
 

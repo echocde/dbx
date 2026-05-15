@@ -7,6 +7,26 @@ test("table and view rows open data without toggling structure groups", () => {
   assert.equal(treeNodeRowAction("view", true), "open-data");
 });
 
+test("double click navigation mode selects rows on single click", () => {
+  assert.equal(treeNodeRowAction("table", true, "double"), "none");
+  assert.equal(treeNodeRowAction("view", true, "double"), "none");
+  assert.equal(treeNodeRowAction("procedure", false, "double"), "none");
+  assert.equal(treeNodeRowAction("saved-sql-file", false, "double"), "none");
+});
+
+test("double click navigation mode opens actionable rows on double click", () => {
+  assert.equal(treeNodeRowDoubleClickAction("table", true, "double"), "open-data");
+  assert.equal(treeNodeRowDoubleClickAction("view", true, "double"), "open-data");
+  assert.equal(treeNodeRowDoubleClickAction("procedure", false, "double"), "open-source");
+  assert.equal(treeNodeRowDoubleClickAction("saved-sql-file", false, "double"), "open-saved-sql");
+});
+
+test("double click navigation mode toggles expandable rows on double click", () => {
+  assert.equal(treeNodeRowDoubleClickAction("connection", false, "double", true), "toggle");
+  assert.equal(treeNodeRowDoubleClickAction("group-columns", false, "double", true), "toggle");
+  assert.equal(treeNodeRowDoubleClickAction("redis-db", false, "double", false), "toggle");
+});
+
 test("expandable non-table rows still toggle from row clicks", () => {
   assert.equal(treeNodeRowAction("connection", true), "toggle");
   assert.equal(treeNodeRowAction("database", true), "toggle");
@@ -29,6 +49,8 @@ test("database and schema rows open object browser only on double click", () => 
   assert.equal(treeNodeRowAction("schema", true), "toggle");
   assert.equal(treeNodeRowDoubleClickAction("database", true), "open-object-browser");
   assert.equal(treeNodeRowDoubleClickAction("schema", true), "open-object-browser");
+  assert.equal(treeNodeRowAction("database", true, "double"), "none");
+  assert.equal(treeNodeRowAction("schema", true, "double"), "none");
 });
 
 test("double click does not open object browser for non-browsable rows", () => {

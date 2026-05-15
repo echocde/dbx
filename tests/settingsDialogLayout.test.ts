@@ -37,3 +37,9 @@ test("shortcut settings capture custom keydown input instead of fixed select opt
   assert.match(source, /@keydown="\(event: KeyboardEvent\) => onShortcutKeydown/);
   assert.doesNotMatch(source, /definition\.options/);
 });
+
+test("settings dialog exposes sidebar activation in navigation settings", () => {
+  assert.match(source, /value: "navigation"/);
+  assert.match(source, /activeSettingsTab === ['"]navigation['"]/);
+  assert.match(source, /settings\.sidebarActivation/);
+});

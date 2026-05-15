@@ -25,3 +25,13 @@ test("keeps saved shortcut overrides", () => {
   assert.equal(settings.shortcuts.executeSql, "Shift+Mod+Enter");
   assert.equal(settings.shortcuts.saveSql, "Mod+S");
 });
+
+test("defaults sidebar activation to single click", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.sidebarActivation, "single");
+  assert.equal(normalizeEditorSettings({}).sidebarActivation, "single");
+});
+
+test("keeps saved sidebar activation", () => {
+  assert.equal(normalizeEditorSettings({ sidebarActivation: "double" } as any).sidebarActivation, "double");
+  assert.equal(normalizeEditorSettings({ sidebarActivation: "invalid" } as any).sidebarActivation, "single");
+});
