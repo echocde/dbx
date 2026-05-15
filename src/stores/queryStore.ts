@@ -8,6 +8,7 @@ import { closeAllTabsState, closeOtherTabsState } from "@/lib/tabCloseActions";
 import { buildExplainSql, parseExplainResult } from "@/lib/explainPlan";
 import { analyzeEditableQuery, allPrimaryKeysPresent } from "@/lib/sqlAnalysis";
 import { restoreOpenTabsState, serializeOpenTabs } from "@/lib/openTabsPersistence";
+import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "@/lib/mongoShellCommand";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
@@ -385,6 +386,39 @@ export const useQueryStore = defineStore("query", () => {
       sql,
     });
     try {
+      const connStore = useConnectionStore();
+      const conn = connStore.getConfig(tab.connectionId);
+      const mongoFind = conn?.db_type === "mongodb" ? parseMongoFindCommand(sql) : null;
+      if (mongoFind) {
+        console.info("[DBX][executeTabSql:mongo-find:start]", { traceId, collection: mongoFind.collection });
+        const result = await api.mongoFindDocuments(
+          tab.connectionId,
+          tab.database,
+          mongoFind.collection,
+          mongoFind.skip,
+          mongoFind.limit,
+          mongoFind.filter,
+          mongoFind.sort,
+        );
+        console.info("[DBX][executeTabSql:mongo-find:done]", {
+          traceId,
+          rowCount: result.documents.length,
+          total: result.total,
+          elapsed: elapsed(),
+        });
+        const current = tabs.value.find((t) => t.id === id);
+        if (current?.executionId === executionId) {
+          current.results = undefined;
+          current.activeResultIndex = undefined;
+          current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          current.queryAnalysis = undefined;
+          current.tableMeta = undefined;
+          current.resultBaseSql = options?.resultBaseSql ?? sql;
+          current.resultSortedSql = options?.resultSortedSql;
+        }
+        return;
+      }
+
       console.info("[DBX][executeTabSql:execute-multi:start]", { traceId, elapsed: elapsed() });
       const results = await api.executeMulti(tab.connectionId, tab.database, sql, tab.schema, executionId);
       console.info("[DBX][executeTabSql:execute-multi:done]", {
