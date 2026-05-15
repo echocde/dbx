@@ -16,6 +16,7 @@ import {
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -58,6 +59,7 @@ const activeDatabaseOptions = computed(() => {
   return connection ? (databaseOptions.value[connection.id] ?? []) : [];
 });
 
+const connectionOptionIds = computed(() => connectionStore.connections.map((connection) => connection.id));
 const activeDatabaseValue = computed(() => props.activeTab.database || "");
 const activeConnectionValue = computed(() => props.activeConnection?.id || "");
 const activeSchemaValue = computed(() => props.activeTab.schema || "");
@@ -97,6 +99,10 @@ function databaseDisplayName(database: string): string {
   const connection = props.activeConnection;
   if (connection?.db_type === "redis" && database !== "") return `db${database}`;
   return database || t("editor.noDatabase");
+}
+
+function connectionById(connectionId: string): ConnectionConfig | undefined {
+  return connectionStore.getConfig(connectionId);
 }
 </script>
 
@@ -203,55 +209,52 @@ function databaseDisplayName(database: string): string {
           class="h-4 w-1 rounded-full shrink-0"
           :style="{ backgroundColor: activeConnection.color }"
         />
-        <Select :model-value="activeConnectionValue" @update:model-value="(v: any) => emit('changeConnection', v)">
-          <SelectTrigger
-            class="h-6 w-auto max-w-56 border-0 bg-transparent px-1 text-xs font-medium text-foreground shadow-none focus:ring-0"
-          >
+        <SearchableSelect
+          :model-value="activeConnectionValue"
+          :options="connectionOptionIds"
+          :placeholder="t('editor.selectConnection')"
+          :search-placeholder="t('editor.searchConnection')"
+          :empty-text="t('grid.noSearchResults')"
+          :loading-text="t('common.loading')"
+          trigger-class="font-medium text-foreground"
+          :display-name="connectionDisplayName"
+          @update:model-value="(connectionId) => emit('changeConnection', connectionId)"
+        >
+          <template #trigger-label="{ label }">
             <div v-if="activeConnection" class="flex min-w-0 items-center gap-1.5">
               <DatabaseIcon :db-type="connectionIconType(activeConnection)" class="h-3.5 w-3.5 shrink-0" />
-              <span class="truncate">{{ connectionDisplayName(activeConnectionValue) }}</span>
+              <span class="truncate">{{ label }}</span>
             </div>
-            <SelectValue v-else :placeholder="t('editor.selectConnection')" />
-          </SelectTrigger>
-          <SelectContent position="popper">
-            <SelectItem v-for="connection in connectionStore.connections" :key="connection.id" :value="connection.id">
-              <div class="flex min-w-0 items-center gap-2">
-                <DatabaseIcon :db-type="connectionIconType(connection)" class="h-3.5 w-3.5 shrink-0" />
-                <span class="truncate">{{ connection.name }}</span>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+            <span v-else class="truncate text-muted-foreground">{{ t("editor.selectConnection") }}</span>
+          </template>
+          <template #option-label="{ option, label }">
+            <div class="flex min-w-0 items-center gap-2">
+              <DatabaseIcon :db-type="connectionIconType(connectionById(option))" class="h-3.5 w-3.5 shrink-0" />
+              <span class="truncate">{{ label }}</span>
+            </div>
+          </template>
+        </SearchableSelect>
       </div>
       <div v-if="activeConnection?.db_type !== 'elasticsearch' && !isSingleDb" class="flex items-center gap-1">
         <Database class="h-3.5 w-3.5 shrink-0" />
-        <Select
+        <SearchableSelect
           :model-value="activeDatabaseValue"
-          @update:model-value="(v: any) => emit('changeDatabase', v)"
+          :options="
+            activeDatabaseOptions.length ? activeDatabaseOptions : activeDatabaseValue ? [activeDatabaseValue] : []
+          "
+          :placeholder="t('editor.selectDatabase')"
+          :search-placeholder="t('editor.searchDatabase')"
+          :empty-text="t('grid.noSearchResults')"
+          :loading-text="t('common.loading')"
+          :loading="loadingDatabaseOptions[activeConnection?.id || '']"
+          :display-name="databaseDisplayName"
+          @update:model-value="(database) => emit('changeDatabase', database)"
           @update:open="
             (open: boolean) => {
               if (open && activeConnection) loadDatabaseOptions(activeConnection.id).catch(() => {});
             }
           "
-        >
-          <SelectTrigger class="h-6 w-auto max-w-56 border-0 bg-transparent px-1 text-xs shadow-none focus:ring-0">
-            <SelectValue
-              :placeholder="
-                loadingDatabaseOptions[activeConnection?.id || ''] ? t('common.loading') : t('editor.selectDatabase')
-              "
-            >
-              {{ databaseDisplayName(activeDatabaseValue) }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent position="popper">
-            <SelectItem v-for="database in activeDatabaseOptions" :key="database" :value="database">
-              {{ databaseDisplayName(database) }}
-            </SelectItem>
-            <SelectItem v-if="!activeDatabaseOptions.length && activeDatabaseValue" :value="activeDatabaseValue">
-              {{ databaseDisplayName(activeDatabaseValue) }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        />
         <Button
           v-if="activeDatabaseValue"
           variant="ghost"
