@@ -251,6 +251,13 @@ export const useConnectionStore = defineStore("connection", () => {
     loadedTreeNodeChildrenIds.value.add(parent.id);
   }
 
+  function removeTreeNode(nodeId: string) {
+    const parent = findParentNode(treeNodes.value, nodeId);
+    if (parent?.children) {
+      parent.children = parent.children.filter((c) => c.id !== nodeId);
+    }
+  }
+
   function buildSavedSqlRootNode(connectionId: string, existingRoot?: TreeNode): TreeNode {
     const savedSqlStore = useSavedSqlStore();
     const existingById = new Map<string, TreeNode>();
@@ -1565,6 +1572,7 @@ export const useConnectionStore = defineStore("connection", () => {
     activeConnectionId,
     selectedTreeNodeId,
     treeNodes,
+    removeTreeNode,
     refreshAllTree,
     refreshSavedSqlTree,
     refreshTreeNode,

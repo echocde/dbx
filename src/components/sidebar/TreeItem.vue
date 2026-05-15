@@ -732,7 +732,7 @@ async function confirmDropTable() {
     await connectionStore.ensureConnected(node.connectionId);
     await api.executeQuery(node.connectionId, node.database, buildDropTableSql(), node.schema);
     toast(t("contextMenu.dropTableSuccess", { name: node.label }), 3000);
-    await refreshTableList(node);
+    connectionStore.removeTreeNode(node.id);
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
   }
