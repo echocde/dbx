@@ -322,6 +322,8 @@ function runRowClickAction() {
   const action = treeNodeRowAction(node.type, canExpand.value);
   if (action === "open-data") {
     openData();
+  } else if (node.type === "procedure" || node.type === "function") {
+    void viewObjectSource();
   } else if (node.type === "saved-sql-file") {
     openSavedSqlFile();
   } else if (action === "toggle") {
@@ -575,7 +577,23 @@ function buildDropObjectSql(): string {
 }
 
 function viewObjectSource() {
-  void openObjectBrowser();
+  const node = props.node;
+  if (!node.connectionId || !node.database) return;
+  const objectType = node.type === "procedure" ? "PROCEDURE" : "FUNCTION";
+  const schema = node.schema || node.database;
+  connectionStore
+    .ensureConnected(node.connectionId)
+    .then(() => {
+      connectionStore.activeConnectionId = node.connectionId!;
+      return api.getObjectSource(node.connectionId!, node.database!, schema, node.label, objectType as any);
+    })
+    .then((result) => {
+      const tabId = queryStore.createTab(node.connectionId!, node.database!, node.label);
+      queryStore.updateSql(tabId, result.source);
+    })
+    .catch((e: any) => {
+      toast(e?.message || String(e), 5000);
+    });
 }
 
 function requestDropObject() {

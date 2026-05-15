@@ -108,7 +108,7 @@ export function buildGroupedObjectTreeNodes({
       objectCount: items.length,
       isExpanded: false,
       children: items.map((obj) => ({
-        id: `${nodeId}:${obj.name}`,
+        id: `${nodeId}:${def.key}:${obj.name}`,
         label: obj.name,
         type: def.childType,
         connectionId,

@@ -738,6 +738,16 @@ pub async fn get_object_source_core(
                 db::sqlserver::execute_query(&mut client, &sqlserver_object_source_sql(schema, name, &object_type))
                     .await?,
             )?
+        } else if let Some(client) = extract_agent(&connections, &pool_key) {
+            drop(connections);
+            let mut client = client.lock().await;
+            let result: db::ObjectSource = client
+                .call(
+                    "get_object_source",
+                    serde_json::json!({"schema": schema, "name": name, "object_type": object_type}),
+                )
+                .await?;
+            return Ok(result);
         } else {
             match connections.get(&pool_key).ok_or("Pool not found")? {
                 PoolKind::Mysql(pool, _) => mysql_object_source(pool, name, &object_type).await?,

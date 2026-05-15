@@ -736,11 +736,11 @@ export const useConnectionStore = defineStore("connection", () => {
       const cacheKey = schemaCacheKey(connectionId, database, "sqlserver-objects");
       if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
 
-      const [schemas, defaultSchemaTables] = await Promise.all([
+      const [schemas, defaultSchemaObjects] = await Promise.all([
         api.listSchemas(connectionId, database),
-        api.listTables(connectionId, database, SQLSERVER_DEFAULT_SCHEMA),
+        api.listObjects(connectionId, database, SQLSERVER_DEFAULT_SCHEMA),
       ]);
-      const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas, defaultSchemaTables);
+      const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas, defaultSchemaObjects);
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
@@ -779,8 +779,15 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
-  async function loadTableGroups(connectionId: string, database: string, table: string, schema?: string) {
-    const parentId = schema ? `${connectionId}:${database}:${schema}:${table}` : `${connectionId}:${database}:${table}`;
+  async function loadTableGroups(
+    connectionId: string,
+    database: string,
+    table: string,
+    schema?: string,
+    nodeId?: string,
+  ) {
+    const parentId =
+      nodeId ?? (schema ? `${connectionId}:${database}:${schema}:${table}` : `${connectionId}:${database}:${table}`);
     const node = findNode(treeNodes.value, parentId);
     if (!node) return;
 
@@ -982,7 +989,7 @@ export const useConnectionStore = defineStore("connection", () => {
     } else if (node.type === "schema" && node.connectionId && node.database && node.schema) {
       await loadTables(node.connectionId, node.database, node.schema, options);
     } else if ((node.type === "table" || node.type === "view") && node.connectionId && node.database) {
-      await loadTableGroups(node.connectionId, node.database, node.label, node.schema);
+      await loadTableGroups(node.connectionId, node.database, node.label, node.schema, node.id);
     } else if (node.type === "group-columns" && node.connectionId && node.database && node.tableName) {
       await loadColumns(node.connectionId, node.database, node.tableName, node.schema);
     } else if (node.type === "group-indexes" && node.connectionId && node.database && node.tableName) {

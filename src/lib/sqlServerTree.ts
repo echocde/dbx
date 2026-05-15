@@ -1,4 +1,5 @@
-import type { TableInfo, TreeNode } from "@/types/database";
+import type { ObjectInfo, TreeNode } from "@/types/database";
+import { buildGroupedObjectTreeNodes } from "@/lib/tableTree";
 
 export const SQLSERVER_DEFAULT_SCHEMA = "dbo";
 
@@ -10,20 +11,18 @@ export function buildSqlServerDatabaseTreeNodes(
   connectionId: string,
   database: string,
   schemas: string[],
-  defaultSchemaTables: TableInfo[],
+  defaultSchemaObjects: ObjectInfo[],
 ): TreeNode[] {
   const databaseNodeId = `${connectionId}:${database}`;
   const defaultSchema = schemas.find(isDefaultSchema) || SQLSERVER_DEFAULT_SCHEMA;
-  const defaultTableNodes = defaultSchemaTables.map((table) => ({
-    id: `${databaseNodeId}:${defaultSchema}:${table.name}`,
-    label: table.name,
-    type: (table.table_type === "VIEW" ? "view" : "table") as "view" | "table",
+
+  const defaultObjectNodes = buildGroupedObjectTreeNodes({
+    nodeId: databaseNodeId,
     connectionId,
     database,
     schema: defaultSchema,
-    isExpanded: false,
-    children: [],
-  }));
+    objects: defaultSchemaObjects,
+  });
 
   const schemaNodes = schemas
     .filter((schema) => !isDefaultSchema(schema))
@@ -38,5 +37,5 @@ export function buildSqlServerDatabaseTreeNodes(
       children: [],
     }));
 
-  return [...defaultTableNodes, ...schemaNodes];
+  return [...defaultObjectNodes, ...schemaNodes];
 }
