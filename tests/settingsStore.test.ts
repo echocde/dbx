@@ -35,3 +35,26 @@ test("keeps saved sidebar activation", () => {
   assert.equal(normalizeEditorSettings({ sidebarActivation: "double" } as any).sidebarActivation, "double");
   assert.equal(normalizeEditorSettings({ sidebarActivation: "invalid" } as any).sidebarActivation, "single");
 });
+
+test("defaults column formatters to an empty record", () => {
+  assert.deepEqual(DEFAULT_EDITOR_SETTINGS.columnFormatters, {});
+  assert.deepEqual(normalizeEditorSettings({}).columnFormatters, {});
+});
+
+test("keeps only valid saved column formatter configs", () => {
+  const settings = normalizeEditorSettings({
+    columnFormatters: {
+      "conn::db::public::users::created_at": { kind: "datetime", unit: "auto" },
+      "conn::db::public::users::bad_date": { kind: "datetime", unit: "bogus" },
+      "conn::db::public::users::name": { kind: "mask", prefix: 2, suffix: 2 },
+      "conn::db::public::users::payload": { kind: "json-path", path: "$.user.name" },
+      "conn::db::public::users::invalid_json": { kind: "json-path", path: "user.name" },
+    },
+  } as any);
+
+  assert.deepEqual(settings.columnFormatters, {
+    "conn::db::public::users::created_at": { kind: "datetime", unit: "auto" },
+    "conn::db::public::users::name": { kind: "mask", prefix: 2, suffix: 2 },
+    "conn::db::public::users::payload": { kind: "json-path", path: "$.user.name" },
+  });
+});

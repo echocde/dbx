@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import * as api from "@/lib/api";
+import { normalizeColumnFormatter, type ColumnFormatterConfig } from "@/lib/columnFormatter";
 import { normalizeShortcutSettings, type ShortcutSettings } from "@/lib/shortcutRegistry";
 import type { SidebarActivation } from "@/lib/treeNodeClick";
 
@@ -56,6 +57,7 @@ export interface EditorSettings {
   redisScanPageSize: number;
   shortcuts: ShortcutSettings;
   sidebarActivation: SidebarActivation;
+  columnFormatters: Record<string, ColumnFormatterConfig>;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -91,10 +93,21 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   redisScanPageSize: 1000,
   shortcuts: normalizeShortcutSettings(),
   sidebarActivation: "single",
+  columnFormatters: {},
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
 const OLD_FONT_SIZE_KEY = "dbx-query-editor-font-size";
+
+function normalizeColumnFormatters(value: unknown): Record<string, ColumnFormatterConfig> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const formatters: Record<string, ColumnFormatterConfig> = {};
+  for (const [key, formatter] of Object.entries(value as Record<string, unknown>)) {
+    const normalized = normalizeColumnFormatter(formatter);
+    if (normalized) formatters[key] = normalized;
+  }
+  return formatters;
+}
 
 export function normalizeEditorSettings(settings: Partial<EditorSettings>): EditorSettings {
   return {
@@ -111,6 +124,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
       settings.sidebarActivation === "single" || settings.sidebarActivation === "double"
         ? settings.sidebarActivation
         : DEFAULT_EDITOR_SETTINGS.sidebarActivation,
+    columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
   };
 }
 
@@ -190,6 +204,17 @@ export const useSettingsStore = defineStore("settings", () => {
     saveEditorSettings(editorSettings.value);
   }
 
+  function updateColumnFormatter(key: string, formatter: ColumnFormatterConfig | undefined) {
+    const columnFormatters = { ...editorSettings.value.columnFormatters };
+    const normalized = normalizeColumnFormatter(formatter);
+    if (normalized) {
+      columnFormatters[key] = normalized;
+    } else {
+      delete columnFormatters[key];
+    }
+    updateEditorSettings({ columnFormatters });
+  }
+
   return {
     aiConfig,
     isAiConfigLoaded,
@@ -198,5 +223,6 @@ export const useSettingsStore = defineStore("settings", () => {
     isConfigured,
     editorSettings,
     updateEditorSettings,
+    updateColumnFormatter,
   };
 });

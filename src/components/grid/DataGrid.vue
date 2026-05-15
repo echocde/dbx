@@ -81,6 +81,13 @@ import {
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
+import {
+  applyColumnFormatter,
+  buildColumnFormatterKey,
+  normalizeColumnFormatter,
+  type ColumnFormatterConfig,
+  type DateTimeFormatterUnit,
+} from "@/lib/columnFormatter";
 import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
 
@@ -268,6 +275,12 @@ const localColumnFilters = ref<Record<number, Set<string>>>({});
 const localFilterOpenColumn = ref<number | null>(null);
 const localFilterSearch = ref("");
 const localFilterDraft = ref<LocalColumnFilterDraft | null>(null);
+const formatterOpenColumn = ref<number | null>(null);
+const formatterKind = ref<ColumnFormatterConfig["kind"]>("datetime");
+const formatterDateUnit = ref<DateTimeFormatterUnit>("auto");
+const formatterJsonPath = ref("$.user.name");
+const formatterMaskPrefix = ref(4);
+const formatterMaskSuffix = ref(4);
 
 function localFilterKey(value: CellValue): string {
   if (value === null) return "__dbx_null__";
@@ -276,8 +289,8 @@ function localFilterKey(value: CellValue): string {
   return `str:${String(value)}`;
 }
 
-function localFilterLabel(value: CellValue): string {
-  return value === null ? "NULL" : formatCell(value);
+function localFilterLabel(value: CellValue, columnIndex: number): string {
+  return value === null ? "NULL" : formatCell(value, columnIndex);
 }
 
 function localFilterActive(colIdx: number): boolean {
@@ -318,7 +331,7 @@ function buildLocalFilterOptions(columnIndex: number) {
     if (current) {
       current.count += 1;
     } else {
-      byKey.set(key, { key, label: localFilterLabel(value), count: 1, value });
+      byKey.set(key, { key, label: localFilterLabel(value, columnIndex), count: 1, value });
     }
   };
 
@@ -369,6 +382,96 @@ function closeLocalFilter() {
   localFilterOpenColumn.value = null;
   localFilterDraft.value = null;
   localFilterSearch.value = "";
+}
+
+function formatterKeyForColumn(column: string): string | null {
+  if (!props.connectionId || !props.tableMeta) return null;
+  return buildColumnFormatterKey({
+    connectionId: props.connectionId,
+    database: props.database,
+    schema: props.tableMeta.schema,
+    tableName: props.tableMeta.tableName,
+    column,
+  });
+}
+
+function columnFormatter(columnIndex: number): ColumnFormatterConfig | undefined {
+  const column = props.result.columns[columnIndex];
+  if (!column) return undefined;
+  const key = formatterKeyForColumn(column);
+  return key ? settingsStore.editorSettings.columnFormatters[key] : undefined;
+}
+
+function columnHasFormatter(columnIndex: number): boolean {
+  return !!columnFormatter(columnIndex);
+}
+
+function currentFormatterDraft(): ColumnFormatterConfig {
+  if (formatterKind.value === "json-path") {
+    return { kind: "json-path", path: formatterJsonPath.value.trim() || "$" };
+  }
+  if (formatterKind.value === "mask") {
+    return {
+      kind: "mask",
+      prefix: Math.max(0, Math.floor(Number(formatterMaskPrefix.value) || 0)),
+      suffix: Math.max(0, Math.floor(Number(formatterMaskSuffix.value) || 0)),
+    };
+  }
+  return { kind: "datetime", unit: formatterDateUnit.value };
+}
+
+function loadFormatterDraft(formatter: ColumnFormatterConfig | undefined) {
+  const draft = formatter ?? { kind: "datetime", unit: "auto" as const };
+  formatterKind.value = draft.kind;
+  if (draft.kind === "datetime") {
+    formatterDateUnit.value = draft.unit;
+  } else if (draft.kind === "json-path") {
+    formatterJsonPath.value = draft.path;
+  } else if (draft.kind === "mask") {
+    formatterMaskPrefix.value = draft.prefix;
+    formatterMaskSuffix.value = draft.suffix;
+  }
+}
+
+function openColumnFormatter(columnIndex: number) {
+  loadFormatterDraft(columnFormatter(columnIndex));
+  formatterOpenColumn.value = columnIndex;
+}
+
+function closeColumnFormatter() {
+  formatterOpenColumn.value = null;
+}
+
+function saveColumnFormatter(columnIndex: number) {
+  const column = props.result.columns[columnIndex];
+  const key = column ? formatterKeyForColumn(column) : null;
+  if (!key) return;
+  settingsStore.updateColumnFormatter(key, currentFormatterDraft());
+  closeColumnFormatter();
+}
+
+function clearColumnFormatter(columnIndex: number) {
+  const column = props.result.columns[columnIndex];
+  const key = column ? formatterKeyForColumn(column) : null;
+  if (!key) return;
+  settingsStore.updateColumnFormatter(key, undefined);
+  closeColumnFormatter();
+}
+
+function formatterDraftIsSavable(): boolean {
+  return !!normalizeColumnFormatter(currentFormatterDraft());
+}
+
+function formatterPreviewRows(columnIndex: number) {
+  const formatter = currentFormatterDraft();
+  return displayItems.value.slice(0, 5).map((item, index) => {
+    const value = item.data[columnIndex] ?? null;
+    return {
+      index: index + 1,
+      raw: displayCellValue(value),
+      formatted: applyColumnFormatter(value, formatter),
+    };
+  });
 }
 
 function toggleLocalFilterValue(key: string) {
@@ -1077,7 +1180,7 @@ const sortedRows = computed(() => {
     const rows = props.result.rows;
     indices = indices.filter((sourceIndex) => {
       const data = rows[sourceIndex];
-      return data.some((cell) => cell !== null && String(cell).toLowerCase().includes(q));
+      return data.some((cell, columnIndex) => cell !== null && formatCell(cell, columnIndex).toLowerCase().includes(q));
     });
   }
   return indices;
@@ -1133,7 +1236,7 @@ const searchMatches = computed<SearchMatch[]>(() => {
   for (let r = 0; r < items.length; r++) {
     const data = items[r].data;
     for (let c = 0; c < data.length; c++) {
-      if (data[c] !== null && String(data[c]).toLowerCase().includes(q)) {
+      if (data[c] !== null && formatCell(data[c], c).toLowerCase().includes(q)) {
         matches.push({ displayRow: r, col: c });
       }
     }
@@ -1320,6 +1423,7 @@ const activeCellDetail = computed(() => {
   if (!item || !column) return null;
   const value = item.data[cell.col] ?? null;
   const rawValue = displayCellValue(value);
+  const displayValue = formatCell(value, cell.col);
   const valueText = value === null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
   const trimmed = valueText.trim();
   const maybeJson = typeof value === "string" && (trimmed.startsWith("{") || trimmed.startsWith("["));
@@ -1340,6 +1444,7 @@ const activeCellDetail = computed(() => {
     comment: columnCommentMap.value.get(column) || "",
     value,
     rawValue,
+    displayValue,
     length: value === null ? 0 : String(value).length,
     formattedJson,
     isEditable: canEditRowItem(item),
@@ -1557,10 +1662,9 @@ async function applyWhereFilter() {
 
 const CELL_DISPLAY_MAX_LENGTH = 256;
 
-function formatCell(value: CellValue): string {
-  if (value === null) return "NULL";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  const s = typeof value === "object" ? JSON.stringify(value) : String(value);
+function formatCell(value: CellValue, columnIndex?: number): string {
+  const formatter = columnIndex === undefined ? undefined : columnFormatter(columnIndex);
+  const s = applyColumnFormatter(value, formatter);
   return s.length > CELL_DISPLAY_MAX_LENGTH ? s.slice(0, CELL_DISPLAY_MAX_LENGTH) : s;
 }
 
@@ -1742,7 +1846,7 @@ const transposeData = computed(() => {
       column: col,
       type: columnTypeMap.value.get(col) || "",
       value: item.data[columnIndex],
-      display: formatCell(item.data[columnIndex]),
+      display: formatCell(item.data[columnIndex], columnIndex),
       isNull: item.data[columnIndex] === null,
     };
   });
@@ -2407,6 +2511,173 @@ defineExpose({
                             <ArrowUpDown v-else class="h-3 w-3 shrink-0" />
                           </button>
                           <Popover
+                            :open="formatterOpenColumn === actualColumnIndex(colIdx)"
+                            @update:open="
+                              (value: boolean) =>
+                                value ? openColumnFormatter(actualColumnIndex(colIdx)) : closeColumnFormatter()
+                            "
+                          >
+                            <PopoverTrigger as-child>
+                              <button
+                                type="button"
+                                class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                                :class="
+                                  columnHasFormatter(actualColumnIndex(colIdx))
+                                    ? 'text-primary opacity-100'
+                                    : 'opacity-80'
+                                "
+                                :disabled="!formatterKeyForColumn(col)"
+                                :title="t('grid.columnFormatter')"
+                                @click.stop
+                              >
+                                <Code2 class="h-3.5 w-3.5" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align="start"
+                              side="bottom"
+                              class="w-[380px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl"
+                              @click.stop
+                              @keydown.stop
+                            >
+                              <div class="border-b bg-muted/40 px-3 py-2">
+                                <div class="text-sm font-semibold">
+                                  {{ t("grid.columnFormatterFor", { column: col }) }}
+                                </div>
+                                <div class="mt-0.5 text-[11px] text-muted-foreground">
+                                  {{ t("grid.columnFormatterHint") }}
+                                </div>
+                              </div>
+                              <div class="space-y-3 p-3">
+                                <div class="space-y-1.5">
+                                  <div class="text-xs font-medium text-muted-foreground">
+                                    {{ t("grid.formatterType") }}
+                                  </div>
+                                  <Select
+                                    :model-value="formatterKind"
+                                    @update:model-value="(value: any) => (formatterKind = value)"
+                                  >
+                                    <SelectTrigger class="h-8 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="datetime">{{ t("grid.formatterDatetime") }}</SelectItem>
+                                      <SelectItem value="json-path">{{ t("grid.formatterJsonPath") }}</SelectItem>
+                                      <SelectItem value="mask">{{ t("grid.formatterMask") }}</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                <div v-if="formatterKind === 'datetime'" class="space-y-1.5">
+                                  <div class="text-xs font-medium text-muted-foreground">
+                                    {{ t("grid.formatterTimestampUnit") }}
+                                  </div>
+                                  <Select
+                                    :model-value="formatterDateUnit"
+                                    @update:model-value="(value: any) => (formatterDateUnit = value)"
+                                  >
+                                    <SelectTrigger class="h-8 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="auto">{{ t("grid.formatterUnitAuto") }}</SelectItem>
+                                      <SelectItem value="seconds">{{ t("grid.formatterUnitSeconds") }}</SelectItem>
+                                      <SelectItem value="milliseconds">{{
+                                        t("grid.formatterUnitMilliseconds")
+                                      }}</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                <div v-else-if="formatterKind === 'json-path'" class="space-y-1.5">
+                                  <div class="text-xs font-medium text-muted-foreground">
+                                    {{ t("grid.formatterJsonPathInput") }}
+                                  </div>
+                                  <input
+                                    v-model="formatterJsonPath"
+                                    autocapitalize="off"
+                                    autocorrect="off"
+                                    spellcheck="false"
+                                    class="h-8 w-full rounded border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                                    placeholder="$.user.name"
+                                  />
+                                </div>
+
+                                <div v-else class="grid grid-cols-2 gap-2">
+                                  <label class="space-y-1.5">
+                                    <span class="text-xs font-medium text-muted-foreground">
+                                      {{ t("grid.formatterMaskPrefix") }}
+                                    </span>
+                                    <input
+                                      v-model.number="formatterMaskPrefix"
+                                      type="number"
+                                      min="0"
+                                      class="h-8 w-full rounded border bg-background px-2 text-xs outline-none focus:border-primary"
+                                    />
+                                  </label>
+                                  <label class="space-y-1.5">
+                                    <span class="text-xs font-medium text-muted-foreground">
+                                      {{ t("grid.formatterMaskSuffix") }}
+                                    </span>
+                                    <input
+                                      v-model.number="formatterMaskSuffix"
+                                      type="number"
+                                      min="0"
+                                      class="h-8 w-full rounded border bg-background px-2 text-xs outline-none focus:border-primary"
+                                    />
+                                  </label>
+                                </div>
+
+                                <div class="space-y-1.5">
+                                  <div class="text-xs font-medium text-muted-foreground">
+                                    {{ t("grid.formatterPreview") }}
+                                  </div>
+                                  <div class="max-h-40 overflow-auto rounded border bg-muted/20">
+                                    <div
+                                      v-for="row in formatterPreviewRows(actualColumnIndex(colIdx))"
+                                      :key="row.index"
+                                      class="grid grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b px-2 py-1.5 text-[11px] last:border-b-0"
+                                    >
+                                      <span class="text-muted-foreground">{{ row.index }}</span>
+                                      <span class="truncate font-mono text-muted-foreground">{{ row.raw }}</span>
+                                      <span class="truncate font-mono">{{ row.formatted }}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div class="flex items-center justify-between gap-2 border-t bg-muted/30 px-3 py-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  class="h-7 px-2 text-xs"
+                                  :disabled="!columnHasFormatter(actualColumnIndex(colIdx))"
+                                  @click="clearColumnFormatter(actualColumnIndex(colIdx))"
+                                >
+                                  {{ t("grid.clearFormatter") }}
+                                </Button>
+                                <div class="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    class="h-7 px-2 text-xs"
+                                    @click="closeColumnFormatter"
+                                  >
+                                    {{ t("dangerDialog.cancel") }}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    class="h-7 px-2 text-xs"
+                                    :disabled="!formatterDraftIsSavable()"
+                                    @click="saveColumnFormatter(actualColumnIndex(colIdx))"
+                                  >
+                                    {{ t("grid.saveFormatter") }}
+                                  </Button>
+                                </div>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                          <Popover
                             :open="localFilterOpenColumn === actualColumnIndex(colIdx)"
                             @update:open="
                               (value: boolean) =>
@@ -2683,7 +2954,7 @@ defineExpose({
                         />
                       </template>
                       <template v-else>
-                        {{ formatCell(item.data[actualColIdx]) }}
+                        {{ formatCell(item.data[actualColIdx], actualColIdx) }}
                         <button
                           class="absolute right-0.5 top-0.5 hidden h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground group-hover/cell:flex"
                           :title="t('grid.cellDetails')"
@@ -2925,6 +3196,13 @@ defineExpose({
                     class="max-h-56 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre-wrap break-words cursor-pointer hover:border-primary/50"
                     :class="{ 'cursor-text': activeCellDetail.isEditable }"
                     @dblclick="startDetailEdit"
+                    >{{ activeCellDetail.displayValue }}</pre
+                  >
+                </div>
+                <div v-if="activeCellDetail.displayValue !== activeCellDetail.rawValue" class="space-y-1">
+                  <div class="text-muted-foreground">{{ t("grid.rawValue") }}</div>
+                  <pre
+                    class="max-h-40 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre-wrap break-words"
                     >{{ activeCellDetail.rawValue }}</pre
                   >
                 </div>
