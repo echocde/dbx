@@ -13,6 +13,7 @@ import {
 } from "@/lib/sqlCompletion";
 import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigation";
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
+import { shortcutToCodeMirrorKey } from "@/lib/shortcutRegistry";
 import type { SqlCompletionColumn } from "@/lib/sqlCompletion";
 
 const props = defineProps<{
@@ -50,6 +51,7 @@ let fontThemeComp: import("@codemirror/state").Compartment | null = null;
 let codeMirrorTheme: import("@codemirror/state").Compartment | null = null;
 let wordWrapComp: import("@codemirror/state").Compartment | null = null;
 let readOnlyComp: import("@codemirror/state").Compartment | null = null;
+let runKeymapComp: import("@codemirror/state").Compartment | null = null;
 
 // Completion cache
 let cachedTables: Array<{ name: string; schema?: string; type?: "table" | "view" }> = [];
@@ -85,6 +87,54 @@ function zoomOut() {
 
 function resetZoom() {
   setFontSize(13);
+}
+
+function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view"))["keymap"]) {
+  const shortcuts = settingsStore.editorSettings.shortcuts;
+  return codeMirrorKeymap.of([
+    {
+      key: "Mod-=",
+      run: () => {
+        zoomIn();
+        return true;
+      },
+    },
+    {
+      key: "Mod-+",
+      run: () => {
+        zoomIn();
+        return true;
+      },
+    },
+    {
+      key: "Mod--",
+      run: () => {
+        zoomOut();
+        return true;
+      },
+    },
+    {
+      key: "Mod-0",
+      run: () => {
+        resetZoom();
+        return true;
+      },
+    },
+    {
+      key: shortcutToCodeMirrorKey(shortcuts.executeSql),
+      run: () => {
+        if (view.value) emit("execute", executableSqlFromView(view.value));
+        return true;
+      },
+    },
+    {
+      key: shortcutToCodeMirrorKey(shortcuts.saveSql),
+      run: () => {
+        emit("save");
+        return true;
+      },
+    },
+  ]);
 }
 
 function wordWrapExtension() {
@@ -283,6 +333,7 @@ onMounted(async () => {
   codeMirrorTheme = new Compartment();
   wordWrapComp = new Compartment();
   readOnlyComp = new Compartment();
+  runKeymapComp = new Compartment();
 
   const ss = settingsStore.editorSettings;
 
@@ -293,51 +344,6 @@ onMounted(async () => {
     ...baseDialect.spec,
     keywords: (baseDialect.spec.keywords || "") + " " + extraKeywords,
   });
-
-  const runKeymap = keymap.of([
-    {
-      key: "Mod-=",
-      run: () => {
-        zoomIn();
-        return true;
-      },
-    },
-    {
-      key: "Mod-+",
-      run: () => {
-        zoomIn();
-        return true;
-      },
-    },
-    {
-      key: "Mod--",
-      run: () => {
-        zoomOut();
-        return true;
-      },
-    },
-    {
-      key: "Mod-0",
-      run: () => {
-        resetZoom();
-        return true;
-      },
-    },
-    {
-      key: "Mod-Enter",
-      run: () => {
-        if (view.value) emit("execute", executableSqlFromView(view.value));
-        return true;
-      },
-    },
-    {
-      key: "Mod-s",
-      run: () => {
-        emit("save");
-        return true;
-      },
-    },
-  ]);
 
   const theme = await loadEditorTheme(ss.theme);
 
@@ -356,7 +362,7 @@ onMounted(async () => {
       closeBrackets(),
       bracketMatching(),
       Prec.highest(keymap.of([...closeBracketsKeymap, indentWithTab])),
-      runKeymap,
+      runKeymapComp.of(runKeymapExtension(keymap)),
       wordWrapComp.of(props.forceWordWrap || ss.wordWrap ? EditorView.lineWrapping : []),
       readOnlyComp.of([EditorState.readOnly.of(!!props.readOnly), EditorView.editable.of(!props.readOnly)]),
       rectangularSelection({ eventFilter: (e: MouseEvent) => e.altKey || e.button === 1 }),
@@ -575,12 +581,15 @@ watch(
 watch(
   () => settingsStore.editorSettings,
   async (ss) => {
-    if (!view.value || !codeMirrorTheme || !fontThemeComp || !wordWrapComp || !editorViewModule) return;
+    if (!view.value || !codeMirrorTheme || !fontThemeComp || !wordWrapComp || !runKeymapComp || !editorViewModule) {
+      return;
+    }
     const themeExt = await loadEditorTheme(ss.theme);
     view.value.dispatch({
       effects: [
         codeMirrorTheme.reconfigure(themeExt),
         wordWrapComp.reconfigure(props.forceWordWrap || ss.wordWrap ? editorViewModule.EditorView.lineWrapping : []),
+        runKeymapComp.reconfigure(runKeymapExtension(editorViewModule.keymap)),
         fontThemeComp.reconfigure(
           editorFontTheme(editorViewModule.EditorView, ss.fontSize, ss.fontFamily, {
             fixedHeight: true,

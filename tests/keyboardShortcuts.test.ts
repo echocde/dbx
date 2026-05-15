@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
+  eventToShortcut,
   isCancelSearchShortcut,
   isCloseTabShortcut,
   isExecuteSqlShortcut,
@@ -8,9 +9,34 @@ import {
   isObjectSourceSaveShortcutTarget,
   isSaveShortcut,
 } from "../src/lib/keyboardShortcuts.ts";
+import { shortcutToCodeMirrorKey } from "../src/lib/shortcutRegistry.ts";
 
 test("matches Cmd+Enter for SQL execution", () => {
   assert.equal(isExecuteSqlShortcut({ key: "Enter", metaKey: true }), true);
+});
+
+test("matches custom shortcut settings for SQL execution", () => {
+  assert.equal(
+    isExecuteSqlShortcut({ key: "Enter", metaKey: true }, { executeSql: "Shift+Mod+Enter" } as any),
+    false,
+  );
+  assert.equal(
+    isExecuteSqlShortcut({ key: "Enter", metaKey: true, shiftKey: true } as any, {
+      executeSql: "Shift+Mod+Enter",
+    } as any),
+    true,
+  );
+});
+
+test("records custom shortcuts from keydown events", () => {
+  assert.equal(eventToShortcut({ key: "r", metaKey: true, shiftKey: true } as any), "Shift+Mod+R");
+  assert.equal(eventToShortcut({ key: "F2" } as any), "F2");
+  assert.equal(eventToShortcut({ key: "Control", ctrlKey: true } as any), null);
+});
+
+test("converts custom shortcuts to CodeMirror key names", () => {
+  assert.equal(shortcutToCodeMirrorKey("Shift+Mod+R"), "Shift-Mod-r");
+  assert.equal(shortcutToCodeMirrorKey("Mod+/"), "Mod-/");
 });
 
 test("matches Ctrl+Enter for SQL execution", () => {

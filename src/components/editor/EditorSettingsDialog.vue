@@ -22,6 +22,14 @@ import {
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { aiTestConnection } from "@/lib/api";
+import { eventToShortcut } from "@/lib/keyboardShortcuts";
+import {
+  SHORTCUT_DEFINITIONS,
+  findShortcutConflict,
+  formatShortcut,
+  normalizeShortcutSettings,
+  type ShortcutActionId,
+} from "@/lib/shortcutRegistry";
 
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
@@ -44,6 +52,7 @@ const editExecuteMode = ref(settingsStore.editorSettings.executeMode);
 const editWordWrap = ref(settingsStore.editorSettings.wordWrap);
 const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
+const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
 const redisScanPageSizeOptions = [200, 1000, 5000, 10000];
 
 // Sync from store when dialog opens
@@ -58,9 +67,18 @@ watch(
       editWordWrap.value = settingsStore.editorSettings.wordWrap;
       editAppLayout.value = settingsStore.editorSettings.appLayout;
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
+      editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
     }
   },
 );
+
+const shortcutConflicts = computed(() =>
+  SHORTCUT_DEFINITIONS.flatMap((definition) => {
+    const conflict = findShortcutConflict(definition.id, editShortcuts.value[definition.id], editShortcuts.value);
+    return conflict ? [definition.id] : [];
+  }),
+);
+const hasShortcutConflicts = computed(() => shortcutConflicts.value.length > 0);
 
 function hasChanges(): boolean {
   return (
@@ -70,11 +88,13 @@ function hasChanges(): boolean {
     editExecuteMode.value !== settingsStore.editorSettings.executeMode ||
     editWordWrap.value !== settingsStore.editorSettings.wordWrap ||
     editAppLayout.value !== settingsStore.editorSettings.appLayout ||
-    editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize
+    editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
+    JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts)
   );
 }
 
 function applySettings() {
+  if (hasShortcutConflicts.value) return;
   settingsStore.updateEditorSettings({
     fontFamily: editFontFamily.value,
     fontSize: editFontSize.value,
@@ -83,6 +103,7 @@ function applySettings() {
     wordWrap: editWordWrap.value,
     appLayout: editAppLayout.value,
     redisScanPageSize: editRedisScanPageSize.value,
+    shortcuts: editShortcuts.value,
   });
   emit("update:open", false);
 }
@@ -95,6 +116,7 @@ function resetDefaults() {
   editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
   editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
+  editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
 }
 
 function onExecuteModeChange(v: any) {
@@ -114,6 +136,27 @@ function onRedisScanPageSizeChange(v: any) {
   if (redisScanPageSizeOptions.includes(value)) editRedisScanPageSize.value = value;
 }
 
+function onShortcutChange(actionId: ShortcutActionId, value: any) {
+  if (typeof value !== "string") return;
+  const definition = SHORTCUT_DEFINITIONS.find((item) => item.id === actionId);
+  if (!definition) return;
+  editShortcuts.value = { ...editShortcuts.value, [actionId]: value };
+}
+
+function onShortcutKeydown(actionId: ShortcutActionId, event: KeyboardEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  const shortcut = eventToShortcut(event);
+  if (!shortcut) return;
+  onShortcutChange(actionId, shortcut);
+}
+
+function resetShortcut(actionId: ShortcutActionId) {
+  const definition = SHORTCUT_DEFINITIONS.find((item) => item.id === actionId);
+  if (!definition) return;
+  editShortcuts.value = { ...editShortcuts.value, [actionId]: definition.defaultShortcut };
+}
+
 function setAppLayout(value: "separated" | "classic") {
   editAppLayout.value = value;
 }
@@ -121,11 +164,12 @@ function setAppLayout(value: "separated" | "classic") {
 const activeSettingsTab = ref("editor");
 const isWeb = !isTauriRuntime();
 const displayedAppVersion = computed(() => (props.appVersion ? `v${props.appVersion}` : ""));
-type SettingsCategory = "editor" | "appearance" | "redis" | "ai" | "security" | "about";
+type SettingsCategory = "editor" | "appearance" | "redis" | "shortcuts" | "ai" | "security" | "about";
 const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[]>(() => [
   { value: "editor", label: t("settings.editorTab") },
   { value: "appearance", label: t("settings.appearanceTab") },
   { value: "redis", label: t("settings.redisTab") },
+  { value: "shortcuts", label: t("settings.shortcutsTab") },
   { value: "ai", label: t("settings.aiTab") },
   ...(isWeb ? [{ value: "security" as const, label: t("settings.securityTab") }] : []),
   { value: "about", label: t("settings.aboutTab") },
@@ -535,7 +579,7 @@ watch(
               <Button variant="outline" @click="emit('update:open', false)">
                 {{ t("common.close") }}
               </Button>
-              <Button :disabled="!hasChanges()" @click="applySettings">
+              <Button :disabled="!hasChanges() || hasShortcutConflicts" @click="applySettings">
                 {{ t("settings.apply") }}
               </Button>
             </DialogFooter>
@@ -580,7 +624,7 @@ watch(
               <Button variant="outline" @click="emit('update:open', false)">
                 {{ t("common.close") }}
               </Button>
-              <Button :disabled="!hasChanges()" @click="applySettings">
+              <Button :disabled="!hasChanges() || hasShortcutConflicts" @click="applySettings">
                 {{ t("settings.apply") }}
               </Button>
             </DialogFooter>
@@ -610,7 +654,55 @@ watch(
               <Button variant="outline" @click="emit('update:open', false)">
                 {{ t("common.close") }}
               </Button>
-              <Button :disabled="!hasChanges()" @click="applySettings">
+              <Button :disabled="!hasChanges() || hasShortcutConflicts" @click="applySettings">
+                {{ t("settings.apply") }}
+              </Button>
+            </DialogFooter>
+          </section>
+
+          <section v-else-if="activeSettingsTab === 'shortcuts'" class="flex min-h-full flex-col gap-5 py-2">
+            <div class="space-y-3">
+              <div
+                v-for="definition in SHORTCUT_DEFINITIONS"
+                :key="definition.id"
+                class="grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center"
+              >
+                <div class="min-w-0 space-y-1">
+                  <Label>{{ t(definition.labelKey) }}</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t(`settings.shortcutScope${definition.scope[0].toUpperCase()}${definition.scope.slice(1)}`) }}
+                  </p>
+                </div>
+                <div class="space-y-1.5">
+                  <div class="flex gap-2">
+                    <Input
+                      :model-value="formatShortcut(editShortcuts[definition.id])"
+                      readonly
+                      :aria-invalid="shortcutConflicts.includes(definition.id)"
+                      :placeholder="t('settings.shortcutPressShortcut')"
+                      class="font-mono"
+                      @keydown="(event: KeyboardEvent) => onShortcutKeydown(definition.id, event)"
+                    />
+                    <Button type="button" variant="outline" class="shrink-0" @click="resetShortcut(definition.id)">
+                      {{ t("settings.reset") }}
+                    </Button>
+                  </div>
+                  <p v-if="shortcutConflicts.includes(definition.id)" class="text-xs text-destructive">
+                    {{ t("settings.shortcutConflict") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter class="mt-auto border-t-0 bg-transparent gap-3 sm:gap-3">
+              <Button variant="outline" @click="resetDefaults">
+                {{ t("settings.resetDefaults") }}
+              </Button>
+              <div class="flex-1" />
+              <Button variant="outline" @click="emit('update:open', false)">
+                {{ t("common.close") }}
+              </Button>
+              <Button :disabled="!hasChanges() || hasShortcutConflicts" @click="applySettings">
                 {{ t("settings.apply") }}
               </Button>
             </DialogFooter>

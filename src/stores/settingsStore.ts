@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import * as api from "@/lib/api";
+import { normalizeShortcutSettings, type ShortcutSettings } from "@/lib/shortcutRegistry";
 
 export type AiProvider = "claude" | "openai" | "custom";
 export type AiApiStyle = "completions" | "responses";
@@ -52,6 +53,7 @@ export interface EditorSettings {
   appLayout: "separated" | "classic";
   pageSize: number;
   redisScanPageSize: number;
+  shortcuts: ShortcutSettings;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -85,6 +87,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   appLayout: "classic",
   pageSize: 100,
   redisScanPageSize: 1000,
+  shortcuts: normalizeShortcutSettings(),
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
@@ -100,6 +103,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
     appLayout: settings.appLayout ?? DEFAULT_EDITOR_SETTINGS.appLayout,
     pageSize: settings.pageSize ?? DEFAULT_EDITOR_SETTINGS.pageSize,
     redisScanPageSize: settings.redisScanPageSize ?? DEFAULT_EDITOR_SETTINGS.redisScanPageSize,
+    shortcuts: normalizeShortcutSettings(settings.shortcuts),
   };
 }
 

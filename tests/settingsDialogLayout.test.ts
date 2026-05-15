@@ -25,3 +25,15 @@ test("settings action footer stays at the bottom of the content pane", () => {
   assert.match(source, /class="[^"]*min-h-full[^"]*flex-col[^"]*"/);
   assert.match(source, /<DialogFooter class="[^"]*mt-auto[^"]*"/);
 });
+
+test("settings dialog has a shortcuts category", () => {
+  assert.match(source, /value: "shortcuts"/);
+  assert.match(source, /activeSettingsTab === ['"]shortcuts['"]/);
+  assert.match(source, /SHORTCUT_DEFINITIONS/);
+});
+
+test("shortcut settings capture custom keydown input instead of fixed select options", () => {
+  assert.match(source, /onShortcutKeydown/);
+  assert.match(source, /@keydown="\(event: KeyboardEvent\) => onShortcutKeydown/);
+  assert.doesNotMatch(source, /definition\.options/);
+});

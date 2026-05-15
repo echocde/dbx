@@ -450,7 +450,9 @@ function onAiRequestAutoExecuteSql(sql: string) {
 }
 
 function handleKeydown(e: KeyboardEvent) {
-  if (isFocusSearchShortcut(e)) {
+  const shortcuts = settingsStore.editorSettings.shortcuts;
+
+  if (isFocusSearchShortcut(e, shortcuts)) {
     const focused = contentAreaRef.value?.focusSearch() || appSidebarRef.value?.focusSearch();
     if (focused) {
       e.preventDefault();
@@ -458,7 +460,7 @@ function handleKeydown(e: KeyboardEvent) {
     }
     return;
   }
-  if (isCloseTabShortcut(e)) {
+  if (isCloseTabShortcut(e, shortcuts)) {
     e.preventDefault();
     if (showDriverStore.value) {
       showDriverStore.value = false;
@@ -467,10 +469,10 @@ function handleKeydown(e: KeyboardEvent) {
     }
     return;
   }
-  if (isSaveShortcut(e) && e.target instanceof Element && isObjectSourceSaveShortcutTarget(e.target)) {
+  if (isSaveShortcut(e, shortcuts) && e.target instanceof Element && isObjectSourceSaveShortcutTarget(e.target)) {
     return;
   }
-  if (activeTab.value?.mode === "query" && !showSaveSqlDialog.value && isSaveShortcut(e)) {
+  if (activeTab.value?.mode === "query" && !showSaveSqlDialog.value && isSaveShortcut(e, shortcuts)) {
     e.preventDefault();
     e.stopPropagation();
     void openSaveSqlDialog();
@@ -478,7 +480,7 @@ function handleKeydown(e: KeyboardEvent) {
   }
   if (
     activeTab.value?.mode === "query" &&
-    isExecuteSqlShortcut(e) &&
+    isExecuteSqlShortcut(e, shortcuts) &&
     e.target instanceof Element &&
     e.target.closest("[data-query-editor-root]")
   ) {
