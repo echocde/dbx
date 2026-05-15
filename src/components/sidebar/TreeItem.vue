@@ -86,7 +86,7 @@ import {
   usesTreeSchemaMode,
   usesFetchFirst,
 } from "@/lib/databaseCapabilities";
-import { treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/treeNodeClick";
+import { sidebarSelectionCopyAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/treeNodeClick";
 import { formatCsv, formatJson, formatSqlInsert } from "@/lib/exportFormats";
 import { hexToRgba } from "@/lib/color";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
@@ -102,6 +102,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 const { t } = useI18n();
 const labelRef = ref<HTMLElement>();
+const rowRef = ref<HTMLElement>();
 const isTruncated = computed(() => {
   const el = labelRef.value;
   return !!el && el.scrollWidth > el.clientWidth;
@@ -338,9 +339,29 @@ function runRowClickAction() {
 
 function onClick(event: MouseEvent) {
   connectionStore.selectedTreeNodeId = props.node.id;
+  rowRef.value?.focus({ preventScroll: true });
   if (settingsStore.editorSettings.sidebarActivation === "double") return;
   if (event.detail > 1) return;
   runRowClickAction();
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable ||
+    !!target.closest("[contenteditable='true']")
+  );
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (!isSelected.value || isEditableShortcutTarget(event.target)) return;
+  const action = sidebarSelectionCopyAction(event, settingsStore.editorSettings.sidebarActivation);
+  if (action !== "copy-name") return;
+  event.preventDefault();
+  event.stopPropagation();
+  copyName();
 }
 
 function onDoubleClick() {
@@ -1448,6 +1469,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     <ContextMenuTrigger as-child>
       <div>
         <div
+          ref="rowRef"
           class="group flex min-w-0 items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
           style="contain: layout style paint"
           :class="{
@@ -1461,6 +1483,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
           :style="rowStyle"
           @click="onClick"
           @dblclick="onDoubleClick"
+          @keydown="onKeydown"
           @mousedown="isDraggable ? startDrag($event, node.id, node.type) : undefined"
           @mousemove="isDropTarget ? updateTarget($event, node.id, node.type) : undefined"
           @mouseleave="clearTarget(node.id)"

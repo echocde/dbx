@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { treeNodeRowAction, treeNodeRowDoubleClickAction } from "../src/lib/treeNodeClick.ts";
+import { sidebarSelectionCopyAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "../src/lib/treeNodeClick.ts";
 
 test("table and view rows open data without toggling structure groups", () => {
   assert.equal(treeNodeRowAction("table", true), "open-data");
@@ -57,4 +57,13 @@ test("double click does not open object browser for non-browsable rows", () => {
   assert.equal(treeNodeRowDoubleClickAction("database", false), "none");
   assert.equal(treeNodeRowDoubleClickAction("table", true), "none");
   assert.equal(treeNodeRowDoubleClickAction("column", true), "none");
+});
+
+test("double click navigation mode copies the selected sidebar row name", () => {
+  assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }, "double"), "copy-name");
+  assert.equal(sidebarSelectionCopyAction({ key: "C", ctrlKey: true }, "double"), "copy-name");
+});
+
+test("single click navigation mode leaves copy shortcuts alone", () => {
+  assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }, "single"), "none");
 });

@@ -1,4 +1,5 @@
 import type { TreeNodeType } from "@/types/database";
+import { matchesShortcut, type ShortcutLikeEvent } from "@/lib/keyboardShortcuts";
 
 export type TreeNodeRowAction = "open-data" | "toggle" | "none";
 export type TreeNodeRowDoubleClickAction =
@@ -8,6 +9,7 @@ export type TreeNodeRowDoubleClickAction =
   | "open-saved-sql"
   | "toggle"
   | "none";
+export type SidebarSelectionCopyAction = "copy-name" | "none";
 export type SidebarActivation = "single" | "double";
 
 const dataNodeTypes = new Set<TreeNodeType>(["table", "view"]);
@@ -42,4 +44,12 @@ export function treeNodeRowDoubleClickAction(
   }
   if (canOpenObjectBrowser && objectBrowserNodeTypes.has(type)) return "open-object-browser";
   return "none";
+}
+
+export function sidebarSelectionCopyAction(
+  event: ShortcutLikeEvent,
+  activation: SidebarActivation,
+): SidebarSelectionCopyAction {
+  if (activation !== "double") return "none";
+  return matchesShortcut(event, "Mod+C") ? "copy-name" : "none";
 }
