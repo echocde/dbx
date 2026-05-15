@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { uuid } from "@/lib/utils";
 import { ref, computed, watch } from "vue";
 import type { ColumnInfo, ConnectionConfig, SidebarLayout, TreeNode } from "@/types/database";
-import { orderPinnedFirst } from "@/lib/pinnedItems";
+import { applyPinnedTreeNodeState, orderPinnedFirst } from "@/lib/pinnedItems";
 import {
   reconcileLayout,
   buildTreeNodesFromLayout,
@@ -232,13 +232,8 @@ export const useConnectionStore = defineStore("connection", () => {
     return pinnedTreeNodeIds.value.has(id);
   }
 
-  function pinTreeNode(node: TreeNode): TreeNode {
-    node.pinned = isTreeNodePinned(node.id);
-    return node;
-  }
-
   function setChildren(parent: TreeNode, children: TreeNode[]) {
-    parent.children = orderPinnedFirst(children.map(pinTreeNode), (node) => !!node.pinned);
+    parent.children = applyPinnedTreeNodeState(children, pinnedTreeNodeIds.value);
     loadedTreeNodeChildrenIds.value.add(parent.id);
   }
 
