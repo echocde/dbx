@@ -1137,7 +1137,8 @@ function openDatabaseExport() {
   connectionStore.databaseExportSource = {
     connectionId: node.connectionId,
     database: node.database,
-    schema: node.type === "schema" ? node.schema : undefined,
+    schema: node.type === "schema" || node.type === "table" || node.type === "view" ? node.schema : undefined,
+    tableName: node.type === "table" || node.type === "view" ? node.label : undefined,
   };
 }
 
@@ -1759,6 +1760,10 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
             <ContextMenuItem @click="exportDataXlsx">XLSX</ContextMenuItem>
           </ContextMenuSubContent>
         </ContextMenuSub>
+        <ContextMenuItem @click="openDatabaseExport">
+          <Download class="w-4 h-4" />
+          {{ t("contextMenu.exportDatabase") }}
+        </ContextMenuItem>
         <ContextMenuItem @click="exportStructure">
           <FileCode class="w-4 h-4" /> {{ t("contextMenu.exportStructure") }}
         </ContextMenuItem>

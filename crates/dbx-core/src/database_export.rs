@@ -16,6 +16,8 @@ pub struct DatabaseExportRequest {
     pub database: String,
     pub schema: String,
     pub file_path: String,
+    #[serde(default)]
+    pub selected_tables: Vec<String>,
     pub include_structure: bool,
     pub include_data: bool,
     pub include_objects: bool,
@@ -76,6 +78,7 @@ pub async fn export_database_sql_core(
     let all_tables =
         crate::schema::list_tables_core(state, &request.connection_id, &request.database, &request.schema, None, None)
             .await?;
+    let all_tables = filter_selected_table_infos(all_tables, &request.selected_tables);
 
     // 4. Create file
     let mut file = std::fs::File::create(&request.file_path).map_err(|e| format!("Failed to write file: {e}"))?;
@@ -103,7 +106,7 @@ pub async fn export_database_sql_core(
     let mut procedures: Vec<String> = Vec::new();
     let mut functions: Vec<String> = Vec::new();
 
-    if request.include_objects {
+    if request.include_objects && request.selected_tables.is_empty() {
         if let Ok(objects) =
             crate::schema::list_objects_core(state, &request.connection_id, &request.database, &request.schema).await
         {
@@ -432,4 +435,43 @@ pub async fn export_database_sql_core(
     });
 
     Ok(())
+}
+
+fn filter_selected_table_infos(
+    tables: Vec<crate::types::TableInfo>,
+    selected_tables: &[String],
+) -> Vec<crate::types::TableInfo> {
+    if selected_tables.is_empty() {
+        return tables;
+    }
+    let selected: HashSet<&str> = selected_tables.iter().map(String::as_str).collect();
+    tables.into_iter().filter(|table| selected.contains(table.name.as_str())).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::filter_selected_table_infos;
+    use crate::types::TableInfo;
+
+    fn table(name: &str, table_type: &str) -> TableInfo {
+        TableInfo { name: name.to_string(), table_type: table_type.to_string(), comment: None }
+    }
+
+    #[test]
+    fn filters_export_tables_by_selected_names() {
+        let tables = vec![table("users", "TABLE"), table("orders", "TABLE"), table("active_users", "VIEW")];
+
+        let filtered = filter_selected_table_infos(tables, &["active_users".to_string(), "users".to_string()]);
+
+        assert_eq!(filtered.iter().map(|table| table.name.as_str()).collect::<Vec<_>>(), vec!["users", "active_users"]);
+    }
+
+    #[test]
+    fn keeps_all_export_tables_when_selection_is_empty() {
+        let tables = vec![table("users", "TABLE"), table("orders", "TABLE")];
+
+        let filtered = filter_selected_table_infos(tables.clone(), &[]);
+
+        assert_eq!(filtered.iter().map(|table| table.name.as_str()).collect::<Vec<_>>(), vec!["users", "orders"]);
+    }
 }

@@ -108,6 +108,7 @@ export const useConnectionStore = defineStore("connection", () => {
     connectionId: string;
     database: string;
     schema?: string;
+    tableName?: string;
   } | null>(null);
   const sidebarLayout = ref<SidebarLayout>(emptyLayout());
   let layoutPersistTimer: ReturnType<typeof setTimeout> | null = null;

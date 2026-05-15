@@ -10,6 +10,7 @@ import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/api";
 import type { ExportProgress } from "@/lib/api";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
+import { buildSelectedTablesPayload } from "@/lib/databaseExportSelection";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { useToast } from "@/composables/useToast";
 import { Download, Square, CheckSquare, X } from "lucide-vue-next";
@@ -23,6 +24,7 @@ const props = defineProps<{
   prefillConnectionId?: string;
   prefillDatabase?: string;
   prefillSchema?: string;
+  prefillTable?: string;
 }>();
 
 // Connection / Database / Schema selectors
@@ -32,6 +34,10 @@ const databases = ref<string[]>([]);
 const schema = ref("");
 const schemas = ref<string[]>([]);
 const loadingMeta = ref(false);
+const tables = ref<string[]>([]);
+const selectedTables = ref<string[]>([]);
+const loadingTables = ref(false);
+const tableError = ref<string | null>(null);
 
 // Options
 const includeStructure = ref(true);
@@ -45,6 +51,7 @@ const exportId = ref("");
 const exportDone = ref(false);
 const exportError = ref<string | null>(null);
 const exportCancelled = ref(false);
+const pendingPrefillTable = ref("");
 
 const sqlConnections = computed(() =>
   store.connections.filter((c) => !["redis", "mongodb", "elasticsearch"].includes(c.db_type)),
@@ -55,9 +62,14 @@ const canExport = computed(
     connectionId.value &&
     database.value &&
     schema.value &&
+    !loadingTables.value &&
+    !tableError.value &&
+    (tables.value.length === 0 || selectedTables.value.length > 0) &&
     (includeStructure.value || includeData.value || includeObjects.value) &&
     !isExporting.value,
 );
+
+const selectedTableSet = computed(() => new Set(selectedTables.value));
 
 function connectionIconType(connId: string) {
   const config = store.getConfig(connId);
@@ -75,6 +87,8 @@ async function loadDatabases(connId: string) {
     database.value = names.length === 1 ? names[0] : "";
     schemas.value = [];
     schema.value = "";
+    tables.value = [];
+    selectedTables.value = [];
   } catch {
     databases.value = [];
   } finally {
@@ -100,6 +114,42 @@ async function loadSchemas(preferredSchema = "") {
         : (schemaList[0] ?? "");
   schemas.value = schemaList;
   schema.value = selected;
+}
+
+async function loadTables(preferredTable = "") {
+  if (!connectionId.value || !database.value || !schema.value) return;
+  loadingTables.value = true;
+  tableError.value = null;
+  tables.value = [];
+  selectedTables.value = [];
+  try {
+    const tableInfos = await api.listTables(connectionId.value, database.value, schema.value);
+    const names = tableInfos.map((table) => table.name);
+    tables.value = names;
+    selectedTables.value = preferredTable && names.includes(preferredTable) ? [preferredTable] : [...names];
+  } catch (e: any) {
+    tableError.value = e?.message || String(e);
+  } finally {
+    loadingTables.value = false;
+  }
+}
+
+function toggleTable(table: string) {
+  const selected = new Set(selectedTables.value);
+  if (selected.has(table)) {
+    selected.delete(table);
+  } else {
+    selected.add(table);
+  }
+  selectedTables.value = tables.value.filter((name) => selected.has(name));
+}
+
+function selectAllTables() {
+  selectedTables.value = [...tables.value];
+}
+
+function clearSelectedTables() {
+  selectedTables.value = [];
 }
 
 async function startExport() {
@@ -143,6 +193,7 @@ async function startExport() {
     database: database.value,
     schema: schema.value,
     filePath,
+    selectedTables: buildSelectedTablesPayload(tables.value, selectedTables.value),
     includeStructure: includeStructure.value,
     includeData: includeData.value,
     includeObjects: includeObjects.value,
@@ -182,6 +233,10 @@ function resetState() {
   databases.value = [];
   schema.value = "";
   schemas.value = [];
+  tables.value = [];
+  selectedTables.value = [];
+  tableError.value = null;
+  pendingPrefillTable.value = "";
   includeStructure.value = true;
   includeData.value = true;
   includeObjects.value = true;
@@ -210,18 +265,34 @@ watch(connectionId, (id) => {
   databases.value = [];
   schemas.value = [];
   schema.value = "";
+  tables.value = [];
+  selectedTables.value = [];
+  tableError.value = null;
   loadDatabases(id);
 });
 
 watch(database, (db) => {
   schema.value = "";
   schemas.value = [];
+  tables.value = [];
+  selectedTables.value = [];
+  tableError.value = null;
   if (db) loadSchemas(props.prefillSchema).catch((e) => toast(String(e), 5000));
+});
+
+watch(schema, (value) => {
+  tables.value = [];
+  selectedTables.value = [];
+  tableError.value = null;
+  const preferredTable = pendingPrefillTable.value;
+  pendingPrefillTable.value = "";
+  if (value) loadTables(preferredTable).catch((e) => toast(String(e), 5000));
 });
 
 watch(open, async (val) => {
   if (val) {
     resetState();
+    pendingPrefillTable.value = props.prefillTable ?? "";
     if (props.prefillConnectionId) {
       skipConnectionWatch.value = true;
       connectionId.value = props.prefillConnectionId;
@@ -257,7 +328,7 @@ watch(open, async (val) => {
                   <SelectValue :placeholder="t('diff.selectConnection')" />
                 </div>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" align="start">
                 <SelectItem v-for="c in sqlConnections" :key="c.id" :value="c.id">
                   <div class="flex items-center gap-2">
                     <DatabaseIcon :db-type="c.driver_profile || c.db_type" class="w-3.5 h-3.5" />
@@ -274,7 +345,7 @@ watch(open, async (val) => {
               <SelectTrigger class="h-8 text-xs">
                 <SelectValue :placeholder="t('diff.selectDatabase')" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" align="start">
                 <SelectItem v-for="db in databases" :key="db" :value="db">{{ db }}</SelectItem>
               </SelectContent>
             </Select>
@@ -286,10 +357,52 @@ watch(open, async (val) => {
               <SelectTrigger class="h-8 text-xs">
                 <SelectValue :placeholder="t('diff.selectSchema')" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" align="start">
                 <SelectItem v-for="s in schemas" :key="s" :value="s">{{ s }}</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div v-if="schema" class="space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <Label class="text-xs">{{ t("databaseExport.tableSelection") }}</Label>
+              <div v-if="tables.length" class="text-[11px] text-muted-foreground">
+                {{ t("databaseExport.selectedTables", { selected: selectedTables.length, total: tables.length }) }}
+              </div>
+            </div>
+
+            <div v-if="loadingTables" class="text-xs text-muted-foreground">
+              {{ t("databaseExport.loadingTables") }}
+            </div>
+            <div v-else-if="tableError" class="text-xs text-destructive">
+              {{ t("databaseExport.tableLoadError", { error: tableError }) }}
+            </div>
+            <div v-else-if="tables.length" class="space-y-2 rounded border border-border/60 p-2">
+              <div class="flex items-center gap-2">
+                <Button variant="outline" size="sm" class="h-7 px-2 text-xs" @click="selectAllTables">
+                  {{ t("databaseExport.selectAllTables") }}
+                </Button>
+                <Button variant="outline" size="sm" class="h-7 px-2 text-xs" @click="clearSelectedTables">
+                  {{ t("databaseExport.clearTables") }}
+                </Button>
+              </div>
+              <div class="max-h-40 overflow-auto space-y-1 pr-1">
+                <button
+                  v-for="table in tables"
+                  :key="table"
+                  type="button"
+                  class="flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-muted"
+                  @click="toggleTable(table)"
+                >
+                  <CheckSquare v-if="selectedTableSet.has(table)" class="w-3.5 h-3.5 text-primary shrink-0" />
+                  <Square v-else class="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+                  <span class="truncate">{{ table }}</span>
+                </button>
+              </div>
+            </div>
+            <div v-else class="text-xs text-muted-foreground">
+              {{ t("databaseExport.noTables") }}
+            </div>
           </div>
 
           <!-- Options -->

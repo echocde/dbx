@@ -776,6 +776,7 @@ export interface DatabaseExportRequest {
   database: string;
   schema: string;
   filePath: string;
+  selectedTables?: string[];
   includeStructure: boolean;
   includeData: boolean;
   includeObjects: boolean;

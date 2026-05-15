@@ -181,6 +181,7 @@ watch(
     :prefill-connection-id="dialogs.databaseExportPrefillConnectionId.value"
     :prefill-database="dialogs.databaseExportPrefillDatabase.value"
     :prefill-schema="dialogs.databaseExportPrefillSchema.value"
+    :prefill-table="dialogs.databaseExportPrefillTable.value"
   />
   <ConfigPassphraseDialog
     v-model:open="dialogs.showConfigPassphraseDialog.value"

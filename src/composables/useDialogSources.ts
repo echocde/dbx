@@ -55,6 +55,7 @@ const databaseSearchPrefillSchema = ref("");
 const databaseExportPrefillConnectionId = ref("");
 const databaseExportPrefillDatabase = ref("");
 const databaseExportPrefillSchema = ref("");
+const databaseExportPrefillTable = ref("");
 
 let watchersRegistered = false;
 
@@ -195,6 +196,7 @@ export function useDialogSources() {
           databaseExportPrefillConnectionId.value = v.connectionId;
           databaseExportPrefillDatabase.value = v.database;
           databaseExportPrefillSchema.value = v.schema ?? "";
+          databaseExportPrefillTable.value = v.tableName ?? "";
           showDatabaseExportDialog.value = true;
           connectionStore.databaseExportSource = null;
         }
@@ -316,6 +318,7 @@ export function useDialogSources() {
     databaseExportPrefillConnectionId,
     databaseExportPrefillDatabase,
     databaseExportPrefillSchema,
+    databaseExportPrefillTable,
     onExportClick,
     onExportConfirm,
     onImportClick,
