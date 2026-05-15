@@ -24,6 +24,7 @@ import { isSchemaAware, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
 import { buildDatabaseTreeNodes } from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
 import { shouldMarkDisconnected } from "@/lib/connectionHealth";
+import { filterVisibleDatabaseNames, normalizeVisibleDatabaseSelection } from "@/lib/visibleDatabases";
 import {
   buildGroupedObjectTreeNodes,
   buildTableTreeNodes,
@@ -496,6 +497,46 @@ export const useConnectionStore = defineStore("connection", () => {
     return getConfig(connectionId)?.database === database && database !== "";
   }
 
+  async function setVisibleDatabases(connectionId: string, databaseNames: string[]) {
+    const config = getConfig(connectionId);
+    if (!config) return;
+    await updateVisibleDatabasesConfig(connectionId, normalizeVisibleDatabaseSelection(databaseNames, databaseNames));
+    await reloadConnectionDatabaseChildren(connectionId);
+  }
+
+  async function clearVisibleDatabases(connectionId: string) {
+    const config = getConfig(connectionId);
+    if (!config || !Array.isArray(config.visible_databases)) return;
+    await updateVisibleDatabasesConfig(connectionId, undefined);
+    await reloadConnectionDatabaseChildren(connectionId);
+  }
+
+  async function updateVisibleDatabasesConfig(connectionId: string, visibleDatabases: string[] | undefined) {
+    const idx = connections.value.findIndex((connection) => connection.id === connectionId);
+    if (idx < 0) return;
+    const nextConnections = [...connections.value];
+    nextConnections[idx] = {
+      ...nextConnections[idx],
+      visible_databases: visibleDatabases,
+    };
+    await persistConnections(nextConnections);
+    connections.value = nextConnections;
+    rebuildTreeNodes();
+  }
+
+  async function reloadConnectionDatabaseChildren(connectionId: string) {
+    const config = getConfig(connectionId);
+    if (!config) return;
+    clearLoadedChildrenCache(connectionId);
+    if (config.db_type === "redis") {
+      await loadRedisDatabases(connectionId);
+    } else if (config.db_type === "mongodb") {
+      await loadMongoDatabases(connectionId);
+    } else {
+      await loadDatabases(connectionId, { force: true });
+    }
+  }
+
   async function connect(config: ConnectionConfig) {
     config = normalizeConnection(config);
     const pendingNode = findNode(treeNodes.value, config.id);
@@ -579,7 +620,8 @@ export const useConnectionStore = defineStore("connection", () => {
         const cacheKey = schemaCacheKey(connectionId, effectiveDb, "schemas");
         if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
         const schemas = await api.listSchemas(connectionId, effectiveDb);
-        const schemaNodes: TreeNode[] = schemas.map((s) => ({
+        const visibleSchemas = filterVisibleDatabaseNames(schemas, config?.visible_databases);
+        const schemaNodes: TreeNode[] = visibleSchemas.map((s) => ({
           id: `${connectionId}:${s}:${s}`,
           label: s,
           type: "schema" as const,
@@ -595,7 +637,13 @@ export const useConnectionStore = defineStore("connection", () => {
         const cacheKey = schemaCacheKey(connectionId, "databases");
         if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
         const databases = await api.listDatabases(connectionId);
-        const children = withSavedSqlRoot(connectionId, buildDatabaseTreeNodes(connectionId, databases), node);
+        const visibleNames = filterVisibleDatabaseNames(
+          databases.map((database) => database.name),
+          config?.visible_databases,
+        );
+        const visibleNameSet = new Set(visibleNames);
+        const visibleDatabases = databases.filter((database) => visibleNameSet.has(database.name));
+        const children = withSavedSqlRoot(connectionId, buildDatabaseTreeNodes(connectionId, visibleDatabases), node);
         setChildren(node, children);
         await savePersistedTreeChildren(cacheKey, children);
       }
@@ -616,21 +664,29 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await ensureConnected(connectionId);
       const dbs = await api.redisListDatabases(connectionId);
+      const config = getConfig(connectionId);
+      const visibleNames = filterVisibleDatabaseNames(
+        dbs.map((db) => String(db.db)),
+        config?.visible_databases,
+      );
+      const visibleNameSet = new Set(visibleNames);
       setChildren(
         node,
         withSavedSqlRoot(
           connectionId,
-          dbs.map((db) => ({
-            id: `${connectionId}:db${db.db}`,
-            label: redisDbLabel(db.db, 0, db.keys),
-            type: "redis-db" as const,
-            connectionId,
-            database: String(db.db),
-            loadedKeyCount: 0,
-            totalKeyCount: db.keys,
-            isExpanded: false,
-            children: [],
-          })),
+          dbs
+            .filter((db) => visibleNameSet.has(String(db.db)))
+            .map((db) => ({
+              id: `${connectionId}:db${db.db}`,
+              label: redisDbLabel(db.db, 0, db.keys),
+              type: "redis-db" as const,
+              connectionId,
+              database: String(db.db),
+              loadedKeyCount: 0,
+              totalKeyCount: db.keys,
+              isExpanded: false,
+              children: [],
+            })),
           node,
         ),
       );
@@ -666,11 +722,13 @@ export const useConnectionStore = defineStore("connection", () => {
     try {
       await ensureConnected(connectionId);
       const dbs = await api.mongoListDatabases(connectionId);
+      const config = getConfig(connectionId);
+      const visibleDbs = filterVisibleDatabaseNames(dbs, config?.visible_databases);
       setChildren(
         node,
         withSavedSqlRoot(
           connectionId,
-          dbs.map((db) => ({
+          visibleDbs.map((db) => ({
             id: `${connectionId}:${db}`,
             label: db,
             type: "mongo-db" as const,
@@ -1524,6 +1582,8 @@ export const useConnectionStore = defineStore("connection", () => {
     setDefaultDatabase,
     clearDefaultDatabase,
     isDefaultDatabase,
+    setVisibleDatabases,
+    clearVisibleDatabases,
     removeConnection,
     editingConnectionId,
     newConnectionGroupId,

@@ -42,6 +42,7 @@ import {
   ScrollText,
   Braces,
   Code2,
+  ListFilter,
 } from "lucide-vue-next";
 import {
   ContextMenu,
@@ -91,6 +92,7 @@ import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import ConnectionErrorIndicator from "@/components/connection/ConnectionErrorIndicator.vue";
+import VisibleDatabasesDialog from "@/components/sidebar/VisibleDatabasesDialog.vue";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,6 +110,7 @@ const queryStore = useQueryStore();
 const savedSqlStore = useSavedSqlStore();
 const { toast } = useToast();
 const { getDatabaseOptions } = useDatabaseOptions();
+const showVisibleDatabasesDialog = ref(false);
 
 const props = defineProps<{
   node: TreeNode;
@@ -1214,6 +1217,10 @@ const isConnected = computed(
     !!props.node.connectionId &&
     connectionStore.connectedIds.has(props.node.connectionId),
 );
+const canConfigureVisibleDatabases = computed(() => {
+  if (props.node.type !== "connection" || !props.node.connectionId) return false;
+  return connectionStore.getConfig(props.node.connectionId)?.db_type !== "elasticsearch";
+});
 
 function connectionIconType(connectionId?: string) {
   const config = connectionId ? connectionStore.getConfig(connectionId) : undefined;
@@ -1238,6 +1245,10 @@ const rowStyle = computed(() => {
 
 function togglePin() {
   connectionStore.toggleTreeNodePin(props.node.id);
+}
+
+function openVisibleDatabasesDialog() {
+  showVisibleDatabasesDialog.value = true;
 }
 
 // --- Connection Group Management ---
@@ -1581,6 +1592,9 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         <ContextMenuItem @click="refresh">
           <RefreshCw class="w-4 h-4" /> {{ t("contextMenu.refreshChildren") }}
         </ContextMenuItem>
+        <ContextMenuItem v-if="canConfigureVisibleDatabases" @click="openVisibleDatabasesDialog">
+          <ListFilter class="w-4 h-4" /> {{ t("contextMenu.selectVisibleDatabases") }}
+        </ContextMenuItem>
         <ContextMenuItem @click="editConnection">
           <Pencil class="w-4 h-4" /> {{ t("contextMenu.editConnection") }}
         </ContextMenuItem>
@@ -1786,6 +1800,13 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
       </template>
     </ContextMenuContent>
   </ContextMenu>
+
+  <VisibleDatabasesDialog
+    v-if="node.type === 'connection' && node.connectionId"
+    v-model:open="showVisibleDatabasesDialog"
+    :connection-id="node.connectionId"
+    :connection-name="node.label"
+  />
 
   <Dialog v-model:open="showDeleteConfirm">
     <DialogContent class="sm:max-w-[400px]">

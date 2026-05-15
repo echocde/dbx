@@ -43,6 +43,7 @@ export interface ConnectionConfig {
   username: string;
   password: string;
   database?: string;
+  visible_databases?: string[];
   color?: string;
   ssh_enabled?: boolean;
   ssh_host?: string;

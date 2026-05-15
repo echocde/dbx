@@ -141,6 +141,7 @@ mod tests {
             username: String::new(),
             password: String::new(),
             database: None,
+            visible_databases: None,
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),

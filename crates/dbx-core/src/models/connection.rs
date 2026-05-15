@@ -17,6 +17,8 @@ pub struct ConnectionConfig {
     pub username: String,
     pub password: String,
     pub database: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visible_databases: Option<Vec<String>>,
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
@@ -550,6 +552,7 @@ mod tests {
             username: username.to_string(),
             password: password.to_string(),
             database: database.map(str::to_string),
+            visible_databases: None,
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),
@@ -620,6 +623,26 @@ mod tests {
         assert_eq!(config.proxy_port, 1080);
         assert_eq!(config.proxy_username, "");
         assert_eq!(config.proxy_password, "");
+    }
+
+    #[test]
+    fn visible_databases_round_trips_through_connection_config() {
+        let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
+            "id": "id",
+            "name": "name",
+            "db_type": "mysql",
+            "host": "10.1.2.3",
+            "port": 3306,
+            "username": "root",
+            "password": "",
+            "database": null,
+            "visible_databases": ["app", "billing"]
+        }))
+        .unwrap();
+
+        let saved = serde_json::to_value(config).unwrap();
+
+        assert_eq!(saved["visible_databases"], serde_json::json!(["app", "billing"]));
     }
 
     #[test]

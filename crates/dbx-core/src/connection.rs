@@ -485,6 +485,7 @@ mod tests {
             username: "root".to_string(),
             password: "secret".to_string(),
             database: database.map(str::to_string),
+            visible_databases: None,
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),
