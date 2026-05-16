@@ -53,6 +53,7 @@ const executionId = ref("");
 const progress = ref<SqlFileProgress | null>(null);
 const terminalStatus = ref<SqlFileStatus | "idle">("idle");
 const terminalError = ref("");
+const refreshedTarget = ref(false);
 
 const sqlConnections = computed(() =>
   store.connections.filter((c) => !["redis", "mongodb", "elasticsearch"].includes(c.db_type)),
@@ -154,6 +155,7 @@ function resetExecution() {
   progress.value = null;
   terminalStatus.value = "idle";
   terminalError.value = "";
+  refreshedTarget.value = false;
 }
 
 function resetState() {
@@ -265,6 +267,16 @@ async function listenProgress(id: string, handler: (next: SqlFileProgress) => vo
   return listenSqlFileProgressById(id, handler);
 }
 
+async function refreshTargetAfterImport() {
+  if (refreshedTarget.value) return;
+  refreshedTarget.value = true;
+  try {
+    await store.refreshDatabaseTreeNode(connectionId.value, database.value.trim());
+  } catch (e: any) {
+    toast(e?.message || String(e), 5000);
+  }
+}
+
 async function startExecution() {
   if (!canStart.value || !preview.value) return;
 
@@ -295,6 +307,9 @@ async function startExecution() {
         running.value = false;
         cancelling.value = false;
       }
+      if (next.status === "done") {
+        void refreshTargetAfterImport();
+      }
     });
 
     if (cancelRequested.value) {
@@ -312,6 +327,9 @@ async function startExecution() {
     });
     if (!isTerminalStatus(terminalStatus.value)) {
       terminalStatus.value = cancelRequested.value ? "cancelled" : "done";
+      if (terminalStatus.value === "done") {
+        await refreshTargetAfterImport();
+      }
     }
   } catch (e: any) {
     terminalStatus.value = cancelRequested.value ? "cancelled" : "error";

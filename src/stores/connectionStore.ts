@@ -23,6 +23,7 @@ import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { isSchemaAware, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
 import { buildDatabaseTreeNodes } from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
+import { findDatabaseTreeNode } from "@/lib/treeRefreshTarget";
 import { shouldMarkDisconnected } from "@/lib/connectionHealth";
 import { filterVisibleDatabaseNames, normalizeVisibleDatabaseSelection } from "@/lib/visibleDatabases";
 import {
@@ -1147,6 +1148,15 @@ export const useConnectionStore = defineStore("connection", () => {
     await restoreExpandedChildren(node, expandedIds, { force: true });
   }
 
+  async function refreshDatabaseTreeNode(connectionId: string, database: string) {
+    const node = findDatabaseTreeNode(treeNodes.value, connectionId, database);
+    if (node) {
+      await refreshTreeNode(node);
+      return;
+    }
+    await loadDatabases(connectionId, { force: true });
+  }
+
   function isSchemaAwareDatabase(connectionId: string): boolean {
     return isSchemaAware(getConfig(connectionId)?.db_type);
   }
@@ -1576,6 +1586,7 @@ export const useConnectionStore = defineStore("connection", () => {
     refreshAllTree,
     refreshSavedSqlTree,
     refreshTreeNode,
+    refreshDatabaseTreeNode,
     connectedIds,
     connectionErrors,
     setConnectionError,
