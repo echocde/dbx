@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react';
 import { HeroProductStage } from '@/components/aceternity/HeroProductStage';
 import { InfiniteMovingCards } from '@/components/aceternity/InfiniteMovingCards';
 import { Spotlight } from '@/components/aceternity/Spotlight';
+import { LandingNav } from '@/components/landing/LandingNav';
 import { InstallTabs } from '@/components/landing/InstallTabs';
 import { RevealSection } from '@/components/landing/RevealSection';
 import {
@@ -345,15 +346,11 @@ const testimonials = {
 
 const i18nText = {
   en: {
-    navDocs: 'Docs',
-    navChangelog: 'Changelog',
-    navCommunity: 'Community',
-    lang: '中文',
-    eyebrow: 'Open-source database workspace',
-    heroTitle: 'A focused database client for daily work.',
+    heroTitle: '15 MB to manage 35+ databases!',
     heroSubtitle:
       'DBX brings connections, SQL editing, data grids, schema tools, AI assistance, and self-hosted access into one lightweight product.',
     download: 'Download DBX',
+    downloadName: 'Download DBX',
     readDocs: 'Read the docs',
     docsStart: 'Start here',
     docsStartDesc: 'Install DBX, create your first connection, and learn the main workflow.',
@@ -371,14 +368,10 @@ const i18nText = {
     docker: 'Docker setup',
   },
   cn: {
-    navDocs: '文档',
-    navChangelog: '更新日志',
-    navCommunity: '社区',
-    lang: 'English',
-    eyebrow: '开源数据库工作台',
-    heroTitle: '专注日常工作的数据库客户端。',
+    heroTitle: '15MB，管理35+种数据库！',
     heroSubtitle: 'DBX 将连接管理、SQL 编辑、数据表格、结构工具、AI 助手和自托管访问放进一个轻量产品里。',
     download: '下载 DBX',
+    downloadName: '下载 DBX',
     readDocs: '查看文档',
     docsStart: '从这里开始',
     docsStartDesc: '安装 DBX、创建第一个连接，并了解主要工作流。',
@@ -414,81 +407,69 @@ export default async function LandingPage({
 
   return (
     <main className="landing">
-      <nav className="landing-nav">
-        <div className="landing-nav-inner">
-          <Link href={`/${l}`} className="landing-logo">
-            <img src="/logo.png" alt="DBX" width={28} height={28} />
-            <span>DBX</span>
-          </Link>
-          <div className="landing-nav-links">
-            <Link href={`/${l}/docs/what-is-dbx`} target="_blank">
-              {t.navDocs}
-            </Link>
-            <Link href={`/${l}/docs/changelog`} target="_blank">
-              {t.navChangelog}
-            </Link>
-            <Link href="https://github.com/t8y2/dbx" target="_blank">
-              GitHub
-            </Link>
-            <Link href={l === 'cn' ? '/en' : '/cn'} className="landing-lang-switch">
-              {t.lang}
-            </Link>
-          </div>
-        </div>
-      </nav>
+      {/* Nav */}
+      <LandingNav lang={l} active="home" />
 
+      {/* Hero */}
       <section className="landing-hero">
         <Spotlight />
-        <div className="landing-hero-copy">
-          <div className="landing-eyebrow">{t.eyebrow}</div>
-          <h1>{t.heroTitle}</h1>
-          <p>{t.heroSubtitle}</p>
-          <div className="landing-hero-cta">
-            <Link href="https://github.com/t8y2/dbx/releases/latest" className="landing-btn-primary" target="_blank">
-              {t.download}
-              <ArrowRight size={16} />
-            </Link>
-            <Link href={`/${l}/docs/getting-started`} className="landing-btn-secondary" target="_blank">
-              {t.readDocs}
-            </Link>
+        <div className="relative z-[1] max-w-[1180px] mx-auto px-7 max-[1040px]:max-w-[920px] max-[760px]:px-[18px]">
+          <div className="landing-hero-copy relative z-[6] grid justify-items-center max-w-[900px] mx-auto text-center max-[1040px]:max-w-[760px]">
+            <h1 className="min-w-0 m-0 text-[clamp(36px,4.2vw,56px)] font-[820] leading-[1.06] text-landing-ink whitespace-nowrap max-[760px]:text-[clamp(26px,7vw,38px)]">
+              {t.heroTitle}
+            </h1>
+            <p className="landing-hero-subtitle min-w-0 mt-5 mx-auto text-[17px] font-[460] leading-[1.8] whitespace-nowrap max-[760px]:text-[15px] max-[760px]:leading-[1.68] max-[760px]:whitespace-normal max-[760px]:max-w-[320px]">
+              {t.heroSubtitle}
+            </p>
+            <div className="w-full max-w-[520px] mt-10">
+              <InstallTabs lang={l} />
+            </div>
           </div>
-          <InstallTabs lang={l} />
+          <HeroProductStage />
         </div>
-        <HeroProductStage />
       </section>
 
-      <RevealSection className="landing-metrics">
+      {/* Metrics */}
+      <RevealSection className="grid grid-cols-4 gap-3 max-w-[1180px] mx-auto px-7 pt-6 pb-11 [animation:landing-rise_0.72s_ease-out_0.1s_both] max-[760px]:grid-cols-1 max-[760px]:px-[18px] max-[760px]:pb-8">
         {metricItems.map((item) => (
-          <div key={item.label}>
-            <strong>{item.value}</strong>
-            <span>{item.label}</span>
+          <div key={item.label} data-stagger className="landing-glass-card min-h-[118px] rounded-[10px] p-[22px] max-[760px]:min-h-[96px] max-[760px]:p-[18px]">
+            <strong className="block text-landing-ink text-2xl font-[720]">{item.value}</strong>
+            <span className="block mt-1 text-landing-muted text-[13px]">{item.label}</span>
           </div>
         ))}
       </RevealSection>
 
-      <RevealSection className="landing-doc-start">
+      {/* Doc start */}
+      <RevealSection className="landing-glass-card-green flex items-center justify-between gap-[22px] max-w-[calc(1180px-56px)] mx-auto px-7 py-7 rounded-[10px] max-[760px]:block max-[760px]:px-[18px]">
         <div>
-          <h2>{t.docsStart}</h2>
-          <p>{t.docsStartDesc}</p>
+          <h2 className="m-0 text-[25px] font-[720] text-landing-ink">{t.docsStart}</h2>
+          <p className="mt-2 text-landing-muted text-sm leading-[1.65]">{t.docsStartDesc}</p>
         </div>
-        <Link href={`/${l}/docs/getting-started`} className="landing-inline-link" target="_blank">
+        <Link href={`/${l}/docs/getting-started`} className="landing-inline-link flex shrink-0 items-center gap-[7px] text-sm font-[650] max-[760px]:mt-4" target="_blank">
           {t.readDocs}
           <ArrowRight size={15} />
         </Link>
       </RevealSection>
 
-      <RevealSection className="landing-section">
-        <div className="landing-section-heading">
-          <h2>{t.workflowsTitle}</h2>
-          <p>{t.workflowsDesc}</p>
+      {/* Workflows */}
+      <RevealSection className="max-w-[1180px] mx-auto px-7 pt-[70px] pb-1 max-[760px]:px-[18px]">
+        <div className="grid grid-cols-[minmax(220px,0.42fr)_minmax(0,0.58fr)] gap-9 items-end mb-[22px] max-[760px]:block">
+          <h2 className="m-0 text-[25px] font-[720] text-landing-ink">{t.workflowsTitle}</h2>
+          <p className="mt-2 max-w-[650px] text-landing-muted text-sm leading-[1.65] justify-self-end text-right max-[760px]:max-w-none max-[760px]:text-left">{t.workflowsDesc}</p>
         </div>
-        <div className="landing-workflow-grid">
-          {workflowItems.map((item) => (
-            <Link key={item.title} href={item.href} className="landing-workflow-card" target="_blank">
-              <item.icon size={20} />
-              <h3>{item.title}</h3>
-              <p>{item.desc}</p>
-              <span>
+        <div className="landing-workflow-grid grid grid-cols-4 rounded-[10px] overflow-hidden max-[1040px]:grid-cols-2 max-[760px]:grid-cols-1">
+          {workflowItems.map((item, i) => (
+            <Link
+              key={item.title}
+              href={item.href}
+              className={`landing-workflow-card min-h-[250px] p-6 border-r border-r-landing-line max-[760px]:min-h-0 max-[760px]:border-r-0 max-[760px]:border-b max-[760px]:border-b-landing-line max-[760px]:last:border-b-0 ${i === workflowItems.length - 1 ? 'border-r-0' : ''}`}
+              target="_blank"
+              data-stagger
+            >
+              <item.icon size={20} className="text-landing-blue" />
+              <h3 className="mt-[18px] text-base font-bold">{item.title}</h3>
+              <p className="mt-2.5 text-landing-muted text-[13px] leading-[1.62]">{item.desc}</p>
+              <span className="inline-flex items-center gap-1.5 mt-[18px] text-landing-ink text-[13px] font-[650]">
                 {t.readDocs}
                 <ArrowRight size={14} />
               </span>
@@ -497,78 +478,83 @@ export default async function LandingPage({
         </div>
       </RevealSection>
 
-      <RevealSection className="landing-section landing-support">
-        <div className="landing-section-heading">
-          <h2>{t.supportTitle}</h2>
-          <p>{t.supportDesc}</p>
+      {/* Database support */}
+      <RevealSection className="relative max-w-[1180px] mx-auto px-7 pt-[70px] pb-1 max-[760px]:px-[18px]">
+        <div className="grid grid-cols-[minmax(260px,0.28fr)_minmax(0,0.72fr)] gap-9 items-end mb-[30px] max-[760px]:block">
+          <h2 className="m-0 text-[25px] font-[720] text-landing-ink">{t.supportTitle}</h2>
+          <p className="mt-2 max-w-[760px] text-landing-muted text-sm leading-[1.65] justify-self-end text-right max-[760px]:max-w-none max-[760px]:text-left">{t.supportDesc}</p>
         </div>
-        <div className="landing-db-grid">
+        <div className="grid grid-cols-8 gap-3 max-[760px]:grid-cols-2 max-[760px]:gap-2.5 max-[760px]:mt-[18px]">
           {databaseSupport.map((db) => (
-            <div className="landing-db-card" key={db.name} style={{ '--db-tone': db.tone } as CSSProperties}>
-              <div className="landing-db-icon">
-                {db.icon ? <img src={db.icon} alt="" width={42} height={42} /> : <span>{db.initials}</span>}
+            <div className="landing-db-card grid place-items-center min-h-[126px] rounded-[10px] px-2.5 py-[18px] max-[760px]:min-h-[122px] max-[760px]:py-4" key={db.name} style={{ '--db-tone': db.tone } as CSSProperties} data-stagger>
+              <div className="landing-db-icon grid place-items-center w-12 h-12 mb-[15px]">
+                {db.icon ? <img src={db.icon} alt="" width={38} height={38} className="block w-[38px] h-[38px] object-contain" /> : <span className="grid place-items-center min-w-[46px] h-8 rounded-lg px-2 text-white text-xs font-[780]">{db.initials}</span>}
               </div>
-              <strong>{db.name}</strong>
+              <strong className="text-sm font-[650] leading-[1.2] text-center text-[color-mix(in_srgb,var(--color-landing-ink)_92%,var(--color-landing-muted))]">{db.name}</strong>
             </div>
           ))}
         </div>
       </RevealSection>
 
-      <RevealSection className="landing-section landing-testimonials">
-        <div className="landing-section-heading">
-          <h2>{t.testimonialsTitle}</h2>
-          <p>{t.testimonialsDesc}</p>
+      {/* Testimonials */}
+      <RevealSection className="max-w-[1180px] mx-auto px-7 pt-[70px] pb-1 overflow-hidden max-[760px]:px-[18px]">
+        <div className="grid grid-cols-[minmax(220px,0.42fr)_minmax(0,0.58fr)] gap-9 items-end mb-[22px] max-[760px]:block">
+          <h2 className="m-0 text-[25px] font-[720] text-landing-ink">{t.testimonialsTitle}</h2>
+          <p className="mt-2 max-w-[650px] text-landing-muted text-sm leading-[1.65] justify-self-end text-right max-[760px]:max-w-none max-[760px]:text-left">{t.testimonialsDesc}</p>
         </div>
-        <div className="landing-testimonial-wall">
+        <div className="landing-testimonial-wall relative grid gap-3.5 -mx-7 py-1 max-[760px]:-mx-[18px] max-[760px]:mt-[18px]">
           <InfiniteMovingCards items={testimonialItems.slice(0, 6)} speed="slow" />
           <InfiniteMovingCards items={testimonialItems.slice(6)} direction="right" speed="slow" />
         </div>
       </RevealSection>
 
-      <RevealSection className="landing-section">
-        <div className="landing-section-heading">
-          <h2>{t.capabilitiesTitle}</h2>
+      {/* Capabilities */}
+      <RevealSection className="max-w-[1180px] mx-auto px-7 pt-[70px] pb-1 max-[760px]:px-[18px]">
+        <div className="grid grid-cols-[minmax(220px,0.42fr)_minmax(0,0.58fr)] gap-9 items-end mb-[22px] max-[760px]:block">
+          <h2 className="m-0 text-[25px] font-[720] text-landing-ink">{t.capabilitiesTitle}</h2>
         </div>
-        <div className="landing-capability-grid">
+        <div className="grid grid-cols-3 gap-2.5 max-[1040px]:grid-cols-2 max-[760px]:grid-cols-1 max-[760px]:mt-[18px]">
           {capabilityItems.map((item) => (
-            <div key={item.label} className="landing-capability">
-              <item.icon size={18} />
-              <span>{item.label}</span>
+            <div key={item.label} className="landing-capability flex items-center gap-2.5 min-h-[72px] rounded-lg px-[15px] py-3.5" data-stagger>
+              <item.icon size={18} className="shrink-0 text-landing-blue" />
+              <span className="text-landing-ink text-[13px] font-[560] leading-[1.45]">{item.label}</span>
             </div>
           ))}
         </div>
       </RevealSection>
 
-      <RevealSection className="landing-updates">
-        <div className="landing-update-version">{latest.version}</div>
-        <div className="landing-update-copy">
-          <h2>{latest.title}</h2>
-          <p>{latest.desc}</p>
+      {/* Updates */}
+      <RevealSection className="grid grid-cols-[minmax(86px,0.16fr)_minmax(210px,0.32fr)_minmax(0,0.38fr)_max-content] gap-[22px] items-center max-w-[1180px] mx-auto px-7 border-t border-b border-landing-line mt-[62px] py-6 max-[1040px]:grid-cols-[minmax(0,1fr)_max-content] max-[760px]:block max-[760px]:px-[18px]">
+        <div className="landing-update-version w-max rounded-[7px] px-2.5 py-[7px] text-[13px] font-[720]">{latest.version}</div>
+        <div className="max-[1040px]:col-span-full max-[760px]:mt-4">
+          <h2 className="m-0 text-[21px] font-[720] text-landing-ink">{latest.title}</h2>
+          <p className="mt-1.5 text-landing-muted text-[13px] leading-[1.55]">{latest.desc}</p>
         </div>
-        <ul className="landing-update-list">
+        <ul className="grid gap-2 m-0 p-0 list-none max-[1040px]:col-span-full max-[760px]:mt-4">
           {latest.items.map((item) => (
-            <li key={item}>
-              <CheckCircle2 size={14} />
+            <li key={item} className="flex gap-2 items-center text-[13px] font-[560] leading-[1.45] text-[color-mix(in_srgb,var(--color-landing-ink)_88%,var(--color-landing-muted))]" data-stagger>
+              <CheckCircle2 size={14} className="shrink-0 text-landing-green" />
               <span>{item}</span>
             </li>
           ))}
         </ul>
-        <Link href={`/${l}/docs/changelog`} className="landing-inline-link" target="_blank">
+        <Link href={`/${l}/changelog`} className="landing-inline-link flex shrink-0 items-center gap-[7px] text-sm font-[650] max-[760px]:mt-4">
           {latest.link}
           <ArrowRight size={15} />
         </Link>
       </RevealSection>
 
-      <RevealSection className="landing-final">
+      {/* Final CTA */}
+      <RevealSection className="flex items-center justify-between gap-6 max-w-[1180px] mx-auto px-7 border border-landing-line rounded-[10px] bg-landing-panel mt-[72px] mb-14 py-[30px] max-[760px]:block max-[760px]:px-[18px]">
         <div>
-          <h2>{t.footerTitle}</h2>
-          <p>{t.footerDesc}</p>
+          <h2 className="m-0 text-[25px] font-[720] text-landing-ink">{t.footerTitle}</h2>
+          <p className="mt-2 text-landing-muted text-sm leading-[1.65]">{t.footerDesc}</p>
         </div>
-        <div className="landing-final-actions">
-          <Link href="https://github.com/t8y2/dbx/releases/latest" target="_blank">
+        <div className="flex items-center gap-2.5 flex-wrap justify-end max-[760px]:mt-[18px]">
+          <Link href="https://github.com/t8y2/dbx/releases/latest" target="_blank" className="landing-final-link inline-flex items-center justify-center min-h-[42px] rounded-[7px] px-[15px] text-sm font-[650]">
             {t.release}
           </Link>
-          <Link href={`/${l}/docs/getting-started#docker`} target="_blank">
+          <Link href={`/${l}/docs/getting-started#docker`} target="_blank" className="landing-final-link inline-flex items-center justify-center min-h-[42px] rounded-[7px] px-[15px] text-sm font-[650]">
             {t.docker}
           </Link>
         </div>

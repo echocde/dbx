@@ -1,127 +1,127 @@
 'use client';
 
-import { Check, Copy, ExternalLink } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, Download, Server } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 type InstallTabsProps = {
   lang: 'en' | 'cn';
 };
 
-const releaseUrl = 'https://github.com/t8y2/dbx/releases/latest';
+type InstallOption = {
+  id: string;
+  label: string;
+  href: string;
+};
 
-const installOptions = {
+const allOptions: Record<string, InstallOption[]> = {
   en: [
-    {
-      id: 'macos',
-      label: 'macOS',
-      note: 'Homebrew',
-      command: 'brew install --cask t8y2/tap/dbx',
-      linkText: 'GitHub Releases',
-    },
-    {
-      id: 'windows',
-      label: 'Windows',
-      note: 'Scoop',
-      command: 'scoop bucket add dbx https://github.com/t8y2/scoop-bucket; scoop install dbx',
-      linkText: 'GitHub Releases',
-    },
-    {
-      id: 'linux',
-      label: 'Linux',
-      note: '.deb / AppImage',
-      command: 'chmod +x DBX*.AppImage',
-      linkText: 'Download packages',
-    },
-    {
-      id: 'docker',
-      label: 'Docker',
-      note: 'Self-hosted',
-      command: 'docker run -d --name dbx -p 4224:4224 -v dbx-data:/app/data t8y2/dbx',
-      linkText: 'Docker docs',
-      href: '/en/docs/getting-started#docker',
-    },
+    { id: 'macos-arm', label: 'For macOS (Apple Silicon)', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_aarch64.dmg' },
+    { id: 'macos-intel', label: 'For macOS (Intel)', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_x64.dmg' },
+    { id: 'windows', label: 'For Windows', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_x64-setup.exe' },
+    { id: 'linux', label: 'For Linux x64', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_amd64.AppImage' },
+    { id: 'linux-arm', label: 'For Linux ARM64', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_aarch64.AppImage' },
   ],
   cn: [
-    {
-      id: 'macos',
-      label: 'macOS',
-      note: 'Homebrew',
-      command: 'brew install --cask t8y2/tap/dbx',
-      linkText: 'GitHub Releases',
-    },
-    {
-      id: 'windows',
-      label: 'Windows',
-      note: 'Scoop',
-      command: 'scoop bucket add dbx https://github.com/t8y2/scoop-bucket; scoop install dbx',
-      linkText: 'GitHub Releases',
-    },
-    {
-      id: 'linux',
-      label: 'Linux',
-      note: '.deb / AppImage',
-      command: 'chmod +x DBX*.AppImage',
-      linkText: '下载安装包',
-    },
-    {
-      id: 'docker',
-      label: 'Docker',
-      note: '自托管',
-      command: 'docker run -d --name dbx -p 4224:4224 -v dbx-data:/app/data t8y2/dbx',
-      linkText: 'Docker 文档',
-      href: '/cn/docs/getting-started#docker',
-    },
+    { id: 'macos-arm', label: '适用于 macOS (Apple Silicon)', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_aarch64.dmg' },
+    { id: 'macos-intel', label: '适用于 macOS (Intel)', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_x64.dmg' },
+    { id: 'windows', label: '适用于 Windows', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_x64-setup.exe' },
+    { id: 'linux', label: '适用于 Linux x64', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_amd64.AppImage' },
+    { id: 'linux-arm', label: '适用于 Linux ARM64', href: 'https://dl.dbxio.com/releases/latest/DBX_0.5.9_aarch64.AppImage' },
   ],
 };
 
-export function InstallTabs({ lang }: InstallTabsProps) {
-  const options = installOptions[lang];
-  const [activeId, setActiveId] = useState(options[0].id);
-  const [copied, setCopied] = useState(false);
-  const active = options.find((item) => item.id === activeId) ?? options[0];
+const downloadLabel = { en: 'Download DBX', cn: '下载 DBX' };
 
-  async function copyCommand() {
-    await navigator.clipboard.writeText(active.command);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  }
+const platformIconPaths = {
+  dark: {
+    'linux-arm': '/icons/platform/linux.svg',
+    linux: '/icons/platform/linux.svg',
+    'macos-arm': '/icons/platform/macos.png',
+    'macos-intel': '/icons/platform/macos.png',
+    windows: '/icons/platform/windows.png',
+  },
+  light: {
+    'linux-arm': '/icons/platform/linux.svg',
+    linux: '/icons/platform/linux.svg',
+    'macos-arm': '/icons/platform/macos-white.png',
+    'macos-intel': '/icons/platform/macos-white.png',
+    windows: '/icons/platform/windows.png',
+  },
+};
+
+function detectPlatformId(): string {
+  if (typeof navigator === 'undefined') return 'macos-arm';
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes('win')) return 'windows';
+  if (ua.includes('linux')) return ua.includes('aarch64') || ua.includes('arm') ? 'linux-arm' : 'linux';
+  return 'macos-arm';
+}
+
+function PlatformIcon({ id, size, variant }: { id: string; size: number; variant: 'dark' | 'light' }) {
+  const src = platformIconPaths[variant][id as keyof (typeof platformIconPaths)['dark']];
+  if (!src) return <Server size={size} />;
+  return <img alt="" aria-hidden="true" height={size} src={src} width={size} />;
+}
+
+export function InstallTabs({ lang }: InstallTabsProps) {
+  const options = allOptions[lang];
+  const [open, setOpen] = useState(false);
+  const [platformId, setPlatformId] = useState('macos-arm');
+
+  useEffect(() => {
+    setPlatformId(detectPlatformId());
+  }, []);
+
+  const primary = useMemo(() => options.find((o) => o.id === platformId) ?? options[0], [options, platformId]);
+  const menuOptions = useMemo(() => options.filter((o) => o.id !== platformId), [options, platformId]);
 
   return (
-    <div className="landing-install">
-      <div className="landing-install-tabs" role="tablist" aria-label={lang === 'cn' ? '安装平台' : 'Install platform'}>
-        {options.map((item) => (
-          <button
-            aria-selected={item.id === active.id}
-            className="landing-install-tab"
+    <div
+      className="landing-install relative z-20 block w-fit max-w-full mx-auto"
+      data-open={open}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          setOpen(false);
+        }
+      }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <a
+        aria-controls="landing-install-menu"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className="landing-install-trigger grid grid-cols-[auto_minmax(0,1fr)_auto] gap-4 items-center w-[min(340px,calc(100vw-48px))] min-h-[68px] border-0 rounded-full mx-auto px-6 cursor-pointer"
+        href={primary.href}
+        onFocus={() => setOpen(true)}
+      >
+        <PlatformIcon id={primary.id} size={30} variant="dark" />
+        <span className="grid gap-0.5 min-w-0">
+          <strong className="overflow-hidden text-[15px] font-[780] leading-[1.2] truncate">{downloadLabel[lang]}</strong>
+          <small className="overflow-hidden text-xs font-[520] leading-tight truncate text-[color-mix(in_srgb,#0f172a_48%,#94a3b8)]">{primary.label}</small>
+        </span>
+        <ChevronDown size={18} />
+      </a>
+      <div
+        className="landing-install-menu absolute z-30 top-[calc(100%+12px)] left-1/2 -translate-x-1/2 grid w-[min(300px,calc(100vw-48px))] border border-[rgba(155,176,205,0.17)] rounded-xl py-1.5"
+        id="landing-install-menu"
+        role="listbox"
+        aria-label={lang === 'cn' ? '下载选项' : 'Download options'}
+      >
+        {menuOptions.map((item) => (
+          <a
+            aria-selected="false"
+            className="landing-install-option grid grid-cols-[24px_minmax(0,1fr)_18px] gap-3 items-center min-w-0 border-0 px-[18px] py-3 bg-transparent text-left cursor-pointer"
+            href={item.href}
             key={item.id}
-            onClick={() => {
-              setActiveId(item.id);
-              setCopied(false);
-            }}
-            role="tab"
-            type="button"
+            role="option"
           >
-            <span>{item.label}</span>
-            <small>{item.note}</small>
-          </button>
+            <PlatformIcon id={item.id} size={20} variant="light" />
+            <strong className="overflow-hidden text-sm font-[640] leading-[1.2] truncate">{item.label}</strong>
+            <Download size={15} aria-hidden="true" />
+          </a>
         ))}
       </div>
-      <div className="landing-install-command">
-        <code>{active.command}</code>
-        <button
-          aria-label={lang === 'cn' ? '复制安装命令' : 'Copy install command'}
-          className="landing-install-copy"
-          onClick={copyCommand}
-          title={lang === 'cn' ? '复制安装命令' : 'Copy install command'}
-          type="button"
-        >
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-        </button>
-      </div>
-      <a className="landing-install-release" href={active.href ?? releaseUrl} target="_blank">
-        {active.linkText}
-        <ExternalLink size={14} />
-      </a>
     </div>
   );
 }
