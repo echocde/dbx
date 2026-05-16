@@ -88,6 +88,7 @@ import {
 } from "@/lib/databaseCapabilities";
 import { sidebarSelectionCopyAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/treeNodeClick";
 import { formatCsv, formatJson, formatSqlInsert } from "@/lib/exportFormats";
+import { buildCreateDatabaseSql, supportsCreateDatabaseCharset } from "@/lib/createDatabaseSql";
 import { hexToRgba } from "@/lib/color";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
@@ -604,6 +605,8 @@ const duplicateTableName = ref("");
 
 const showCreateDatabaseDialog = ref(false);
 const createDatabaseName = ref("");
+const createDatabaseCharset = ref("utf8mb4");
+const createDatabaseCollation = ref("utf8mb4_unicode_ci");
 const showDropDatabaseConfirm = ref(false);
 const showCreateSchemaDialog = ref(false);
 const createSchemaName = ref("");
@@ -680,6 +683,11 @@ const canCreateTable = computed(() => {
 const canCreateDatabase = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
   return props.node.type === "connection" && supportsDatabaseCreation(config?.db_type);
+});
+
+const canSetCreateDatabaseCharset = computed(() => {
+  const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
+  return supportsCreateDatabaseCharset(config?.db_type, config?.driver_profile);
 });
 
 const canDropDatabase = computed(() => {
@@ -786,6 +794,8 @@ function buildDropSchemaSql(): string {
 
 function openCreateDatabaseDialog() {
   createDatabaseName.value = "";
+  createDatabaseCharset.value = "utf8mb4";
+  createDatabaseCollation.value = "utf8mb4_unicode_ci";
   showCreateDatabaseDialog.value = true;
 }
 
@@ -796,7 +806,14 @@ async function confirmCreateDatabase() {
   showCreateDatabaseDialog.value = false;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    const sql = `CREATE DATABASE ${quoteIdent(name)};`;
+    const config = connectionStore.getConfig(node.connectionId);
+    const sql = buildCreateDatabaseSql({
+      databaseType: config?.db_type,
+      driverProfile: config?.driver_profile,
+      name,
+      charset: createDatabaseCharset.value,
+      collation: createDatabaseCollation.value,
+    });
     await api.executeQuery(node.connectionId, "", sql);
     toast(t("contextMenu.createDatabaseSuccess", { name }), 3000);
     await connectionStore.loadDatabases(node.connectionId, { force: true });
@@ -2037,6 +2054,26 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         :placeholder="t('contextMenu.createDatabaseNamePlaceholder')"
         @keydown.enter.prevent="confirmCreateDatabase"
       />
+      <div v-if="canSetCreateDatabaseCharset" class="grid gap-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">{{ t("contextMenu.createDatabaseCharset") }}</label>
+          <Input
+            v-model="createDatabaseCharset"
+            :placeholder="t('contextMenu.createDatabaseCharsetPlaceholder')"
+            @keydown.enter.prevent="confirmCreateDatabase"
+          />
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">{{
+            t("contextMenu.createDatabaseCollation")
+          }}</label>
+          <Input
+            v-model="createDatabaseCollation"
+            :placeholder="t('contextMenu.createDatabaseCollationPlaceholder')"
+            @keydown.enter.prevent="confirmCreateDatabase"
+          />
+        </div>
+      </div>
       <DialogFooter>
         <Button variant="outline" @click="showCreateDatabaseDialog = false">{{ t("dangerDialog.cancel") }}</Button>
         <Button :disabled="!createDatabaseName.trim()" @click="confirmCreateDatabase">{{

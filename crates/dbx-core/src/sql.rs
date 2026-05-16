@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::connection::DatabaseType;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlFileRequest {
@@ -29,6 +31,12 @@ pub enum SqlFileStatus {
     Done,
     Error,
     Cancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SqlFileStatementAction {
+    Execute(String),
+    Skip,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -247,11 +255,108 @@ pub fn statement_summary(statement: &str) -> String {
     collapsed.chars().take(MAX_LEN).collect()
 }
 
+pub fn prepare_sql_file_statement(
+    statement: &str,
+    db_type: &DatabaseType,
+    driver_profile: Option<&str>,
+) -> SqlFileStatementAction {
+    let statement = statement.trim();
+    let Some(body) = mysql_executable_comment_body(statement) else {
+        return SqlFileStatementAction::Execute(statement.to_string());
+    };
+
+    if !is_mysql_compatible_import_target(db_type, driver_profile) {
+        return SqlFileStatementAction::Skip;
+    }
+
+    let body = body.trim();
+    if body.is_empty() || is_mysql_key_toggle_statement(body) {
+        return SqlFileStatementAction::Skip;
+    }
+
+    SqlFileStatementAction::Execute(body.to_string())
+}
+
 pub fn starts_with_executable_sql_keyword(sql: &str, keywords: &[&str]) -> bool {
     let Some(token) = first_executable_sql_token(sql) else {
         return false;
     };
     keywords.iter().any(|keyword| token.eq_ignore_ascii_case(keyword))
+}
+
+fn is_mysql_compatible_import_target(db_type: &DatabaseType, driver_profile: Option<&str>) -> bool {
+    matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Goldendb)
+        || driver_profile.map(|profile| profile.to_ascii_lowercase()).is_some_and(|profile| {
+            matches!(
+                profile.as_str(),
+                "mariadb" | "tidb" | "oceanbase" | "custom_mysql" | "doris" | "starrocks" | "selectdb" | "goldendb"
+            )
+        })
+}
+
+fn mysql_executable_comment_body(statement: &str) -> Option<&str> {
+    let bytes = statement.as_bytes();
+    let start = leading_mysql_executable_comment_start(statement)?;
+    let body_start = if bytes.get(start + 2) == Some(&b'!') { start + 3 } else { start + 4 };
+    let mut body_start = body_start;
+    while body_start < bytes.len() && (bytes[body_start].is_ascii_digit() || bytes[body_start].is_ascii_whitespace()) {
+        body_start += 1;
+    }
+
+    let close = find_block_comment_close(bytes, body_start)?;
+    if has_executable_sql(&statement[close + 2..]) {
+        return None;
+    }
+
+    Some(&statement[body_start..close])
+}
+
+fn leading_mysql_executable_comment_start(statement: &str) -> Option<usize> {
+    let bytes = statement.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+
+        if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            if i + 2 < bytes.len() && (bytes[i + 2] == b'!' || (i + 3 < bytes.len() && &bytes[i + 2..i + 4] == b"M!")) {
+                return Some(i);
+            }
+
+            let close = find_block_comment_close(bytes, i + 2)?;
+            i = close + 2;
+            continue;
+        }
+
+        return None;
+    }
+
+    None
+}
+
+fn find_block_comment_close(bytes: &[u8], mut start: usize) -> Option<usize> {
+    while start + 1 < bytes.len() {
+        if bytes[start] == b'*' && bytes[start + 1] == b'/' {
+            return Some(start);
+        }
+        start += 1;
+    }
+    None
+}
+
+fn is_mysql_key_toggle_statement(statement: &str) -> bool {
+    let upper = statement.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_uppercase();
+    upper.starts_with("ALTER TABLE ") && (upper.ends_with(" ENABLE KEYS") || upper.ends_with(" DISABLE KEYS"))
 }
 
 fn first_executable_sql_token(sql: &str) -> Option<&str> {
@@ -399,7 +504,12 @@ fn split_sql_script(sql: &str) -> Result<Vec<String>, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{split_sql_script, starts_with_executable_sql_keyword, SqlStatementSplitter};
+    use crate::models::connection::DatabaseType;
+
+    use super::{
+        prepare_sql_file_statement, split_sql_script, starts_with_executable_sql_keyword, SqlFileStatementAction,
+        SqlStatementSplitter,
+    };
 
     #[test]
     fn splits_semicolon_delimited_statements() {
@@ -502,6 +612,42 @@ mod tests {
     fn detects_mysql_executable_comment_keyword() {
         assert!(starts_with_executable_sql_keyword("/*!40101 SELECT 1 */", &["SELECT"]));
         assert!(starts_with_executable_sql_keyword("/*M! SELECT 1 */", &["SELECT"]));
+    }
+
+    #[test]
+    fn prepares_mysql_executable_comments_for_mysql_compatible_imports() {
+        assert_eq!(
+            prepare_sql_file_statement(
+                "/*!40101 SET character_set_client = @saved_cs_client */",
+                &DatabaseType::Mysql,
+                None
+            ),
+            SqlFileStatementAction::Execute("SET character_set_client = @saved_cs_client".to_string())
+        );
+    }
+
+    #[test]
+    fn skips_mysql_key_toggle_comments_for_mysql_compatible_imports() {
+        assert_eq!(
+            prepare_sql_file_statement(" /*!40000 ALTER TABLE `dd_admin` ENABLE KEYS */", &DatabaseType::Mysql, None),
+            SqlFileStatementAction::Skip
+        );
+        assert_eq!(
+            prepare_sql_file_statement("/*!40000 ALTER TABLE `dd_admin` DISABLE KEYS */", &DatabaseType::Mysql, None),
+            SqlFileStatementAction::Skip
+        );
+    }
+
+    #[test]
+    fn skips_mysql_executable_comments_for_non_mysql_imports() {
+        assert_eq!(
+            prepare_sql_file_statement(
+                "/*!40101 SET character_set_client = @saved_cs_client */",
+                &DatabaseType::Postgres,
+                None
+            ),
+            SqlFileStatementAction::Skip
+        );
     }
 
     #[test]
