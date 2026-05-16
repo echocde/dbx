@@ -6,9 +6,11 @@ import { translateBackendError } from "@/i18n/backend-errors";
 import {
   ArrowUp,
   ArrowRightLeft,
+  AlertTriangle,
   Bot,
   Check,
   ChevronRight,
+  CircleSlash,
   Copy,
   Database,
   HelpCircle,
@@ -17,6 +19,7 @@ import {
   MessageSquarePlus,
   Replace,
   Server,
+  ShieldCheck,
   Table2,
   Play,
   Square,
@@ -44,7 +47,8 @@ import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { useQueryStore } from "@/stores/queryStore";
 import { useToast } from "@/composables/useToast";
 import { buildAiContext, runAiStream, type AiAction } from "@/lib/ai";
-import { extractFirstSqlCodeBlock, shouldAttemptAiAutoExecute } from "@/lib/aiSqlExecutionPolicy";
+import { buildAiAgentPlan } from "@/lib/aiAgentPlan";
+import { buildAiAgentStepItems, type AiAgentStepItem, type AiAgentStepTone } from "@/lib/aiAgentStepPresentation";
 import { Marked } from "marked";
 import {
   aiCancelStream,
@@ -73,6 +77,7 @@ interface ChatMessage {
   content: string;
   reasoning?: string;
   isThinking?: boolean;
+  agentSteps?: AiAgentStepItem[];
 }
 
 const props = defineProps<{
@@ -208,6 +213,33 @@ function appendAssistantReasoning(assistantIdx: number, delta: string) {
 }
 
 const expandedReasoning = ref<Set<number>>(new Set());
+
+function agentStepIcon(tone: AiAgentStepTone) {
+  if (tone === "danger") return CircleSlash;
+  if (tone === "warning") return AlertTriangle;
+  if (tone === "active") return Play;
+  return ShieldCheck;
+}
+
+function agentStepClass(tone: AiAgentStepTone): string {
+  switch (tone) {
+    case "success":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "active":
+      return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+    case "warning":
+      return "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+    case "danger":
+      return "border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-300";
+    default:
+      return "border-border bg-background/60 text-muted-foreground";
+  }
+}
+
+function agentStepTitle(step: AiAgentStepItem): string {
+  if (!step.titleKey) return t(step.labelKey);
+  return t(step.titleKey, step.titleParams || {});
+}
 
 function toggleReasoning(index: number) {
   const next = new Set(expandedReasoning.value);
@@ -448,7 +480,7 @@ async function send() {
   scrollToBottom();
 
   const requestedAction = activeAction.value;
-  const shouldAutoExecute = assistantMode.value === "agent" && shouldAttemptAiAutoExecute(displayText, requestedAction);
+  const requestedMode = assistantMode.value;
   isGenerating.value = true;
   messages.value.push({ role: "assistant", content: "" });
   const assistantIdx = messages.value.length - 1;
@@ -466,6 +498,7 @@ async function send() {
       {
         config: settings.aiConfig,
         action: activeAction.value,
+        mode: requestedMode,
         instruction: displayText,
         context,
       },
@@ -484,10 +517,15 @@ async function send() {
     const msg = messages.value[assistantIdx];
     if (msg) msg.isThinking = false;
     isGenerating.value = false;
-    if (shouldAutoExecute) {
-      const sql = extractFirstSqlCodeBlock(msg?.content || "");
-      if (sql) emit("requestAutoExecuteSql", sql);
-    }
+    const agentPlan = buildAiAgentPlan({
+      mode: requestedMode,
+      action: requestedAction,
+      instruction: displayText,
+      assistantContent: msg?.content || "",
+      connection: props.connection,
+    });
+    if (msg && requestedMode === "agent") msg.agentSteps = buildAiAgentStepItems(agentPlan);
+    if (agentPlan.handoffSql) emit("requestAutoExecuteSql", agentPlan.handoffSql);
     activeAction.value = "generate";
     currentSessionId.value = "";
     persistConversation();
@@ -741,6 +779,18 @@ function formatInlineText(text: string): string {
                     {{ msg.reasoning }}
                   </div>
                 </div>
+              </div>
+              <div v-if="msg.agentSteps?.length" class="mb-2 flex flex-wrap gap-1.5">
+                <span
+                  v-for="step in msg.agentSteps"
+                  :key="step.key"
+                  class="inline-flex h-5 max-w-full items-center gap-1 rounded-full border px-1.5 text-[10px] font-medium"
+                  :class="agentStepClass(step.tone)"
+                  :title="agentStepTitle(step)"
+                >
+                  <component :is="agentStepIcon(step.tone)" class="h-3 w-3 shrink-0" />
+                  <span class="truncate">{{ t(step.labelKey) }}</span>
+                </span>
               </div>
               <template v-for="(seg, j) in parseMessage(msg.content)" :key="j">
                 <div v-if="seg.type === 'text'" class="ai-markdown whitespace-normal">

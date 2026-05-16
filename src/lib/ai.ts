@@ -12,9 +12,11 @@ import type {
 import * as api from "@/lib/api";
 import { currentLocale } from "@/i18n";
 import { aiTableMentionKey, type AiTableMention } from "@/lib/aiTableMentions";
+import { aiSkillForAction } from "@/lib/aiSkills";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
 
 export type AiAction = "generate" | "explain" | "optimize" | "fix" | "convert" | "sampleData";
+export type AiAssistantMode = "ask" | "agent";
 
 export interface AiSchemaTable {
   schema?: string;
@@ -39,41 +41,16 @@ export interface AiContext {
 export interface AiRequestInput {
   config: AiConfig;
   action: AiAction;
+  mode?: AiAssistantMode;
   instruction: string;
   context: AiContext;
 }
 
-const ACTION_INSTRUCTIONS: Record<AiAction, { en: string; zh: string }> = {
-  generate: {
-    en: "Generate a SQL query that satisfies the user's request. Return the SQL in a ```sql code block first, followed by a brief note if needed. Use foreign key relationships from the schema to infer correct JOIN conditions.",
-    zh: "根据用户请求生成 SQL。先在 ```sql 代码块中返回 SQL，必要时附简短说明。利用 Schema 中的外键关系推断正确的 JOIN 条件。",
-  },
-  explain: {
-    en: "Explain the current SQL step by step. Point out risky operations, implicit assumptions, and potential performance issues. Reference index and foreign key info from the schema when relevant.",
-    zh: "逐步解释当前 SQL。指出危险操作、隐含假设和潜在性能问题。结合 Schema 中的索引和外键信息分析。",
-  },
-  optimize: {
-    en: "Rewrite or suggest improvements for the current SQL. Return the improved SQL in a ```sql code block first, followed by short notes explaining the changes. Use the index information in the schema to suggest index-aware optimizations (e.g., avoid full table scans, leverage existing indexes).",
-    zh: "重写或优化当前 SQL。先在 ```sql 代码块中返回优化后的 SQL，然后简要说明改动。利用 Schema 中的索引信息建议索引友好的优化（如避免全表扫描、利用现有索引）。",
-  },
-  fix: {
-    en: "Fix the current SQL using the provided error message and result context. Return the corrected SQL in a ```sql code block first, followed by a brief explanation of the root cause.",
-    zh: "根据报错信息和结果上下文修复当前 SQL。先在 ```sql 代码块中返回修正后的 SQL，再简要说明根因。",
-  },
-  convert: {
-    en: "Convert the current SQL to the target dialect requested by the user. Return the converted SQL in a ```sql code block first. Note any syntax differences or incompatibilities.",
-    zh: "将当前 SQL 转换为用户指定的目标方言。先在 ```sql 代码块中返回转换后的 SQL，再说明语法差异。",
-  },
-  sampleData: {
-    en: "Generate safe sample INSERT statements or mock data for the current schema. Do not use real production data. Return SQL in a ```sql code block.",
-    zh: "为当前 Schema 生成安全的示例 INSERT 语句或模拟数据。不使用真实生产数据。在 ```sql 代码块中返回 SQL。",
-  },
-};
-
 export async function runAiAction(input: AiRequestInput, history?: api.AiMessage[]): Promise<string> {
   const isZh = currentLocale() === "zh-CN";
-  const systemPrompt = buildSystemPrompt(input.action, input.context);
-  const instruction = isZh ? ACTION_INSTRUCTIONS[input.action].zh : ACTION_INSTRUCTIONS[input.action].en;
+  const skill = aiSkillForAction(input.action);
+  const systemPrompt = buildSystemPrompt(input.action, input.context, input.mode);
+  const instruction = isZh ? skill.userInstruction.zh : skill.userInstruction.en;
   const userPrompt = [
     `Action: ${input.action}`,
     instruction,
@@ -102,8 +79,9 @@ export async function runAiStream(
   onReasoningDelta?: (delta: string) => void,
 ): Promise<void> {
   const isZh = currentLocale() === "zh-CN";
-  const systemPrompt = buildSystemPrompt(input.action, input.context);
-  const instruction = isZh ? ACTION_INSTRUCTIONS[input.action].zh : ACTION_INSTRUCTIONS[input.action].en;
+  const skill = aiSkillForAction(input.action);
+  const systemPrompt = buildSystemPrompt(input.action, input.context, input.mode);
+  const instruction = isZh ? skill.userInstruction.zh : skill.userInstruction.en;
   const userPrompt = [
     `Action: ${input.action}`,
     instruction,
@@ -152,7 +130,7 @@ export function extractSql(text: string): string {
   return text.trim();
 }
 
-export function buildSystemPrompt(action: AiAction, context: AiContext): string {
+export function buildSystemPrompt(action: AiAction, context: AiContext, mode: AiAssistantMode = "ask"): string {
   const schema = formatSchema(context);
   const resultPreview = context.lastResultPreview ? `\nLast result preview:\n${context.lastResultPreview}\n` : "";
   const lastError = context.lastError ? `\nLast error:\n${context.lastError}\n` : "";
@@ -160,42 +138,16 @@ export function buildSystemPrompt(action: AiAction, context: AiContext): string 
   const isZh = currentLocale() === "zh-CN";
 
   const lines: string[] = [
-    isZh ? "你是 DBX 内置的数据库助手。用中文回复。" : "You are DBX's built-in database assistant. Reply in English.",
-    isZh
-      ? "精确、保守，根据当前数据库方言生成 SQL。"
-      : "Be precise, conservative, and adapt SQL to the active database dialect.",
-    isZh
-      ? "下面的 Schema 上下文已包含表、列、索引和外键信息，直接使用即可。不要查询 information_schema 或系统表来获取结构信息。"
-      : "The schema context below already contains tables, columns, indexes, and foreign keys — use it directly. Do NOT query information_schema or system tables.",
-    isZh
-      ? "当用户要求分析或查看某个表时，生成 SELECT 查询获取数据，而不是查询元数据。"
-      : "When the user asks to 'analyze' or 'look at' a table, generate a SELECT query to retrieve data, not a metadata query.",
-    isZh ? "不要编造 Schema 中不存在的表或列。" : "Never invent tables or columns that are not in the schema context.",
-    isZh
-      ? "用户输入中的 @schema.table 或 @table 表示用户明确提到的表；这些表已优先放入 Schema 上下文。"
-      : "User input may contain @schema.table or @table mentions. Treat them as explicit table references; mentioned tables are prioritized in the schema context.",
-    isZh
-      ? "对于 DROP、DELETE、TRUNCATE、ALTER 或没有 WHERE 的 UPDATE，简要警告并优先提供安全的 SELECT 预览。"
-      : "For destructive statements (DROP, DELETE, TRUNCATE, ALTER, UPDATE without WHERE), warn briefly and prefer a safer SELECT preview.",
+    ...buildBasePromptLines(isZh),
+    ...buildModePromptLines(mode, isZh),
+    ...buildActionPromptLines(action, isZh),
   ];
 
-  if (action === "optimize") {
+  if (context.truncated) {
     lines.push(
       isZh
-        ? "利用 Schema 中的索引信息建议优化。指出哪些查询条件可以命中索引、哪些会导致全表扫描。"
-        : "Use the index information in the schema to suggest optimizations. Point out which conditions hit indexes and which cause full table scans.",
-    );
-  } else if (action === "generate") {
-    lines.push(
-      isZh
-        ? "利用外键关系推断 JOIN 条件。生成操作优先返回 SQL，避免长篇解释。"
-        : "Use foreign key relationships to infer JOIN conditions. Return the SQL first and avoid long explanations.",
-    );
-  } else if (action === "fix") {
-    lines.push(
-      isZh
-        ? "仔细分析错误信息，定位根因。先返回修正后的 SQL，再简要解释。"
-        : "Carefully analyze the error message to identify the root cause. Return the corrected SQL first, then briefly explain.",
+        ? "Schema 已截断：如果请求可能涉及未出现的表或字段，不要猜测。请让用户用 @table 指定相关表，或先生成只读探索查询。"
+        : "Schema is truncated: if the request may involve tables or columns not shown, do not guess. Ask the user to mention the relevant @table, or generate a read-only exploration query first.",
     );
   }
 
@@ -216,6 +168,66 @@ export function buildSystemPrompt(action: AiAction, context: AiContext): string 
   );
 
   return lines.filter(Boolean).join("\n");
+}
+
+function buildBasePromptLines(isZh: boolean): string[] {
+  return [
+    isZh ? "你是 DBX 内置的数据库助手。用中文回复。" : "You are DBX's built-in database assistant. Reply in English.",
+    isZh
+      ? "精确、保守，根据当前数据库方言生成 SQL。"
+      : "Be precise, conservative, and adapt SQL to the active database dialect.",
+    isZh
+      ? "严格使用当前数据库方言；标识符引用、分页、日期函数、字符串拼接、LIMIT/TOP/OFFSET 语法必须匹配数据库类型。"
+      : "Strictly use the active database dialect; identifier quoting, pagination, date functions, string concatenation, and LIMIT/TOP/OFFSET syntax must match the database type.",
+    isZh
+      ? "下面的 Schema 上下文已包含表、列、索引和外键信息，直接使用即可。不要查询 information_schema 或系统表来获取结构信息。"
+      : "The schema context below already contains tables, columns, indexes, and foreign keys — use it directly. Do NOT query information_schema or system tables.",
+    isZh
+      ? "当用户要求分析或查看某个表时，生成 SELECT 查询获取数据，而不是查询元数据。"
+      : "When the user asks to 'analyze' or 'look at' a table, generate a SELECT query to retrieve data, not a metadata query.",
+    isZh ? "不要编造 Schema 中不存在的表或列。" : "Never invent tables or columns that are not in the schema context.",
+    isZh
+      ? "用户输入中的 @schema.table 或 @table 表示用户明确提到的表；这些表已优先放入 Schema 上下文。"
+      : "User input may contain @schema.table or @table mentions. Treat them as explicit table references; mentioned tables are prioritized in the schema context.",
+    isZh
+      ? "不要生成多语句 SQL，除非用户明确要求。不要在同一个回答里混合 SELECT 和写操作。"
+      : "Do not generate multi-statement SQL unless the user explicitly asks for it. Do not mix SELECT statements and write operations in the same answer.",
+    isZh
+      ? "对于 DROP、DELETE、TRUNCATE、ALTER 或没有 WHERE 的 UPDATE，简要警告并优先提供安全的 SELECT 预览。"
+      : "For destructive statements (DROP, DELETE, TRUNCATE, ALTER, UPDATE without WHERE), warn briefly and prefer a safer SELECT preview.",
+    isZh
+      ? "对于 UPDATE 或 DELETE，必须带 WHERE 并说明影响范围；生产库写操作只给建议，不主动建议执行。"
+      : "For UPDATE or DELETE, require a WHERE clause and explain the affected scope; for production writes, provide guidance but do not proactively suggest execution.",
+  ];
+}
+
+function buildModePromptLines(mode: AiAssistantMode, isZh: boolean): string[] {
+  if (mode === "agent") {
+    return [
+      isZh
+        ? "你处于 Agent 模式。用户表达查询意图时，优先生成一个可直接执行的只读 SQL。"
+        : "You are in Agent mode. When the user expresses query intent, prioritize one directly executable read-only SQL statement.",
+      isZh
+        ? "第一个 ```sql 代码块只能包含最终推荐执行的 SQL；不要把解释性 SQL、备选 SQL、危险 SQL 放在第一个代码块。"
+        : "The first ```sql code block must contain only the final SQL recommended for execution; do not put explanatory SQL, alternatives, or risky SQL in the first code block.",
+      isZh
+        ? "如果安全执行条件不满足，先说明原因，再给只读预览或澄清问题。"
+        : "If safe execution requirements are not met, explain why first, then provide a read-only preview or a clarifying question.",
+    ];
+  }
+
+  return [
+    isZh
+      ? "你处于 Ask 模式。只生成 SQL 和说明，不要暗示已经执行或即将自动执行。"
+      : "You are in Ask mode. Generate SQL and explanations only; do not imply that anything has run or will auto-run.",
+  ];
+}
+
+function buildActionPromptLines(action: AiAction, isZh: boolean): string[] {
+  const skill = aiSkillForAction(action);
+  return isZh
+    ? [...skill.systemRules.zh, ...skill.outputContract.zh]
+    : [...skill.systemRules.en, ...skill.outputContract.en];
 }
 
 function formatSchema(context: AiContext): string {
