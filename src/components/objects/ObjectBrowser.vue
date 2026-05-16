@@ -34,6 +34,7 @@ import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
 import { useToast } from "@/composables/useToast";
 import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
+import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
@@ -62,6 +63,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { toast } = useToast();
+const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 
 const schemas = ref<string[]>([]);
@@ -263,6 +265,11 @@ async function confirmDrop() {
             : "contextMenu.dropTableSuccess";
     toast(t(successKey, { name: row.name }));
     await reload();
+    await connectionStore.refreshObjectListTreeNode(
+      props.connection.id,
+      props.database,
+      row.schema || selectedSchema.value,
+    );
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
   }

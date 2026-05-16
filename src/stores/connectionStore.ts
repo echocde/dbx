@@ -1157,6 +1157,17 @@ export const useConnectionStore = defineStore("connection", () => {
     await loadDatabases(connectionId, { force: true });
   }
 
+  async function refreshObjectListTreeNode(connectionId: string, database: string, schema?: string) {
+    const config = getConfig(connectionId);
+    const shouldRefreshSchemaNode = schema && !(config?.db_type === "sqlserver" && schema.toLowerCase() === "dbo");
+    const node = shouldRefreshSchemaNode ? findNode(treeNodes.value, `${connectionId}:${database}:${schema}`) : null;
+    if (node) {
+      await refreshTreeNode(node);
+      return;
+    }
+    await refreshDatabaseTreeNode(connectionId, database);
+  }
+
   function isSchemaAwareDatabase(connectionId: string): boolean {
     return isSchemaAware(getConfig(connectionId)?.db_type);
   }
@@ -1587,6 +1598,7 @@ export const useConnectionStore = defineStore("connection", () => {
     refreshSavedSqlTree,
     refreshTreeNode,
     refreshDatabaseTreeNode,
+    refreshObjectListTreeNode,
     connectedIds,
     connectionErrors,
     setConnectionError,

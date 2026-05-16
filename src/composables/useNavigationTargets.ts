@@ -127,7 +127,7 @@ export function useNavigationTargets(dialogs: {
       const schema = dialogs.structurePrefillSchema?.value;
       if (connId && db) {
         try {
-          await connectionStore.loadTables(connId, db, schema || undefined);
+          await connectionStore.refreshObjectListTreeNode(connId, db, schema || undefined);
         } catch {}
       }
       return;
@@ -146,6 +146,11 @@ export function useNavigationTargets(dialogs: {
           columns,
           primaryKeys: editablePrimaryKeys(connectionStore.getConfig(activeTab.connectionId)?.db_type, columns),
         });
+        await connectionStore.refreshObjectListTreeNode(
+          activeTab.connectionId,
+          activeTab.database,
+          activeTab.tableMeta.schema,
+        );
         await reloadData();
       } catch (e: any) {
         toast(e?.message || String(e), 5000);

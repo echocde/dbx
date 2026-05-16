@@ -249,6 +249,9 @@ async function startTransfer() {
       overallCancelled.value = nextState.cancelled;
       overallError.value = nextState.error;
     });
+    if (createTable.value && !overallError.value && !overallCancelled.value) {
+      await store.refreshObjectListTreeNode(targetConnectionId.value, targetDatabase.value, targetSchema.value);
+    }
   } catch (e: any) {
     overallError.value = true;
   }
