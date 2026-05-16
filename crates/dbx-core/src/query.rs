@@ -248,19 +248,30 @@ pub async fn do_execute(
             let session = session.clone();
             let sql = sql.to_string();
             let schema = schema.map(str::to_string);
+            let database = config.effective_database().unwrap_or("").to_string();
             drop(connections);
             wait_for_query(cancel_token, async move {
-                let params = serde_json::json!({
-                    "connection": config,
-                    "sql": sql,
-                    "schema": schema,
-                });
+                let params = external_driver_query_params(&config, &sql, &database, schema.as_deref());
                 session.invoke::<db::QueryResult>("executeQuery", params).await
             })
             .await
             .map(truncate_result)
         }
     }
+}
+
+fn external_driver_query_params(
+    config: &crate::models::connection::ConnectionConfig,
+    sql: &str,
+    database: &str,
+    schema: Option<&str>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "connection": config,
+        "sql": sql,
+        "database": database,
+        "schema": schema,
+    })
 }
 
 pub async fn execute_sql_statement(
@@ -719,6 +730,7 @@ async fn exec_tx_none_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::connection::{ConnectionConfig, DatabaseType, ProxyType};
 
     #[tokio::test]
     async fn wait_for_query_returns_cancelled_when_token_is_cancelled() {
@@ -788,5 +800,52 @@ mod tests {
         assert!(!is_connection_error("ORA-00942: table or view does not exist"));
         assert!(!is_connection_error("syntax error at position 5"));
         assert!(!is_connection_error("os error 13"));
+    }
+
+    #[test]
+    fn external_driver_query_params_include_database_and_schema_context() {
+        let config = ConnectionConfig {
+            id: "jdbc-1".to_string(),
+            name: "JDBC".to_string(),
+            db_type: DatabaseType::Jdbc,
+            driver_profile: None,
+            driver_label: None,
+            url_params: None,
+            host: "localhost".to_string(),
+            port: 0,
+            username: String::new(),
+            password: String::new(),
+            database: None,
+            visible_databases: None,
+            color: None,
+            ssh_enabled: false,
+            ssh_host: String::new(),
+            ssh_port: 22,
+            ssh_user: String::new(),
+            ssh_password: String::new(),
+            ssh_key_path: String::new(),
+            ssh_key_passphrase: String::new(),
+            ssh_expose_lan: false,
+            ssh_connect_timeout_secs: 5,
+            proxy_enabled: false,
+            proxy_type: ProxyType::Socks5,
+            proxy_host: String::new(),
+            proxy_port: 1080,
+            proxy_username: String::new(),
+            proxy_password: String::new(),
+            ssl: false,
+            sysdba: false,
+            connection_string: Some("jdbc:h2:mem:test".to_string()),
+            external_config: None,
+            jdbc_driver_class: None,
+            jdbc_driver_paths: Vec::new(),
+        };
+
+        let params = external_driver_query_params(&config, "SELECT * FROM events", "analytics", Some("app"));
+
+        assert_eq!(params["connection"]["id"], "jdbc-1");
+        assert_eq!(params["sql"], "SELECT * FROM events");
+        assert_eq!(params["database"], "analytics");
+        assert_eq!(params["schema"], "app");
     }
 }

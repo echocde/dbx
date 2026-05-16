@@ -100,7 +100,12 @@ public final class DbxJdbcPlugin {
                 result.put("ok", true);
                 yield result;
             }
-            case "executeQuery" -> executeQuery(connection, requireText(params, "sql"));
+            case "executeQuery" -> executeQuery(
+                connection,
+                requireText(params, "sql"),
+                optionalText(params, "database"),
+                optionalText(params, "schema")
+            );
             case "listDatabases" -> listDatabases(connection);
             case "listSchemas" -> listSchemas(connection, optionalText(params, "database"));
             case "listTables" -> listTables(connection, optionalText(params, "database"), optionalText(params, "schema"));
@@ -180,9 +185,10 @@ public final class DbxJdbcPlugin {
         return sharedConnection;
     }
 
-    private static JsonNode executeQuery(JsonNode connection, String sql) throws SQLException {
+    private static JsonNode executeQuery(JsonNode connection, String sql, String database, String schema) throws SQLException {
         long start = System.nanoTime();
         Connection conn = openConnection(connection);
+        applyExecutionContext(conn, database, schema);
         try (Statement statement = conn.createStatement()) {
             statement.setMaxRows(MAX_ROWS + 1);
             boolean hasResultSet = statement.execute(sql);
@@ -219,6 +225,21 @@ public final class DbxJdbcPlugin {
             result.put("execution_time_ms", (System.nanoTime() - start) / 1_000_000);
             result.put("truncated", truncated);
             return result;
+        }
+    }
+
+    private static void applyExecutionContext(Connection conn, String database, String schema) throws SQLException {
+        if (database != null) {
+            try {
+                conn.setCatalog(database);
+            } catch (SQLFeatureNotSupportedException | AbstractMethodError ignored) {
+            }
+        }
+        if (schema != null) {
+            try {
+                conn.setSchema(schema);
+            } catch (SQLFeatureNotSupportedException | AbstractMethodError ignored) {
+            }
         }
     }
 
