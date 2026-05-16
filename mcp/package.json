@@ -1,8 +1,8 @@
 {
   "name": "@dbx-app/mcp-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "mcpName": "io.github.t8y2/dbx",
-  "description": "MCP server for DBX \u2014 query databases from Claude Code, Cursor, and other AI agents",
+  "description": "MCP server for DBX — query databases from Claude Code, Cursor, and other AI agents",
   "type": "module",
   "bin": {
     "dbx-mcp-server": "dist/index.js"
