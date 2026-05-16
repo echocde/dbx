@@ -471,12 +471,14 @@ async function openData() {
       elapsed: elapsed(),
     });
     const pks = editablePrimaryKeys(config.db_type, columns);
+    const limit = settingsStore.editorSettings.pageSize;
     const sql = buildTableSelectSql({
       databaseType: config.db_type,
       schema: node.schema,
       tableName: node.label,
       columns: columns.map((column) => column.name),
       primaryKeys: pks,
+      limit,
       includeRowId: usesSyntheticRowIdKey(config.db_type, pks),
     });
     console.info("[DBX][openData:sql-built]", {

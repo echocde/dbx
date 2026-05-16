@@ -437,6 +437,8 @@ pub async fn execute_query(client: &mut SqlServerClient, sql: &str) -> Result<Qu
             affected_rows: 0,
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         })
     } else if requires_simple_query_batch(sql) {
         client.simple_query(sql).await.map_err(|e| e.to_string())?.into_results().await.map_err(|e| e.to_string())?;
@@ -446,6 +448,8 @@ pub async fn execute_query(client: &mut SqlServerClient, sql: &str) -> Result<Qu
             affected_rows: 0,
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         })
     } else {
         let result = client.execute(sql, &[]).await.map_err(|e| e.to_string())?;
@@ -455,6 +459,8 @@ pub async fn execute_query(client: &mut SqlServerClient, sql: &str) -> Result<Qu
             affected_rows: result.rows_affected().iter().sum::<u64>(),
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         })
     }
 }
@@ -478,6 +484,8 @@ pub async fn execute_batch(client: &mut SqlServerClient, sql: &str) -> Result<Ve
             affected_rows: 0,
             execution_time_ms: start.elapsed().as_millis(),
             truncated,
+            session_id: None,
+            has_more: false,
         });
     }
 
@@ -488,6 +496,8 @@ pub async fn execute_batch(client: &mut SqlServerClient, sql: &str) -> Result<Ve
             affected_rows: result_sets.len() as u64,
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         });
     }
 

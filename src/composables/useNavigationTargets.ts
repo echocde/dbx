@@ -3,6 +3,7 @@ import { buildTableSelectSql } from "@/lib/tableSelectSql";
 import { editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 export type NavigationTarget = {
   connectionId: string;
@@ -16,6 +17,8 @@ export type NavigationTarget = {
 async function openTableTarget(target: NavigationTarget) {
   const connectionStore = useConnectionStore();
   const queryStore = useQueryStore();
+  const settingsStore = useSettingsStore();
+  const pageLimit = settingsStore.editorSettings.pageSize;
 
   connectionStore.activeConnectionId = target.connectionId;
   const config = connectionStore.getConfig(target.connectionId);
@@ -37,6 +40,7 @@ async function openTableTarget(target: NavigationTarget) {
         columns: columns.map((column) => column.name),
         primaryKeys,
         whereInput: target.whereInput,
+        limit: pageLimit,
       });
       queryStore.updateSql(tabId, sql);
       queryStore.setTableMeta(tabId, {
@@ -53,6 +57,7 @@ async function openTableTarget(target: NavigationTarget) {
       schema: target.schema,
       tableName: target.tableName,
       whereInput: target.whereInput,
+      limit: pageLimit,
     });
     queryStore.updateSql(tabId, sql);
     queryStore.setTableMeta(tabId, {
@@ -83,6 +88,7 @@ async function openTableTarget(target: NavigationTarget) {
           primaryKeys,
           columns: columns.map((column) => column.name),
           includeRowId: true,
+          limit: pageLimit,
         });
         queryStore.updateSql(tabId, newSql);
         await queryStore.executeTabSql(tabId, newSql);

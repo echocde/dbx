@@ -71,6 +71,7 @@ export const executeBatch = forward("executeBatch");
 export const executeScript = forward("executeScript");
 export const executeInTransaction = forward("executeInTransaction");
 export const cancelQuery = forward("cancelQuery");
+export const closeQuerySession = forward("closeQuerySession");
 
 // AI
 export const aiComplete = forward("aiComplete");

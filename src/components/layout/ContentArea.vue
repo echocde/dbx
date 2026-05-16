@@ -304,7 +304,11 @@ defineExpose({ focusSearch });
                 :database-type="activeConnection?.db_type"
                 :connection-id="activeTab.connectionId"
                 :database="activeTab.database"
+                :schema="activeTab.schema"
                 :table-meta="activeTab.tableMeta"
+                :page-offset="activeTab.resultPageOffset"
+                :page-limit="activeTab.resultPageLimit"
+                :count-sql="activeTab.resultCountSql"
                 :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
                 @reload="
                   (

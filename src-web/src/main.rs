@@ -105,6 +105,7 @@ async fn main() {
         .route("/query/execute-script", post(routes::query::execute_script))
         .route("/query/execute-in-transaction", post(routes::query::execute_in_transaction))
         .route("/query/cancel", post(routes::query::cancel_query))
+        .route("/query/close-session", post(routes::query::close_query_session))
         // Redis
         .route("/redis/list-databases", post(routes::redis::list_databases))
         .route("/redis/scan-keys", post(routes::redis::scan_keys))

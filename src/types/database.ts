@@ -175,6 +175,8 @@ export interface QueryResult {
   affected_rows: number;
   execution_time_ms: number;
   truncated?: boolean;
+  session_id?: string | null;
+  has_more?: boolean;
 }
 
 export type TreeNodeType =
@@ -253,6 +255,11 @@ export interface QueryTab {
   lastExecutedSql?: string;
   resultBaseSql?: string;
   resultSortedSql?: string;
+  resultPageSql?: string;
+  resultPageLimit?: number;
+  resultPageOffset?: number;
+  resultCountSql?: string;
+  resultSessionId?: string;
   pinned?: boolean;
   result?: QueryResult;
   results?: QueryResult[];

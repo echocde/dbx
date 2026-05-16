@@ -123,6 +123,7 @@ pub fn run() {
             commands::query::execute_query,
             commands::query::execute_multi,
             commands::query::cancel_query,
+            commands::query::close_query_session,
             commands::query::execute_batch,
             commands::query::execute_script,
             commands::query::execute_in_transaction,

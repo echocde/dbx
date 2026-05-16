@@ -548,6 +548,8 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
                         affected_rows: 0,
                         execution_time_ms: start.elapsed().as_millis(),
                         truncated: false,
+                        session_id: None,
+                        has_more: false,
                     })
                 } else {
                     let affected = con.execute(&sql, []).map_err(|e| e.to_string())?;
@@ -557,6 +559,8 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
                         affected_rows: affected as u64,
                         execution_time_ms: start.elapsed().as_millis(),
                         truncated: false,
+                        session_id: None,
+                        has_more: false,
                     })
                 }
             })

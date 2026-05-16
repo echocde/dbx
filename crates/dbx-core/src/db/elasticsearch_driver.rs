@@ -295,6 +295,8 @@ pub async fn execute_rest_query(client: &EsClient, input: &str) -> Result<crate:
             affected_rows: total,
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         })
     } else {
         let pretty = serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string());
@@ -304,6 +306,8 @@ pub async fn execute_rest_query(client: &EsClient, input: &str) -> Result<crate:
             affected_rows: 0,
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         })
     }
 }

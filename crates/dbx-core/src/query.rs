@@ -11,6 +11,14 @@ pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ROWS: usize = 10000;
 pub const QUERY_CANCELED: &str = "Query canceled";
 
+#[derive(Clone, Debug, Default)]
+pub struct QueryExecutionOptions {
+    pub max_rows: Option<usize>,
+    pub fetch_size: Option<usize>,
+    pub page_size: Option<usize>,
+    pub result_session_id: Option<String>,
+}
+
 pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryResult, String> {
     let start = std::time::Instant::now();
 
@@ -54,6 +62,8 @@ pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryRe
             affected_rows: 0,
             execution_time_ms: start.elapsed().as_millis(),
             truncated,
+            session_id: None,
+            has_more: false,
         })
     } else {
         let affected = con.execute(sql, []).map_err(|e| e.to_string())?;
@@ -63,6 +73,8 @@ pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryRe
             affected_rows: affected as u64,
             execution_time_ms: start.elapsed().as_millis(),
             truncated: false,
+            session_id: None,
+            has_more: false,
         })
     }
 }
@@ -73,6 +85,56 @@ pub fn truncate_result(mut result: db::QueryResult) -> db::QueryResult {
         result.truncated = true;
     }
     result
+}
+
+pub fn agent_execute_query_params(
+    sql: &str,
+    schema: Option<&str>,
+    options: QueryExecutionOptions,
+) -> serde_json::Value {
+    let mut params = serde_json::json!({
+        "sql": sql,
+        "maxRows": options.max_rows.unwrap_or(MAX_ROWS),
+    });
+    if let Some(schema) = schema {
+        params["schema"] = serde_json::json!(schema);
+    }
+    if let Some(fetch_size) = options.fetch_size {
+        params["fetchSize"] = serde_json::json!(fetch_size);
+    }
+    params
+}
+
+pub fn agent_execute_query_page_params(
+    sql: &str,
+    schema: Option<&str>,
+    options: QueryExecutionOptions,
+) -> serde_json::Value {
+    let mut params = serde_json::json!({
+        "sql": sql,
+        "pageSize": options.page_size.unwrap_or(MAX_ROWS),
+        "maxRows": options.max_rows.unwrap_or(MAX_ROWS),
+    });
+    if let Some(schema) = schema {
+        params["schema"] = serde_json::json!(schema);
+    }
+    if let Some(fetch_size) = options.fetch_size {
+        params["fetchSize"] = serde_json::json!(fetch_size);
+    }
+    params
+}
+
+pub fn agent_fetch_query_page_params(session_id: &str, page_size: usize) -> serde_json::Value {
+    serde_json::json!({
+        "sessionId": session_id,
+        "pageSize": page_size,
+    })
+}
+
+pub fn agent_close_query_session_params(session_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "sessionId": session_id,
+    })
 }
 
 pub fn is_connection_error(err: &str) -> bool {
@@ -141,6 +203,7 @@ pub async fn do_execute(
     sql: &str,
     schema: Option<&str>,
     cancel_token: Option<CancellationToken>,
+    options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
     let connections = state.connections.read().await;
     let pool = connections.get(pool_key).ok_or("Connection not found")?;
@@ -218,11 +281,16 @@ pub async fn do_execute(
             drop(connections);
             wait_for_query(cancel_token, async move {
                 let mut client = client.lock().await;
-                let params = match schema {
-                    Some(s) => serde_json::json!({"sql": sql, "schema": s}),
-                    None => serde_json::json!({"sql": sql}),
-                };
-                client.call("execute_query", params).await
+                if let Some(session_id) = options.result_session_id.as_deref() {
+                    let params = agent_fetch_query_page_params(session_id, options.page_size.unwrap_or(MAX_ROWS));
+                    client.call("fetch_query_page", params).await
+                } else if options.page_size.is_some() {
+                    let params = agent_execute_query_page_params(&sql, schema.as_deref(), options);
+                    client.call("execute_query_page", params).await
+                } else {
+                    let params = agent_execute_query_params(&sql, schema.as_deref(), options);
+                    client.call("execute_query", params).await
+                }
             })
             .await
             .map(truncate_result)
@@ -282,6 +350,27 @@ pub async fn execute_sql_statement(
     schema: Option<&str>,
     cancel_token: Option<CancellationToken>,
 ) -> Result<db::QueryResult, String> {
+    execute_sql_statement_with_options(
+        state,
+        connection_id,
+        database,
+        sql,
+        schema,
+        cancel_token,
+        QueryExecutionOptions::default(),
+    )
+    .await
+}
+
+pub async fn execute_sql_statement_with_options(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    sql: &str,
+    schema: Option<&str>,
+    cancel_token: Option<CancellationToken>,
+    options: QueryExecutionOptions,
+) -> Result<db::QueryResult, String> {
     let pool_key = if database.is_empty() {
         connection_id.to_string()
     } else {
@@ -292,15 +381,40 @@ pub async fn execute_sql_statement(
         return Err(canceled_error());
     }
 
-    let result = do_execute(state, &pool_key, sql, schema, cancel_token.clone()).await;
+    let result = do_execute(state, &pool_key, sql, schema, cancel_token.clone(), options.clone()).await;
 
     match &result {
         Err(e) if is_connection_error(e) && !is_canceled(&cancel_token) => {
             let db_opt = if database.is_empty() { None } else { Some(database) };
             let new_key = state.reconnect_pool(connection_id, db_opt).await?;
-            do_execute(state, &new_key, sql, schema, cancel_token).await
+            do_execute(state, &new_key, sql, schema, cancel_token, options).await
         }
         _ => result,
+    }
+}
+
+pub async fn close_query_session(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    session_id: &str,
+) -> Result<bool, String> {
+    let pool_key = if database.is_empty() {
+        connection_id.to_string()
+    } else {
+        state.get_or_create_pool(connection_id, Some(database)).await?
+    };
+
+    let connections = state.connections.read().await;
+    let pool = connections.get(&pool_key).ok_or("Connection not found")?;
+    match pool {
+        PoolKind::Agent(client) => {
+            let client = client.clone();
+            drop(connections);
+            let mut client = client.lock().await;
+            client.call("close_query_session", agent_close_query_session_params(session_id)).await
+        }
+        _ => Ok(false),
     }
 }
 
@@ -311,6 +425,27 @@ pub async fn execute_multi_core(
     sql: &str,
     schema: Option<&str>,
     cancel_token: Option<CancellationToken>,
+) -> Result<Vec<db::QueryResult>, String> {
+    execute_multi_core_with_options(
+        state,
+        connection_id,
+        database,
+        sql,
+        schema,
+        cancel_token,
+        QueryExecutionOptions::default(),
+    )
+    .await
+}
+
+pub async fn execute_multi_core_with_options(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    sql: &str,
+    schema: Option<&str>,
+    cancel_token: Option<CancellationToken>,
+    options: QueryExecutionOptions,
 ) -> Result<Vec<db::QueryResult>, String> {
     let pool_key = if database.is_empty() {
         connection_id.to_string()
@@ -330,7 +465,16 @@ pub async fn execute_multi_core(
     let statements = split_sql_statements(sql);
     if statements.len() <= 1 {
         let single_sql = statements.into_iter().next().unwrap_or_default();
-        let result = execute_sql_statement(state, connection_id, database, &single_sql, schema, cancel_token).await?;
+        let result = execute_sql_statement_with_options(
+            state,
+            connection_id,
+            database,
+            &single_sql,
+            schema,
+            cancel_token,
+            options,
+        )
+        .await?;
         return Ok(vec![result]);
     }
 
@@ -343,6 +487,8 @@ pub async fn execute_multi_core(
                 affected_rows: 0,
                 execution_time_ms: 0,
                 truncated: false,
+                session_id: None,
+                has_more: false,
             });
             break;
         }
@@ -355,6 +501,8 @@ pub async fn execute_multi_core(
                     affected_rows: 0,
                     execution_time_ms: 0,
                     truncated: false,
+                    session_id: None,
+                    has_more: false,
                 });
             }
         }
@@ -380,6 +528,8 @@ async fn execute_multi_sqlserver(
                 affected_rows: 0,
                 execution_time_ms: 0,
                 truncated: false,
+                session_id: None,
+                has_more: false,
             });
             break;
         }
@@ -410,6 +560,8 @@ async fn execute_multi_sqlserver(
                     affected_rows: 0,
                     execution_time_ms: 0,
                     truncated: false,
+                    session_id: None,
+                    has_more: false,
                 });
             }
         }
@@ -422,6 +574,8 @@ async fn execute_multi_sqlserver(
             affected_rows: 0,
             execution_time_ms: 0,
             truncated: false,
+            session_id: None,
+            has_more: false,
         });
     }
 
@@ -445,7 +599,7 @@ pub async fn execute_statements(
     let start = std::time::Instant::now();
 
     for (i, sql) in statements.iter().enumerate() {
-        match do_execute(state, &pool_key, sql, schema, None).await {
+        match do_execute(state, &pool_key, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
             }
@@ -470,6 +624,8 @@ pub async fn execute_statements(
         affected_rows: total_affected,
         execution_time_ms: start.elapsed().as_millis(),
         truncated: false,
+        session_id: None,
+        has_more: false,
     })
 }
 
@@ -566,6 +722,8 @@ async fn exec_tx_pg_inner(
         affected_rows: total_affected,
         execution_time_ms: start.elapsed().as_millis(),
         truncated: false,
+        session_id: None,
+        has_more: false,
     })
 }
 
@@ -613,6 +771,8 @@ async fn exec_tx_mysql_raw_inner(
         affected_rows: total_affected,
         execution_time_ms: start.elapsed().as_millis(),
         truncated: false,
+        session_id: None,
+        has_more: false,
     })
 }
 
@@ -640,6 +800,8 @@ async fn exec_tx_sqlite_inner(
         affected_rows: total_affected,
         execution_time_ms: start.elapsed().as_millis(),
         truncated: false,
+        session_id: None,
+        has_more: false,
     })
 }
 
@@ -662,18 +824,20 @@ async fn exec_tx_explicit_inner(
     }
     drop(conns);
 
-    do_execute(state, pool_key, "BEGIN", schema, None)
+    do_execute(state, pool_key, "BEGIN", schema, None, QueryExecutionOptions::default())
         .await
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
-        match do_execute(state, pool_key, sql, schema, None).await {
+        match do_execute(state, pool_key, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
             }
             Err(e) => {
-                if let Err(rb_err) = do_execute(state, pool_key, "ROLLBACK", schema, None).await {
+                if let Err(rb_err) =
+                    do_execute(state, pool_key, "ROLLBACK", schema, None, QueryExecutionOptions::default()).await
+                {
                     log::error!("ROLLBACK failed after statement {} error: {}", i + 1, rb_err);
                 }
                 return Err(format!("Statement {} failed: {}", i + 1, e));
@@ -681,7 +845,9 @@ async fn exec_tx_explicit_inner(
         }
     }
 
-    do_execute(state, pool_key, "COMMIT", schema, None).await.map_err(|e| format!("COMMIT failed: {}", e))?;
+    do_execute(state, pool_key, "COMMIT", schema, None, QueryExecutionOptions::default())
+        .await
+        .map_err(|e| format!("COMMIT failed: {}", e))?;
 
     Ok(db::QueryResult {
         columns: vec![],
@@ -689,6 +855,8 @@ async fn exec_tx_explicit_inner(
         affected_rows: total_affected,
         execution_time_ms: start.elapsed().as_millis(),
         truncated: false,
+        session_id: None,
+        has_more: false,
     })
 }
 
@@ -702,7 +870,7 @@ async fn exec_tx_none_inner(
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
         log::info!("[query][tx-none:statement:start] index={} sql={}", i + 1, sql);
-        match do_execute(state, pool_key, sql, schema, None).await {
+        match do_execute(state, pool_key, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
                 log::info!("[query][tx-none:statement:done] index={} affected_rows={}", i + 1, result.affected_rows);
@@ -724,6 +892,8 @@ async fn exec_tx_none_inner(
         affected_rows: total_affected,
         execution_time_ms: start.elapsed().as_millis(),
         truncated: false,
+        session_id: None,
+        has_more: false,
     })
 }
 
@@ -745,6 +915,8 @@ mod tests {
                 affected_rows: 0,
                 execution_time_ms: 0,
                 truncated: false,
+                session_id: None,
+                has_more: false,
             })
         })
         .await;
@@ -762,6 +934,8 @@ mod tests {
                 affected_rows: 0,
                 execution_time_ms: 0,
                 truncated: false,
+                session_id: None,
+                has_more: false,
             })
         })
         .await;
@@ -847,5 +1021,59 @@ mod tests {
         assert_eq!(params["sql"], "SELECT * FROM events");
         assert_eq!(params["database"], "analytics");
         assert_eq!(params["schema"], "app");
+    }
+
+    #[test]
+    fn agent_execute_query_params_include_row_and_fetch_limits() {
+        let params = agent_execute_query_params(
+            "SELECT * FROM events",
+            Some("app"),
+            QueryExecutionOptions { max_rows: Some(500), fetch_size: Some(250), ..Default::default() },
+        );
+
+        assert_eq!(params["sql"], "SELECT * FROM events");
+        assert_eq!(params["schema"], "app");
+        assert_eq!(params["maxRows"], 500);
+        assert_eq!(params["fetchSize"], 250);
+    }
+
+    #[test]
+    fn agent_execute_query_params_default_to_safety_row_limit() {
+        let params = agent_execute_query_params("SELECT * FROM events", None, QueryExecutionOptions::default());
+
+        assert_eq!(params["sql"], "SELECT * FROM events");
+        assert!(params.get("schema").is_none());
+        assert_eq!(params["maxRows"], MAX_ROWS);
+        assert!(params.get("fetchSize").is_none());
+    }
+
+    #[test]
+    fn agent_execute_query_page_params_include_page_fetch_and_safety_limits() {
+        let params = agent_execute_query_page_params(
+            "SELECT * FROM events",
+            Some("app"),
+            QueryExecutionOptions { page_size: Some(500), fetch_size: Some(250), ..Default::default() },
+        );
+
+        assert_eq!(params["sql"], "SELECT * FROM events");
+        assert_eq!(params["schema"], "app");
+        assert_eq!(params["pageSize"], 500);
+        assert_eq!(params["fetchSize"], 250);
+        assert_eq!(params["maxRows"], MAX_ROWS);
+    }
+
+    #[test]
+    fn agent_fetch_query_page_params_include_session_and_page_size() {
+        let params = agent_fetch_query_page_params("session-1", 500);
+
+        assert_eq!(params["sessionId"], "session-1");
+        assert_eq!(params["pageSize"], 500);
+    }
+
+    #[test]
+    fn agent_close_query_session_params_include_session() {
+        let params = agent_close_query_session_params("session-1");
+
+        assert_eq!(params["sessionId"], "session-1");
     }
 }

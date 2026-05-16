@@ -181,8 +181,9 @@ export async function executeQuery(
   sql: string,
   schema?: string,
   executionId?: string,
+  options?: { maxRows?: number; fetchSize?: number; pageSize?: number; resultSessionId?: string },
 ): Promise<QueryResult> {
-  return invoke("execute_query", { connectionId, database, sql, schema, executionId });
+  return invoke("execute_query", { connectionId, database, sql, schema, executionId, ...options });
 }
 
 export async function executeMulti(
@@ -191,12 +192,17 @@ export async function executeMulti(
   sql: string,
   schema?: string,
   executionId?: string,
+  options?: { maxRows?: number; fetchSize?: number; pageSize?: number; resultSessionId?: string },
 ): Promise<QueryResult[]> {
-  return invoke("execute_multi", { connectionId, database, sql, schema, executionId });
+  return invoke("execute_multi", { connectionId, database, sql, schema, executionId, ...options });
 }
 
 export async function cancelQuery(executionId: string): Promise<boolean> {
   return invoke("cancel_query", { executionId });
+}
+
+export async function closeQuerySession(connectionId: string, database: string, sessionId: string): Promise<boolean> {
+  return invoke("close_query_session", { connectionId, database, sessionId });
 }
 
 export async function executeBatch(

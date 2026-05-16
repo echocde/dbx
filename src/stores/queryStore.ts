@@ -14,9 +14,12 @@ import {
 } from "@/lib/sqlAnalysis";
 import { restoreOpenTabsState, serializeOpenTabs } from "@/lib/openTabsPersistence";
 import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "@/lib/mongoShellCommand";
+import { buildQueryPaginationExecutionPlan } from "@/lib/queryResultPagination";
+import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
 import { editablePrimaryKeys } from "@/lib/tableEditing";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import type { SavedSqlFile } from "@/types/database";
 
@@ -45,6 +48,19 @@ export const useQueryStore = defineStore("query", () => {
   const tabs = ref<QueryTab[]>(restored.tabs);
   const activeTabId = ref<string | null>(restored.activeTabId);
   const MAX_CACHED_RESULTS = 10;
+
+  async function closeResultSession(tab: QueryTab | undefined, preserveSessionId?: string) {
+    const sessionId = tab?.resultSessionId ?? tab?.result?.session_id;
+    if (!tab || !sessionId || sessionId === preserveSessionId) return;
+    try {
+      await api.closeQuerySession(tab.connectionId, tab.database, sessionId);
+    } catch (error) {
+      console.warn("[DBX][query-session:close:error]", { tabId: tab.id, sessionId, error });
+    } finally {
+      if (tab.resultSessionId === sessionId) tab.resultSessionId = undefined;
+      if (tab.result?.session_id === sessionId) tab.result.session_id = undefined;
+    }
+  }
 
   const _persistSnapshot = computed(() =>
     tabs.value.map((t) => ({
@@ -147,6 +163,7 @@ export const useQueryStore = defineStore("query", () => {
     if (idx < 0) return;
     if (tabs.value[idx].isExecuting) void cancelTabExecution(id);
     if (tabs.value[idx].isExplaining) void cancelTabExplain(id);
+    void closeResultSession(tabs.value[idx]);
     tabs.value[idx].result = undefined;
     tabs.value[idx].results = undefined;
     tabs.value.splice(idx, 1);
@@ -158,6 +175,7 @@ export const useQueryStore = defineStore("query", () => {
   function closeOtherTabs(id: string) {
     tabs.value.filter((tab) => tab.id !== id && tab.isExecuting).forEach((tab) => void cancelTabExecution(tab.id));
     tabs.value.filter((tab) => tab.id !== id && tab.isExplaining).forEach((tab) => void cancelTabExplain(tab.id));
+    tabs.value.filter((tab) => tab.id !== id).forEach((tab) => void closeResultSession(tab));
     const next = closeOtherTabsState(tabs.value, activeTabId.value, id);
     tabs.value = next.tabs;
     activeTabId.value = next.activeTabId;
@@ -166,6 +184,7 @@ export const useQueryStore = defineStore("query", () => {
   function closeAllTabs() {
     tabs.value.filter((tab) => tab.isExecuting).forEach((tab) => void cancelTabExecution(tab.id));
     tabs.value.filter((tab) => tab.isExplaining).forEach((tab) => void cancelTabExplain(tab.id));
+    tabs.value.forEach((tab) => void closeResultSession(tab));
     const next = closeAllTabsState(tabs.value, activeTabId.value);
     tabs.value = next.tabs;
     activeTabId.value = next.activeTabId;
@@ -410,7 +429,11 @@ export const useQueryStore = defineStore("query", () => {
   async function executeTabSql(
     id: string,
     sql: string,
-    options?: { resultBaseSql?: string; resultSortedSql?: string | undefined },
+    options?: {
+      resultBaseSql?: string;
+      resultSortedSql?: string | undefined;
+      pagination?: { limit: number; offset: number; sessionId?: string };
+    },
   ) {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab || !sql.trim()) return;
@@ -432,9 +455,35 @@ export const useQueryStore = defineStore("query", () => {
       schema: tab.schema,
       sql,
     });
+    const queryBaseSql = options?.resultBaseSql ?? sql;
+    let sqlToExecute = sql;
+    let pageSql: string | undefined;
+    let pageLimit: number | undefined;
+    let pageOffset: number | undefined;
+    let countSql: string | undefined;
+    let useAgentResultSession = false;
     try {
       const connStore = useConnectionStore();
       const conn = connStore.getConfig(tab.connectionId);
+      const useAgentCursor = !!conn?.db_type && AGENT_DRIVER_TYPES.has(conn.db_type);
+      await closeResultSession(tab, options?.pagination?.sessionId);
+      if (tab.mode === "query") {
+        const settingsStore = useSettingsStore();
+        const pagination = options?.pagination ?? { limit: settingsStore.editorSettings.pageSize, offset: 0 };
+        const plan = buildQueryPaginationExecutionPlan({
+          sql,
+          queryBaseSql,
+          databaseType: conn?.db_type,
+          pagination,
+          useAgentCursor,
+        });
+        sqlToExecute = plan.sqlToExecute;
+        pageSql = plan.pageSql;
+        pageLimit = plan.pageLimit;
+        pageOffset = plan.pageOffset;
+        countSql = plan.countSql;
+        useAgentResultSession = plan.useAgentResultSession;
+      }
       const mongoFind = conn?.db_type === "mongodb" ? parseMongoFindCommand(sql) : null;
       if (mongoFind) {
         console.info("[DBX][executeTabSql:mongo-find:start]", { traceId, collection: mongoFind.collection });
@@ -469,7 +518,25 @@ export const useQueryStore = defineStore("query", () => {
       }
 
       console.info("[DBX][executeTabSql:execute-multi:start]", { traceId, elapsed: elapsed() });
-      const results = await api.executeMulti(tab.connectionId, tab.database, sql, tab.schema, executionId);
+      const executionOptions =
+        typeof pageLimit === "number"
+          ? useAgentResultSession
+            ? {
+                maxRows: 10000,
+                fetchSize: pageLimit,
+                pageSize: pageLimit,
+                resultSessionId: options?.pagination?.sessionId,
+              }
+            : { maxRows: pageLimit, fetchSize: pageLimit }
+          : undefined;
+      const results = await api.executeMulti(
+        tab.connectionId,
+        tab.database,
+        sqlToExecute,
+        tab.schema,
+        executionId,
+        executionOptions,
+      );
       console.info("[DBX][executeTabSql:execute-multi:done]", {
         traceId,
         resultCount: results.length,
@@ -488,10 +555,15 @@ export const useQueryStore = defineStore("query", () => {
           current.activeResultIndex = undefined;
           current.result = results[0];
         }
-        current.resultBaseSql = options?.resultBaseSql ?? sql;
+        current.resultBaseSql = queryBaseSql;
         current.resultSortedSql = options?.resultSortedSql;
+        current.resultPageSql = pageSql;
+        current.resultPageLimit = pageLimit;
+        current.resultPageOffset = pageOffset;
+        current.resultCountSql = countSql;
+        current.resultSessionId = current.result?.session_id ?? undefined;
         console.info("[DBX][executeTabSql:metadata:start]", { traceId, elapsed: elapsed() });
-        await analyzeQueryMetadata(current, current.resultBaseSql);
+        await analyzeQueryMetadata(current, queryBaseSql);
         console.info("[DBX][executeTabSql:metadata:done]", { traceId, elapsed: elapsed() });
       } else {
         console.warn("[DBX][executeTabSql:stale-result]", {
@@ -511,8 +583,13 @@ export const useQueryStore = defineStore("query", () => {
         current.querySourceColumns = undefined;
         current.queryEditabilityReason = undefined;
         if (current.mode !== "data") current.tableMeta = undefined;
-        current.resultBaseSql = options?.resultBaseSql ?? sql;
+        current.resultBaseSql = queryBaseSql;
         current.resultSortedSql = options?.resultSortedSql;
+        current.resultPageSql = pageSql;
+        current.resultPageLimit = pageLimit;
+        current.resultPageOffset = pageOffset;
+        current.resultCountSql = countSql;
+        current.resultSessionId = undefined;
       }
     } finally {
       const current = tabs.value.find((t) => t.id === id);

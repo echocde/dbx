@@ -111,6 +111,7 @@ const props = defineProps<{
   databaseType?: DatabaseType;
   connectionId?: string;
   database?: string;
+  schema?: string;
   context?: "results" | "table-data";
   sourceColumns?: Array<string | undefined>;
   queryEditabilityReason?: string;
@@ -121,6 +122,9 @@ const props = defineProps<{
     columns: ColumnInfo[];
     primaryKeys: string[];
   };
+  pageOffset?: number;
+  pageLimit?: number;
+  countSql?: string;
   loading?: boolean;
   onExecuteSql?: (sql: string) => Promise<void>;
   customSave?: (changes: {
@@ -951,7 +955,16 @@ watch(
 // --- Pagination ---
 const pageSize = ref(settingsStore.editorSettings.pageSize);
 const currentPage = ref(1);
-const isFullPage = computed(() => props.result.rows.length >= pageSize.value);
+watch(
+  () => [props.pageOffset, props.pageLimit],
+  ([offset, limit]) => {
+    if (typeof offset !== "number" || typeof limit !== "number" || limit <= 0) return;
+    pageSize.value = limit;
+    currentPage.value = Math.floor(offset / limit) + 1;
+  },
+);
+const canGoNextPage = computed(() => props.result.has_more === true || props.result.rows.length >= pageSize.value);
+const canJumpLastPage = computed(() => canGoNextPage.value && (!!props.tableMeta || !!props.countSql));
 const isResultsContext = computed(() => props.context === "results");
 const resultEditStatus = computed(() => {
   if (!isResultsContext.value || !hasData.value) return null;
@@ -1036,7 +1049,7 @@ function prevPage() {
   emit("paginate", (currentPage.value - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
 }
 function nextPage() {
-  if (!isFullPage.value) return;
+  if (!canGoNextPage.value) return;
   currentPage.value++;
   resetGridVerticalScroll(true);
   emit("paginate", (currentPage.value - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
@@ -1050,17 +1063,23 @@ function changePageSize(size: number) {
 }
 
 async function lastPage() {
-  if (!props.connectionId || !props.tableMeta) return;
-  const table = qualifiedTableName({
-    databaseType: props.databaseType,
-    schema: props.tableMeta.schema,
-    tableName: props.tableMeta.tableName,
-  });
-  const predicate = normalizeWhereInput(currentWhereInput());
-  const where = predicate ? ` WHERE (${predicate})` : "";
-  const sql = `SELECT COUNT(*) AS cnt FROM ${table}${where}`;
+  if (!props.connectionId) return;
+  let sql = props.countSql;
+  let schema = props.schema;
+  if (props.tableMeta) {
+    const table = qualifiedTableName({
+      databaseType: props.databaseType,
+      schema: props.tableMeta.schema,
+      tableName: props.tableMeta.tableName,
+    });
+    const predicate = normalizeWhereInput(currentWhereInput());
+    const where = predicate ? ` WHERE (${predicate})` : "";
+    sql = `SELECT COUNT(*) AS cnt FROM ${table}${where}`;
+    schema = props.tableMeta.schema;
+  }
+  if (!sql) return;
   try {
-    const result = await api.executeQuery(props.connectionId, props.database ?? "", sql, props.tableMeta.schema);
+    const result = await api.executeQuery(props.connectionId, props.database ?? "", sql, schema);
     const total = Number(result.rows?.[0]?.[0] ?? 0);
     if (total <= 0) return;
     const lastPageNum = Math.ceil(total / pageSize.value);
@@ -3523,10 +3542,10 @@ defineExpose({
           <ChevronLeft class="h-3 w-3" />
         </Button>
         <span>{{ currentPage }}</span>
-        <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="!isFullPage" @click="nextPage">
+        <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="!canGoNextPage" @click="nextPage">
           <ChevronRight class="h-3 w-3" />
         </Button>
-        <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="!isFullPage" @click="lastPage">
+        <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="!canJumpLastPage" @click="lastPage">
           <ChevronsRight class="h-3 w-3" />
         </Button>
       </span>

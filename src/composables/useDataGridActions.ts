@@ -2,6 +2,7 @@ import { type ComputedRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { buildSortedQuerySql } from "@/lib/queryResultSort";
@@ -13,6 +14,7 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
   const { toast } = useToast();
   const connectionStore = useConnectionStore();
   const queryStore = useQueryStore();
+  const settingsStore = useSettingsStore();
 
   function quoteIdent(tab: QueryTab, name: string): string {
     const config = connectionStore.getConfig(tab.connectionId);
@@ -41,6 +43,7 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
       primaryKeys,
       fallbackOrderColumns,
       includeRowId: useRowId,
+      limit: options.limit ?? settingsStore.editorSettings.pageSize,
       ...options,
     });
   }
@@ -87,7 +90,24 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
 
   async function onPaginate(offset: number, limit: number, whereInput?: string, orderBy?: string) {
     const tab = activeTab.value;
-    if (!tab?.tableMeta) return;
+    if (!tab) return;
+    if (tab.mode !== "data") {
+      const baseSql = tab.resultSortedSql ?? tab.resultBaseSql ?? tab.lastExecutedSql ?? tab.sql;
+      if (!baseSql.trim()) return;
+      const expectedNextOffset = (tab.resultPageOffset ?? 0) + (tab.resultPageLimit ?? limit);
+      const sessionId =
+        tab.result?.has_more && tab.result?.session_id && offset === expectedNextOffset && limit === tab.resultPageLimit
+          ? tab.result.session_id
+          : undefined;
+      await queryStore.executeTabSql(tab.id, baseSql, {
+        resultBaseSql: tab.resultBaseSql ?? tab.sql,
+        resultSortedSql: tab.resultSortedSql,
+        pagination: { offset, limit, sessionId },
+      });
+      return;
+    }
+
+    if (!tab.tableMeta) return;
     tab.whereInput = whereInput ?? "";
     const sql = buildTableSql(tab, { limit, offset, whereInput, orderBy });
     queryStore.updateSql(tab.id, sql);

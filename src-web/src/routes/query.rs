@@ -15,12 +15,24 @@ pub struct ExecuteQueryRequest {
     pub sql: String,
     pub schema: Option<String>,
     pub execution_id: Option<String>,
+    pub max_rows: Option<usize>,
+    pub fetch_size: Option<usize>,
+    pub page_size: Option<usize>,
+    pub result_session_id: Option<String>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelRequest {
     pub execution_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseSessionRequest {
+    pub connection_id: String,
+    pub database: String,
+    pub session_id: String,
 }
 
 #[derive(Deserialize)]
@@ -41,13 +53,19 @@ pub async fn execute_query(
     let registered = state.app.running_queries.register(execution_id);
     let cancel_token = registered.token();
 
-    let result = dbx_core::query::execute_sql_statement(
+    let result = dbx_core::query::execute_sql_statement_with_options(
         &state.app,
         &req.connection_id,
         &req.database,
         &req.sql,
         req.schema.as_deref(),
         Some(cancel_token),
+        dbx_core::query::QueryExecutionOptions {
+            max_rows: req.max_rows,
+            fetch_size: req.fetch_size,
+            page_size: req.page_size,
+            result_session_id: req.result_session_id,
+        },
     )
     .await
     .map_err(AppError)?;
@@ -65,13 +83,19 @@ pub async fn execute_multi(
     let registered = state.app.running_queries.register(execution_id);
     let cancel_token = registered.token();
 
-    let result = dbx_core::query::execute_multi_core(
+    let result = dbx_core::query::execute_multi_core_with_options(
         &state.app,
         &req.connection_id,
         &req.database,
         &req.sql,
         req.schema.as_deref(),
         Some(cancel_token),
+        dbx_core::query::QueryExecutionOptions {
+            max_rows: req.max_rows,
+            fetch_size: req.fetch_size,
+            page_size: req.page_size,
+            result_session_id: req.result_session_id,
+        },
     )
     .await
     .map_err(AppError)?;
@@ -103,6 +127,17 @@ pub async fn cancel_query(
 ) -> Json<serde_json::Value> {
     let cancelled = state.app.running_queries.cancel(&req.execution_id);
     Json(serde_json::json!({ "cancelled": cancelled }))
+}
+
+pub async fn close_query_session(
+    State(state): State<Arc<WebState>>,
+    Json(req): Json<CloseSessionRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let closed = dbx_core::query::close_query_session(&state.app, &req.connection_id, &req.database, &req.session_id)
+        .await
+        .map_err(AppError)?;
+
+    Ok(Json(serde_json::json!(closed)))
 }
 
 pub async fn execute_script(
