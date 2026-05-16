@@ -11,12 +11,17 @@ use dbx_core::models::connection::{rewrite_jdbc_url_host, ConnectionConfig, Data
 
 #[tauri::command]
 pub async fn save_connections(state: State<'_, Arc<AppState>>, configs: Vec<ConnectionConfig>) -> Result<(), String> {
+    let configs: Vec<ConnectionConfig> = configs.into_iter().map(|config| config.canonicalized()).collect();
     state.storage.save_connections(&configs).await
 }
 
 #[tauri::command]
 pub async fn load_connections(state: State<'_, Arc<AppState>>) -> Result<Vec<ConnectionConfig>, String> {
-    state.storage.load_connections().await
+    state
+        .storage
+        .load_connections()
+        .await
+        .map(|configs| configs.into_iter().map(|config| config.canonicalized()).collect())
 }
 
 #[tauri::command]
@@ -161,6 +166,7 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
 
 #[tauri::command]
 pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfig) -> Result<String, String> {
+    let config = config.canonicalized();
     let id = config.id.clone();
     let db_config = metadata_connection_config(&config);
 

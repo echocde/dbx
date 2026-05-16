@@ -52,6 +52,20 @@ test("parses JDBC URLs by using the inner database URL", () => {
   assert.equal(mysql.urlParams, "charset=utf8mb4");
 });
 
+test("parses TDengine WebSocket JDBC URLs", () => {
+  const parsed = parseConnectionUrl("jdbc:TAOS-WS://root:taosdata@td.example.com:6041/power?timezone=UTC");
+
+  assert.equal(parsed.dbType, "tdengine");
+  assert.equal(parsed.driverProfile, "tdengine");
+  assert.equal(parsed.driverLabel, "TDengine");
+  assert.equal(parsed.host, "td.example.com");
+  assert.equal(parsed.port, 6041);
+  assert.equal(parsed.username, "root");
+  assert.equal(parsed.password, "taosdata");
+  assert.equal(parsed.database, "power");
+  assert.equal(parsed.urlParams, "timezone=UTC");
+});
+
 test("parses SQL Server JDBC URLs with semicolon properties", () => {
   const parsed = parseConnectionUrl(
     "jdbc:sqlserver://sql.example.com:1434;databaseName=erp;user=sa;password=s%40cret;encrypt=true",

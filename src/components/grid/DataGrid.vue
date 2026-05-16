@@ -77,6 +77,7 @@ import {
   canEditExistingTableRows,
   hiveTablePropertiesIndicateTransactional,
   isHiddenGridColumn,
+  isTdengineExistingRowReadonlyColumn,
   usesSyntheticRowIdKey,
 } from "@/lib/tableEditing";
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
@@ -1153,7 +1154,12 @@ function canEditRowItem(item: RowItem | undefined): boolean {
 }
 
 function canEditCellItem(item: RowItem | undefined, columnIndex: number): boolean {
-  return canEditRowItem(item) && canEditColumn(columnIndex);
+  if (!canEditRowItem(item) || !canEditColumn(columnIndex)) return false;
+  if (!item?.isNew) {
+    const column = props.result.columns[columnIndex] ?? "";
+    if (isTdengineExistingRowReadonlyColumn(props.databaseType, column, props.tableMeta?.columns ?? [])) return false;
+  }
+  return true;
 }
 
 function canDeleteRowItem(item: RowItem | undefined): boolean {

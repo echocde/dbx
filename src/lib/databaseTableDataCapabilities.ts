@@ -8,6 +8,7 @@ export interface TableDataCapability {
   updateRequiresPrimaryKey: boolean;
   deleteRequiresPrimaryKey: boolean;
   requiresTransactionalTableForExistingRows: boolean;
+  existingRowsReadonly?: boolean;
   transaction: boolean;
   readonly?: boolean;
 }
@@ -75,6 +76,15 @@ const DATABASE_CAPABILITY_OVERRIDES: Partial<Record<DatabaseType, Partial<Databa
       requiresTransactionalTableForExistingRows: false,
       transaction: false,
       readonly: true,
+    },
+  },
+  tdengine: {
+    tableData: {
+      insert: true,
+      updateRequiresPrimaryKey: true,
+      deleteRequiresPrimaryKey: true,
+      requiresTransactionalTableForExistingRows: false,
+      transaction: false,
     },
   },
 };

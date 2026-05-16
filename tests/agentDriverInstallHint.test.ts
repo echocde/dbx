@@ -10,6 +10,10 @@ test("shows the agent driver install hint when the selected driver is missing", 
   assert.equal(showAgentDriverInstallHint("informix", [{ db_type: "informix", installed: false }]), true);
 });
 
+test("shows the agent driver install hint for TDengine when missing", () => {
+  assert.equal(showAgentDriverInstallHint("tdengine", [{ db_type: "tdengine", installed: false }]), true);
+});
+
 test("does not show agent driver install hints for built-in database types", () => {
   assert.equal(showAgentDriverInstallHint("mysql", [{ db_type: "informix", installed: false }]), false);
 });

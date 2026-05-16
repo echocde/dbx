@@ -41,6 +41,8 @@ const SCHEME_PROFILES: Record<string, ConnectionProfile> = {
   dameng: { type: "dameng", profile: "dm", label: "DM (Dameng)", defaultPort: 5236 },
   gaussdb: { type: "gaussdb", profile: "gaussdb", label: "GaussDB", defaultPort: 5432 },
   opengauss: { type: "gaussdb", profile: "opengauss", label: "openGauss", defaultPort: 5432 },
+  tdengine: { type: "tdengine", profile: "tdengine", label: "TDengine", defaultPort: 6041 },
+  "taos-ws": { type: "tdengine", profile: "tdengine", label: "TDengine", defaultPort: 6041 },
 };
 
 const HTTP_SELECTED_PROFILES: Record<string, ConnectionProfile> = {

@@ -1,5 +1,5 @@
 import type { DatabaseType } from "@/types/database";
-import { DBX_NEO4J_ELEMENT_ID_COLUMN, DBX_ROWID_COLUMN } from "./tableEditing.ts";
+import { DBX_NEO4J_ELEMENT_ID_COLUMN, DBX_ROWID_COLUMN, DBX_TDENGINE_TBNAME_COLUMN } from "./tableEditing.ts";
 import { qualifiedTableName, quoteTableIdentifier } from "./tableSelectSql.ts";
 
 export type GridCellValue = string | number | boolean | null;
@@ -8,6 +8,7 @@ export interface DataGridTableMeta {
   schema?: string;
   tableName: string;
   primaryKeys: string[];
+  columns?: DataGridColumnInfo[];
 }
 
 export interface DataGridColumnInfo {
@@ -108,6 +109,7 @@ function validateInsertedPrimaryKeys(options: DataGridSaveValidationOptions): st
 
 export function buildDataGridSaveStatements(options: DataGridSaveStatementOptions): string[] {
   if (options.databaseType === "neo4j") return buildNeo4jDataGridSaveStatements(options);
+  if (options.databaseType === "tdengine") return buildTdengineDataGridSaveStatements(options);
   const saveColumns = effectiveColumns(options.sourceColumns, options.columns);
 
   const table = qualifiedTableName({
@@ -153,6 +155,81 @@ export function buildDataGridSaveStatements(options: DataGridSaveStatementOption
   }
 
   return statements;
+}
+
+function buildTdengineDataGridSaveStatements(options: DataGridSaveStatementOptions): string[] {
+  const saveColumns = effectiveColumns(options.sourceColumns, options.columns);
+  const statements: string[] = [];
+  const canOverwriteExistingRows = saveColumns.some((column) => column?.toLowerCase() === DBX_TDENGINE_TBNAME_COLUMN);
+
+  if (canOverwriteExistingRows) {
+    for (const [rowIndex, changes] of options.dirtyRows) {
+      const row = options.rows[rowIndex];
+      if (!row) continue;
+      const afterRow = [...row];
+      for (const [columnIndex, value] of changes) {
+        afterRow[columnIndex] = value;
+      }
+      const statement = buildTdengineInsertStatement(options, saveColumns, afterRow);
+      if (statement) statements.push(statement);
+    }
+  }
+
+  for (const row of options.newRows) {
+    const statement = buildTdengineInsertStatement(options, saveColumns, row);
+    if (statement) statements.push(statement);
+  }
+
+  return statements;
+}
+
+function buildTdengineInsertStatement(
+  options: DataGridSaveStatementOptions,
+  saveColumns: Array<string | undefined>,
+  row: GridCellValue[],
+): string | undefined {
+  const tbname = tdengineTbnameValue(saveColumns, row);
+  const table = qualifiedTableName({
+    databaseType: "tdengine",
+    schema: options.tableMeta.schema,
+    tableName: options.tableMeta.tableName,
+  });
+  const tagColumns = tdengineTagColumns(options.tableMeta.columns);
+  const insertPairs = saveColumns
+    .map((column, index) => ({ column, value: row[index] }))
+    .filter((pair): pair is { column: string; value: GridCellValue } => !!pair.column)
+    .filter((pair) => pair.value !== null && pair.value !== undefined)
+    .filter((pair) => tdengineCanInsertColumn(pair.column, options.tableMeta.tableName, tbname, tagColumns));
+  if (!insertPairs.length) return undefined;
+  const columns = insertPairs.map((pair) => quoteIdent("tdengine", pair.column)).join(", ");
+  const values = insertPairs.map((pair) => formatGridSqlLiteral(pair.value, "tdengine")).join(", ");
+  return `INSERT INTO ${table} (${columns}) VALUES (${values});`;
+}
+
+function tdengineTbnameValue(saveColumns: Array<string | undefined>, row: GridCellValue[]): string | undefined {
+  const index = saveColumns.findIndex((column) => column?.toLowerCase() === DBX_TDENGINE_TBNAME_COLUMN);
+  if (index < 0) return undefined;
+  const value = row[index];
+  return value === null || value === undefined ? undefined : String(value);
+}
+
+function tdengineCanInsertColumn(
+  column: string,
+  tableName: string,
+  tbname: string | undefined,
+  tagColumns: Set<string>,
+): boolean {
+  const normalized = column.toLowerCase();
+  const targetIsChildTable = !tbname || tbname === tableName;
+  if (!targetIsChildTable) return true;
+  if (normalized === DBX_TDENGINE_TBNAME_COLUMN) return false;
+  return !tagColumns.has(normalized);
+}
+
+function tdengineTagColumns(columns: DataGridColumnInfo[] | undefined): Set<string> {
+  return new Set(
+    (columns ?? []).filter((column) => /\btag\b/i.test(column.extra ?? "")).map((column) => column.name.toLowerCase()),
+  );
 }
 
 export function buildDataGridRollbackStatements(options: DataGridSaveStatementOptions): string[] {
@@ -253,8 +330,30 @@ export function formatGridSqlLiteral(value: GridCellValue, databaseType?: Databa
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   const text = String(value);
   if (text === "") return databaseType === "sqlserver" ? "N''" : "''";
-  const escaped = `'${text.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+  const literalText = databaseType === "tdengine" ? formatTdengineTimestampLiteralText(text) : text;
+  const escaped = `'${literalText.replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
   return databaseType === "sqlserver" ? `N${escaped}` : escaped;
+}
+
+function formatTdengineTimestampLiteralText(text: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(\.\d{1,9})?$/.exec(text);
+  if (!match) return text;
+  return `${match[1]}T${match[2]}${normalizeFractionalSeconds(match[3])}${localTimezoneOffsetSuffix(text)}`;
+}
+
+function normalizeFractionalSeconds(fraction: string | undefined): string {
+  if (!fraction) return ".000";
+  return fraction.length >= 4 ? fraction.slice(0, 4) : fraction.padEnd(4, "0");
+}
+
+function localTimezoneOffsetSuffix(text: string): string {
+  const date = new Date(text.replace(" ", "T"));
+  const offsetMinutes = Number.isNaN(date.getTime()) ? new Date().getTimezoneOffset() : date.getTimezoneOffset();
+  const sign = offsetMinutes <= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(abs / 60)).padStart(2, "0");
+  const minutes = String(abs % 60).padStart(2, "0");
+  return `${sign}${hours}:${minutes}`;
 }
 
 function buildPrimaryKeyWhere(

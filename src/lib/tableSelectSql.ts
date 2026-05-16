@@ -1,6 +1,6 @@
 import type { DatabaseType } from "../types/database.ts";
 import { isSchemaAware, usesFetchFirst } from "./databaseCapabilities.ts";
-import { DBX_NEO4J_ELEMENT_ID_COLUMN, DBX_ROWID_COLUMN } from "./tableEditing.ts";
+import { DBX_NEO4J_ELEMENT_ID_COLUMN, DBX_ROWID_COLUMN, DBX_TDENGINE_TBNAME_COLUMN } from "./tableEditing.ts";
 
 export interface BuildTableSelectSqlOptions {
   databaseType?: DatabaseType;
@@ -17,7 +17,8 @@ export interface BuildTableSelectSqlOptions {
 }
 
 export function quoteTableIdentifier(databaseType: DatabaseType | undefined, name: string): string {
-  if (databaseType === "mysql" || databaseType === "hive") return `\`${name.replace(/`/g, "``")}\``;
+  if (databaseType === "mysql" || databaseType === "hive" || databaseType === "tdengine")
+    return `\`${name.replace(/`/g, "``")}\``;
   if (databaseType === "informix" && /^[A-Za-z_][A-Za-z0-9_$]*$/.test(name)) return name;
   if (databaseType === "neo4j") return quoteCypherIdentifier(name);
   if (databaseType === "sqlserver") return `[${name.replace(/\]/g, "]]")}]`;
@@ -34,6 +35,7 @@ function isOracleRowId(databaseType: DatabaseType | undefined, name: string): bo
 
 function quoteOrderIdentifier(databaseType: DatabaseType | undefined, name: string, tableAlias?: string): string {
   if (isOracleRowId(databaseType, name)) return tableAlias ? `${tableAlias}.ROWID` : "ROWID";
+  if (isTdengineTbname(databaseType, name)) return DBX_TDENGINE_TBNAME_COLUMN;
   return quoteTableIdentifier(databaseType, name);
 }
 
@@ -90,13 +92,30 @@ export function buildTableSelectSql(options: BuildTableSelectSqlOptions): string
 }
 
 function buildSelectColumns(databaseType: DatabaseType | undefined, columns?: string[]): string {
-  if (databaseType !== "hive" || !columns?.length) return "*";
+  if (!columns?.length) return "*";
+  if (databaseType === "tdengine") {
+    const tdengineColumns = columns.some((column) => column.toLowerCase() === DBX_TDENGINE_TBNAME_COLUMN)
+      ? columns
+      : [DBX_TDENGINE_TBNAME_COLUMN, ...columns];
+    return tdengineColumns
+      .map((column) => {
+        if (isTdengineTbname(databaseType, column)) return DBX_TDENGINE_TBNAME_COLUMN;
+        const ident = quoteTableIdentifier(databaseType, column);
+        return `${ident} AS ${ident}`;
+      })
+      .join(", ");
+  }
+  if (databaseType !== "hive") return "*";
   return columns
     .map((column) => {
       const ident = quoteTableIdentifier(databaseType, column);
       return `${ident} AS ${ident}`;
     })
     .join(", ");
+}
+
+function isTdengineTbname(databaseType: DatabaseType | undefined, name: string): boolean {
+  return databaseType === "tdengine" && name.toLowerCase() === DBX_TDENGINE_TBNAME_COLUMN;
 }
 
 function buildNeo4jTableSelectSql(options: BuildTableSelectSqlOptions, limit: number): string {

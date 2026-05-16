@@ -29,6 +29,7 @@ export type DatabaseType =
   | "bigquery"
   | "kylin"
   | "sundb"
+  | "tdengine"
   | "jdbc";
 
 export interface ConnectionConfig {

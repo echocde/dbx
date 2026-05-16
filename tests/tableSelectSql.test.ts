@@ -50,6 +50,22 @@ test("builds Hive table data queries with backtick identifiers", () => {
   assert.equal(sql, "SELECT * FROM `departments` ORDER BY `dept id` ASC LIMIT 100;");
 });
 
+test("builds TDengine table data queries with backtick identifiers", () => {
+  const sql = buildTableSelectSql({
+    databaseType: "tdengine",
+    schema: "test_db",
+    tableName: "meters",
+    columns: ["ts", "current", "voltage", "location", "groupid"],
+    primaryKeys: ["ts"],
+    limit: 100,
+  });
+
+  assert.equal(
+    sql,
+    "SELECT tbname, `ts` AS `ts`, `current` AS `current`, `voltage` AS `voltage`, `location` AS `location`, `groupid` AS `groupid` FROM `test_db`.`meters` ORDER BY `ts` ASC LIMIT 100;",
+  );
+});
+
 test("builds Informix table data queries without database-qualified delimited identifiers", () => {
   const sql = buildTableSelectSql({
     databaseType: "informix",
@@ -140,7 +156,10 @@ test("builds Neo4j table data queries as Cypher label matches", () => {
     offset: 200,
   });
 
-  assert.equal(sql, "MATCH (n:`Employee`) RETURN elementId(n) AS `__DBX_ELEMENT_ID`, n ORDER BY n.`id` ASC SKIP 200 LIMIT 100;");
+  assert.equal(
+    sql,
+    "MATCH (n:`Employee`) RETURN elementId(n) AS `__DBX_ELEMENT_ID`, n ORDER BY n.`id` ASC SKIP 200 LIMIT 100;",
+  );
 });
 
 test("expands Neo4j table data queries into node property columns", () => {

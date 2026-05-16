@@ -8,6 +8,7 @@ fn maps_agent_database_types_to_driver_keys() {
     assert_eq!(agent_key(&DatabaseType::Trino, None), Some("trino"));
     assert_eq!(agent_key(&DatabaseType::Hive, None), Some("hive"));
     assert_eq!(agent_key(&DatabaseType::Gaussdb, None), Some("gaussdb"));
+    assert_eq!(agent_key(&DatabaseType::Tdengine, None), Some("tdengine"));
     assert_eq!(agent_key(&DatabaseType::Oracle, None), Some("oracle"));
     assert_eq!(agent_key(&DatabaseType::Oracle, Some("oracle-10g")), Some("oracle-10g"));
     assert_eq!(agent_key(&DatabaseType::Postgres, None), None);
@@ -18,6 +19,7 @@ fn classifies_agent_database_types() {
     assert!(is_agent_type(&DatabaseType::Oracle));
     assert!(is_agent_type(&DatabaseType::Trino));
     assert!(is_agent_type(&DatabaseType::Hive));
+    assert!(is_agent_type(&DatabaseType::Tdengine));
     assert!(!is_agent_type(&DatabaseType::Mysql));
     assert!(!is_agent_type(&DatabaseType::Jdbc));
 }
@@ -49,6 +51,7 @@ fn skips_tcp_probe_for_local_file_plugin_and_agent_types() {
     assert!(skips_tcp_probe(&DatabaseType::Jdbc));
     assert!(skips_tcp_probe(&DatabaseType::Trino));
     assert!(skips_tcp_probe(&DatabaseType::Oracle));
+    assert!(skips_tcp_probe(&DatabaseType::Tdengine));
     assert!(!skips_tcp_probe(&DatabaseType::Postgres));
     assert!(!skips_tcp_probe(&DatabaseType::Mysql));
 }

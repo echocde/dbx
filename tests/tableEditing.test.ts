@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   DBX_NEO4J_ELEMENT_ID_COLUMN,
   DBX_ROWID_COLUMN,
+  DBX_TDENGINE_TBNAME_COLUMN,
   canEditExistingTableRows,
   editablePrimaryKeys,
   hiveTablePropertiesIndicateTransactional,
   isHiddenGridColumn,
+  isTdengineExistingRowReadonlyColumn,
   isTableDataEditable,
   supportsDataGridTransaction,
   usesSyntheticRowIdKey,
@@ -36,10 +38,18 @@ test("does not synthesize ROWID for non-Oracle keyless tables", () => {
   assert.deepEqual(editablePrimaryKeys("mysql", [column("ID"), column("CITY")]), []);
 });
 
+test("uses tbname and timestamp as TDengine editable keys", () => {
+  assert.deepEqual(editablePrimaryKeys("tdengine", [column("ts", true), column("current")]), [
+    DBX_TDENGINE_TBNAME_COLUMN,
+    "ts",
+  ]);
+});
+
 test("allows Hive table data editing even without declared primary keys", () => {
   assert.equal(isTableDataEditable("hive", []), true);
   assert.equal(isTableDataEditable("trino", []), true);
   assert.equal(isTableDataEditable("informix", []), true);
+  assert.equal(isTableDataEditable("tdengine", []), true);
   assert.equal(isTableDataEditable("mysql", []), false);
   assert.equal(isTableDataEditable("postgres", ["id"]), true);
 });
@@ -58,6 +68,8 @@ test("allows existing row edits for Hive only when the table is transactional", 
   assert.equal(canEditExistingTableRows("trino", undefined, ["id"]), true);
   assert.equal(canEditExistingTableRows("informix", undefined, []), false);
   assert.equal(canEditExistingTableRows("informix", undefined, ["id"]), true);
+  assert.equal(canEditExistingTableRows("tdengine", undefined, ["ts"]), false);
+  assert.equal(canEditExistingTableRows("tdengine", undefined, [DBX_TDENGINE_TBNAME_COLUMN, "ts"]), true);
   assert.equal(canEditExistingTableRows("postgres", undefined), true);
 });
 
@@ -80,6 +92,19 @@ test("detects transactional Hive table properties", () => {
 
 test("uses elementId as Neo4j editable key when labels have no primary key", () => {
   assert.deepEqual(editablePrimaryKeys("neo4j", [column("name"), column("role")]), [DBX_NEO4J_ELEMENT_ID_COLUMN]);
+});
+
+test("keeps TDengine existing row identity and tag columns read-only", () => {
+  assert.equal(isTdengineExistingRowReadonlyColumn("tdengine", DBX_TDENGINE_TBNAME_COLUMN, [column("ts", true)]), true);
+  assert.equal(isTdengineExistingRowReadonlyColumn("tdengine", "ts", [column("ts", true)]), true);
+  assert.equal(isTdengineExistingRowReadonlyColumn("tdengine", "location", [column("location")]), false);
+  assert.equal(isTdengineExistingRowReadonlyColumn("mysql", "ts", [column("ts", true)]), false);
+  assert.equal(
+    isTdengineExistingRowReadonlyColumn("tdengine", "location", [
+      { ...column("location"), extra: "TAG", comment: "TAG" },
+    ]),
+    true,
+  );
 });
 
 test("detects the synthetic Oracle ROWID key case", () => {

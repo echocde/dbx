@@ -74,13 +74,14 @@ async function openTableTarget(target: NavigationTarget) {
         columns,
         primaryKeys,
       });
-      if (useRowId) {
+      if (useRowId || config.db_type === "tdengine") {
         const newSql = buildTableSelectSql({
           databaseType: config.db_type,
           schema: target.schema,
           tableName: target.tableName,
           whereInput: target.whereInput,
           primaryKeys,
+          columns: columns.map((column) => column.name),
           includeRowId: true,
         });
         queryStore.updateSql(tabId, newSql);

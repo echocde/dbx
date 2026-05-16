@@ -392,6 +392,7 @@ impl Storage {
         sqlx::query("DELETE FROM connections").execute(&mut *tx).await.map_err(|e| e.to_string())?;
 
         for config in configs {
+            let config = config.canonicalized();
             // Store config without secrets
             let mut sanitized = config.clone();
             sanitized.password = String::new();
@@ -456,7 +457,7 @@ impl Storage {
             config.ssh_key_passphrase = self.get_secret(&id, "ssh_key_passphrase").await?.unwrap_or_default();
             config.proxy_password = self.get_secret(&id, "proxy_password").await?.unwrap_or_default();
             config.connection_string = self.get_secret(&id, "connection_string").await?;
-            configs.push(config);
+            configs.push(config.canonicalized());
         }
         Ok(configs)
     }

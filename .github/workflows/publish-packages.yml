@@ -282,14 +282,14 @@ jobs:
           RELEASE_JSON=$(gh release view "${TAG}" --repo "${{ github.repository }}" --json tagName,name,url,body)
           export RELEASE_TAG=$(echo "$RELEASE_JSON" | jq -r '.tagName')
           export RELEASE_URL=$(echo "$RELEASE_JSON" | jq -r '.url')
-          export RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body' | head -c 800)
+          export RELEASE_BODY=$(echo "$RELEASE_JSON" | jq -r '.body')
 
           python3 - <<'PYEOF'
           import os, re
 
           tag = os.environ["RELEASE_TAG"]
           url = os.environ["RELEASE_URL"]
-          body = os.environ.get("RELEASE_BODY", "")
+          body = os.environ.get("RELEASE_BODY", "")[:800]
 
           body = re.sub(r'#{1,6}\s*', '', body)
           body = re.sub(r'\*\*(.+?)\*\*', r'\1', body)

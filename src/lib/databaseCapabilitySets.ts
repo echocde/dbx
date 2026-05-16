@@ -15,6 +15,7 @@ export const SCHEMA_AWARE_TYPES = new Set<DatabaseType>([
   "snowflake",
   "trino",
   "db2",
+  "tdengine",
 ]);
 
 export const SQL_FILE_UNSUPPORTED_TYPES = new Set<DatabaseType>(["redis", "mongodb", "elasticsearch"]);
@@ -62,6 +63,7 @@ export const DATABASE_SEARCH_SUPPORTED_TYPES = new Set<DatabaseType>([
   "bigquery",
   "kylin",
   "sundb",
+  "tdengine",
 ]);
 
 export const TABLE_IMPORT_SUPPORTED_TYPES = new Set<DatabaseType>([
@@ -124,6 +126,7 @@ export const TREE_SCHEMA_TYPES = new Set<DatabaseType>([
   "jdbc",
   "trino",
   "h2",
+  "tdengine",
 ]);
 
 export const PG_LIKE_STRUCTURE_TYPES = new Set<DatabaseType>(["postgres", "redshift", "gaussdb"]);
@@ -147,6 +150,7 @@ export const AGENT_DRIVER_TYPES = new Set<DatabaseType>([
   "kylin",
   "sundb",
   "gaussdb",
+  "tdengine",
 ]);
 
 export const TRANSFER_SQL_TYPES = new Set<DatabaseType>([

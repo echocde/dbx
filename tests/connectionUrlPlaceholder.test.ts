@@ -18,6 +18,7 @@ const expected: Record<string, string> = {
   oracle: "oracle://user:password@host:port/service_name",
   elasticsearch: "http://user:password@host:port",
   dameng: "dm://user:password@host:port",
+  tdengine: "tdengine://user:password@host:6041/database",
   jdbc: "jdbc:mysql://host:3306/database",
 };
 

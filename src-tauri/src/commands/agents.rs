@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tauri::{Emitter, State};
@@ -34,6 +35,7 @@ const AGENT_TYPES: &[(&str, &str)] = &[
     ("kylin", "Apache Kylin"),
     ("sundb", "SunDB"),
     ("gaussdb", "GaussDB"),
+    ("tdengine", "TDengine"),
     ("mongodb", "MongoDB (Legacy)"),
 ];
 
@@ -67,6 +69,61 @@ fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> Vec<
         .collect()
 }
 
+fn local_agent_jar_candidates(db_type: &str) -> Vec<PathBuf> {
+    let jar_name = format!("dbx-agent-{db_type}.jar");
+    let relative = PathBuf::from("..").join("dbx-agents").join(db_type).join("build").join("libs").join(&jar_name);
+    let nested = PathBuf::from("dbx-agents").join(db_type).join("build").join("libs").join(&jar_name);
+    vec![relative, nested]
+}
+
+fn find_local_agent_jar(db_type: &str) -> Option<PathBuf> {
+    local_agent_jar_candidates(db_type).into_iter().find(|path| path.exists())
+}
+
+fn install_local_agent(am: &AgentManager, db_type: &str, source: PathBuf) -> Result<(), String> {
+    let jar_path = am.driver_jar_path(db_type);
+    let parent = jar_path.parent().ok_or_else(|| format!("Invalid driver path: {}", jar_path.display()))?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    std::fs::copy(&source, &jar_path).map_err(|e| format!("Failed to copy local agent jar: {e}"))?;
+
+    let mut local_state = am.load_state();
+    local_state.installed_drivers.insert(
+        db_type.to_string(),
+        InstalledDriver {
+            version: "0.1.0-local".to_string(),
+            installed_at: chrono::Utc::now().to_rfc3339(),
+            jre: DEFAULT_JRE_KEY.to_string(),
+        },
+    );
+    am.save_state(&local_state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_agent_list;
+    use dbx_core::agent_manager::AgentManager;
+
+    #[test]
+    fn built_in_agent_list_includes_tdengine() {
+        let dir = std::env::temp_dir().join(format!("dbx-agent-list-test-{}", uuid::Uuid::new_v4()));
+        let manager = AgentManager::new_with_base_dir(dir.clone());
+
+        let agents = build_agent_list(&manager, None);
+
+        assert!(agents.iter().any(|agent| agent.db_type == "tdengine" && agent.label == "TDengine"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn local_agent_jar_candidates_include_sibling_dbx_agents_build_output() {
+        let candidates = super::local_agent_jar_candidates("tdengine");
+
+        assert!(candidates
+            .iter()
+            .any(|path| { path.ends_with("dbx-agents/tdengine/build/libs/dbx-agent-tdengine.jar") }));
+    }
+}
+
 #[tauri::command]
 pub async fn list_installed_agents_local(state: State<'_, Arc<AppState>>) -> Result<Vec<AgentDriverInfo>, String> {
     Ok(build_agent_list(&state.agent_manager, None))
@@ -85,9 +142,26 @@ pub async fn install_agent(
     db_type: String,
 ) -> Result<(), String> {
     let am = &state.agent_manager;
-    let registry = fetch_registry().await?;
+    let registry = match fetch_registry().await {
+        Ok(registry) => registry,
+        Err(registry_err) => {
+            if let Some(local_jar) = find_local_agent_jar(&db_type) {
+                install_local_agent(am, &db_type, local_jar)?;
+                let _ = app.emit("agent-install-progress", serde_json::json!({ "step": "done" }));
+                return Ok(());
+            }
+            return Err(registry_err);
+        }
+    };
 
-    let driver = registry.drivers.get(&db_type).ok_or_else(|| format!("Unknown driver type: {db_type}"))?;
+    let Some(driver) = registry.drivers.get(&db_type) else {
+        if let Some(local_jar) = find_local_agent_jar(&db_type) {
+            install_local_agent(am, &db_type, local_jar)?;
+            let _ = app.emit("agent-install-progress", serde_json::json!({ "step": "done" }));
+            return Ok(());
+        }
+        return Err(format!("Unknown driver type: {db_type}"));
+    };
     let jre_key = &driver.jre;
     let needs_jre = am.load_state().java_runtime.mode == JavaRuntimeMode::Managed && !am.is_jre_installed(jre_key);
 

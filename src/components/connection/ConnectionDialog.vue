@@ -201,7 +201,7 @@ const driverProfiles: Record<
   kylin: { type: "kylin", port: 7070, user: "ADMIN", label: "Apache Kylin", icon: "kylin" },
   sundb: { type: "sundb", port: 22000, user: "root", label: "SunDB", icon: "sundb" },
   jdbc: { type: "jdbc", port: 0, user: "", label: "JDBC", icon: "jdbc" },
-  tdengine: { type: "mysql", port: 6030, user: "root", label: "TDengine", icon: "tdengine" },
+  tdengine: { type: "tdengine", port: 6041, user: "root", label: "TDengine", icon: "tdengine" },
   custom_mysql: {
     type: "mysql",
     port: 3306,
@@ -267,14 +267,15 @@ watch(
     if (config) {
       const profile = profileForConfig(config);
       editingId.value = config.id;
+      const profileConfig = driverProfiles[profile];
       form.value = {
         name: config.name,
-        db_type: config.db_type,
+        db_type: profileConfig?.type || config.db_type,
         driver_profile: profile,
         driver_label: config.driver_label || driverProfiles[profile]?.label || config.db_type,
         url_params: config.url_params || "",
         host: config.host,
-        port: config.port,
+        port: profile === "tdengine" && (config.port === 0 || config.port === 6030) ? 6041 : config.port,
         username: config.username,
         password: config.password,
         database: config.database,

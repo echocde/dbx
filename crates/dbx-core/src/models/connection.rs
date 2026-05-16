@@ -135,6 +135,7 @@ pub enum DatabaseType {
     Bigquery,
     Kylin,
     Sundb,
+    Tdengine,
     Jdbc,
 }
 
@@ -175,7 +176,24 @@ impl ConnectionConfig {
                 .driver_profile
                 .as_deref()
                 .map(|p| p.to_lowercase())
-                .is_some_and(|p| matches!(p.as_str(), "doris" | "starrocks" | "selectdb" | "tdengine" | "oceanbase"))
+                .is_some_and(|p| matches!(p.as_str(), "doris" | "starrocks" | "selectdb" | "oceanbase"))
+    }
+
+    pub fn canonicalized(&self) -> Self {
+        let mut config = self.clone();
+        if config.db_type == DatabaseType::Mysql
+            && config.driver_profile.as_deref().is_some_and(|profile| profile.eq_ignore_ascii_case("tdengine"))
+        {
+            config.db_type = DatabaseType::Tdengine;
+            if config.port == 0 || config.port == 6030 {
+                config.port = 6041;
+            }
+            config.driver_profile = Some("tdengine".to_string());
+            if config.driver_label.as_deref().unwrap_or("").trim().is_empty() {
+                config.driver_label = Some("TDengine".to_string());
+            }
+        }
+        config
     }
 
     pub fn connection_url(&self) -> String {
@@ -250,6 +268,7 @@ impl ConnectionConfig {
             DatabaseType::Bigquery => format!("bigquery://{host}/{db_part}"),
             DatabaseType::Kylin => format!("kylin://{host}:{port}{db_part}"),
             DatabaseType::Sundb => format!("sundb://{host}:{port}{db_part}"),
+            DatabaseType::Tdengine => format!("tdengine://{host}:{port}{db_part}"),
             DatabaseType::Jdbc => "jdbc:<redacted>".to_string(),
         }
     }
@@ -368,6 +387,9 @@ impl ConnectionConfig {
             }
             DatabaseType::Sundb => {
                 format!("sundb://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Tdengine => {
+                format!("tdengine://{}:{}@{host}:{port}{db_part}", username, password)
             }
             DatabaseType::Jdbc => {
                 self.connection_string.as_deref().filter(|value| !value.is_empty()).unwrap_or("jdbc:").to_string()
@@ -670,6 +692,22 @@ mod tests {
 
         assert!(config.needs_bare_mysql());
         assert_eq!(config.connection_url(), "mysql://user%40tenant%23cluster:secret@10.1.2.3:2883?ssl-mode=disabled");
+    }
+
+    #[test]
+    fn tdengine_profile_is_canonicalized_to_agent_database_type() {
+        let mut config = mysql_config("root", "taosdata", Some("power"));
+        config.driver_profile = Some("tdengine".to_string());
+        config.driver_label = None;
+        config.port = 6030;
+
+        let canonical = config.canonicalized();
+
+        assert_eq!(canonical.db_type, DatabaseType::Tdengine);
+        assert_eq!(canonical.port, 6041);
+        assert_eq!(canonical.driver_profile.as_deref(), Some("tdengine"));
+        assert_eq!(canonical.driver_label.as_deref(), Some("TDengine"));
+        assert!(!canonical.needs_bare_mysql());
     }
 
     #[test]

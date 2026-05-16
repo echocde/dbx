@@ -61,7 +61,7 @@ pub struct AppState {
 }
 
 pub fn metadata_connection_config(config: &ConnectionConfig) -> ConnectionConfig {
-    let mut db_config = config.clone();
+    let mut db_config = config.canonicalized();
     if database_capabilities::is_metadata_connection_scoped(&db_config.db_type) {
         db_config.database = None;
     }
@@ -238,6 +238,7 @@ impl AppState {
             | DatabaseType::Bigquery
             | DatabaseType::Kylin
             | DatabaseType::Sundb
+            | DatabaseType::Tdengine
             | DatabaseType::Gaussdb => {
                 let mut client =
                     self.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;

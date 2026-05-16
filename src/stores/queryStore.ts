@@ -14,6 +14,7 @@ import {
 } from "@/lib/sqlAnalysis";
 import { restoreOpenTabsState, serializeOpenTabs } from "@/lib/openTabsPersistence";
 import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "@/lib/mongoShellCommand";
+import { editablePrimaryKeys } from "@/lib/tableEditing";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
@@ -364,7 +365,7 @@ export const useQueryStore = defineStore("query", () => {
 
     try {
       const columns = await api.getColumns(tab.connectionId, tab.database, schema, analysis.tableName);
-      const primaryKeys = columns.filter((c) => c.is_primary_key).map((c) => c.name);
+      const primaryKeys = editablePrimaryKeys(dbType as DatabaseType, columns);
 
       tab.tableMeta = {
         schema: schema || undefined,

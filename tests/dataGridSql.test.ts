@@ -5,6 +5,7 @@ import {
   buildDataGridSaveStatements,
   dataGridSaveExecutionSchema,
   normalizeDataGridSaveError,
+  formatGridSqlLiteral,
   validateDataGridSave,
 } from "../src/lib/dataGridSql.ts";
 import { DBX_NEO4J_ELEMENT_ID_COLUMN } from "../src/lib/tableEditing.ts";
@@ -131,6 +132,86 @@ test("builds Hive grid save statements without primary keys using row predicates
     "UPDATE `departments` SET `name` = 'Marketing' WHERE `id` = 10 AND `name` = 'Sales' AND `location` IS NULL;",
     "DELETE FROM `departments` WHERE `id` = 10 AND `name` = 'Sales' AND `location` IS NULL;",
   ]);
+});
+
+test("builds TDengine append-only grid save statements", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "tdengine",
+    tableMeta: {
+      schema: "test_db",
+      tableName: "meters",
+      primaryKeys: ["ts"],
+    },
+    columns: ["ts", "current", "voltage", "location", "groupid"],
+    rows: [["2026-05-16 09:35:57.000", 10.3, 219, "Beijing", 1]],
+    dirtyRows: [[0, [[1, 11.1]]]],
+    deletedRows: [0],
+    newRows: [["2026-05-16 09:40:00.000", 12.1, 220, "Shenzhen", 3]],
+  });
+
+  assert.deepEqual(statements, [
+    "INSERT INTO `test_db`.`meters` (`ts`, `current`, `voltage`, `location`, `groupid`) VALUES ('2026-05-16T09:40:00.000+08:00', 12.1, 220, 'Shenzhen', 3);",
+  ]);
+});
+
+test("builds TDengine supertable overwrites as full-row inserts by tbname and timestamp", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "tdengine",
+    tableMeta: {
+      schema: "test_db",
+      tableName: "meters",
+      primaryKeys: ["tbname", "ts"],
+      columns: [
+        { name: "ts", data_type: "TIMESTAMP", is_nullable: false, is_primary_key: true },
+        { name: "current", data_type: "FLOAT", is_nullable: true, is_primary_key: false },
+        { name: "voltage", data_type: "INT", is_nullable: true, is_primary_key: false },
+        { name: "location", data_type: "NCHAR", is_nullable: true, is_primary_key: false, extra: "TAG" },
+        { name: "groupid", data_type: "INT", is_nullable: true, is_primary_key: false, extra: "TAG" },
+      ],
+    },
+    columns: ["tbname", "ts", "current", "voltage", "location", "groupid"],
+    rows: [["d1001", "2026-05-16 09:35:57.000", 10.3, 219, "Beijing", 1]],
+    dirtyRows: [[0, [[2, 11.1]]]],
+    deletedRows: [0],
+    newRows: [["d1003", "2026-05-16 09:40:00.000", 12.1, 220, "Shenzhen", 3]],
+  });
+
+  assert.deepEqual(statements, [
+    "INSERT INTO `test_db`.`meters` (`tbname`, `ts`, `current`, `voltage`, `location`, `groupid`) VALUES ('d1001', '2026-05-16T09:35:57.000+08:00', 11.1, 219, 'Beijing', 1);",
+    "INSERT INTO `test_db`.`meters` (`tbname`, `ts`, `current`, `voltage`, `location`, `groupid`) VALUES ('d1003', '2026-05-16T09:40:00.000+08:00', 12.1, 220, 'Shenzhen', 3);",
+  ]);
+});
+
+test("builds TDengine child table overwrites without pseudo or tag columns", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "tdengine",
+    tableMeta: {
+      schema: "test_db",
+      tableName: "d1001",
+      primaryKeys: ["tbname", "ts"],
+      columns: [
+        { name: "ts", data_type: "TIMESTAMP", is_nullable: false, is_primary_key: true },
+        { name: "current", data_type: "FLOAT", is_nullable: true, is_primary_key: false },
+        { name: "voltage", data_type: "INT", is_nullable: true, is_primary_key: false },
+        { name: "location", data_type: "NCHAR", is_nullable: true, is_primary_key: false, extra: "TAG" },
+        { name: "groupid", data_type: "INT", is_nullable: true, is_primary_key: false, extra: "TAG" },
+      ],
+    },
+    columns: ["tbname", "ts", "current", "voltage", "location", "groupid"],
+    rows: [["d1001", "2026-05-16 09:35:57.000", 10.3, 219, "Beijing", 1]],
+    dirtyRows: [[0, [[2, 11.1]]]],
+    deletedRows: [],
+    newRows: [["d1001", "2026-05-16 09:40:00.000", 12.1, 220, "Beijing", 1]],
+  });
+
+  assert.deepEqual(statements, [
+    "INSERT INTO `test_db`.`d1001` (`ts`, `current`, `voltage`) VALUES ('2026-05-16T09:35:57.000+08:00', 11.1, 219);",
+    "INSERT INTO `test_db`.`d1001` (`ts`, `current`, `voltage`) VALUES ('2026-05-16T09:40:00.000+08:00', 12.1, 220);",
+  ]);
+});
+
+test("formats TDengine timestamp literals with the local timezone offset", () => {
+  assert.equal(formatGridSqlLiteral("2026-05-16 09:35:57.975", "tdengine"), "'2026-05-16T09:35:57.975+08:00'");
 });
 
 test("builds Trino insert statements with schema-qualified identifiers", () => {

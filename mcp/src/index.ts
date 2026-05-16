@@ -64,17 +64,12 @@ const server = new McpServer({
   version: "0.3.0",
 });
 
-server.tool(
-  "dbx_list_connections",
-  "List all database connections configured in DBX",
-  {},
-  async () => {
-    const connections = await backend.loadConnections();
-    if (connections.length === 0) return text("No connections configured in DBX.");
-    const rows = connections.map((c) => [c.name, c.db_type, c.host, String(c.port), c.database || ""]);
-    return text(mdTable(["Name", "Type", "Host", "Port", "Database"], rows));
-  },
-);
+server.tool("dbx_list_connections", "List all database connections configured in DBX", {}, async () => {
+  const connections = await backend.loadConnections();
+  if (connections.length === 0) return text("No connections configured in DBX.");
+  const rows = connections.map((c) => [c.name, c.db_type, c.host, String(c.port), c.database || ""]);
+  return text(mdTable(["Name", "Type", "Host", "Port", "Database"], rows));
+});
 
 server.tool(
   "dbx_list_tables",
@@ -144,9 +139,13 @@ server.tool(
   "Add a new database connection to DBX",
   {
     name: z.string().describe("Connection name"),
-    db_type: z.string().describe("Database type: postgres, mysql, sqlite, redis, duckdb, clickhouse, sqlserver, mongodb, oracle, elasticsearch, doris, starrocks, redshift, dameng, kingbase, highgo, vastbase, goldendb, gaussdb, h2, snowflake, trino, hive, db2, informix, neo4j, cassandra, bigquery, kylin, sundb, jdbc"),
+    db_type: z
+      .string()
+      .describe(
+        "Database type: postgres, mysql, sqlite, redis, duckdb, clickhouse, sqlserver, mongodb, oracle, elasticsearch, doris, starrocks, redshift, dameng, kingbase, highgo, vastbase, goldendb, gaussdb, h2, snowflake, trino, hive, db2, informix, neo4j, cassandra, bigquery, kylin, sundb, tdengine, jdbc",
+      ),
     host: z.string().describe("Database host"),
-    port: z.number().describe("Database port"),
+    port: z.number().optional().describe("Database port (TDengine defaults to 6041)"),
     username: z.string().default("").describe("Username"),
     password: z.string().default("").describe("Password"),
     database: z.string().optional().describe("Default database name"),
@@ -155,9 +154,18 @@ server.tool(
   async ({ name, db_type, host, port, username, password, database, ssl }) => {
     const existing = await backend.findConnection(name);
     if (existing) return text(`Connection "${name}" already exists.`);
+    const resolvedPort = port ?? (db_type === "tdengine" ? 6041 : undefined);
+    if (!resolvedPort) return text("Port is required for this database type.");
     const config = await backend.addConnection({
-      name, db_type, host, port, username, password,
-      database, ssl, ssh_enabled: false,
+      name,
+      db_type,
+      host,
+      port: resolvedPort,
+      username,
+      password,
+      database,
+      ssl,
+      ssh_enabled: false,
     } as Omit<ConnectionConfig, "id">);
     await notifyReload();
     return text(`Connection "${config.name}" added (id: ${config.id}).`);
