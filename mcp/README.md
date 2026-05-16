@@ -7,9 +7,10 @@ MCP server for [DBX](https://github.com/t8y2/dbx) — lets AI agents (Claude Cod
 ## Features
 
 - **Zero config** — Automatically reads your DBX connections (including passwords from system keyring)
-- **7 tools** — List/add/remove connections, list tables, describe table, execute SQL, open table in DBX UI
+- **8 tools** — List/add/remove connections, list tables, describe table, get schema context, execute SQL, open table in DBX UI
 - **Connection pooling** — Reuses database connections across queries
-- **PostgreSQL & MySQL** — Supports PostgreSQL, MySQL, and compatible databases (Doris, StarRocks, etc.)
+- **Direct execution** — PostgreSQL, MySQL, SQLite, and compatible databases (Doris, StarRocks, etc.) can run without opening DBX
+- **Read-only by default** — SQL execution blocks write and dangerous statements unless explicitly enabled
 - **DBX UI integration** — Open tables directly in the DBX desktop app from your AI agent
 
 ## Quick Start
@@ -73,8 +74,23 @@ In Claude Code, just ask:
 | `dbx_remove_connection` | Remove a database connection |
 | `dbx_list_tables` | List tables and views for a connection |
 | `dbx_describe_table` | Get column definitions for a table |
+| `dbx_get_schema_context` | Get compact table and column context for writing SQL |
 | `dbx_execute_query` | Execute a SQL query (max 100 rows) |
 | `dbx_open_table` | Open a table in DBX desktop app UI |
+
+## SQL Safety
+
+`dbx_execute_query` is read-only by default. To allow write statements such as `INSERT` or `UPDATE`, set:
+
+```bash
+DBX_MCP_ALLOW_WRITES=1
+```
+
+Dangerous statements such as `DROP`, `TRUNCATE`, and `ALTER` remain blocked unless you also set:
+
+```bash
+DBX_MCP_ALLOW_DANGEROUS_SQL=1
+```
 
 ## How It Works
 
@@ -94,6 +110,8 @@ The MCP server reads your database connections from DBX's SQLite database:
 
 The `dbx_open_table` tool communicates with the running DBX app to open tables directly in the UI. This requires DBX to be running. If DBX is not running, the tool will return an error message.
 
+PostgreSQL, MySQL, SQLite, Doris, StarRocks, and Redshift queries run directly from the MCP server. Other database types still use the DBX desktop bridge for query, table, and column operations unless `DBX_WEB_URL` is configured.
+
 ## Requirements
 
 - [DBX](https://github.com/t8y2/dbx) installed with at least one connection configured
@@ -112,9 +130,10 @@ MIT
 ### 特性
 
 - **零配置** — 自动读取 DBX 的连接配置
-- **7 个工具** — 列出/添加/删除连接、列出表、查看表结构、执行 SQL、在 DBX 中打开表
+- **8 个工具** — 列出/添加/删除连接、列出表、查看表结构、获取 Schema 上下文、执行 SQL、在 DBX 中打开表
 - **连接池** — 跨查询复用数据库连接
-- **PostgreSQL 和 MySQL** — 支持 PostgreSQL、MySQL 及兼容数据库（Doris、StarRocks 等）
+- **直接执行** — PostgreSQL、MySQL、SQLite 及兼容数据库（Doris、StarRocks 等）无需打开 DBX 即可查询
+- **默认只读** — SQL 执行默认拦截写操作和危险语句
 - **DBX UI 联动** — 从 AI 助手直接在 DBX 桌面端打开表
 
 ### 快速开始
@@ -164,8 +183,23 @@ npx @dbx-app/mcp-server
 | `dbx_remove_connection` | 删除数据库连接 |
 | `dbx_list_tables` | 列出指定连接的表和视图 |
 | `dbx_describe_table` | 获取表的列定义 |
+| `dbx_get_schema_context` | 获取适合 AI 写 SQL 的紧凑表结构上下文 |
 | `dbx_execute_query` | 执行 SQL 查询（最多返回 100 行） |
 | `dbx_open_table` | 在 DBX 桌面端打开指定表 |
+
+### SQL 安全
+
+`dbx_execute_query` 默认只读。若要允许 `INSERT`、`UPDATE` 等写操作，设置：
+
+```bash
+DBX_MCP_ALLOW_WRITES=1
+```
+
+`DROP`、`TRUNCATE`、`ALTER` 等危险语句仍会被拦截，除非额外设置：
+
+```bash
+DBX_MCP_ALLOW_DANGEROUS_SQL=1
+```
 
 ### 工作原理
 
@@ -178,6 +212,8 @@ MCP Server 从 DBX 的 SQLite 数据库读取连接信息：
 ### DBX UI 联动
 
 `dbx_open_table` 工具通过本地 HTTP 接口与运行中的 DBX 应用通信，直接在 UI 中打开表。需要 DBX 正在运行。
+
+PostgreSQL、MySQL、SQLite、Doris、StarRocks、Redshift 查询可由 MCP Server 直接执行。其他数据库类型的查询、表列表、字段读取仍会走 DBX 桌面端 bridge，除非配置了 `DBX_WEB_URL` 使用 Web 后端。
 
 ### 系统要求
 

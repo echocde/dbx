@@ -3,6 +3,8 @@ import { createServer, connect as netConnect, type Server, type Socket } from "n
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir, platform } from "node:os";
+import Database from "better-sqlite3";
+import { sqlSafetyFromEnv } from "./sql-safety.js";
 
 export interface TableInfo {
   name: string;
@@ -235,6 +237,7 @@ function isDirectType(dbType: string): boolean {
     case "mysql":
     case "doris":
     case "starrocks":
+    case "sqlite":
       return true;
     default:
       return false;
@@ -355,8 +358,38 @@ async function mysqlQuery(config: ConnectionConfig, sql: string, params?: unknow
 }
 
 async function query(config: ConnectionConfig, sql: string, params?: unknown[]): Promise<QueryResult> {
+  if (config.db_type === "sqlite") return sqliteQuery(config, sql);
   if (isMysqlType(config.db_type)) return mysqlQuery(config, sql, params);
   return pgQuery(config, sql, params);
+}
+
+function sqlitePath(config: ConnectionConfig): string {
+  return expandTilde(config.host || config.database || "");
+}
+
+function expandTilde(path: string): string {
+  if (path === "~") return homedir();
+  if (path.startsWith("~/")) return join(homedir(), path.slice(2));
+  return path;
+}
+
+function quoteSqliteIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+function sqliteQuery(config: ConnectionConfig, sql: string): QueryResult {
+  const db = new Database(sqlitePath(config), { readonly: !sqlSafetyFromEnv().allowWrites });
+  try {
+    const stmt = db.prepare(sql);
+    if (stmt.reader) {
+      const rows = stmt.all().slice(0, MAX_ROWS) as Record<string, unknown>[];
+      return { columns: stmt.columns().map((column) => column.name), rows, row_count: rows.length };
+    }
+    const result = stmt.run();
+    return { columns: [], rows: [], row_count: result.changes };
+  } finally {
+    db.close();
+  }
 }
 
 export async function executeQuery(config: ConnectionConfig, sql: string): Promise<QueryResult> {
@@ -372,6 +405,13 @@ export async function executeQuery(config: ConnectionConfig, sql: string): Promi
 }
 
 export async function listTables(config: ConnectionConfig, schema?: string): Promise<TableInfo[]> {
+  if (config.db_type === "sqlite") {
+    const result = await query(
+      config,
+      `SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+    );
+    return result.rows.map((r) => ({ name: String(r.name || ""), type: String(r.type || "table") }));
+  }
   if (!isDirectType(config.db_type)) {
     const tables = await bridgeDataRequest<BridgeTableInfo[]>("/data/list-tables", {
       connection_name: config.name,
@@ -394,6 +434,17 @@ export async function listTables(config: ConnectionConfig, schema?: string): Pro
 }
 
 export async function describeTable(config: ConnectionConfig, table: string, schema?: string): Promise<ColumnInfo[]> {
+  if (config.db_type === "sqlite") {
+    const result = await query(config, `PRAGMA table_info(${quoteSqliteIdentifier(table)})`);
+    return result.rows.map((r) => ({
+      name: String(r.name || ""),
+      data_type: String(r.type || ""),
+      is_nullable: Number(r.notnull || 0) === 0,
+      column_default: r.dflt_value != null ? String(r.dflt_value) : null,
+      is_primary_key: Number(r.pk || 0) > 0,
+      comment: null,
+    }));
+  }
   if (!isDirectType(config.db_type)) {
     const columns = await bridgeDataRequest<BridgeColumnInfo[]>("/data/describe-table", {
       connection_name: config.name,

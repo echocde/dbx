@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "start": "tsx src/index.ts",
+    "test": "tsx --test tests/*.test.ts",
     "build": "tsc",
     "prepublishOnly": "tsc"
   },

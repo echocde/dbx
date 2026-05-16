@@ -18,6 +18,8 @@ import {
 } from "./database.js";
 import type { ConnectionConfig } from "./connections.js";
 import type { TableInfo, ColumnInfo, QueryResult } from "./database.js";
+import { buildSchemaContext, formatSchemaContext } from "./schema-context.js";
+import { evaluateSqlSafety, sqlSafetyFromEnv } from "./sql-safety.js";
 
 const isWebMode = !!process.env.DBX_WEB_URL;
 
@@ -122,6 +124,8 @@ server.tool(
   async ({ connection_name, sql }) => {
     const config = await backend.findConnection(connection_name);
     if (!config) return text(`Connection "${connection_name}" not found`);
+    const safety = evaluateSqlSafety(sql, sqlSafetyFromEnv());
+    if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
     try {
       const result = await backend.executeQuery(config, sql);
       if (result.columns.length === 0) return text(`Query executed. ${result.row_count} row(s) affected.`);
@@ -135,6 +139,24 @@ server.tool(
 );
 
 server.tool(
+  "dbx_get_schema_context",
+  "Get compact table and column context for writing SQL",
+  {
+    connection_name: z.string().describe("Name of the DBX connection"),
+    schema: z.string().optional().describe("Schema name (default: public for PostgreSQL)"),
+    tables: z.array(z.string()).optional().describe("Specific table names to include"),
+    max_tables: z.number().int().min(1).max(20).default(8).describe("Maximum number of tables to include"),
+  },
+  async ({ connection_name, schema, tables, max_tables }) => {
+    const config = await backend.findConnection(connection_name);
+    if (!config) return text(`Connection "${connection_name}" not found`);
+    const context = await buildSchemaContext(backend, config, { schema, tables, maxTables: max_tables });
+    if (context.tables.length === 0) return text("No matching tables found.");
+    return text(formatSchemaContext(context));
+  },
+);
+
+server.tool(
   "dbx_add_connection",
   "Add a new database connection to DBX",
   {
@@ -142,7 +164,7 @@ server.tool(
     db_type: z
       .string()
       .describe(
-        "Database type: postgres, mysql, sqlite, redis, duckdb, clickhouse, sqlserver, mongodb, oracle, elasticsearch, doris, starrocks, redshift, dameng, kingbase, highgo, vastbase, goldendb, gaussdb, h2, snowflake, trino, hive, db2, informix, neo4j, cassandra, bigquery, kylin, sundb, tdengine, jdbc",
+        "Database type: postgres, mysql, sqlite, redis, duckdb, clickhouse, sqlserver, mongodb, oracle, elasticsearch, doris, starrocks, redshift, dameng, kingbase, highgo, vastbase, goldendb, gaussdb, h2, snowflake, trino, hive, db2, informix, neo4j, cassandra, bigquery, kylin, sundb, tdengine, jdbc, access",
       ),
     host: z.string().describe("Database host"),
     port: z.number().optional().describe("Database port (TDengine defaults to 6041)"),
@@ -154,8 +176,9 @@ server.tool(
   async ({ name, db_type, host, port, username, password, database, ssl }) => {
     const existing = await backend.findConnection(name);
     if (existing) return text(`Connection "${name}" already exists.`);
-    const resolvedPort = port ?? (db_type === "tdengine" ? 6041 : undefined);
-    if (!resolvedPort) return text("Port is required for this database type.");
+    const FILE_BASED_TYPES = new Set(["sqlite", "duckdb", "access"]);
+    const resolvedPort = port ?? (db_type === "tdengine" ? 6041 : FILE_BASED_TYPES.has(db_type) ? 0 : undefined);
+    if (resolvedPort === undefined) return text("Port is required for this database type.");
     const config = await backend.addConnection({
       name,
       db_type,
@@ -242,6 +265,8 @@ if (!isWebMode) {
       database: z.string().optional().describe("Database name"),
     },
     async ({ connection_name, sql, database }) => {
+      const safety = evaluateSqlSafety(sql, sqlSafetyFromEnv());
+      if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
       return bridgeRequest("/execute-query", { connection_name, sql, database }, "Query sent to DBX");
     },
   );
