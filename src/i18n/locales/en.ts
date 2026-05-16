@@ -359,6 +359,25 @@ export default {
     commit: "Commit",
     rollback: "Rollback",
     transactionActive: "Editing",
+    queryEditReady: "Editable",
+    queryEditReadyHint:
+      "This single-table result comes from “{table}”. You can edit, delete, or add rows, then commit to save.",
+    queryEditReadOnly: "Read-only result",
+    queryEditUnsupported: {
+      "not-select": "Only SELECT query results can be edited directly.",
+      cte: "Queries with WITH/CTE are not editable yet. Use a simple single-table SELECT.",
+      "set-operation": "UNION, INTERSECT, or EXCEPT results cannot be mapped safely back to source rows.",
+      aggregation: "DISTINCT, GROUP BY, HAVING, and aggregate results cannot be edited directly.",
+      "complex-source": "JOINs, multiple tables, and subqueries cannot be mapped safely to one source row.",
+      "computed-columns":
+        "Computed expressions or function results cannot be written back. Select raw column names instead.",
+      "no-table": "No editable source table was detected.",
+      "no-primary-key": "The target table has no primary key, so rows cannot be updated or deleted safely.",
+      "primary-key-not-returned":
+        "The result is missing the raw primary key column. Include it by its original column name.",
+      "aliased-columns": "Result columns use aliases or expressions. Select editable columns by their original names.",
+      "metadata-unavailable": "DBX could not load table metadata, so result editing is disabled.",
+    },
     sortUnsupported: "This SQL does not support full-result sorting. Try again with a single SELECT query.",
     truncatedHint: "Results truncated to 10,000 rows. Use LIMIT/OFFSET in your query to paginate.",
   },

@@ -284,9 +284,27 @@ export interface QueryTab {
   queryAnalysis?: {
     schema?: string;
     tableName: string;
+    tableAlias?: string;
     selectStar: boolean;
-    columns: string[];
+    columns: {
+      sourceName?: string;
+      resultName: string;
+      expression: string;
+    }[];
   };
+  querySourceColumns?: Array<string | undefined>;
+  queryEditabilityReason?:
+    | "not-select"
+    | "cte"
+    | "set-operation"
+    | "aggregation"
+    | "complex-source"
+    | "computed-columns"
+    | "no-table"
+    | "no-primary-key"
+    | "primary-key-not-returned"
+    | "aliased-columns"
+    | "metadata-unavailable";
   whereInput?: string;
 }
 

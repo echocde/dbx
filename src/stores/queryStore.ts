@@ -6,7 +6,12 @@ import { orderPinnedFirst } from "@/lib/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/queryExecutionState";
 import { closeAllTabsState, closeOtherTabsState } from "@/lib/tabCloseActions";
 import { buildExplainSql, parseExplainResult } from "@/lib/explainPlan";
-import { analyzeEditableQuery, allPrimaryKeysPresent } from "@/lib/sqlAnalysis";
+import {
+  allEditableColumnsWriteable,
+  allPrimaryKeysPresent,
+  analyzeEditableQueryEditability,
+  sourceColumnsForResult,
+} from "@/lib/sqlAnalysis";
 import { restoreOpenTabsState, serializeOpenTabs } from "@/lib/openTabsPersistence";
 import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "@/lib/mongoShellCommand";
 import * as api from "@/lib/api";
@@ -171,6 +176,9 @@ export const useQueryStore = defineStore("query", () => {
       tab.sql = sql;
       tab.resultSortedSql = undefined;
       tab.resultBaseSql = undefined;
+      tab.queryAnalysis = undefined;
+      tab.querySourceColumns = undefined;
+      tab.queryEditabilityReason = undefined;
     }
   }
 
@@ -224,6 +232,9 @@ export const useQueryStore = defineStore("query", () => {
     tab.lastExecutedSql = undefined;
     tab.resultBaseSql = undefined;
     tab.resultSortedSql = undefined;
+    tab.queryAnalysis = undefined;
+    tab.querySourceColumns = undefined;
+    tab.queryEditabilityReason = undefined;
     clearExplain(tab);
     tab.tableMeta = undefined;
   }
@@ -245,6 +256,9 @@ export const useQueryStore = defineStore("query", () => {
     tab.lastExecutedSql = undefined;
     tab.resultBaseSql = undefined;
     tab.resultSortedSql = undefined;
+    tab.queryAnalysis = undefined;
+    tab.querySourceColumns = undefined;
+    tab.queryEditabilityReason = undefined;
     clearExplain(tab);
     tab.tableMeta = undefined;
   }
@@ -315,19 +329,25 @@ export const useQueryStore = defineStore("query", () => {
     if (tab.mode !== "query") return;
     if (!tab.result || !tab.result.columns.length) {
       tab.queryAnalysis = undefined;
+      tab.querySourceColumns = undefined;
       tab.tableMeta = undefined;
       return;
     }
 
-    const analysis = analyzeEditableQuery(sql);
-    if (!analysis) {
+    const editability = analyzeEditableQueryEditability(sql);
+    if (!editability.editable) {
       tab.queryAnalysis = undefined;
+      tab.querySourceColumns = undefined;
+      tab.queryEditabilityReason = editability.reason;
       tab.tableMeta = undefined;
       return;
     }
+    const analysis = editability.analysis;
 
     if (!tab.connectionId || !tab.database) {
       tab.queryAnalysis = undefined;
+      tab.querySourceColumns = undefined;
+      tab.queryEditabilityReason = "metadata-unavailable";
       tab.tableMeta = undefined;
       return;
     }
@@ -353,15 +373,35 @@ export const useQueryStore = defineStore("query", () => {
         primaryKeys,
       };
 
-      if (primaryKeys.length === 0 || !allPrimaryKeysPresent(primaryKeys, tab.result.columns)) {
+      if (primaryKeys.length === 0) {
         tab.queryAnalysis = undefined;
+        tab.querySourceColumns = undefined;
+        tab.queryEditabilityReason = "no-primary-key";
+        return;
+      }
+
+      if (!allPrimaryKeysPresent(primaryKeys, tab.result.columns, analysis)) {
+        tab.queryAnalysis = undefined;
+        tab.querySourceColumns = undefined;
+        tab.queryEditabilityReason = "primary-key-not-returned";
+        return;
+      }
+
+      if (!allEditableColumnsWriteable(analysis, tab.result.columns)) {
+        tab.queryAnalysis = undefined;
+        tab.querySourceColumns = undefined;
+        tab.queryEditabilityReason = "aliased-columns";
         return;
       }
 
       tab.queryAnalysis = analysis;
+      tab.querySourceColumns = sourceColumnsForResult(analysis, tab.result.columns);
+      tab.queryEditabilityReason = undefined;
     } catch (err) {
       console.error("[DBX] ERROR fetching columns for query metadata:", err);
       tab.queryAnalysis = undefined;
+      tab.querySourceColumns = undefined;
+      tab.queryEditabilityReason = "metadata-unavailable";
       tab.tableMeta = undefined;
     }
   }
@@ -418,6 +458,8 @@ export const useQueryStore = defineStore("query", () => {
           current.activeResultIndex = undefined;
           current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
           current.queryAnalysis = undefined;
+          current.querySourceColumns = undefined;
+          current.queryEditabilityReason = undefined;
           current.tableMeta = undefined;
           current.resultBaseSql = options?.resultBaseSql ?? sql;
           current.resultSortedSql = options?.resultSortedSql;
@@ -465,6 +507,8 @@ export const useQueryStore = defineStore("query", () => {
         current.results = undefined;
         current.activeResultIndex = undefined;
         current.queryAnalysis = undefined;
+        current.querySourceColumns = undefined;
+        current.queryEditabilityReason = undefined;
         if (current.mode !== "data") current.tableMeta = undefined;
         current.resultBaseSql = options?.resultBaseSql ?? sql;
         current.resultSortedSql = options?.resultSortedSql;
@@ -578,6 +622,9 @@ export const useQueryStore = defineStore("query", () => {
     if (!tab?.results || index < 0 || index >= tab.results.length) return;
     tab.activeResultIndex = index;
     tab.result = tab.results[index];
+    tab.queryAnalysis = undefined;
+    tab.querySourceColumns = undefined;
+    tab.queryEditabilityReason = undefined;
   }
 
   function trimResultCache() {
@@ -586,6 +633,9 @@ export const useQueryStore = defineStore("query", () => {
       const toEvict = inactive.slice(0, inactive.length - MAX_CACHED_RESULTS);
       toEvict.forEach((t) => {
         t.result = undefined;
+        t.queryAnalysis = undefined;
+        t.querySourceColumns = undefined;
+        t.queryEditabilityReason = undefined;
       });
     }
   }

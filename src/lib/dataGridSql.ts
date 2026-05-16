@@ -21,6 +21,7 @@ export interface DataGridSaveStatementOptions {
   databaseType?: DatabaseType;
   tableMeta: DataGridTableMeta;
   columns: string[];
+  sourceColumns?: Array<string | undefined>;
   rows: GridCellValue[][];
   dirtyRows: Array<[number, Array<[number, GridCellValue]>]>;
   deletedRows: number[];
@@ -31,6 +32,7 @@ export interface DataGridSaveValidationOptions {
   databaseType?: DatabaseType;
   tableMeta?: DataGridTableMeta;
   columns: string[];
+  sourceColumns?: Array<string | undefined>;
   rows?: GridCellValue[][];
   columnInfo?: DataGridColumnInfo[];
   dirtyRows: Array<[number, Array<[number, GridCellValue]>]>;
@@ -56,17 +58,20 @@ export function validateDataGridSave(options: DataGridSaveValidationOptions): st
 
   for (const [, changes] of options.dirtyRows) {
     for (const [columnIndex, value] of changes) {
-      const column = options.columns[columnIndex];
-      if (isNullWriteToNotNullColumn(options.databaseType, notNullColumns, column, value)) {
-        return nullWriteError(column);
+      const sourceColumn = effectiveColumn(options.sourceColumns, options.columns, columnIndex);
+      if (!sourceColumn) continue;
+      if (isNullWriteToNotNullColumn(options.databaseType, notNullColumns, sourceColumn, value)) {
+        return nullWriteError(sourceColumn);
       }
     }
   }
 
   for (const row of options.newRows) {
-    for (const [columnIndex, column] of options.columns.entries()) {
-      if (isNullWriteToNotNullColumn(options.databaseType, notNullColumns, column, row[columnIndex])) {
-        return nullWriteError(column);
+    for (const columnIndex of options.columns.keys()) {
+      const sourceColumn = effectiveColumn(options.sourceColumns, options.columns, columnIndex);
+      if (!sourceColumn) continue;
+      if (isNullWriteToNotNullColumn(options.databaseType, notNullColumns, sourceColumn, row[columnIndex])) {
+        return nullWriteError(sourceColumn);
       }
     }
   }
@@ -78,7 +83,8 @@ function validateInsertedPrimaryKeys(options: DataGridSaveValidationOptions): st
   const primaryKeys = options.tableMeta?.primaryKeys ?? [];
   if (primaryKeys.length === 0 || options.newRows.length === 0) return undefined;
 
-  const primaryKeyIndexes = primaryKeys.map((primaryKey) => findColumnIndex(options.columns, primaryKey));
+  const saveColumns = effectiveColumns(options.sourceColumns, options.columns);
+  const primaryKeyIndexes = primaryKeys.map((primaryKey) => findColumnIndex(saveColumns, primaryKey));
   if (primaryKeyIndexes.some((index) => index === -1)) return undefined;
 
   const existingKeys = new Set<string>();
@@ -102,6 +108,7 @@ function validateInsertedPrimaryKeys(options: DataGridSaveValidationOptions): st
 
 export function buildDataGridSaveStatements(options: DataGridSaveStatementOptions): string[] {
   if (options.databaseType === "neo4j") return buildNeo4jDataGridSaveStatements(options);
+  const saveColumns = effectiveColumns(options.sourceColumns, options.columns);
 
   const table = qualifiedTableName({
     databaseType: options.databaseType,
@@ -114,27 +121,29 @@ export function buildDataGridSaveStatements(options: DataGridSaveStatementOption
     const row = options.rows[rowIndex];
     if (!row) continue;
     const sets = changes
-      .filter(([columnIndex]) => !isOracleRowId(options.databaseType, options.columns[columnIndex]))
+      .filter(([columnIndex]) => !!saveColumns[columnIndex])
+      .filter(([columnIndex]) => !isOracleRowId(options.databaseType, saveColumns[columnIndex]))
       .map(
         ([columnIndex, value]) =>
-          `${quoteIdent(options.databaseType, options.columns[columnIndex])} = ${formatGridSqlLiteral(value, options.databaseType)}`,
+          `${quoteIdent(options.databaseType, saveColumns[columnIndex]!)} = ${formatGridSqlLiteral(value, options.databaseType)}`,
       )
       .join(", ");
     if (!sets) continue;
-    const where = buildPrimaryKeyWhere(options.databaseType, options.tableMeta.primaryKeys, options.columns, row);
+    const where = buildPrimaryKeyWhere(options.databaseType, options.tableMeta.primaryKeys, saveColumns, row);
     statements.push(`UPDATE ${table} SET ${sets} WHERE ${where};`);
   }
 
   for (const rowIndex of options.deletedRows) {
     const row = options.rows[rowIndex];
     if (!row) continue;
-    const where = buildPrimaryKeyWhere(options.databaseType, options.tableMeta.primaryKeys, options.columns, row);
+    const where = buildPrimaryKeyWhere(options.databaseType, options.tableMeta.primaryKeys, saveColumns, row);
     statements.push(`DELETE FROM ${table} WHERE ${where};`);
   }
 
   for (const row of options.newRows) {
-    const insertPairs = options.columns
+    const insertPairs = saveColumns
       .map((column, index) => ({ column, value: row[index] }))
+      .filter((pair): pair is { column: string; value: GridCellValue } => !!pair.column)
       .filter((pair) => !isOracleRowId(options.databaseType, pair.column))
       .filter((pair) => pair.value !== null && pair.value !== undefined);
     if (!insertPairs.length) continue;
@@ -148,6 +157,7 @@ export function buildDataGridSaveStatements(options: DataGridSaveStatementOption
 
 export function buildDataGridRollbackStatements(options: DataGridSaveStatementOptions): string[] {
   if (options.databaseType === "neo4j") return buildNeo4jDataGridRollbackStatements(options);
+  const saveColumns = effectiveColumns(options.sourceColumns, options.columns);
 
   const table = qualifiedTableName({
     databaseType: options.databaseType,
@@ -157,15 +167,16 @@ export function buildDataGridRollbackStatements(options: DataGridSaveStatementOp
   const statements: string[] = [];
 
   for (const row of options.newRows) {
-    const where = buildRowWhere(options.databaseType, options.columns, row);
+    const where = buildRowWhere(options.databaseType, saveColumns, row);
     if (where) statements.push(`DELETE FROM ${table} WHERE ${where};`);
   }
 
   for (const rowIndex of options.deletedRows) {
     const row = options.rows[rowIndex];
     if (!row) continue;
-    const insertPairs = options.columns
+    const insertPairs = saveColumns
       .map((column, index) => ({ column, value: row[index] }))
+      .filter((pair): pair is { column: string; value: GridCellValue } => !!pair.column)
       .filter((pair) => !isOracleRowId(options.databaseType, pair.column));
     const columns = insertPairs.map((pair) => quoteIdent(options.databaseType, pair.column)).join(", ");
     const values = insertPairs.map((pair) => formatGridSqlLiteral(pair.value, options.databaseType)).join(", ");
@@ -180,19 +191,19 @@ export function buildDataGridRollbackStatements(options: DataGridSaveStatementOp
       afterRow[columnIndex] = value;
     }
     const writableChanges = changes.filter(
-      ([columnIndex]) => !isOracleRowId(options.databaseType, options.columns[columnIndex]),
+      ([columnIndex]) => !!saveColumns[columnIndex] && !isOracleRowId(options.databaseType, saveColumns[columnIndex]),
     );
     const sets = writableChanges
       .map(
         ([columnIndex]) =>
-          `${quoteIdent(options.databaseType, options.columns[columnIndex])} = ${formatGridSqlLiteral(row[columnIndex], options.databaseType)}`,
+          `${quoteIdent(options.databaseType, saveColumns[columnIndex]!)} = ${formatGridSqlLiteral(row[columnIndex], options.databaseType)}`,
       )
       .join(", ");
     if (!sets) continue;
     const where = [
-      buildPrimaryKeyWhere(options.databaseType, options.tableMeta.primaryKeys, options.columns, afterRow),
+      buildPrimaryKeyWhere(options.databaseType, options.tableMeta.primaryKeys, saveColumns, afterRow),
       ...writableChanges.map(([columnIndex, value]) =>
-        buildColumnPredicate(options.databaseType, options.columns[columnIndex], value),
+        buildColumnPredicate(options.databaseType, saveColumns[columnIndex]!, value),
       ),
     ]
       .filter(Boolean)
@@ -201,6 +212,22 @@ export function buildDataGridRollbackStatements(options: DataGridSaveStatementOp
   }
 
   return statements;
+}
+
+function effectiveColumns(
+  sourceColumns: Array<string | undefined> | undefined,
+  columns: string[],
+): Array<string | undefined> {
+  if (!sourceColumns || sourceColumns.length !== columns.length) return columns;
+  return sourceColumns;
+}
+
+function effectiveColumn(
+  sourceColumns: Array<string | undefined> | undefined,
+  columns: string[],
+  index: number,
+): string | undefined {
+  return effectiveColumns(sourceColumns, columns)[index];
 }
 
 export function dataGridSaveExecutionSchema(
@@ -233,7 +260,7 @@ export function formatGridSqlLiteral(value: GridCellValue, databaseType?: Databa
 function buildPrimaryKeyWhere(
   databaseType: DatabaseType | undefined,
   primaryKeys: string[],
-  columns: string[],
+  columns: Array<string | undefined>,
   row: GridCellValue[],
 ): string {
   if (databaseType === "hive" && primaryKeys.length === 0) return buildRowWhere(databaseType, columns, row);
@@ -245,10 +272,14 @@ function buildPrimaryKeyWhere(
     .join(" AND ");
 }
 
-function buildRowWhere(databaseType: DatabaseType | undefined, columns: string[], row: GridCellValue[]): string {
+function buildRowWhere(
+  databaseType: DatabaseType | undefined,
+  columns: Array<string | undefined>,
+  row: GridCellValue[],
+): string {
   return columns
     .map((column, index) =>
-      isOracleRowId(databaseType, column) ? "" : buildColumnPredicate(databaseType, column, row[index]),
+      !column || isOracleRowId(databaseType, column) ? "" : buildColumnPredicate(databaseType, column, row[index]),
     )
     .filter(Boolean)
     .join(" AND ");
@@ -283,9 +314,9 @@ function isNullWriteToNotNullColumn(
   return value === null && notNullColumns.has(normalizeColumnName(column));
 }
 
-function findColumnIndex(columns: string[], target: string): number {
+function findColumnIndex(columns: Array<string | undefined>, target: string): number {
   const normalizedTarget = normalizeColumnName(target);
-  return columns.findIndex((column) => normalizeColumnName(column) === normalizedTarget);
+  return columns.findIndex((column) => (column ? normalizeColumnName(column) : "") === normalizedTarget);
 }
 
 function primaryKeyValueKey(primaryKeyIndexes: number[], row: GridCellValue[]): string | undefined {

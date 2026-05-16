@@ -42,6 +42,7 @@ import {
   Link2,
   ListTree,
   TableProperties,
+  LockKeyhole,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import {
@@ -110,6 +111,8 @@ const props = defineProps<{
   connectionId?: string;
   database?: string;
   context?: "results" | "table-data";
+  sourceColumns?: Array<string | undefined>;
+  queryEditabilityReason?: string;
   initialWhereInput?: string;
   tableMeta?: {
     schema?: string;
@@ -949,6 +952,16 @@ const pageSize = ref(settingsStore.editorSettings.pageSize);
 const currentPage = ref(1);
 const isFullPage = computed(() => props.result.rows.length >= pageSize.value);
 const isResultsContext = computed(() => props.context === "results");
+const resultEditStatus = computed(() => {
+  if (!isResultsContext.value || !hasData.value) return null;
+  if (props.editable && props.tableMeta) return "editable";
+  if (props.queryEditabilityReason) return "readonly";
+  return null;
+});
+const queryEditabilityHint = computed(() => {
+  const reason = props.queryEditabilityReason;
+  return reason ? t(`grid.queryEditUnsupported.${reason}`) : "";
+});
 const canUseWhereSearch = computed(() => !!props.tableMeta && !!props.onExecuteSql && !isResultsContext.value);
 const tableUsesSyntheticRowId = computed(() =>
   usesSyntheticRowIdKey(props.databaseType, props.tableMeta?.primaryKeys ?? []),
@@ -1079,6 +1092,7 @@ const editor = useDataGridEditor({
   connectionId: computed(() => props.connectionId),
   database: computed(() => props.database),
   tableMeta: computed(() => props.tableMeta),
+  sourceColumns: computed(() => props.sourceColumns),
   canEditExistingRows,
   onExecuteSql: computed(() => props.onExecuteSql),
   customSave: computed(() => props.customSave),
@@ -1127,6 +1141,7 @@ const {
   discardChanges,
   rowDataWithChanges,
   coerceCellValue,
+  canEditColumn,
   resetGridVerticalScroll,
   getResetScrollAfterResult,
   clearResetScrollAfterResult,
@@ -1135,6 +1150,10 @@ const {
 
 function canEditRowItem(item: RowItem | undefined): boolean {
   return !!props.editable && !!item && !item.isDeleted && (item.isNew || canEditExistingRows.value);
+}
+
+function canEditCellItem(item: RowItem | undefined, columnIndex: number): boolean {
+  return canEditRowItem(item) && canEditColumn(columnIndex);
 }
 
 function canDeleteRowItem(item: RowItem | undefined): boolean {
@@ -1447,7 +1466,7 @@ const activeCellDetail = computed(() => {
     displayValue,
     length: value === null ? 0 : String(value).length,
     formattedJson,
-    isEditable: canEditRowItem(item),
+    isEditable: canEditCellItem(item, cell.col),
   };
 });
 
@@ -2344,6 +2363,31 @@ defineExpose({
             <slot name="search-bar" />
 
             <div class="flex shrink-0 items-center gap-1 px-1 ml-auto">
+              <Tooltip v-if="resultEditStatus === 'editable'">
+                <TooltipTrigger as-child>
+                  <div
+                    class="flex h-5 items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
+                  >
+                    {{ t("grid.queryEditReady") }}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="max-w-sm">
+                  {{ t("grid.queryEditReadyHint", { table: tableMeta?.tableName }) }}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip v-else-if="resultEditStatus === 'readonly' && queryEditabilityHint">
+                <TooltipTrigger as-child>
+                  <div
+                    class="flex h-5 items-center gap-1 rounded border border-border bg-background px-1.5 text-xs font-medium text-muted-foreground"
+                  >
+                    <LockKeyhole class="h-3 w-3" />
+                    {{ t("grid.queryEditReadOnly") }}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="max-w-sm">
+                  {{ queryEditabilityHint }}
+                </TooltipContent>
+              </Tooltip>
               <Button
                 variant="ghost"
                 size="sm"
@@ -2933,12 +2977,12 @@ defineExpose({
                           actualColIdx,
                         ),
                         'tabular-nums': typeof item.data[actualColIdx] === 'number',
-                        'cursor-text hover:bg-accent/50': canEditRowItem(item),
+                        'cursor-text hover:bg-accent/50': canEditCellItem(item, actualColIdx),
                         'line-through': item.isDeleted,
                       }"
                       @mousedown="handleDataCellMousedown(index, visibleColIdx, item.id, $event)"
                       @mouseenter="extendCellSelection(index, visibleColIdx)"
-                      @dblclick="canEditRowItem(item) && startEdit(item.id, actualColIdx)"
+                      @dblclick="canEditCellItem(item, actualColIdx) && startEdit(item.id, actualColIdx)"
                       @contextmenu="onCellContext(item.id, index, actualColIdx, visibleColIdx)"
                     >
                       <template v-if="editingCell?.rowId === item.id && editingCell?.col === actualColIdx">

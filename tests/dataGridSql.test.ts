@@ -39,6 +39,59 @@ test("builds SQL Server grid save statements with schema and bracket quoting", (
   ]);
 });
 
+test("builds grid save statements through source columns for aliased query results", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "postgres",
+    tableMeta: {
+      schema: "public",
+      tableName: "ihli_data",
+      primaryKeys: ["iso3", "year"],
+    },
+    columns: ["country_code", "report_year", "country_name", "ihli_rank"],
+    sourceColumns: ["iso3", "year", "country_name", "rank"],
+    rows: [["LUX", 2007, "Luxembourg", 1]],
+    dirtyRows: [[0, [[2, "Luxembourg City"]]]],
+    deletedRows: [0],
+    newRows: [["USA", 2008, "United States", 2]],
+  });
+
+  assert.deepEqual(statements, [
+    `UPDATE "public"."ihli_data" SET "country_name" = 'Luxembourg City' WHERE "iso3" = 'LUX' AND "year" = 2007;`,
+    `DELETE FROM "public"."ihli_data" WHERE "iso3" = 'LUX' AND "year" = 2007;`,
+    `INSERT INTO "public"."ihli_data" ("iso3", "year", "country_name", "rank") VALUES ('USA', 2008, 'United States', 2);`,
+  ]);
+});
+
+test("skips expression-only result columns when saving aliased query results", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "postgres",
+    tableMeta: {
+      schema: "public",
+      tableName: "ihli_data",
+      primaryKeys: ["iso3", "year"],
+    },
+    columns: ["iso3", "year", "country_name", "score"],
+    sourceColumns: ["iso3", "year", "country_name", undefined],
+    rows: [["LUX", 2007, "Luxembourg", 50242.1]],
+    dirtyRows: [
+      [
+        0,
+        [
+          [2, "Luxembourg City"],
+          [3, 999],
+        ],
+      ],
+    ],
+    deletedRows: [],
+    newRows: [["USA", 2008, "United States", 43000]],
+  });
+
+  assert.deepEqual(statements, [
+    `UPDATE "public"."ihli_data" SET "country_name" = 'Luxembourg City' WHERE "iso3" = 'LUX' AND "year" = 2007;`,
+    `INSERT INTO "public"."ihli_data" ("iso3", "year", "country_name") VALUES ('USA', 2008, 'United States');`,
+  ]);
+});
+
 test("builds Hive grid save statements with backtick identifiers", () => {
   const statements = buildDataGridSaveStatements({
     databaseType: "hive",

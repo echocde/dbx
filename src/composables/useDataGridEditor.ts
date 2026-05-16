@@ -51,6 +51,7 @@ export interface UseDataGridEditorOptions {
       }
     | undefined
   >;
+  sourceColumns?: ComputedRef<Array<string | undefined> | undefined>;
   canEditExistingRows?: ComputedRef<boolean>;
   onExecuteSql: ComputedRef<((sql: string) => Promise<void>) | undefined>;
   customSave?: ComputedRef<
@@ -96,6 +97,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     connectionId,
     database,
     tableMeta,
+    sourceColumns = computed(() => undefined),
     canEditExistingRows = computed(() => true),
     onExecuteSql,
     customSave,
@@ -241,6 +243,11 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     return value;
   }
 
+  function canEditColumn(columnIndex: number): boolean {
+    const sources = sourceColumns.value;
+    return !sources || sources[columnIndex] !== undefined;
+  }
+
   // --- Row data helpers ---
   function rowDataWithChanges(row: CellValue[], sourceIndex: number): CellValue[] {
     const dirty = dirtyRows.value.get(sourceIndex);
@@ -250,6 +257,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
   // --- Inline editing ---
   function startEdit(rowId: number, colIdx: number) {
     if (!editable.value) return;
+    if (!canEditColumn(colIdx)) return;
     const item = getRowItem(rowId);
     if (!item || item.isDeleted) return;
     if (!item.isNew && !canEditExistingRows.value) return;
@@ -310,6 +318,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
   }
 
   function applyCellValue(rowId: number, col: number, value: string | null) {
+    if (!canEditColumn(col)) return;
     const item = getRowItem(rowId);
     if (!item || item.isDeleted) return;
 
@@ -491,6 +500,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
       databaseType: databaseType.value,
       tableMeta: tableMeta.value,
       columns: result.value.columns,
+      sourceColumns: sourceColumns.value,
       rows: result.value.rows,
       dirtyRows: [...dirtyRows.value.entries()].map(
         ([rowIndex, changes]) => [rowIndex, [...changes.entries()]] as [number, Array<[number, CellValue]>],
@@ -579,6 +589,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
           databaseType: databaseType.value,
           tableMeta: tableMeta.value,
           columns: stmtOptions.columns,
+          sourceColumns: stmtOptions.sourceColumns,
           rows: stmtOptions.rows,
           columnInfo: tableMeta.value?.columns,
           dirtyRows: stmtOptions.dirtyRows,
@@ -708,6 +719,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     discardChanges,
     rowDataWithChanges,
     coerceCellValue,
+    canEditColumn,
     resetGridVerticalScroll,
     getResetScrollAfterResult,
     clearResetScrollAfterResult,
