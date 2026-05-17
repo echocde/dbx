@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSortedQuerySql } from "../../src/lib/queryResultSort.ts";
+import { buildSortedQuerySql } from "../../apps/desktop/src/lib/queryResultSort.ts";
 
 test("wraps a single select query with outer order by", () => {
   const result = buildSortedQuerySql("SELECT id, name FROM users;", "postgres", ["id", "name"], 1, "name", "asc");

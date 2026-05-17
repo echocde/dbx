@@ -6,7 +6,7 @@ import {
   shouldAutoOpenSqlCompletion,
   type SqlCompletionColumn,
   type SqlCompletionTable,
-} from "../../src/lib/sqlCompletion.ts";
+} from "../../apps/desktop/src/lib/sqlCompletion.ts";
 
 const tables: SqlCompletionTable[] = [
   { name: "users", schema: "public", type: "table" },

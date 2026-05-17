@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDatabaseTreeNodes } from "../../src/lib/databaseTree.ts";
+import { buildDatabaseTreeNodes } from "../../apps/desktop/src/lib/databaseTree.ts";
 
 test("设置默认库后侧边栏数据库树仍保留全部数据库", () => {
   const nodes = buildDatabaseTreeNodes("conn-1", [

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { DBX_ROWID_COLUMN } from "../../src/lib/tableEditing.ts";
-import { buildTableSelectSql } from "../../src/lib/tableSelectSql.ts";
+import { DBX_ROWID_COLUMN } from "../../apps/desktop/src/lib/tableEditing.ts";
+import { buildTableSelectSql } from "../../apps/desktop/src/lib/tableSelectSql.ts";
 
 test("builds a MySQL table WHERE query from search input", () => {
   const sql = buildTableSelectSql({

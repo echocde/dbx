@@ -8,21 +8,21 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --config apps/desktop/vite.config.ts",
     "dev:tauri": "tauri dev",
-    "dev:web": "vite --port 5173 --mode web",
+    "dev:web": "vite --config apps/desktop/vite.config.ts --port 5173 --mode web",
     "dev:backend": "RUST_LOG=${RUST_LOG:-info} DBX_PASSWORD=${DBX_PASSWORD:-test} cargo watch -x 'run -p dbx-web'",
     "build:packages": "pnpm --filter @dbx-app/node-core build && pnpm --filter @dbx-app/cli build && pnpm --filter @dbx-app/mcp-server build",
     "test:packages": "pnpm --filter @dbx-app/node-core test && pnpm --filter @dbx-app/cli test && pnpm --filter @dbx-app/mcp-server test",
     "pack:packages": "rm -rf /tmp/dbx-pack-check && mkdir -p /tmp/dbx-pack-check && pnpm --filter @dbx-app/node-core pack --pack-destination /tmp/dbx-pack-check && pnpm --filter @dbx-app/cli pack --pack-destination /tmp/dbx-pack-check && pnpm --filter @dbx-app/mcp-server pack --pack-destination /tmp/dbx-pack-check",
     "publish:dry-run": "pnpm build:packages && pnpm pack:packages",
-    "build": "vue-tsc --noEmit && vite build",
-    "check": "oxfmt --check \"src/**/*.{ts,vue}\" && pnpm lint && vue-tsc --noEmit && pnpm test",
-    "lint": "oxlint --vue-plugin src",
-    "fmt": "oxfmt \"src/**/*.{ts,vue}\"",
-    "test": "tsx --test packages/app-tests/*.test.ts",
-    "test:coverage": "c8 --reporter=lcov --reporter=text tsx --test packages/app-tests/*.test.ts",
-    "preview": "vite preview",
+    "build": "vue-tsc --noEmit --project apps/desktop/tsconfig.json && vite build --config apps/desktop/vite.config.ts",
+    "check": "oxfmt --check \"apps/desktop/src/**/*.{ts,vue}\" && pnpm lint && vue-tsc --noEmit --project apps/desktop/tsconfig.json && pnpm test",
+    "lint": "oxlint --vue-plugin apps/desktop/src",
+    "fmt": "oxfmt \"apps/desktop/src/**/*.{ts,vue}\"",
+    "test": "tsx --tsconfig apps/desktop/tsconfig.json --test packages/app-tests/*.test.ts",
+    "test:coverage": "c8 --reporter=lcov --reporter=text tsx --tsconfig apps/desktop/tsconfig.json --test packages/app-tests/*.test.ts",
+    "preview": "vite preview --config apps/desktop/vite.config.ts",
     "tauri": "tauri",
     "prepare": "husky"
   },
@@ -93,6 +93,6 @@
     ]
   },
   "lint-staged": {
-    "src/**/*.{ts,vue}": "oxfmt"
+    "apps/desktop/src/**/*.{ts,vue}": "oxfmt"
   }
 }

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { filterSidebarTree } from "../../src/lib/sidebarSearchTree.ts";
-import type { TreeNode } from "../../src/types/database.ts";
+import { filterSidebarTree } from "../../apps/desktop/src/lib/sidebarSearchTree.ts";
+import type { TreeNode } from "../../apps/desktop/src/types/database.ts";
 
 test("preserves loaded table children when the table itself matches search", () => {
   const nodes: TreeNode[] = [

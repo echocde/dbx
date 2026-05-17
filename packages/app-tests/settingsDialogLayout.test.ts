@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-const source = readFileSync("src/components/editor/EditorSettingsDialog.vue", "utf8");
+const source = readFileSync("apps/desktop/src/components/editor/EditorSettingsDialog.vue", "utf8");
 
 test("settings dialog uses a side category navigation", () => {
   assert.match(source, /settingsCategoryNav/);

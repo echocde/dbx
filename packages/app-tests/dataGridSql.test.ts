@@ -7,8 +7,8 @@ import {
   normalizeDataGridSaveError,
   formatGridSqlLiteral,
   validateDataGridSave,
-} from "../../src/lib/dataGridSql.ts";
-import { DBX_NEO4J_ELEMENT_ID_COLUMN } from "../../src/lib/tableEditing.ts";
+} from "../../apps/desktop/src/lib/dataGridSql.ts";
+import { DBX_NEO4J_ELEMENT_ID_COLUMN } from "../../apps/desktop/src/lib/tableEditing.ts";
 
 test("builds SQL Server grid save statements with schema and bracket quoting", () => {
   const statements = buildDataGridSaveStatements({

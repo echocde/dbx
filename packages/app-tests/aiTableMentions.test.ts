@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { formatAiTableMention, parseAiTableMentions } from "../../src/lib/aiTableMentions.ts";
+import { formatAiTableMention, parseAiTableMentions } from "../../apps/desktop/src/lib/aiTableMentions.ts";
 
 test("parses simple and schema-qualified AI table mentions", () => {
   assert.deepEqual(parseAiTableMentions("show @users and join @public.orders"), [

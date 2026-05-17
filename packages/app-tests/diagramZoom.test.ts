@@ -4,7 +4,7 @@ import {
   clampDiagramZoom,
   zoomFromGestureScale,
   zoomFromWheelDelta,
-} from "../../src/lib/diagramZoom.ts";
+} from "../../apps/desktop/src/lib/diagramZoom.ts";
 
 test("clamps diagram zoom to supported bounds", () => {
   assert.equal(clampDiagramZoom(0.2), 0.6);

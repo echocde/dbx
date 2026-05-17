@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "../../src/lib/dataGridScrollGutter.ts";
+import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "../../apps/desktop/src/lib/dataGridScrollGutter.ts";
 
 test("calculates scrollbar gutter from element dimensions", () => {
   assert.equal(scrollbarGutterWidth({ offsetWidth: 1000, clientWidth: 985 }), 15);

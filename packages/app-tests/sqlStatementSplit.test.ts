@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { findStatementAtCursor } from "../../src/lib/sqlStatementSplit.ts";
+import { findStatementAtCursor } from "../../apps/desktop/src/lib/sqlStatementSplit.ts";
 
 test("finds single statement", () => {
   assert.equal(findStatementAtCursor("SELECT 1", 3), "SELECT 1");

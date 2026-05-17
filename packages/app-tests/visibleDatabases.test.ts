@@ -4,7 +4,7 @@ import {
   filterVisibleDatabaseNames,
   normalizeVisibleDatabaseSelection,
   visibleDatabaseFilterIsEnabled,
-} from "../../src/lib/visibleDatabases.ts";
+} from "../../apps/desktop/src/lib/visibleDatabases.ts";
 
 test("undefined visible database filter keeps every database", () => {
   assert.deepEqual(filterVisibleDatabaseNames(["app", "analytics"], undefined), ["app", "analytics"]);

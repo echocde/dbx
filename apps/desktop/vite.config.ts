@@ -7,6 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 const isTauri = !!host || !!process.env.TAURI_ENV_ARCH;
 
 export default defineConfig(async () => ({
+  root: __dirname,
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: {
@@ -15,6 +16,8 @@ export default defineConfig(async () => ({
   },
   clearScreen: false,
   build: {
+    outDir: "../../dist",
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks: {

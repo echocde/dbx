@@ -8,5 +8,5 @@ function exportedFunctions(path: string): string[] {
 }
 
 test("Tauri and HTTP backends expose the same API functions", () => {
-  assert.deepEqual(exportedFunctions("src/lib/http.ts"), exportedFunctions("src/lib/tauri.ts"));
+  assert.deepEqual(exportedFunctions("apps/desktop/src/lib/http.ts"), exportedFunctions("apps/desktop/src/lib/tauri.ts"));
 });

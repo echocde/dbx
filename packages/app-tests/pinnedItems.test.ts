@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { applyPinnedTreeNodeState, orderPinnedFirst } from "../../src/lib/pinnedItems.ts";
-import type { TreeNode } from "../../src/types/database.ts";
+import { applyPinnedTreeNodeState, orderPinnedFirst } from "../../apps/desktop/src/lib/pinnedItems.ts";
+import type { TreeNode } from "../../apps/desktop/src/types/database.ts";
 
 test("orders pinned items before unpinned items without changing relative order", () => {
   const items = [

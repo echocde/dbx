@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { buildRenameObjectSql, supportsObjectRename } from "../../src/lib/objectRenameSql.ts";
+import { buildRenameObjectSql, supportsObjectRename } from "../../apps/desktop/src/lib/objectRenameSql.ts";
 
 test("builds MySQL table and view rename statements", () => {
   assert.equal(

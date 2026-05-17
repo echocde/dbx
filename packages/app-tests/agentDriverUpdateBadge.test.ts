@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { countAvailableAgentDriverUpdates } from "../../src/lib/agentDriverUpdateBadge.ts";
+import { countAvailableAgentDriverUpdates } from "../../apps/desktop/src/lib/agentDriverUpdateBadge.ts";
 
 test("returns zero when there are no available agent driver updates", () => {
   assert.equal(countAvailableAgentDriverUpdates([]), 0);

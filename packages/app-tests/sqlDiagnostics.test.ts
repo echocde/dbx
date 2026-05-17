@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { parseSqlErrorLocation } from "../../src/lib/sqlDiagnostics.ts";
+import { parseSqlErrorLocation } from "../../apps/desktop/src/lib/sqlDiagnostics.ts";
 
 test("parses generic line and column error positions", () => {
   assert.deepEqual(parseSqlErrorLocation("syntax error at line 3 column 12"), {

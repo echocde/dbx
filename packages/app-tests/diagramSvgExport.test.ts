@@ -1,12 +1,12 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { buildEngineeringDiagram } from "../../src/lib/engineeringDiagram.ts";
+import { buildEngineeringDiagram } from "../../apps/desktop/src/lib/engineeringDiagram.ts";
 import {
   buildEngineeringDiagramSvg,
   buildTableDiagramSvg,
   diagramSvgFileName,
-} from "../../src/lib/diagramSvgExport.ts";
-import { buildDiagramRelationships, type DiagramTable } from "../../src/lib/erDiagram.ts";
+} from "../../apps/desktop/src/lib/diagramSvgExport.ts";
+import { buildDiagramRelationships, type DiagramTable } from "../../apps/desktop/src/lib/erDiagram.ts";
 
 const tables: DiagramTable[] = [
   {

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import type { AiAction } from "../../src/lib/ai.ts";
-import { AI_SKILL_DEFINITIONS, aiSkillForAction } from "../../src/lib/aiSkills.ts";
+import type { AiAction } from "../../apps/desktop/src/lib/ai.ts";
+import { AI_SKILL_DEFINITIONS, aiSkillForAction } from "../../apps/desktop/src/lib/aiSkills.ts";
 
 const actions: AiAction[] = ["generate", "explain", "optimize", "fix", "convert", "sampleData"];
 

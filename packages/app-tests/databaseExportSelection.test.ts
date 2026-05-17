@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { buildSelectedTablesPayload } from "../../src/lib/databaseExportSelection.ts";
+import { buildSelectedTablesPayload } from "../../apps/desktop/src/lib/databaseExportSelection.ts";
 
 test("omits selected table payload when every table is selected", () => {
   assert.equal(buildSelectedTablesPayload(["users", "orders"], ["users", "orders"]), undefined);

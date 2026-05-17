@@ -7,9 +7,7 @@ RUN npm i -g pnpm
 COPY package.json pnpm-lock.yaml ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
-COPY src/ src/
-COPY index.html vite.config.ts tsconfig.json ./
-COPY public/ public/
+COPY apps/desktop/ apps/desktop/
 RUN pnpm build
 
 # Stage 2: Cross-compile Rust backend for the requested platform (native, no emulation)

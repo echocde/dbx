@@ -5,7 +5,7 @@ import {
   DEFAULT_EDITOR_SETTINGS,
   normalizeAiConfig,
   normalizeEditorSettings,
-} from "../../src/stores/settingsStore.ts";
+} from "../../apps/desktop/src/stores/settingsStore.ts";
 
 test("defaults Redis scan page size to 1000 keys", () => {
   assert.equal(DEFAULT_EDITOR_SETTINGS.redisScanPageSize, 1000);

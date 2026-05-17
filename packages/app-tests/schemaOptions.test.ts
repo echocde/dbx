@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasSchemaOptionsCacheEntry } from "../../src/composables/useSchemaOptions.ts";
+import { hasSchemaOptionsCacheEntry } from "../../apps/desktop/src/composables/useSchemaOptions.ts";
 
 test("treats an empty schema option list as a loaded cache entry", () => {
   const options = {

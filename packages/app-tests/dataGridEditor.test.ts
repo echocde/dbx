@@ -2,8 +2,8 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 import { computed, nextTick, ref } from "vue";
 import { createPinia, setActivePinia } from "pinia";
-import { useDataGridEditor } from "../../src/composables/useDataGridEditor.ts";
-import type { ColumnInfo } from "../../src/types/database.ts";
+import { useDataGridEditor } from "../../apps/desktop/src/composables/useDataGridEditor.ts";
+import type { ColumnInfo } from "../../apps/desktop/src/types/database.ts";
 
 type CellValue = string | number | boolean | null;
 

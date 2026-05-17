@@ -4,7 +4,7 @@ import {
   buildHistoryAiAnalysisPrompt,
   canRollbackHistoryEntry,
   type HistoryAiAnalysisEntry,
-} from "../../src/lib/historyAiAnalysis.ts";
+} from "../../apps/desktop/src/lib/historyAiAnalysis.ts";
 
 const baseEntry: HistoryAiAnalysisEntry = {
   id: "h1",

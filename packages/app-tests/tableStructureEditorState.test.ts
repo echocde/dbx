@@ -4,8 +4,8 @@ import {
   createColumnDrafts,
   createIndexDrafts,
   toColumnNames,
-} from "../../src/lib/tableStructureEditorState.ts";
-import type { ColumnInfo, IndexInfo } from "../../src/types/database.ts";
+} from "../../apps/desktop/src/lib/tableStructureEditorState.ts";
+import type { ColumnInfo, IndexInfo } from "../../apps/desktop/src/types/database.ts";
 
 const columns: ColumnInfo[] = [
   {

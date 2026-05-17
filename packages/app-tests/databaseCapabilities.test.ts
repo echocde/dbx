@@ -18,7 +18,7 @@ import {
   supportsTransfer,
   usesPostgresLikeStructureCopy,
   usesTreeSchemaMode,
-} from "../../src/lib/databaseCapabilities.ts";
+} from "../../apps/desktop/src/lib/databaseCapabilities.ts";
 
 test("treats Trino catalogs as schema tree roots", () => {
   assert.equal(TREE_SCHEMA_TYPES.has("trino"), true);

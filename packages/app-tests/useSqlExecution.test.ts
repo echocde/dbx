@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { isDangerousSql, stripSqlComments } from "../../src/composables/useSqlExecution.ts";
+import { isDangerousSql, stripSqlComments } from "../../apps/desktop/src/composables/useSqlExecution.ts";
 
 test("stripSqlComments removes block comments", () => {
   assert.equal(stripSqlComments("SELECT /* drop */ 1").includes("drop"), false);

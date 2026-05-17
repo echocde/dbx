@@ -4,7 +4,7 @@ import {
   buildTableStructureChangeSql,
   type EditableStructureColumn,
   type EditableStructureIndex,
-} from "../../src/lib/tableStructureEditorSql.ts";
+} from "../../apps/desktop/src/lib/tableStructureEditorSql.ts";
 
 function column(overrides: Partial<EditableStructureColumn>): EditableStructureColumn {
   return {

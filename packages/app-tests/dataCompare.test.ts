@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { compareDataRows, generateDataSyncSql } from "../../src/lib/dataCompare.ts";
+import { compareDataRows, generateDataSyncSql } from "../../apps/desktop/src/lib/dataCompare.ts";
 
 test("compares rows by primary key and reports added, removed, and modified rows", () => {
   const diff = compareDataRows({

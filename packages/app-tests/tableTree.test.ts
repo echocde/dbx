@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTableTreeNodes, expandCachedObjectBrowserNodes, objectGroupRefreshParentId } from "../../src/lib/tableTree.ts";
-import type { TableInfo } from "../../src/types/database.ts";
+import { buildTableTreeNodes, expandCachedObjectBrowserNodes, objectGroupRefreshParentId } from "../../apps/desktop/src/lib/tableTree.ts";
+import type { TableInfo } from "../../apps/desktop/src/types/database.ts";
 
 function table(name: string, tableType: "TABLE" | "VIEW" = "TABLE"): TableInfo {
   return { name, table_type: tableType };

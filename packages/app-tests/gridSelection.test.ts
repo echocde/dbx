@@ -8,7 +8,7 @@ import {
   formatSelectionAsTsv,
   isCellInSelection,
   normalizeSelectionRange,
-} from "../../src/lib/gridSelection.ts";
+} from "../../apps/desktop/src/lib/gridSelection.ts";
 
 test("normalizes a dragged cell range in either direction", () => {
   const range = normalizeSelectionRange(

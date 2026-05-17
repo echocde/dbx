@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { connectionUrlPlaceholder } from "../../src/lib/connectionPresentation.ts";
+import { connectionUrlPlaceholder } from "../../apps/desktop/src/lib/connectionPresentation.ts";
 
 const expected: Record<string, string> = {
   mysql: "mysql://user:password@host:port/database",

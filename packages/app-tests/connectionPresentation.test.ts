@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ConnectionConfig } from "../../src/types/database.ts";
-import { connectionDriverLabel, connectionEndpointLabel, connectionIconType, connectionOptionSubtitle } from "../../src/lib/connectionPresentation.ts";
+import type { ConnectionConfig } from "../../apps/desktop/src/types/database.ts";
+import { connectionDriverLabel, connectionEndpointLabel, connectionIconType, connectionOptionSubtitle } from "../../apps/desktop/src/lib/connectionPresentation.ts";
 
 const baseConnection: ConnectionConfig = {
   id: "conn-1",

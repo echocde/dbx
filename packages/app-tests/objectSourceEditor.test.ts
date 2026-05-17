@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "../../src/lib/objectSourceEditor.ts";
+import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "../../apps/desktop/src/lib/objectSourceEditor.ts";
 
 test("SQL Server edited source saves as ALTER", () => {
   const sql = buildExecutableObjectSourceSql({

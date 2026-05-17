@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "../../src/lib/mongoShellCommand.ts";
+import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "../../apps/desktop/src/lib/mongoShellCommand.ts";
 
 test("parseMongoFindCommand parses db collection find with an empty JSON filter", () => {
   assert.deepEqual(parseMongoFindCommand("db.users.find({})"), {

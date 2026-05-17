@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { formatMarkdownTable } from "../../src/lib/markdownTable.ts";
+import { formatMarkdownTable } from "../../apps/desktop/src/lib/markdownTable.ts";
 
 test("escapes markdown table pipes and normalizes newlines", () => {
   const markdown = formatMarkdownTable({

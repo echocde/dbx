@@ -4,7 +4,7 @@ import {
   buildDiagramRelationships,
   filterDiagramTables,
   layoutDiagramTables,
-} from "../../src/lib/erDiagram.ts";
+} from "../../apps/desktop/src/lib/erDiagram.ts";
 
 test("builds relationships only between tables in the diagram", () => {
   const relationships = buildDiagramRelationships([

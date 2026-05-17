@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { diffForeignKeys, diffIndexes, generateSyncSql, type TableDiff } from "../../src/lib/schemaDiff.ts";
-import type { ForeignKeyInfo, IndexInfo } from "../../src/types/database.ts";
+import { diffForeignKeys, diffIndexes, generateSyncSql, type TableDiff } from "../../apps/desktop/src/lib/schemaDiff.ts";
+import type { ForeignKeyInfo, IndexInfo } from "../../apps/desktop/src/types/database.ts";
 
 function index(overrides: Partial<IndexInfo>): IndexInfo {
   return {

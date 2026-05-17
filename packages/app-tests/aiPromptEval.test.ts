@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import type { AiAction, AiAssistantMode, AiContext } from "../../src/lib/ai.ts";
+import type { AiAction, AiAssistantMode, AiContext } from "../../apps/desktop/src/lib/ai.ts";
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -27,7 +27,7 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-const { buildSystemPrompt } = await import("../../src/lib/ai.ts");
+const { buildSystemPrompt } = await import("../../apps/desktop/src/lib/ai.ts");
 
 function baseContext(overrides: Partial<AiContext> = {}): AiContext {
   return {

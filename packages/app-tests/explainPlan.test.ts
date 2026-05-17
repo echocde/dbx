@@ -5,7 +5,7 @@ import {
   flattenExplainPlanNodes,
   parseExplainResult,
   supportsExplainPlan,
-} from "../../src/lib/explainPlan.ts";
+} from "../../apps/desktop/src/lib/explainPlan.ts";
 
 test("builds PostgreSQL JSON explain SQL from a selected query", () => {
   const result = buildExplainSql("postgres", " select * from users where id = 1; ");

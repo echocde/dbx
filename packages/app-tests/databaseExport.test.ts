@@ -7,7 +7,7 @@ import {
   buildDatabaseSqlExport,
   buildInsertStatements,
   formatSqlLiteral,
-} from "../../src/lib/databaseExport.ts";
+} from "../../apps/desktop/src/lib/databaseExport.ts";
 
 test("formats SQL literals for exported INSERT statements", () => {
   assert.equal(formatSqlLiteral(null), "NULL");

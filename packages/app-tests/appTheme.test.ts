@@ -4,7 +4,7 @@ import {
   getTauriThemeForMode,
   normalizeAppThemeMode,
   resolveAppThemeAppearance,
-} from "../../src/lib/appTheme.ts";
+} from "../../apps/desktop/src/lib/appTheme.ts";
 
 test("normalizes stored app theme modes", () => {
   assert.equal(normalizeAppThemeMode("dark"), "dark");

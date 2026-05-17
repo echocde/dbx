@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { shouldSuppressRepeatedActivation, tryStartExclusiveActivation } from "../../src/lib/actionActivation.ts";
+import { shouldSuppressRepeatedActivation, tryStartExclusiveActivation } from "../../apps/desktop/src/lib/actionActivation.ts";
 
 test("allows the first activation", () => {
   const guard = {};

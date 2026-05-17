@@ -6,8 +6,8 @@ import {
   SIDEBAR_TREE_SCROLL_BUFFER,
   flattenTree,
   shouldVirtualizeFlatTree,
-} from "../../src/composables/useFlatTree.ts";
-import type { TreeNode } from "../../src/types/database.ts";
+} from "../../apps/desktop/src/composables/useFlatTree.ts";
+import type { TreeNode } from "../../apps/desktop/src/types/database.ts";
 
 test("flattenTree preserves depth and node type for virtualized sidebar rows", () => {
   const nodes: TreeNode[] = [

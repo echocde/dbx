@@ -4,8 +4,8 @@ import {
   classifyAiSqlExecution,
   classifyConnectionEnvironment,
   shouldAttemptAiAutoExecute,
-} from "../../src/lib/aiSqlExecutionPolicy.ts";
-import type { ConnectionConfig } from "../../src/types/database.ts";
+} from "../../apps/desktop/src/lib/aiSqlExecutionPolicy.ts";
+import type { ConnectionConfig } from "../../apps/desktop/src/types/database.ts";
 
 function conn(overrides: Partial<ConnectionConfig> = {}): ConnectionConfig {
   return {

@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ColumnInfo } from "../../src/types/database.ts";
+import type { ColumnInfo } from "../../apps/desktop/src/types/database.ts";
 import {
   buildDatabaseSearchSql,
   buildSearchResultWhere,
   findMatchedSearchColumns,
-} from "../../src/lib/databaseSearch.ts";
+} from "../../apps/desktop/src/lib/databaseSearch.ts";
 
 function col(name: string, dataType: string, primary = false): ColumnInfo {
   return {

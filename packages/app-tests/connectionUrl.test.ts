@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { parseConnectionUrl } from "../../src/lib/connectionUrl.ts";
+import { parseConnectionUrl } from "../../apps/desktop/src/lib/connectionUrl.ts";
 
 test("parses postgres connection URLs", () => {
   assert.deepEqual(parseConnectionUrl("postgresql://alice:secret@db.example.com:5433/app?sslmode=require"), {

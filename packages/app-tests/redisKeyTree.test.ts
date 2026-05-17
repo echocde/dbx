@@ -6,8 +6,8 @@ import {
   collectExpandedGroupIds,
   flattenVisibleRedisKeyTree,
   type RedisKeyTreeNode,
-} from "../../src/lib/redisKeyTree.ts";
-import type { RedisKeyInfo } from "../../src/lib/api.ts";
+} from "../../apps/desktop/src/lib/redisKeyTree.ts";
+import type { RedisKeyInfo } from "../../apps/desktop/src/lib/api.ts";
 
 function makeKey(key_display: string, key_raw: string, key_type = "string", ttl = -1): RedisKeyInfo {
   return { key_display, key_raw, key_type, ttl };

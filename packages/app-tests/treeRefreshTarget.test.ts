@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findDatabaseTreeNode } from "../../src/lib/treeRefreshTarget.ts";
-import type { TreeNode } from "../../src/types/database.ts";
+import { findDatabaseTreeNode } from "../../apps/desktop/src/lib/treeRefreshTarget.ts";
+import type { TreeNode } from "../../apps/desktop/src/types/database.ts";
 
 test("finds database refresh targets inside grouped sidebar trees", () => {
   const target: TreeNode = {

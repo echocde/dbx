@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildCreateDatabaseSql, supportsCreateDatabaseCharset } from "../../src/lib/createDatabaseSql.ts";
+import { buildCreateDatabaseSql, supportsCreateDatabaseCharset } from "../../apps/desktop/src/lib/createDatabaseSql.ts";
 
 test("builds MySQL create database SQL with charset and collation", () => {
   assert.equal(

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSqlServerDatabaseTreeNodes } from "../../src/lib/sqlServerTree.ts";
-import type { ObjectInfo } from "../../src/types/database.ts";
+import { buildSqlServerDatabaseTreeNodes } from "../../apps/desktop/src/lib/sqlServerTree.ts";
+import type { ObjectInfo } from "../../apps/desktop/src/types/database.ts";
 
 function obj(name: string, objectType = "TABLE"): ObjectInfo {
   return {

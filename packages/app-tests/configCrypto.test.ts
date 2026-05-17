@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { encryptConfig, decryptConfig, isEncryptedConfig } from "../../src/lib/configCrypto.ts";
+import { encryptConfig, decryptConfig, isEncryptedConfig } from "../../apps/desktop/src/lib/configCrypto.ts";
 
 test("encrypts and decrypts config round-trip", async () => {
   const original = JSON.stringify([{ id: "1", name: "test", password: "secret123" }]);

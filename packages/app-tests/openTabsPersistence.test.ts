@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { restoreOpenTabsState, serializeOpenTabs } from "../../src/lib/openTabsPersistence.ts";
-import type { QueryTab } from "../../src/types/database.ts";
+import { restoreOpenTabsState, serializeOpenTabs } from "../../apps/desktop/src/lib/openTabsPersistence.ts";
+import type { QueryTab } from "../../apps/desktop/src/types/database.ts";
 
 function queryTab(overrides: Partial<QueryTab> = {}): QueryTab {
   return {

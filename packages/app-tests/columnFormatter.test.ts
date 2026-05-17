@@ -6,7 +6,7 @@ import {
   resolveColumnFormatter,
   normalizeColumnFormatter,
   type ColumnFormatterConfig,
-} from "../../src/lib/columnFormatter.ts";
+} from "../../apps/desktop/src/lib/columnFormatter.ts";
 
 test("formats unix timestamps in seconds, milliseconds, and auto mode", () => {
   assert.equal(

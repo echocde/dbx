@@ -4,7 +4,7 @@ import {
   buildCountQuerySql,
   buildPaginatedQuerySql,
   buildQueryPaginationExecutionPlan,
-} from "../../src/lib/queryResultPagination.ts";
+} from "../../apps/desktop/src/lib/queryResultPagination.ts";
 
 test("wraps a single select query with limit and offset", () => {
   const result = buildPaginatedQuerySql("SELECT id, name FROM users;", "postgres", 100, 200);

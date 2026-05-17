@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   autoMapImportColumns,
   normalizeImportColumnName,
-} from "../../src/lib/tableImport.ts";
+} from "../../apps/desktop/src/lib/tableImport.ts";
 
 test("normalizes import column names for matching", () => {
   assert.equal(normalizeImportColumnName(" User ID "), "user id");

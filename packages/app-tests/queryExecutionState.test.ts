@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { canCancelQueryExecution, queryExecutionLabelKey } from "../../src/lib/queryExecutionState.ts";
+import { canCancelQueryExecution, queryExecutionLabelKey } from "../../apps/desktop/src/lib/queryExecutionState.ts";
 
 test("only allows cancelling an active execution with an execution id", () => {
   assert.equal(canCancelQueryExecution({ isExecuting: true, executionId: "exec-1" }), true);

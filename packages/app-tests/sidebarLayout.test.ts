@@ -12,8 +12,8 @@ import {
   appendConnectionToLayout,
   removeConnectionFromSidebarLayout,
   emptyLayout,
-} from "../../src/lib/sidebarLayout.ts";
-import type { ConnectionConfig, SidebarLayout } from "../../src/types/database.ts";
+} from "../../apps/desktop/src/lib/sidebarLayout.ts";
+import type { ConnectionConfig, SidebarLayout } from "../../apps/desktop/src/types/database.ts";
 
 function conn(id: string, name?: string): ConnectionConfig {
   return {

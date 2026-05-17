@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { analyzeFieldLineage, identifierInSql, summarizeLineageCounts } from "../../src/lib/fieldLineage.ts";
+import { analyzeFieldLineage, identifierInSql, summarizeLineageCounts } from "../../apps/desktop/src/lib/fieldLineage.ts";
 
 test("detects outgoing and incoming foreign key lineage as certain", () => {
   const result = analyzeFieldLineage({

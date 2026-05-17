@@ -4,7 +4,7 @@ import {
   SCHEMA_TREE_CACHE_TTL_MS,
   decodeSchemaTreeCache,
   encodeSchemaTreeCache,
-} from "../../src/lib/schemaTreeCache.ts";
+} from "../../apps/desktop/src/lib/schemaTreeCache.ts";
 
 const children = [{ id: "conn:db", label: "db", type: "database" }];
 const now = Date.parse("2026-05-17T10:00:00.000Z");

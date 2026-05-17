@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import { createPinia, setActivePinia } from "pinia";
-import { useQueryStore } from "../../src/stores/queryStore.ts";
+import { useQueryStore } from "../../apps/desktop/src/stores/queryStore.ts";
 
 test("setErrorResult stops loading and shows the error result", () => {
   setActivePinia(createPinia());

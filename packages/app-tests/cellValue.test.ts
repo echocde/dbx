@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { displayCellValue } from "../../src/lib/cellValue.ts";
+import { displayCellValue } from "../../apps/desktop/src/lib/cellValue.ts";
 
 test("displayCellValue returns NULL for null", () => {
   assert.equal(displayCellValue(null), "NULL");

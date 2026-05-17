@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyRedisCommandSafety, firstRedisCommandToken } from "../../src/lib/redisCommandSafety.ts";
+import { classifyRedisCommandSafety, firstRedisCommandToken } from "../../apps/desktop/src/lib/redisCommandSafety.ts";
 
 test("firstRedisCommandToken reads the first command token case-insensitively", () => {
   assert.equal(firstRedisCommandToken("  get user:1"), "GET");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sqlMetadataRefreshScope, sqlMetadataRefreshTarget } from "../../src/lib/sqlMetadataRefresh.ts";
+import { sqlMetadataRefreshScope, sqlMetadataRefreshTarget } from "../../apps/desktop/src/lib/sqlMetadataRefresh.ts";
 
 test("database DDL refreshes the connection database list", () => {
   assert.equal(sqlMetadataRefreshScope("CREATE DATABASE app;"), "connection");

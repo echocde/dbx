@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { calculateDataGridColumnWidth, DATA_GRID_HEADER_CONTROL_WIDTH } from "../../src/lib/dataGridColumnWidth.ts";
+import { calculateDataGridColumnWidth, DATA_GRID_HEADER_CONTROL_WIDTH } from "../../apps/desktop/src/lib/dataGridColumnWidth.ts";
 
 test("reserves header control space when auto-sizing a column from the header", () => {
   const width = calculateDataGridColumnWidth({

@@ -5,7 +5,7 @@
   "typescript": true,
   "tailwind": {
     "config": "",
-    "css": "src/styles/globals.css",
+    "css": "apps/desktop/src/styles/globals.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""

@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { nextTransferTerminalState } from "../../src/lib/transferProgressState.ts";
+import { nextTransferTerminalState } from "../../apps/desktop/src/lib/transferProgressState.ts";
 
 test("marks transfer as failed when a table progress event reports error", () => {
   const state = nextTransferTerminalState(

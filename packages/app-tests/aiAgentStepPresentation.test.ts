@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { buildAiAgentStepItems } from "../../src/lib/aiAgentStepPresentation.ts";
-import type { AiAgentPlan } from "../../src/lib/aiAgentPlan.ts";
+import { buildAiAgentStepItems } from "../../apps/desktop/src/lib/aiAgentStepPresentation.ts";
+import type { AiAgentPlan } from "../../apps/desktop/src/lib/aiAgentPlan.ts";
 
 test("presents auto-execute agent plans as completed generation, safety, and execution steps", () => {
   const plan: AiAgentPlan = {

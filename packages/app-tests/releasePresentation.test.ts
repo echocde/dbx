@@ -3,7 +3,7 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 
 test("settings about panel uses the app version prop instead of a hard-coded version", () => {
-  const source = readFileSync("src/components/editor/EditorSettingsDialog.vue", "utf8");
+  const source = readFileSync("apps/desktop/src/components/editor/EditorSettingsDialog.vue", "utf8");
 
   assert.equal(source.includes("v0.5.0"), false);
   assert.match(source, /appVersion/);

@@ -6,7 +6,7 @@ import {
   analyzeEditableQuery,
   analyzeEditableQueryEditability,
   queryEditabilityMessageKey,
-} from "../../src/lib/sqlAnalysis.ts";
+} from "../../apps/desktop/src/lib/sqlAnalysis.ts";
 
 test("recognizes a simple single-table SELECT as editable", () => {
   const result = analyzeEditableQueryEditability("select id, name from public.users where active = true order by id");
