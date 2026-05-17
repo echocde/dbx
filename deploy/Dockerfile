@@ -34,10 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # This layer is cached by GHA as long as Cargo.toml/Cargo.lock don't change.
 COPY Cargo.toml Cargo.lock ./
 COPY crates/dbx-core/Cargo.toml crates/dbx-core/
-COPY src-web/Cargo.toml src-web/
+COPY crates/dbx-web/Cargo.toml crates/dbx-web/
 COPY src-tauri/Cargo.toml src-tauri/
 RUN mkdir -p crates/dbx-core/src && echo '' > crates/dbx-core/src/lib.rs \
-    && mkdir -p src-web/src && echo 'fn main() {}' > src-web/src/main.rs \
+    && mkdir -p crates/dbx-web/src && echo 'fn main() {}' > crates/dbx-web/src/main.rs \
     && mkdir -p src-tauri/src && echo 'fn main() {}' > src-tauri/src/main.rs && echo 'pub fn run() {}' > src-tauri/src/lib.rs
 
 COPY src-tauri/build.rs src-tauri/
@@ -56,12 +56,11 @@ RUN case "$TARGETARCH" in \
 
 # Copy real sources and rebuild (only application code recompiles)
 COPY crates/ crates/
-COPY src-web/ src-web/
 
 # Docker COPY preserves original file timestamps, which may be older than the
 # dummy-source binary compiled above. Touch all .rs files so cargo detects the
 # source change and recompiles instead of reusing the dummy binary.
-RUN find crates/ src-web/ -name '*.rs' -exec touch {} +
+RUN find crates/ -name '*.rs' -exec touch {} +
 
 RUN case "$TARGETARCH" in \
       amd64) rust_target=x86_64-unknown-linux-gnu; lib_arch=x86_64-linux-gnu ;; \

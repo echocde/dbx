@@ -8,7 +8,7 @@ name = "dbx-web"
 path = "src/main.rs"
 
 [dependencies]
-dbx-core = { path = "../crates/dbx-core" }
+dbx-core = { path = "../dbx-core" }
 axum = { version = "0.8", features = ["multipart"] }
 tower-http = { version = "0.6", features = ["cors", "fs", "compression-gzip", "trace"] }
 tokio = { version = "1", features = ["full"] }
