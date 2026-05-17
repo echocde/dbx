@@ -46,6 +46,7 @@ defineProps<{
   showDriverStore: boolean;
   checkingUpdates: boolean;
   hasUpdateAvailable: boolean;
+  agentDriverUpdateCount: number;
   hasConnections: boolean;
   hasSqlFileConnections: boolean;
 }>();
@@ -154,6 +155,13 @@ function onToolbarDblClick(e: MouseEvent) {
     >
       <Package class="h-3.5 w-3.5" />
       驱动管理
+      <span
+        v-if="agentDriverUpdateCount > 0"
+        class="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white"
+        aria-label="可更新驱动数量"
+      >
+        {{ agentDriverUpdateCount > 99 ? "99+" : agentDriverUpdateCount }}
+      </span>
     </Button>
 
     <div class="flex-1" data-tauri-drag-region />

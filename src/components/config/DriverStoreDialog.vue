@@ -13,12 +13,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { useToast } from "@/composables/useToast";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
+import { countAvailableAgentDriverUpdates } from "@/lib/agentDriverUpdateBadge";
 import type { JdbcDriverInfo, JdbcPluginStatus } from "@/types/database";
 import * as api from "@/lib/api";
 
 const { t } = useI18n();
 const { toast } = useToast();
 const isWeb = !isTauriRuntime();
+
+const emit = defineEmits<{
+  "update-count-change": [count: number];
+}>();
 
 // ──────────── Agent drivers ────────────
 
@@ -98,8 +103,13 @@ const progressPercent = computed(() => {
 
 const updatableCount = computed(() => drivers.value.filter((d) => d.update_available).length);
 
+function updateAgentDrivers(nextDrivers: AgentDriverInfo[]) {
+  drivers.value = nextDrivers;
+  emit("update-count-change", countAvailableAgentDriverUpdates(nextDrivers));
+}
+
 async function refreshAgents() {
-  drivers.value = await invoke<AgentDriverInfo[]>("list_installed_agents");
+  updateAgentDrivers(await invoke<AgentDriverInfo[]>("list_installed_agents"));
 }
 
 async function forceRefresh() {
@@ -363,11 +373,11 @@ async function deleteJdbcDriver(path: string) {
 // ──────────── Lifecycle ────────────
 
 onMounted(async () => {
-  drivers.value = await invoke<AgentDriverInfo[]>("list_installed_agents_local");
+  updateAgentDrivers(await invoke<AgentDriverInfo[]>("list_installed_agents_local"));
   void loadJavaRuntimeConfig();
 
   invoke<AgentDriverInfo[]>("list_installed_agents").then((result) => {
-    drivers.value = result;
+    updateAgentDrivers(result);
   });
 
   unlisten = await listen<InstallProgress>("agent-install-progress", (event) => {

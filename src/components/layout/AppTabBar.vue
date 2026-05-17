@@ -19,6 +19,7 @@ import type { QueryTab } from "@/types/database";
 
 const props = defineProps<{
   showDriverStore?: boolean;
+  agentDriverUpdateCount?: number;
 }>();
 
 const emit = defineEmits<{
@@ -234,6 +235,13 @@ function tabIconClass(tab: QueryTab) {
           <Package class="h-3.5 w-3.5" />
         </span>
         <span class="min-w-0 truncate flex-1">驱动管理</span>
+        <span
+          v-if="(agentDriverUpdateCount ?? 0) > 0"
+          class="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white"
+          aria-label="可更新驱动数量"
+        >
+          {{ (agentDriverUpdateCount ?? 0) > 99 ? "99+" : agentDriverUpdateCount }}
+        </span>
         <button class="rounded hover:bg-muted-foreground/20 p-0.5 shrink-0" @click.stop="emit('close-driver-store')">
           <X class="h-3 w-3" />
         </button>

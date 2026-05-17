@@ -49,17 +49,11 @@ import { isPreviewTab } from "@/lib/tabPresentation";
 import { supportsSqlFileExecution } from "@/lib/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/aiSqlExecutionPolicy";
 import { buildHistoryAiAnalysisPrompt } from "@/lib/historyAiAnalysis";
-import {
-  agentDriverUpdateIgnoreKey,
-  findAgentDriverUpdatePrompt,
-  type AgentDriverUpdatePrompt,
-  type AgentDriverUpdateState,
-} from "@/lib/agentDriverUpdatePrompt";
+import { countAvailableAgentDriverUpdates, type AgentDriverUpdateBadgeState } from "@/lib/agentDriverUpdateBadge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { ConnectionConfig } from "@/types/database";
 import type { HistoryEntry } from "@/lib/tauri";
 
 const { t } = useI18n();
@@ -88,8 +82,6 @@ const { setupFileDrop } = useFileDrop();
 
 const isDesktop = isTauriRuntime();
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
-const AGENT_DRIVER_UPDATE_IGNORES_STORAGE_KEY = "dbx-agent-driver-update-ignores";
-type AgentDriverUpdateChoice = "update" | "skip" | "ignore";
 let updateCheckTimer: ReturnType<typeof setInterval> | undefined;
 const needsAuth = ref(!isDesktop);
 const authenticated = ref(isDesktop);
@@ -98,9 +90,7 @@ const setupRequired = ref(false);
 const showConnectionDialog = ref(false);
 const showSettingsDialog = ref(false);
 const showDriverStore = ref(false);
-const showAgentDriverUpdateDialog = ref(false);
-const agentDriverUpdatePrompt = ref<AgentDriverUpdatePrompt | null>(null);
-const isInstallingAgentDriverUpdate = ref(false);
+const agentDriverUpdateCount = ref(0);
 const showHistory = ref(false);
 const showAiPanel = ref(localStorage.getItem("dbx-ai-panel-open") !== "false");
 const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
@@ -125,69 +115,19 @@ const activeConnection = computed(() => {
   return tab ? connectionStore.getConfig(tab.connectionId) : undefined;
 });
 
-let resolveAgentDriverUpdateChoice: ((choice: AgentDriverUpdateChoice) => void) | null = null;
-
-function loadIgnoredAgentDriverUpdates(): Set<string> {
-  try {
-    const value = JSON.parse(localStorage.getItem(AGENT_DRIVER_UPDATE_IGNORES_STORAGE_KEY) || "[]");
-    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
-  } catch {
-    return new Set();
-  }
+function updateAgentDriverUpdateCount(count: number) {
+  agentDriverUpdateCount.value = count;
 }
 
-function saveIgnoredAgentDriverUpdate(prompt: AgentDriverUpdatePrompt) {
-  const ignored = loadIgnoredAgentDriverUpdates();
-  ignored.add(agentDriverUpdateIgnoreKey(prompt.dbType, prompt.latestVersion));
-  localStorage.setItem(AGENT_DRIVER_UPDATE_IGNORES_STORAGE_KEY, JSON.stringify([...ignored]));
-}
-
-function requestAgentDriverUpdateChoice(prompt: AgentDriverUpdatePrompt): Promise<AgentDriverUpdateChoice> {
-  agentDriverUpdatePrompt.value = prompt;
-  showAgentDriverUpdateDialog.value = true;
-  return new Promise((resolve) => {
-    resolveAgentDriverUpdateChoice = resolve;
-  });
-}
-
-function chooseAgentDriverUpdate(choice: AgentDriverUpdateChoice) {
-  showAgentDriverUpdateDialog.value = false;
-  resolveAgentDriverUpdateChoice?.(choice);
-  resolveAgentDriverUpdateChoice = null;
-}
-
-function onAgentDriverUpdateOpenChange(value: boolean) {
-  if (value) {
-    showAgentDriverUpdateDialog.value = true;
-    return;
-  }
-  if (isInstallingAgentDriverUpdate.value) return;
-  chooseAgentDriverUpdate("skip");
-}
-
-async function checkAgentDriverUpdateBeforeConnect(config: ConnectionConfig) {
+async function refreshAgentDriverUpdateCount() {
   if (!isDesktop) return;
-  const drivers = await invoke<AgentDriverUpdateState[]>("list_installed_agents").catch(() => []);
-  const prompt = findAgentDriverUpdatePrompt(config, drivers, loadIgnoredAgentDriverUpdates());
-  if (!prompt) return;
-
-  const choice = await requestAgentDriverUpdateChoice(prompt);
-  if (choice === "ignore") {
-    saveIgnoredAgentDriverUpdate(prompt);
-    return;
-  }
-  if (choice === "skip") return;
-
-  isInstallingAgentDriverUpdate.value = true;
   try {
-    await invoke("install_agent", { dbType: prompt.dbType });
-    toast(`${prompt.label} 驱动已更新到 v${prompt.latestVersion}`);
-  } finally {
-    isInstallingAgentDriverUpdate.value = false;
+    const drivers = await invoke<AgentDriverUpdateBadgeState[]>("list_installed_agents");
+    updateAgentDriverUpdateCount(countAvailableAgentDriverUpdates(drivers));
+  } catch {
+    // Driver update availability is only a badge hint; keep the existing count if the registry cannot be reached.
   }
 }
-
-connectionStore.setBeforeConnectHandler(checkAgentDriverUpdateBeforeConnect);
 
 function restoreHistorySql(sql: string, entry: HistoryEntry) {
   const tab = activeTab.value;
@@ -709,9 +649,14 @@ onMounted(async () => {
   }
   initApp();
   setupFileDrop().catch(() => {});
+  void refreshAgentDriverUpdateCount();
   setTimeout(() => {
     checkUpdates({ silent: true });
-    updateCheckTimer = setInterval(() => checkUpdates({ silent: true }), UPDATE_CHECK_INTERVAL_MS);
+    void refreshAgentDriverUpdateCount();
+    updateCheckTimer = setInterval(() => {
+      checkUpdates({ silent: true });
+      void refreshAgentDriverUpdateCount();
+    }, UPDATE_CHECK_INTERVAL_MS);
   }, 10_000);
   api
     .getAppVersion()
@@ -725,7 +670,6 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  connectionStore.setBeforeConnectHandler(null);
   cleanupTauriListeners();
   if (updateCheckTimer) {
     clearInterval(updateCheckTimer);
@@ -752,6 +696,7 @@ onUnmounted(() => {
           :show-driver-store="showDriverStore"
           :checking-updates="checkingUpdates"
           :has-update-available="hasUpdateAvailable"
+          :agent-driver-update-count="agentDriverUpdateCount"
           :has-connections="connectionStore.connections.length > 0"
           :has-sql-file-connections="hasSqlFileConnections"
           @new-connection="showConnectionDialog = true"
@@ -795,10 +740,15 @@ onUnmounted(() => {
             <div class="h-full flex flex-col min-w-0">
               <AppTabBar
                 :show-driver-store="showDriverStore"
+                :agent-driver-update-count="agentDriverUpdateCount"
                 @toggle-driver-store="showDriverStore = true"
                 @close-driver-store="showDriverStore = false"
               />
-              <DriverStorePage v-if="showDriverStore" class="flex-1 min-h-0" />
+              <DriverStorePage
+                v-if="showDriverStore"
+                class="flex-1 min-h-0"
+                @update-count-change="updateAgentDriverUpdateCount"
+              />
               <div v-else-if="activeTab" class="flex flex-col flex-1 min-h-0">
                 <EditorToolbar
                   v-if="activeTab.mode === 'query' && !isPreviewTab(activeTab)"
@@ -959,41 +909,6 @@ onUnmounted(() => {
           @download-and-install="downloadAndInstallUpdate"
           @restart="restartApp"
         />
-        <Dialog :open="showAgentDriverUpdateDialog" @update:open="onAgentDriverUpdateOpenChange">
-          <DialogContent class="sm:max-w-[440px]">
-            <DialogHeader>
-              <DialogTitle>驱动有新版本</DialogTitle>
-            </DialogHeader>
-            <div v-if="agentDriverUpdatePrompt" class="space-y-3 text-sm text-muted-foreground">
-              <p>
-                {{ agentDriverUpdatePrompt.label }} 驱动可从 v{{ agentDriverUpdatePrompt.currentVersion }} 更新到 v{{
-                  agentDriverUpdatePrompt.latestVersion
-                }}。
-              </p>
-              <p>可以先更新驱动再连接，也可以本次直接连接。</p>
-            </div>
-            <DialogFooter class="gap-2 sm:gap-2">
-              <Button
-                variant="ghost"
-                :disabled="isInstallingAgentDriverUpdate"
-                @click="chooseAgentDriverUpdate('ignore')"
-              >
-                本版本不再提醒
-              </Button>
-              <Button
-                variant="outline"
-                :disabled="isInstallingAgentDriverUpdate"
-                @click="chooseAgentDriverUpdate('skip')"
-              >
-                直接连接
-              </Button>
-              <Button :disabled="isInstallingAgentDriverUpdate" @click="chooseAgentDriverUpdate('update')">
-                {{ isInstallingAgentDriverUpdate ? "更新中..." : "更新后连接" }}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         <Transition name="toast">
           <div
             v-if="toastVisible"
