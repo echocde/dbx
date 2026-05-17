@@ -7,7 +7,7 @@ use commands::connection::AppState;
 use dbx_core::storage::Storage;
 use std::sync::Arc;
 use std::time::Instant;
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,6 +18,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            let paths = commands::external_sql::sql_file_paths_from_args(args, std::path::Path::new(&cwd));
+            if !paths.is_empty() {
+                if let Some(state) = app.try_state::<commands::external_sql::ExternalSqlOpenState>() {
+                    state.push(paths.clone());
+                }
+                let _ = app.emit("dbx-open-sql-files", paths);
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -49,6 +62,7 @@ pub fn run() {
 
             let state = Arc::new(AppState::new_with_plugin_dir(storage, data_dir.join("plugins")));
             app.manage(state.clone());
+            app.manage(commands::external_sql::ExternalSqlOpenState::default());
 
             let app_handle = app.handle().clone();
             commands::mcp_bridge::start(app_handle, state);
@@ -132,6 +146,7 @@ pub fn run() {
             commands::sql_file::preview_sql_file,
             commands::sql_file::execute_sql_file,
             commands::sql_file::cancel_sql_file_execution,
+            commands::external_sql::pending_open_sql_files,
             commands::table_import::preview_table_import_file,
             commands::table_import::import_table_file,
             commands::table_import::cancel_table_import,
@@ -189,6 +204,26 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Opened { urls } = &event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|path| commands::external_sql::is_sql_file_path(path))
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect();
+                if !paths.is_empty() {
+                    if let Some(state) = app_handle.try_state::<commands::external_sql::ExternalSqlOpenState>() {
+                        state.push(paths.clone());
+                    }
+                    let _ = app_handle.emit("dbx-open-sql-files", paths);
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+
             #[cfg(target_os = "macos")]
             if let RunEvent::Reopen { has_visible_windows, .. } = &event {
                 if !has_visible_windows {

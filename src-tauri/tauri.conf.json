@@ -36,6 +36,15 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "fileAssociations": [
+      {
+        "ext": ["sql"],
+        "name": "SQL Script",
+        "description": "SQL script",
+        "role": "Editor",
+        "mimeType": "application/sql"
+      }
+    ],
     "macOS": {},
     "icon": [
       "icons/32x32.png",

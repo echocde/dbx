@@ -80,6 +80,10 @@ export async function loadAiConfig(): Promise<AiConfig | null> {
   return invoke("load_ai_config");
 }
 
+export async function pendingOpenSqlFiles(): Promise<string[]> {
+  return invoke("pending_open_sql_files");
+}
+
 // --- AI Conversations ---
 
 export interface AiChatMessage {

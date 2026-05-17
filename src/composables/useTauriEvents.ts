@@ -2,7 +2,10 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import type { NavigationTarget } from "@/composables/useNavigationTargets";
 
-export function useTauriEvents(deps: { openTableTarget: (target: NavigationTarget) => Promise<void> }) {
+export function useTauriEvents(deps: {
+  openTableTarget: (target: NavigationTarget) => Promise<void>;
+  openSqlFilePath: (path: string) => Promise<void>;
+}) {
   const connectionStore = useConnectionStore();
   const queryStore = useQueryStore();
   const unlistenHandles: Array<() => void> = [];
@@ -64,6 +67,21 @@ export function useTauriEvents(deps: { openTableTarget: (target: NavigationTarge
             );
           } catch (e) {
             console.error("[DBX] mcp-execute-query error:", e);
+          }
+        }).then((unlisten) => unlistenHandles.push(unlisten));
+
+        listen<string[]>("dbx-open-sql-files", async (event) => {
+          try {
+            for (const path of event.payload) {
+              await deps.openSqlFilePath(path);
+            }
+            import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
+              getCurrentWindow()
+                .setFocus()
+                .catch(() => {}),
+            );
+          } catch (e) {
+            console.error("[DBX] dbx-open-sql-files error:", e);
           }
         }).then((unlisten) => unlistenHandles.push(unlisten));
       })

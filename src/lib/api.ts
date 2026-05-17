@@ -89,6 +89,7 @@ export const previewSqlFile = forward("previewSqlFile");
 export const executeSqlFile = forward("executeSqlFile");
 export const cancelSqlFileExecution = forward("cancelSqlFileExecution");
 export const listenSqlFileProgress = forward("listenSqlFileProgress");
+export const pendingOpenSqlFiles = forward("pendingOpenSqlFiles");
 
 // Data Transfer
 export const startTransfer = forward("startTransfer");

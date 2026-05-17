@@ -36,6 +36,7 @@ import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
 import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
+import { sqlFileTitleFromPath } from "@/lib/sqlFileOpen";
 import {
   isCloseTabShortcut,
   isExecuteSqlShortcut,
@@ -152,7 +153,7 @@ const { getDatabaseOptions } = useDatabaseOptions();
 const { openLineageTarget, openDatabaseSearchTarget, onStructureEditorSaved, openTableTarget } =
   useNavigationTargets(dialogs);
 const { onExecuteSql, onReloadData, onPaginate, onSort } = useDataGridActions(activeTab);
-const { setupTauriListeners, cleanupTauriListeners } = useTauriEvents({ openTableTarget });
+const { setupTauriListeners, cleanupTauriListeners } = useTauriEvents({ openTableTarget, openSqlFilePath });
 
 const appVersion = ref("");
 const isClassicLayout = computed(() => settingsStore.editorSettings.appLayout === "classic");
@@ -338,6 +339,34 @@ async function openSqlFile() {
     }
   } catch (e: any) {
     toast(t("toolbar.sqlOpenFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function openSqlFilePath(path: string) {
+  if (!isTauriRuntime()) return;
+  try {
+    const { readTextFile } = await import("@tauri-apps/plugin-fs");
+    const content = await readTextFile(path);
+    const connectionId =
+      connectionStore.activeConnectionId || activeTab.value?.connectionId || connectionStore.connections[0]?.id || "";
+    const connection = connectionId ? connectionStore.getConfig(connectionId) : undefined;
+    const database = activeTab.value?.database || (connection ? resolveDefaultDatabase(connection, []) : "");
+    const tabId = queryStore.createTab(connectionId, database, sqlFileTitleFromPath(path), "query");
+    queryStore.updateSql(tabId, content);
+  } catch (e: any) {
+    toast(t("toolbar.sqlOpenFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function openPendingSqlFiles() {
+  if (!isTauriRuntime()) return;
+  try {
+    const paths = await api.pendingOpenSqlFiles();
+    for (const path of paths) {
+      await openSqlFilePath(path);
+    }
+  } catch {
+    /* ignore startup file-open probing errors */
   }
 }
 
@@ -614,6 +643,7 @@ onMounted(async () => {
     })
     .catch(() => {});
   setupTauriListeners();
+  void openPendingSqlFiles();
   console.log(`[STARTUP] onMounted sync done: ${(performance.now() - mountStart).toFixed(0)}ms`);
 });
 

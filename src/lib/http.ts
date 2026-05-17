@@ -416,6 +416,10 @@ export async function listenSqlFileProgress(_handler: (progress: SqlFileProgress
   return () => {};
 }
 
+export async function pendingOpenSqlFiles(): Promise<string[]> {
+  return [];
+}
+
 // ---------------------------------------------------------------------------
 // Data Transfer
 // ---------------------------------------------------------------------------
