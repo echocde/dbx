@@ -10,6 +10,7 @@ on:
       - 'mcp/package.json'
       - 'mcp/package-lock.json'
       - 'mcp/pnpm-lock.yaml'
+      - 'mcp/pnpm-workspace.yaml'
       - 'mcp/tsconfig.json'
       - 'mcp/server.json'
 
