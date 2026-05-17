@@ -1,7 +1,8 @@
 import { join } from "node:path";
-import { homedir, platform } from "node:os";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import Database from "better-sqlite3";
+import { dbPath as defaultDbPath } from "./paths.js";
 
 export interface ConnectionConfig {
   id: string;
@@ -24,6 +25,31 @@ export interface ConnectionConfig {
   ssl: boolean;
 }
 
+export interface ConnectionStoreOptions {
+  path?: string;
+}
+
+export interface ConnectionStoreDiagnostics {
+  dbPath: string;
+  dbPathExists: boolean;
+  connectionsTableExists: boolean;
+  connectionSecretsTableExists: boolean;
+  connectionRowCount: number;
+  loadConnectionsOk: boolean;
+  loadedConnectionCount: number;
+  loadConnectionsError?: string;
+}
+
+export class ConnectionStoreError extends Error {
+  readonly code = "CONNECTION_STORE_ERROR";
+
+  constructor(path: string, cause: unknown) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    super(`Failed to load DBX connections from ${path}: ${message}`);
+    this.name = "ConnectionStoreError";
+  }
+}
+
 export function canonicalizeConnection(config: ConnectionConfig): ConnectionConfig {
   if (config.db_type === "mysql" && config.driver_profile?.toLowerCase() === "tdengine") {
     return {
@@ -43,21 +69,8 @@ export function canonicalizeConnection(config: ConnectionConfig): ConnectionConf
   return config;
 }
 
-function appDataDir(): string {
-  const home = homedir();
-  switch (platform()) {
-    case "darwin":
-      return join(home, "Library", "Application Support", "com.dbx.app");
-    case "win32":
-      return join(process.env.APPDATA || join(home, "AppData", "Roaming"), "com.dbx.app");
-    default:
-      return join(home, ".config", "com.dbx.app");
-  }
-}
-
-function openDb(readonly = false): Database.Database {
-  const dbPath = join(appDataDir(), "dbx.db");
-  return new Database(dbPath, { readonly });
+function openDb(readonly = false, path = defaultDbPath()): Database.Database {
+  return new Database(path, { readonly });
 }
 
 function getSecret(db: Database.Database, connectionId: string, key: string): string {
@@ -67,9 +80,13 @@ function getSecret(db: Database.Database, connectionId: string, key: string): st
   return row?.secret ?? "";
 }
 
-export async function loadConnections(): Promise<ConnectionConfig[]> {
+export async function loadConnections(options: ConnectionStoreOptions = {}): Promise<ConnectionConfig[]> {
+  const path = options.path ?? defaultDbPath();
+  if (!existsSync(path)) return [];
+
+  let db: Database.Database | undefined;
   try {
-    const db = openDb(true);
+    db = openDb(true, path);
     const rows = db.prepare("SELECT id, config_json FROM connections").all() as { id: string; config_json: string }[];
     const configs: ConnectionConfig[] = [];
 
@@ -81,11 +98,61 @@ export async function loadConnections(): Promise<ConnectionConfig[]> {
       configs.push(config);
     }
 
-    db.close();
     return configs;
-  } catch {
-    return [];
+  } catch (error) {
+    throw new ConnectionStoreError(path, error);
+  } finally {
+    db?.close();
   }
+}
+
+export async function inspectConnectionStore(options: ConnectionStoreOptions = {}): Promise<ConnectionStoreDiagnostics> {
+  const path = options.path ?? defaultDbPath();
+  const diagnostics: ConnectionStoreDiagnostics = {
+    dbPath: path,
+    dbPathExists: existsSync(path),
+    connectionsTableExists: false,
+    connectionSecretsTableExists: false,
+    connectionRowCount: 0,
+    loadConnectionsOk: true,
+    loadedConnectionCount: 0,
+  };
+
+  if (!diagnostics.dbPathExists) return diagnostics;
+
+  let db: Database.Database | undefined;
+  try {
+    db = openDb(true, path);
+    diagnostics.connectionsTableExists = tableExists(db, "connections");
+    diagnostics.connectionSecretsTableExists = tableExists(db, "connection_secrets");
+    if (diagnostics.connectionsTableExists) {
+      const row = db.prepare("SELECT COUNT(*) AS count FROM connections").get() as { count: number };
+      diagnostics.connectionRowCount = row.count;
+    }
+  } catch (error) {
+    diagnostics.loadConnectionsOk = false;
+    diagnostics.loadConnectionsError = error instanceof Error ? error.message : String(error);
+    return diagnostics;
+  } finally {
+    db?.close();
+  }
+
+  try {
+    const connections = await loadConnections({ path });
+    diagnostics.loadedConnectionCount = connections.length;
+  } catch (error) {
+    diagnostics.loadConnectionsOk = false;
+    diagnostics.loadConnectionsError = error instanceof Error ? error.message : String(error);
+  }
+
+  return diagnostics;
+}
+
+function tableExists(db: Database.Database, name: string): boolean {
+  const row = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(name) as { "1": number } | undefined;
+  return !!row;
 }
 
 export async function findConnection(name: string): Promise<ConnectionConfig | undefined> {

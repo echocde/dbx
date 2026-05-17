@@ -105,7 +105,7 @@ Dark mode with native title bar sync · 9 editor themes · English, 简体中文
 
 ## AI Agent Integration (MCP)
 
-DBX provides an [MCP server](mcp/) that lets AI coding agents query your databases using connections already configured in DBX.
+DBX provides an [MCP server](packages/mcp-server/) that lets AI coding agents query your databases using connections already configured in DBX.
 
 ```bash
 npx @dbx-app/mcp-server
@@ -123,7 +123,15 @@ Add to your `.mcp.json`:
 
 Works with Claude Code, Cursor, Windsurf, and any MCP-compatible agent. Supports listing connections, browsing tables, executing SQL, and opening tables directly in DBX's UI.
 
-See the [MCP server README](mcp/README.md) for details.
+DBX also provides a dedicated CLI package for terminal, script, and Codex workflows:
+
+```bash
+npm install -g @dbx-app/cli
+dbx connections list --json
+dbx query local "select 1" --json
+```
+
+See the [MCP server README](packages/mcp-server/README.md) and [CLI README](packages/cli/README.md) for details.
 
 ## Install
 

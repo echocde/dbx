@@ -48,7 +48,7 @@ Or for development (from source):
   "mcpServers": {
     "dbx": {
       "command": "npx",
-      "args": ["tsx", "mcp/src/index.ts"],
+      "args": ["tsx", "packages/mcp-server/src/index.ts"],
       "cwd": "/path/to/dbx"
     }
   }
@@ -64,6 +64,18 @@ In Claude Code, just ask:
 - "Describe the users table"
 - "Query the average salary from employees"
 - "Open the orders table in DBX"
+
+## CLI
+
+For terminal, script, and Codex workflows, install the dedicated CLI package:
+
+```bash
+npm install -g @dbx-app/cli
+dbx connections list --json
+dbx query local "select 1" --json
+```
+
+See the [DBX CLI README](../cli/README.md) for command details.
 
 ## Tools
 
@@ -173,6 +185,18 @@ npx @dbx-app/mcp-server
 - "查看 users 表的结构"
 - "查询最近 7 天的订单数量"
 - "打开 orders 表"
+
+### CLI
+
+终端、脚本和 Codex 工作流请安装独立 CLI 包：
+
+```bash
+npm install -g @dbx-app/cli
+dbx connections list --json
+dbx query local "select 1" --json
+```
+
+命令详情见 [DBX CLI README](../cli/README.md)。
 
 ### 工具列表
 

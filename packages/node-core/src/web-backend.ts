@@ -1,5 +1,5 @@
 import type { ConnectionConfig } from "./connections.js";
-import type { TableInfo, ColumnInfo, QueryResult } from "./database.js";
+import type { TableInfo, ColumnInfo, QueryOptions, QueryResult } from "./database.js";
 
 const baseUrl = process.env.DBX_WEB_URL!.replace(/\/+$/, "");
 const password = process.env.DBX_WEB_PASSWORD || "";
@@ -107,7 +107,7 @@ export async function describeTable(config: ConnectionConfig, table: string, sch
   return res.json();
 }
 
-export async function executeQuery(config: ConnectionConfig, sql: string): Promise<QueryResult> {
+export async function executeQuery(config: ConnectionConfig, sql: string, options?: QueryOptions): Promise<QueryResult> {
   await ensureConnected(config);
   const res = await apiFetch("/api/query/execute", {
     method: "POST",
@@ -125,5 +125,6 @@ export async function executeQuery(config: ConnectionConfig, sql: string): Promi
     });
     return obj;
   });
-  return { columns: data.columns, rows, row_count: rows.length };
+  const limitedRows = rows.slice(0, options?.maxRows ?? rows.length);
+  return { columns: data.columns, rows: limitedRows, row_count: limitedRows.length };
 }

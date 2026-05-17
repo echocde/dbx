@@ -26,6 +26,11 @@ export interface QueryResult {
   row_count: number;
 }
 
+export interface QueryOptions {
+  maxRows?: number;
+  timeoutMs?: number;
+}
+
 const MAX_ROWS = 100;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const QUERY_TIMEOUT_MS = 30_000;
@@ -307,8 +312,16 @@ async function bridgeDataRequest<T>(path: string, body: Record<string, unknown>)
   return res.json() as Promise<T>;
 }
 
-function convertBridgeQueryResult(result: BridgeQueryResult): QueryResult {
-  const rows = result.rows.slice(0, MAX_ROWS).map((row) => {
+function resolveMaxRows(options?: QueryOptions): number {
+  return options?.maxRows ?? MAX_ROWS;
+}
+
+function resolveTimeoutMs(options?: QueryOptions): number {
+  return options?.timeoutMs ?? QUERY_TIMEOUT_MS;
+}
+
+function convertBridgeQueryResult(result: BridgeQueryResult, options?: QueryOptions): QueryResult {
+  const rows = result.rows.slice(0, resolveMaxRows(options)).map((row) => {
     const obj: Record<string, unknown> = {};
     result.columns.forEach((col, i) => { obj[col] = row[i]; });
     return obj;
@@ -323,9 +336,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-async function queryWithRetry(config: ConnectionConfig, fn: () => Promise<QueryResult>): Promise<QueryResult> {
+async function queryWithRetry(config: ConnectionConfig, fn: () => Promise<QueryResult>, options?: QueryOptions): Promise<QueryResult> {
+  const timeoutMs = resolveTimeoutMs(options);
   try {
-    return await withTimeout(fn(), QUERY_TIMEOUT_MS);
+    return await withTimeout(fn(), timeoutMs);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     const retriable = /terminating connection|Connection lost|ECONNRESET|EPIPE|connection refused/i.test(msg);
@@ -333,34 +347,34 @@ async function queryWithRetry(config: ConnectionConfig, fn: () => Promise<QueryR
       const key = poolKey(config);
       const entry = pools.get(key);
       if (entry) evictPool(key, entry);
-      return withTimeout(fn(), QUERY_TIMEOUT_MS);
+      return withTimeout(fn(), timeoutMs);
     }
     throw e;
   }
 }
 
-async function pgQuery(config: ConnectionConfig, sql: string, params?: unknown[]): Promise<QueryResult> {
+async function pgQuery(config: ConnectionConfig, sql: string, params?: unknown[], options?: QueryOptions): Promise<QueryResult> {
   return queryWithRetry(config, async () => {
     const pool = await getPgPool(config);
     const result = await pool.query(sql, params);
-    const rows = (result.rows || []).slice(0, MAX_ROWS);
+    const rows = (result.rows || []).slice(0, resolveMaxRows(options));
     return { columns: result.fields?.map((f) => f.name) ?? [], rows, row_count: rows.length };
-  });
+  }, options);
 }
 
-async function mysqlQuery(config: ConnectionConfig, sql: string, params?: unknown[]): Promise<QueryResult> {
+async function mysqlQuery(config: ConnectionConfig, sql: string, params?: unknown[], options?: QueryOptions): Promise<QueryResult> {
   return queryWithRetry(config, async () => {
     const pool = await getMysqlPool(config);
     const [results, fields] = await pool.query(sql, params);
-    const rows = (Array.isArray(results) ? results : []).slice(0, MAX_ROWS) as Record<string, unknown>[];
+    const rows = (Array.isArray(results) ? results : []).slice(0, resolveMaxRows(options)) as Record<string, unknown>[];
     return { columns: (fields as Array<{ name: string }>)?.map((f) => f.name) ?? [], rows, row_count: rows.length };
-  });
+  }, options);
 }
 
-async function query(config: ConnectionConfig, sql: string, params?: unknown[]): Promise<QueryResult> {
-  if (config.db_type === "sqlite") return sqliteQuery(config, sql);
-  if (isMysqlType(config.db_type)) return mysqlQuery(config, sql, params);
-  return pgQuery(config, sql, params);
+async function query(config: ConnectionConfig, sql: string, params?: unknown[], options?: QueryOptions): Promise<QueryResult> {
+  if (config.db_type === "sqlite") return sqliteQuery(config, sql, options);
+  if (isMysqlType(config.db_type)) return mysqlQuery(config, sql, params, options);
+  return pgQuery(config, sql, params, options);
 }
 
 function sqlitePath(config: ConnectionConfig): string {
@@ -377,12 +391,12 @@ function quoteSqliteIdentifier(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
 
-function sqliteQuery(config: ConnectionConfig, sql: string): QueryResult {
+function sqliteQuery(config: ConnectionConfig, sql: string, options?: QueryOptions): QueryResult {
   const db = new Database(sqlitePath(config), { readonly: !sqlSafetyFromEnv().allowWrites });
   try {
     const stmt = db.prepare(sql);
     if (stmt.reader) {
-      const rows = stmt.all().slice(0, MAX_ROWS) as Record<string, unknown>[];
+      const rows = stmt.all().slice(0, resolveMaxRows(options)) as Record<string, unknown>[];
       return { columns: stmt.columns().map((column) => column.name), rows, row_count: rows.length };
     }
     const result = stmt.run();
@@ -392,16 +406,16 @@ function sqliteQuery(config: ConnectionConfig, sql: string): QueryResult {
   }
 }
 
-export async function executeQuery(config: ConnectionConfig, sql: string): Promise<QueryResult> {
+export async function executeQuery(config: ConnectionConfig, sql: string, options?: QueryOptions): Promise<QueryResult> {
   if (isDirectType(config.db_type)) {
-    return query(config, sql);
+    return query(config, sql, undefined, options);
   }
-  const result = await bridgeDataRequest<BridgeQueryResult>("/data/execute-query", {
+  const result = await withTimeout(bridgeDataRequest<BridgeQueryResult>("/data/execute-query", {
     connection_name: config.name,
     database: config.database || "",
     sql,
-  });
-  return convertBridgeQueryResult(result);
+  }), resolveTimeoutMs(options));
+  return convertBridgeQueryResult(result, options);
 }
 
 export async function listTables(config: ConnectionConfig, schema?: string): Promise<TableInfo[]> {

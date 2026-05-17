@@ -39,6 +39,24 @@ test("queries SQLite connections without the DBX bridge", async () => {
   }
 });
 
+test("applies query row limits to SQLite connections", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dbx-mcp-sqlite-"));
+  const path = join(dir, "app.db");
+  const db = new Database(path);
+  db.exec("create table users (id integer primary key, name text not null); insert into users (name) values ('Ada'), ('Grace');");
+  db.close();
+
+  try {
+    const result = await executeQuery(sqliteConfig(path), "select id, name from users order by id", { maxRows: 1 });
+
+    assert.deepEqual(result.columns, ["id", "name"]);
+    assert.deepEqual(result.rows, [{ id: 1, name: "Ada" }]);
+    assert.equal(result.row_count, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("lists and describes SQLite tables without the DBX bridge", async () => {
   const dir = mkdtempSync(join(tmpdir(), "dbx-mcp-sqlite-"));
   const path = join(dir, "app.db");
@@ -67,4 +85,3 @@ test("lists and describes SQLite tables without the DBX bridge", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
-

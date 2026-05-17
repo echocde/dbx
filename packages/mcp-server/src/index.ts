@@ -1,53 +1,19 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir, platform } from "node:os";
 import {
-  loadConnections as desktopLoadConnections,
-  findConnection as desktopFindConnection,
-  addConnection as desktopAddConnection,
-  removeConnection as desktopRemoveConnection,
-} from "./connections.js";
-import {
-  listTables as desktopListTables,
-  describeTable as desktopDescribeTable,
-  executeQuery as desktopExecuteQuery,
-} from "./database.js";
-import type { ConnectionConfig } from "./connections.js";
-import type { TableInfo, ColumnInfo, QueryResult } from "./database.js";
-import { buildSchemaContext, formatSchemaContext } from "./schema-context.js";
-import { evaluateSqlSafety, sqlSafetyFromEnv } from "./sql-safety.js";
-
-const isWebMode = !!process.env.DBX_WEB_URL;
-
-interface Backend {
-  loadConnections(): Promise<ConnectionConfig[]>;
-  findConnection(name: string): Promise<ConnectionConfig | undefined>;
-  addConnection(config: Omit<ConnectionConfig, "id">): Promise<ConnectionConfig>;
-  removeConnection(name: string): Promise<boolean>;
-  listTables(config: ConnectionConfig, schema?: string): Promise<TableInfo[]>;
-  describeTable(config: ConnectionConfig, table: string, schema?: string): Promise<ColumnInfo[]>;
-  executeQuery(config: ConnectionConfig, sql: string): Promise<QueryResult>;
-}
-
-let backend: Backend;
-if (isWebMode) {
-  const web = await import("./web-backend.js");
-  backend = web;
-} else {
-  backend = {
-    loadConnections: desktopLoadConnections,
-    findConnection: desktopFindConnection,
-    addConnection: desktopAddConnection,
-    removeConnection: desktopRemoveConnection,
-    listTables: desktopListTables,
-    describeTable: desktopDescribeTable,
-    executeQuery: desktopExecuteQuery,
-  };
-}
+  buildSchemaContext,
+  createBackend,
+  evaluateSqlSafety,
+  formatSchemaContext,
+  notifyReload,
+  postBridge,
+  sqlSafetyFromEnv,
+  type Backend,
+  type ConnectionConfig,
+} from "@dbx-app/node-core";
 
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
@@ -61,19 +27,21 @@ function mdTable(headers: string[], rows: string[][]): string {
   return `${header}\n${sep}\n${body}`;
 }
 
-const server = new McpServer({
-  name: "dbx",
-  version: "0.3.0",
-});
+export function createDbxMcpServer(backend: Backend, options: { isWebMode?: boolean } = {}): McpServer {
+  const isWebMode = options.isWebMode ?? !!process.env.DBX_WEB_URL;
+  const server = new McpServer({
+    name: "dbx",
+    version: "0.4.2",
+  });
 
-server.tool("dbx_list_connections", "List all database connections configured in DBX", {}, async () => {
+  server.tool("dbx_list_connections", "List all database connections configured in DBX", {}, async () => {
   const connections = await backend.loadConnections();
   if (connections.length === 0) return text("No connections configured in DBX.");
   const rows = connections.map((c) => [c.name, c.db_type, c.host, String(c.port), c.database || ""]);
   return text(mdTable(["Name", "Type", "Host", "Port", "Database"], rows));
-});
+  });
 
-server.tool(
+  server.tool(
   "dbx_list_tables",
   "List tables and views for a database connection",
   {
@@ -88,9 +56,9 @@ server.tool(
     const rows = tables.map((t) => [t.name, t.type]);
     return text(mdTable(["Table", "Type"], rows));
   },
-);
+  );
 
-server.tool(
+  server.tool(
   "dbx_describe_table",
   "Get column definitions for a table",
   {
@@ -112,9 +80,9 @@ server.tool(
     ]);
     return text(mdTable(["Column", "Type", "Nullable", "Default", "Comment"], rows));
   },
-);
+  );
 
-server.tool(
+  server.tool(
   "dbx_execute_query",
   "Execute a SQL query on a database connection (max 100 rows returned)",
   {
@@ -136,9 +104,9 @@ server.tool(
       return text(`Query error: ${msg}`);
     }
   },
-);
+  );
 
-server.tool(
+  server.tool(
   "dbx_get_schema_context",
   "Get compact table and column context for writing SQL",
   {
@@ -154,9 +122,9 @@ server.tool(
     if (context.tables.length === 0) return text("No matching tables found.");
     return text(formatSchemaContext(context));
   },
-);
+  );
 
-server.tool(
+  server.tool(
   "dbx_add_connection",
   "Add a new database connection to DBX",
   {
@@ -193,9 +161,9 @@ server.tool(
     await notifyReload();
     return text(`Connection "${config.name}" added (id: ${config.id}).`);
   },
-);
+  );
 
-server.tool(
+  server.tool(
   "dbx_remove_connection",
   "Remove a database connection from DBX",
   {
@@ -207,42 +175,11 @@ server.tool(
     await notifyReload();
     return text(`Connection "${connection_name}" removed.`);
   },
-);
-
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
-function appDataDir(): string {
-  const home = homedir();
-  switch (platform()) {
-    case "darwin":
-      return join(home, "Library", "Application Support", "com.dbx.app");
-    case "win32":
-      return join(process.env.APPDATA || join(home, "AppData", "Roaming"), "com.dbx.app");
-    default:
-      return join(home, ".config", "com.dbx.app");
-  }
-}
-
-async function getBridgeUrl(): Promise<string> {
-  const portFile = join(appDataDir(), "mcp-bridge-port");
-  const port = (await readFile(portFile, "utf-8")).trim();
-  return `http://127.0.0.1:${port}`;
-}
-
-async function notifyReload(): Promise<void> {
-  try {
-    const bridgeUrl = await getBridgeUrl();
-    await fetch(`${bridgeUrl}/reload-connections`, { method: "POST" });
-  } catch {}
-}
+  );
 
 // Desktop-only tools: open table and execute-and-show require the Tauri bridge
-if (!isWebMode) {
-  server.tool(
+  if (!isWebMode) {
+    server.tool(
     "dbx_open_table",
     "Open a table in DBX desktop app UI. Requires DBX to be running.",
     {
@@ -254,9 +191,9 @@ if (!isWebMode) {
     async ({ connection_name, table, database, schema }) => {
       return bridgeRequest("/open-table", { connection_name, table, database, schema }, `Opened ${table} in DBX`);
     },
-  );
+    );
 
-  server.tool(
+    server.tool(
     "dbx_execute_and_show",
     "Execute a SQL query in DBX desktop app UI and show results there. Requires DBX to be running.",
     {
@@ -269,30 +206,34 @@ if (!isWebMode) {
       if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
       return bridgeRequest("/execute-query", { connection_name, sql, database }, "Query sent to DBX");
     },
-  );
+    );
+  }
+
+  return server;
+}
+
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 async function bridgeRequest(path: string, body: Record<string, unknown>, successMsg: string) {
-  try {
-    const bridgeUrl = await getBridgeUrl();
-    const res = await fetch(`${bridgeUrl}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) return text(successMsg);
-    return text(`Failed: ${await res.text()}`);
-  } catch {
-    return text("DBX is not running. Please start DBX first.");
-  }
+  const res = await postBridge(path, body);
+  if (res.ok) return text(successMsg);
+  return text(res.text.startsWith("DBX is not running") ? res.text : `Failed: ${res.text}`);
 }
 
 async function main() {
+  const backend = await createBackend();
+  const server = createDbxMcpServer(backend);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-main().catch((e) => {
-  console.error("MCP Server failed to start:", e);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error("MCP Server failed to start:", e);
+    process.exit(1);
+  });
+}
