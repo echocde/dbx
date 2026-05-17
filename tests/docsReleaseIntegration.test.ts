@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import appPackage from "../package.json" with { type: "json" };
-import { createInstallOptions } from "../docs/lib/downloadLinks.ts";
+import downloadLinks from "../docs/lib/downloadLinks.ts";
+
+const { createInstallOptions } = downloadLinks;
 
 test("docs install links are generated from the app package version", () => {
   const options = createInstallOptions("en", appPackage.version);
