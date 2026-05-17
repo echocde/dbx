@@ -33,6 +33,7 @@ export const DIAGRAM_SUPPORTED_TYPES = new Set<DatabaseType>([
   "highgo",
   "vastbase",
   "goldendb",
+  "access",
   "h2",
   "db2",
 ]);
@@ -52,6 +53,7 @@ export const DATABASE_SEARCH_SUPPORTED_TYPES = new Set<DatabaseType>([
   "highgo",
   "vastbase",
   "goldendb",
+  "access",
   "h2",
   "snowflake",
   "trino",
@@ -83,6 +85,7 @@ export const TABLE_IMPORT_SUPPORTED_TYPES = new Set<DatabaseType>([
   "highgo",
   "vastbase",
   "goldendb",
+  "access",
 ]);
 
 export const TABLE_STRUCTURE_SUPPORTED_TYPES = new Set<DatabaseType>(["mysql", "postgres", "sqlite", "sqlserver"]);
@@ -111,7 +114,7 @@ export const FIELD_LINEAGE_SUPPORTED_TYPES = new Set<DatabaseType>([
   "gaussdb",
 ]);
 
-export const SINGLE_DATABASE_TYPES = new Set<DatabaseType>(["oracle", "dameng"]);
+export const SINGLE_DATABASE_TYPES = new Set<DatabaseType>(["oracle", "dameng", "access"]);
 
 export const FETCH_FIRST_TYPES = new Set<DatabaseType>(["oracle", "dameng"]);
 
@@ -137,6 +140,7 @@ export const AGENT_DRIVER_TYPES = new Set<DatabaseType>([
   "highgo",
   "vastbase",
   "goldendb",
+  "access",
   "oracle",
   "h2",
   "snowflake",

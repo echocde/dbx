@@ -35,6 +35,15 @@ const DEFAULT_CAPABILITY: DatabaseCapability = {
 };
 
 const DATABASE_CAPABILITY_OVERRIDES: Partial<Record<DatabaseType, Partial<DatabaseCapability>>> = {
+  access: {
+    tableData: {
+      insert: true,
+      updateRequiresPrimaryKey: false,
+      deleteRequiresPrimaryKey: false,
+      requiresTransactionalTableForExistingRows: false,
+      transaction: true,
+    },
+  },
   hive: {
     tableData: {
       insert: true,

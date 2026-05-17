@@ -29,6 +29,13 @@ test("treats TDengine databases as schema tree roots and agent driver databases"
   assert.equal(supportsDriverManagement("tdengine"), true);
 });
 
+test("treats Access as a local single-database agent driver", () => {
+  assert.equal(SCHEMA_AWARE_TYPES.has("access"), false);
+  assert.equal(supportsDriverManagement("access"), true);
+  assert.equal(supportsDatabaseSearch("access"), true);
+  assert.equal(supportsTableImport("access"), true);
+});
+
 test("describes schema tree mode through the capability helper", () => {
   assert.equal(usesTreeSchemaMode("trino"), true);
   assert.equal(usesTreeSchemaMode("h2"), true);

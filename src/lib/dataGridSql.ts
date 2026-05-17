@@ -362,7 +362,8 @@ function buildPrimaryKeyWhere(
   columns: Array<string | undefined>,
   row: GridCellValue[],
 ): string {
-  if (databaseType === "hive" && primaryKeys.length === 0) return buildRowWhere(databaseType, columns, row);
+  if ((databaseType === "hive" || databaseType === "access") && primaryKeys.length === 0)
+    return buildRowWhere(databaseType, columns, row);
   return primaryKeys
     .map((primaryKey) => {
       const value = row[columns.indexOf(primaryKey)];

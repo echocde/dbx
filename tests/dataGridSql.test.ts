@@ -40,6 +40,47 @@ test("builds SQL Server grid save statements with schema and bracket quoting", (
   ]);
 });
 
+test("builds Access grid save statements with backtick identifiers", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "access",
+    tableMeta: {
+      tableName: "Order Details",
+      primaryKeys: ["Order ID"],
+    },
+    columns: ["Order ID", "Product Name", "Active"],
+    rows: [[42, "Old", true]],
+    dirtyRows: [[0, [[1, "Ready"]]]],
+    deletedRows: [0],
+    newRows: [[43, "New", false]],
+  });
+
+  assert.deepEqual(statements, [
+    "UPDATE `Order Details` SET `Product Name` = 'Ready' WHERE `Order ID` = 42;",
+    "DELETE FROM `Order Details` WHERE `Order ID` = 42;",
+    "INSERT INTO `Order Details` (`Order ID`, `Product Name`, `Active`) VALUES (43, 'New', FALSE);",
+  ]);
+});
+
+test("builds Access grid save statements with row predicates when primary keys are unavailable", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "access",
+    tableMeta: {
+      tableName: "orders",
+      primaryKeys: [],
+    },
+    columns: ["id", "quantity", "status", "shipped_at"],
+    rows: [[1, 3, "pending", null]],
+    dirtyRows: [[0, [[1, 4]]]],
+    deletedRows: [0],
+    newRows: [],
+  });
+
+  assert.deepEqual(statements, [
+    "UPDATE `orders` SET `quantity` = 4 WHERE `id` = 1 AND `quantity` = 3 AND `status` = 'pending' AND `shipped_at` IS NULL;",
+    "DELETE FROM `orders` WHERE `id` = 1 AND `quantity` = 3 AND `status` = 'pending' AND `shipped_at` IS NULL;",
+  ]);
+});
+
 test("builds grid save statements through source columns for aliased query results", () => {
   const statements = buildDataGridSaveStatements({
     databaseType: "postgres",

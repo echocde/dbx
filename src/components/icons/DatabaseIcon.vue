@@ -22,10 +22,13 @@ const assetIcons: Record<string, string> = {
   "oracle-10g": "oracle",
   oracle_10g: "oracle",
   sqlserver: "sqlserver",
+  access: "access.png",
   oceanbase: "oceanbase",
   opengauss: "opengauss",
   gaussdb: "gaussdb",
   kingbase: "kingbase",
+  goldendb: "goldendb.png",
+  vastbase: "vastbase.png",
   snowflake: "snowflake",
   h2: "h2",
   dm: "dm",
@@ -50,24 +53,22 @@ const assetIcons: Record<string, string> = {
 };
 
 const letterIcons: Record<string, { letter: string; color: string }> = {
-  goldendb: { letter: "G", color: "#F59E0B" },
-  vastbase: { letter: "V", color: "#6D28D9" },
   highgo: { letter: "瀚", color: "#005bac" },
 };
 
 const normalizedType = computed(() => props.dbType.toLowerCase().replace(/[\s-]+/g, "_"));
 const assetName = computed(() => assetIcons[normalizedType.value]);
+const assetSrc = computed(() => {
+  if (!assetName.value) return "";
+  return assetName.value.includes(".")
+    ? `/icons/database/${assetName.value}`
+    : `/icons/database/${assetName.value}.svg`;
+});
 const letter = computed(() => letterIcons[normalizedType.value]);
 </script>
 
 <template>
-  <img
-    v-if="assetName"
-    :src="`/icons/database/${assetName}.svg`"
-    alt=""
-    class="database-logo object-contain"
-    aria-hidden="true"
-  />
+  <img v-if="assetName" :src="assetSrc" alt="" class="database-logo object-contain" aria-hidden="true" />
   <svg v-else-if="letter" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="12" :fill="letter.color" />
     <text

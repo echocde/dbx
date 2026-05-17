@@ -5,7 +5,7 @@ type ConnectionPresentationConfig = Pick<
   "db_type" | "driver_profile" | "driver_label" | "host" | "port" | "database"
 >;
 
-const LOCAL_DATABASE_TYPES = new Set(["sqlite", "duckdb"]);
+const LOCAL_DATABASE_TYPES = new Set(["sqlite", "duckdb", "access"]);
 
 export function connectionIconType(connection?: Pick<ConnectionConfig, "db_type" | "driver_profile">): string {
   return connection?.driver_profile || connection?.db_type || "postgres";
@@ -44,6 +44,9 @@ export function connectionUrlPlaceholder(dbType: DatabaseType): string {
 
     case "duckdb":
       return "duckdb:///absolute/path/to/database.duckdb";
+
+    case "access":
+      return "jdbc:ucanaccess:///absolute/path/to/database.accdb";
 
     case "mongodb":
       return "mongodb://user:password@host:port/database";

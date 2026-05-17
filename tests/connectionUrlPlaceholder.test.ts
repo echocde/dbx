@@ -12,6 +12,7 @@ const expected: Record<string, string> = {
   redis: "redis://:password@host:port/0",
   sqlite: "sqlite:///absolute/path/to/database.db",
   duckdb: "duckdb:///absolute/path/to/database.duckdb",
+  access: "jdbc:ucanaccess:///absolute/path/to/database.accdb",
   mongodb: "mongodb://user:password@host:port/database",
   clickhouse: "clickhouse://user:password@host:port/database",
   sqlserver: "mssql://user:password@host:port/database",

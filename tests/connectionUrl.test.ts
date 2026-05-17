@@ -66,6 +66,18 @@ test("parses TDengine WebSocket JDBC URLs", () => {
   assert.equal(parsed.urlParams, "timezone=UTC");
 });
 
+test("parses UCanAccess JDBC URLs as Access database files", () => {
+  const parsed = parseConnectionUrl("jdbc:ucanaccess:///Users/me/data/Northwind.accdb;memory=false");
+
+  assert.equal(parsed.dbType, "access");
+  assert.equal(parsed.driverProfile, "access");
+  assert.equal(parsed.driverLabel, "Microsoft Access");
+  assert.equal(parsed.host, "/Users/me/data/Northwind.accdb");
+  assert.equal(parsed.port, 0);
+  assert.equal(parsed.database, "Northwind.accdb");
+  assert.equal(parsed.connectionString, "jdbc:ucanaccess:///Users/me/data/Northwind.accdb;memory=false");
+});
+
 test("parses SQL Server JDBC URLs with semicolon properties", () => {
   const parsed = parseConnectionUrl(
     "jdbc:sqlserver://sql.example.com:1434;databaseName=erp;user=sa;password=s%40cret;encrypt=true",

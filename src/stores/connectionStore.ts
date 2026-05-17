@@ -186,6 +186,7 @@ export const useConnectionStore = defineStore("connection", () => {
       highgo: "瀚高 HighGo",
       vastbase: "Vastbase",
       goldendb: "GoldenDB",
+      access: "Microsoft Access",
       h2: "H2",
       snowflake: "Snowflake",
       trino: "Trino",

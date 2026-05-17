@@ -46,6 +46,7 @@ test("uses tbname and timestamp as TDengine editable keys", () => {
 });
 
 test("allows Hive table data editing even without declared primary keys", () => {
+  assert.equal(isTableDataEditable("access", []), true);
   assert.equal(isTableDataEditable("hive", []), true);
   assert.equal(isTableDataEditable("trino", []), true);
   assert.equal(isTableDataEditable("informix", []), true);
@@ -60,7 +61,9 @@ test("does not use transactional grid saves for Hive", () => {
   assert.equal(supportsDataGridTransaction("postgres"), true);
 });
 
-test("allows existing row edits for Hive only when the table is transactional", () => {
+test("allows existing row edits according to database-specific key requirements", () => {
+  assert.equal(canEditExistingTableRows("access", undefined, []), true);
+  assert.equal(canEditExistingTableRows("access", undefined, ["ID"]), true);
   assert.equal(canEditExistingTableRows("hive", true), true);
   assert.equal(canEditExistingTableRows("hive", false), false);
   assert.equal(canEditExistingTableRows("hive", undefined), false);

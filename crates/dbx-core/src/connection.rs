@@ -239,6 +239,7 @@ impl AppState {
             | DatabaseType::Kylin
             | DatabaseType::Sundb
             | DatabaseType::Tdengine
+            | DatabaseType::Access
             | DatabaseType::Gaussdb => {
                 let mut client =
                     self.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;
@@ -437,6 +438,7 @@ pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, da
         "username": config.username,
         "password": config.password,
         "url_params": config.url_params.as_deref().unwrap_or(""),
+        "connection_string": config.connection_string.as_deref().unwrap_or(""),
     })
 }
 

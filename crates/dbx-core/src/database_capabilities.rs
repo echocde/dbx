@@ -25,6 +25,7 @@ pub fn agent_key(db_type: &DatabaseType, driver_profile: Option<&str>) -> Option
         DatabaseType::Gaussdb => Some("gaussdb"),
         DatabaseType::MongoDb => Some("mongodb"),
         DatabaseType::Tdengine => Some("tdengine"),
+        DatabaseType::Access => Some("access"),
         _ => None,
     }
 }
@@ -44,6 +45,7 @@ pub fn is_single_connection_pool(db_type: &DatabaseType) -> bool {
             | DatabaseType::Highgo
             | DatabaseType::Vastbase
             | DatabaseType::Goldendb
+            | DatabaseType::Access
             | DatabaseType::Jdbc
     )
 }

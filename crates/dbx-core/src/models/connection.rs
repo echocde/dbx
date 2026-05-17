@@ -120,6 +120,7 @@ pub enum DatabaseType {
     Vastbase,
     Goldendb,
     Gaussdb,
+    Access,
     #[serde(rename = "h2")]
     H2,
     Snowflake,
@@ -213,6 +214,7 @@ impl ConnectionConfig {
             DatabaseType::Sqlite | DatabaseType::DuckDb => {
                 format!("{}?mode=rwc", self.host)
             }
+            DatabaseType::Access => self.host.clone(),
             DatabaseType::Redis => {
                 let scheme = if self.ssl { "rediss" } else { "redis" };
                 format!("{scheme}://{host}:{port}/")
@@ -284,6 +286,7 @@ impl ConnectionConfig {
             DatabaseType::Sqlite | DatabaseType::DuckDb => {
                 format!("{}?mode=rwc", self.host)
             }
+            DatabaseType::Access => self.host.clone(),
             DatabaseType::Redis => {
                 let scheme = if self.ssl { "rediss" } else { "redis" };
                 if self.username.is_empty() && self.password.is_empty() {

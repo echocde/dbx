@@ -21,6 +21,7 @@ const AGENT_TYPES: &[(&str, &str)] = &[
     ("highgo", "瀚高 HighGo"),
     ("vastbase", "Vastbase"),
     ("goldendb", "GoldenDB"),
+    ("access", "Microsoft Access"),
     ("oracle", "Oracle"),
     ("oracle-10g", "Oracle 10g"),
     ("h2", "H2"),
@@ -104,13 +105,14 @@ mod tests {
     use dbx_core::agent_manager::AgentManager;
 
     #[test]
-    fn built_in_agent_list_includes_tdengine() {
+    fn built_in_agent_list_includes_access_and_tdengine() {
         let dir = std::env::temp_dir().join(format!("dbx-agent-list-test-{}", uuid::Uuid::new_v4()));
         let manager = AgentManager::new_with_base_dir(dir.clone());
 
         let agents = build_agent_list(&manager, None);
 
         assert!(agents.iter().any(|agent| agent.db_type == "tdengine" && agent.label == "TDengine"));
+        assert!(agents.iter().any(|agent| agent.db_type == "access" && agent.label == "Microsoft Access"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

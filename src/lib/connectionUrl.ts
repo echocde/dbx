@@ -107,11 +107,36 @@ function parseJdbcSqlServerUrl(source: string): ParsedConnectionUrl | null {
   };
 }
 
+function parseJdbcUCanAccessUrl(source: string): ParsedConnectionUrl | null {
+  const match = source.match(/^jdbc:ucanaccess:\/\/(.+?)(?:;.*)?$/i);
+  if (!match) return null;
+
+  const filePath = decodeUrlPart(match[1]);
+  const normalizedPath = filePath.startsWith("/") || /^[A-Za-z]:[\\/]/.test(filePath) ? filePath : `/${filePath}`;
+  const database = normalizedPath.split(/[\\/]/).filter(Boolean).pop();
+
+  return {
+    dbType: "access",
+    driverProfile: "access",
+    driverLabel: "Microsoft Access",
+    host: normalizedPath,
+    port: 0,
+    username: "",
+    password: "",
+    database,
+    urlParams: "",
+    ssl: false,
+    connectionString: source,
+  };
+}
+
 export function parseConnectionUrl(value: string, preferredProfile?: string): ParsedConnectionUrl {
   const input = value.trim();
   if (!input) {
     throw new Error("Connection URL is empty");
   }
+  const jdbcUCanAccess = parseJdbcUCanAccessUrl(input);
+  if (jdbcUCanAccess) return jdbcUCanAccess;
   const jdbcSqlServer = parseJdbcSqlServerUrl(input);
   if (jdbcSqlServer) return jdbcSqlServer;
   const source = input.replace(/^jdbc:/i, "");

@@ -130,6 +130,7 @@ const driverProfiles: Record<
   redis: { type: "redis", port: 6379, user: "", label: "Redis", icon: "redis" },
   sqlite: { type: "sqlite", port: 0, user: "", label: "SQLite", icon: "sqlite" },
   duckdb: { type: "duckdb", port: 0, user: "", label: "DuckDB", icon: "duckdb" },
+  access: { type: "access", port: 0, user: "", label: "Microsoft Access", icon: "access" },
   mongodb: { type: "mongodb", port: 27017, user: "", label: "MongoDB", icon: "mongodb" },
   clickhouse: {
     type: "clickhouse",
@@ -248,7 +249,7 @@ function applyProfile(val: string, preserveConnectionFields = false) {
     form.value.port = profile.port;
     form.value.username = profile.user;
     form.value.url_params = profile.urlParams || "";
-    if (profile.type === "sqlite" || profile.type === "duckdb") {
+    if (profile.type === "sqlite" || profile.type === "duckdb" || profile.type === "access") {
       form.value.host = "";
     }
     if (profile.type === "jdbc") {
@@ -358,6 +359,7 @@ const iconTypeMap: Record<string, string> = {
   mysql: "mysql",
   postgres: "postgres",
   sqlite: "sqlite",
+  access: "access",
   redis: "redis",
   mongodb: "mongodb",
   duckdb: "duckdb",
@@ -402,6 +404,7 @@ const dbOptions = [
   { value: "mysql", label: "MySQL" },
   { value: "postgres", label: "PostgreSQL" },
   { value: "sqlite", label: "SQLite" },
+  { value: "access", label: "Microsoft Access" },
   { value: "redis", label: "Redis" },
   { value: "mongodb", label: "MongoDB" },
   { value: "duckdb", label: "DuckDB" },
@@ -467,8 +470,15 @@ const selectedDbIcon = computed(() => iconTypeMap[selectedType.value] || selecte
 const isJdbcConnection = computed(() => form.value.db_type === "jdbc");
 
 const connectionUrlPlaceholder = computed(() => getUrlPlaceholder(form.value.db_type));
-const canUseSsh = computed(() => form.value.db_type !== "sqlite");
-const canUseProxy = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb");
+const filePathPlaceholder = computed(() => {
+  if (form.value.db_type === "duckdb") return "/path/to/database.duckdb";
+  if (form.value.db_type === "access") return "/path/to/database.accdb";
+  return "/path/to/database.db";
+});
+const canUseSsh = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "access");
+const canUseProxy = computed(
+  () => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb" && form.value.db_type !== "access",
+);
 const shouldShowAgentDriverInstallHint = computed(() =>
   showAgentDriverInstallHint(form.value.db_type, agentDrivers.value),
 );
@@ -677,7 +687,9 @@ async function browseDbFilePath() {
     const filters =
       form.value.db_type === "duckdb"
         ? [{ name: "DuckDB", extensions: ["duckdb", "db"] }]
-        : [{ name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] }];
+        : form.value.db_type === "access"
+          ? [{ name: "Microsoft Access", extensions: ["accdb", "mdb"] }]
+          : [{ name: "SQLite", extensions: ["db", "sqlite", "sqlite3"] }];
     const selected = await open({
       title: "Select Database File",
       multiple: false,
@@ -1040,12 +1052,14 @@ function openExternalUrl(url: string) {
                   </div>
                 </template>
 
-                <!-- SQLite / DuckDB: file path only -->
-                <template v-else-if="form.db_type === 'sqlite' || form.db_type === 'duckdb'">
+                <!-- Local database files: file path only -->
+                <template
+                  v-else-if="form.db_type === 'sqlite' || form.db_type === 'duckdb' || form.db_type === 'access'"
+                >
                   <div class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right">{{ t("connection.filePath") }}</Label>
                     <div class="col-span-3 flex items-center gap-1">
-                      <Input v-model="form.host" class="flex-1" placeholder="/path/to/database.db" />
+                      <Input v-model="form.host" class="flex-1" :placeholder="filePathPlaceholder" />
                       <Tooltip v-if="isDesktop">
                         <TooltipTrigger as-child>
                           <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" @click="browseDbFilePath">

@@ -37,4 +37,15 @@ test("uses file path as endpoint for local database connections", () => {
   };
 
   assert.equal(connectionOptionSubtitle(sqliteConnection), "SQLite · /tmp/local.db");
+
+  const accessConnection: ConnectionConfig = {
+    ...baseConnection,
+    db_type: "access",
+    driver_profile: "access",
+    driver_label: "Microsoft Access",
+    host: "/tmp/Northwind.accdb",
+    port: 0,
+  };
+
+  assert.equal(connectionOptionSubtitle(accessConnection), "Microsoft Access · /tmp/Northwind.accdb");
 });
