@@ -157,6 +157,7 @@ jobs:
           Copy-Item $exePath (Join-Path $portableDir "DBX.exe") -Force
           Copy-Item "LICENSE" (Join-Path $portableDir "LICENSE") -Force
           Copy-Item "README.md" (Join-Path $portableDir "README.md") -Force
+          Set-Content -Path (Join-Path $portableDir "portable.dbx") -Value "" -NoNewline
 
           Compress-Archive -Path (Join-Path $portableDir "*") -DestinationPath $zipName -Force
           gh release upload "${env:GITHUB_REF_NAME}" $zipName --repo "${env:GITHUB_REPOSITORY}" --clobber

@@ -1,4 +1,5 @@
 mod commands;
+mod data_dir;
 mod db;
 mod models;
 
@@ -29,8 +30,9 @@ pub fn run() {
                 app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
             }
 
-            let data_dir =
+            let default_data_dir =
                 app.path().app_data_dir().map_err(|e| e.to_string()).expect("Failed to resolve app data dir");
+            let data_dir = data_dir::resolve_data_dir(default_data_dir);
             std::fs::create_dir_all(&data_dir).expect("Failed to create data dir");
             let db_path = data_dir.join("dbx.db");
 
