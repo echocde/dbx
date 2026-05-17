@@ -95,6 +95,7 @@ import {
   applyColumnFormatter,
   buildColumnFormatterKey,
   normalizeColumnFormatter,
+  resolveColumnFormatter,
   type ColumnFormatterConfig,
   type DateTimeFormatterUnit,
 } from "@/lib/columnFormatter";
@@ -294,11 +295,22 @@ const localFilterOpenColumn = ref<number | null>(null);
 const localFilterSearch = ref("");
 const localFilterDraft = ref<LocalColumnFilterDraft | null>(null);
 const formatterOpenColumn = ref<number | null>(null);
-const formatterKind = ref<ColumnFormatterConfig["kind"]>("datetime");
+type FormatterDraftKind = Exclude<ColumnFormatterConfig["kind"], "custom-ref">;
+const CUSTOM_FORMATTER_NEW = "__new";
+const formatterKind = ref<FormatterDraftKind>("datetime");
 const formatterDateUnit = ref<DateTimeFormatterUnit>("auto");
 const formatterJsonPath = ref("$.user.name");
 const formatterMaskPrefix = ref(4);
 const formatterMaskSuffix = ref(4);
+const formatterCustomId = ref(CUSTOM_FORMATTER_NEW);
+const formatterCustomName = ref("");
+const formatterCustomTemplate = ref("${value}");
+
+const savedCustomFormatters = computed(() => {
+  return Object.values(settingsStore.editorSettings.customColumnFormatters).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+});
 
 function localFilterKey(value: CellValue): string {
   if (value === null) return "__dbx_null__";
@@ -417,6 +429,18 @@ function columnFormatter(columnIndex: number): ColumnFormatterConfig | undefined
   const column = props.result.columns[columnIndex];
   if (!column) return undefined;
   const key = formatterKeyForColumn(column);
+  return key
+    ? resolveColumnFormatter(
+        settingsStore.editorSettings.columnFormatters[key],
+        settingsStore.editorSettings.customColumnFormatters,
+      )
+    : undefined;
+}
+
+function savedColumnFormatter(columnIndex: number): ColumnFormatterConfig | undefined {
+  const column = props.result.columns[columnIndex];
+  if (!column) return undefined;
+  const key = formatterKeyForColumn(column);
   return key ? settingsStore.editorSettings.columnFormatters[key] : undefined;
 }
 
@@ -435,12 +459,15 @@ function currentFormatterDraft(): ColumnFormatterConfig {
       suffix: Math.max(0, Math.floor(Number(formatterMaskSuffix.value) || 0)),
     };
   }
+  if (formatterKind.value === "custom-template") {
+    return { kind: "custom-template", template: formatterCustomTemplate.value.trim() || "${value}" };
+  }
   return { kind: "datetime", unit: formatterDateUnit.value };
 }
 
 function loadFormatterDraft(formatter: ColumnFormatterConfig | undefined) {
   const draft = formatter ?? { kind: "datetime", unit: "auto" as const };
-  formatterKind.value = draft.kind;
+  formatterKind.value = draft.kind === "custom-ref" ? "custom-template" : draft.kind;
   if (draft.kind === "datetime") {
     formatterDateUnit.value = draft.unit;
   } else if (draft.kind === "json-path") {
@@ -448,11 +475,20 @@ function loadFormatterDraft(formatter: ColumnFormatterConfig | undefined) {
   } else if (draft.kind === "mask") {
     formatterMaskPrefix.value = draft.prefix;
     formatterMaskSuffix.value = draft.suffix;
+  } else if (draft.kind === "custom-ref") {
+    const saved = settingsStore.editorSettings.customColumnFormatters[draft.formatterId];
+    formatterCustomId.value = saved ? saved.id : CUSTOM_FORMATTER_NEW;
+    formatterCustomName.value = saved?.name ?? "";
+    formatterCustomTemplate.value = saved?.template ?? "${value}";
+  } else if (draft.kind === "custom-template") {
+    formatterCustomId.value = CUSTOM_FORMATTER_NEW;
+    formatterCustomName.value = "";
+    formatterCustomTemplate.value = draft.template;
   }
 }
 
 function openColumnFormatter(columnIndex: number) {
-  loadFormatterDraft(columnFormatter(columnIndex));
+  loadFormatterDraft(savedColumnFormatter(columnIndex));
   formatterOpenColumn.value = columnIndex;
 }
 
@@ -464,7 +500,17 @@ function saveColumnFormatter(columnIndex: number) {
   const column = props.result.columns[columnIndex];
   const key = column ? formatterKeyForColumn(column) : null;
   if (!key) return;
-  settingsStore.updateColumnFormatter(key, currentFormatterDraft());
+  let formatter = currentFormatterDraft();
+  if (formatterKind.value === "custom-template" && formatterCustomName.value.trim()) {
+    const id = formatterCustomId.value === CUSTOM_FORMATTER_NEW ? createCustomFormatterId() : formatterCustomId.value;
+    const saved = settingsStore.upsertCustomColumnFormatter({
+      id,
+      name: formatterCustomName.value,
+      template: formatterCustomTemplate.value,
+    });
+    if (saved) formatter = { kind: "custom-ref", formatterId: saved.id };
+  }
+  settingsStore.updateColumnFormatter(key, formatter);
   closeColumnFormatter();
 }
 
@@ -480,8 +526,29 @@ function formatterDraftIsSavable(): boolean {
   return !!normalizeColumnFormatter(currentFormatterDraft());
 }
 
+function selectCustomFormatter(value: string) {
+  formatterCustomId.value = value;
+  if (value === CUSTOM_FORMATTER_NEW) {
+    formatterCustomName.value = "";
+    formatterCustomTemplate.value = "${value}";
+    return;
+  }
+  const saved = settingsStore.editorSettings.customColumnFormatters[value];
+  if (!saved) return;
+  formatterCustomName.value = saved.name;
+  formatterCustomTemplate.value = saved.template;
+}
+
+function createCustomFormatterId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `fmt_${crypto.randomUUID()}`;
+  return `fmt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
 function formatterPreviewRows(columnIndex: number) {
-  const formatter = currentFormatterDraft();
+  const formatter = resolveColumnFormatter(
+    currentFormatterDraft(),
+    settingsStore.editorSettings.customColumnFormatters,
+  );
   return displayItems.value.slice(0, 5).map((item, index) => {
     const value = item.data[columnIndex] ?? null;
     return {
@@ -2810,6 +2877,9 @@ defineExpose({
                                         <SelectItem value="datetime">{{ t("grid.formatterDatetime") }}</SelectItem>
                                         <SelectItem value="json-path">{{ t("grid.formatterJsonPath") }}</SelectItem>
                                         <SelectItem value="mask">{{ t("grid.formatterMask") }}</SelectItem>
+                                        <SelectItem value="custom-template">{{
+                                          t("grid.formatterCustomTemplate")
+                                        }}</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
@@ -2849,7 +2919,7 @@ defineExpose({
                                     />
                                   </div>
 
-                                  <div v-else class="grid grid-cols-2 gap-2">
+                                  <div v-else-if="formatterKind === 'mask'" class="grid grid-cols-2 gap-2">
                                     <label class="space-y-1.5">
                                       <span class="text-xs font-medium text-muted-foreground">
                                         {{ t("grid.formatterMaskPrefix") }}
@@ -2872,6 +2942,60 @@ defineExpose({
                                         class="h-8 w-full rounded border bg-background px-2 text-xs outline-none focus:border-primary"
                                       />
                                     </label>
+                                  </div>
+
+                                  <div v-else class="space-y-2">
+                                    <div v-if="savedCustomFormatters.length" class="space-y-1.5">
+                                      <div class="text-xs font-medium text-muted-foreground">
+                                        {{ t("grid.formatterSavedCustom") }}
+                                      </div>
+                                      <Select
+                                        :model-value="formatterCustomId"
+                                        @update:model-value="(value: any) => selectCustomFormatter(String(value))"
+                                      >
+                                        <SelectTrigger class="h-8 text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem :value="CUSTOM_FORMATTER_NEW">{{
+                                            t("grid.formatterNewCustom")
+                                          }}</SelectItem>
+                                          <SelectItem
+                                            v-for="formatter in savedCustomFormatters"
+                                            :key="formatter.id"
+                                            :value="formatter.id"
+                                          >
+                                            {{ formatter.name }}
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <label class="block space-y-1.5">
+                                      <span class="text-xs font-medium text-muted-foreground">
+                                        {{ t("grid.formatterCustomName") }}
+                                      </span>
+                                      <input
+                                        v-model="formatterCustomName"
+                                        class="h-8 w-full rounded border bg-background px-2 text-xs outline-none focus:border-primary"
+                                        :placeholder="t('grid.formatterCustomNamePlaceholder')"
+                                      />
+                                    </label>
+                                    <label class="block space-y-1.5">
+                                      <span class="text-xs font-medium text-muted-foreground">
+                                        {{ t("grid.formatterCustomTemplateInput") }}
+                                      </span>
+                                      <input
+                                        v-model="formatterCustomTemplate"
+                                        autocapitalize="off"
+                                        autocorrect="off"
+                                        spellcheck="false"
+                                        class="h-8 w-full rounded border bg-background px-2 font-mono text-xs outline-none focus:border-primary"
+                                        placeholder="ID-${value}"
+                                      />
+                                    </label>
+                                    <div class="text-[11px] leading-4 text-muted-foreground">
+                                      {{ t("grid.formatterCustomTemplateHint") }}
+                                    </div>
                                   </div>
 
                                   <div class="space-y-1.5">

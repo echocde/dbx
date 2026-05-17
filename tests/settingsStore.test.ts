@@ -54,6 +54,12 @@ test("keeps only valid saved column formatter configs", () => {
       "conn::db::public::users::name": { kind: "mask", prefix: 2, suffix: 2 },
       "conn::db::public::users::payload": { kind: "json-path", path: "$.user.name" },
       "conn::db::public::users::invalid_json": { kind: "json-path", path: "user.name" },
+      "conn::db::public::users::status": { kind: "custom-ref", formatterId: "fmt_1" },
+    },
+    customColumnFormatters: {
+      fmt_1: { id: "fmt_1", name: "Status label", template: "status:${value}" },
+      fmt_empty_name: { id: "fmt_empty_name", name: "", template: "x:${value}" },
+      fmt_empty_template: { id: "fmt_empty_template", name: "Broken", template: "" },
     },
   } as any);
 
@@ -61,6 +67,10 @@ test("keeps only valid saved column formatter configs", () => {
     "conn::db::public::users::created_at": { kind: "datetime", unit: "auto" },
     "conn::db::public::users::name": { kind: "mask", prefix: 2, suffix: 2 },
     "conn::db::public::users::payload": { kind: "json-path", path: "$.user.name" },
+    "conn::db::public::users::status": { kind: "custom-ref", formatterId: "fmt_1" },
+  });
+  assert.deepEqual(settings.customColumnFormatters, {
+    fmt_1: { id: "fmt_1", name: "Status label", template: "status:${value}" },
   });
 });
 

@@ -1,7 +1,12 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import * as api from "@/lib/api";
-import { normalizeColumnFormatter, type ColumnFormatterConfig } from "@/lib/columnFormatter";
+import {
+  normalizeColumnFormatter,
+  normalizeCustomColumnFormatter,
+  type ColumnFormatterConfig,
+  type CustomColumnFormatterConfig,
+} from "@/lib/columnFormatter";
 import { normalizeShortcutSettings, type ShortcutSettings } from "@/lib/shortcutRegistry";
 import type { SidebarActivation } from "@/lib/treeNodeClick";
 
@@ -151,6 +156,7 @@ export interface EditorSettings {
   shortcuts: ShortcutSettings;
   sidebarActivation: SidebarActivation;
   columnFormatters: Record<string, ColumnFormatterConfig>;
+  customColumnFormatters: Record<string, CustomColumnFormatterConfig>;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -187,6 +193,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   shortcuts: normalizeShortcutSettings(),
   sidebarActivation: "single",
   columnFormatters: {},
+  customColumnFormatters: {},
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
@@ -198,6 +205,16 @@ function normalizeColumnFormatters(value: unknown): Record<string, ColumnFormatt
   for (const [key, formatter] of Object.entries(value as Record<string, unknown>)) {
     const normalized = normalizeColumnFormatter(formatter);
     if (normalized) formatters[key] = normalized;
+  }
+  return formatters;
+}
+
+function normalizeCustomColumnFormatters(value: unknown): Record<string, CustomColumnFormatterConfig> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const formatters: Record<string, CustomColumnFormatterConfig> = {};
+  for (const formatter of Object.values(value as Record<string, unknown>)) {
+    const normalized = normalizeCustomColumnFormatter(formatter);
+    if (normalized) formatters[normalized.id] = normalized;
   }
   return formatters;
 }
@@ -218,6 +235,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
         ? settings.sidebarActivation
         : DEFAULT_EDITOR_SETTINGS.sidebarActivation,
     columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
+    customColumnFormatters: normalizeCustomColumnFormatters(settings.customColumnFormatters),
   };
 }
 
@@ -309,6 +327,31 @@ export const useSettingsStore = defineStore("settings", () => {
     updateEditorSettings({ columnFormatters });
   }
 
+  function upsertCustomColumnFormatter(
+    formatter: CustomColumnFormatterConfig,
+  ): CustomColumnFormatterConfig | undefined {
+    const normalized = normalizeCustomColumnFormatter(formatter);
+    if (!normalized) return undefined;
+    updateEditorSettings({
+      customColumnFormatters: {
+        ...editorSettings.value.customColumnFormatters,
+        [normalized.id]: normalized,
+      },
+    });
+    return normalized;
+  }
+
+  function deleteCustomColumnFormatter(id: string) {
+    const customColumnFormatters = { ...editorSettings.value.customColumnFormatters };
+    delete customColumnFormatters[id];
+    const columnFormatters = Object.fromEntries(
+      Object.entries(editorSettings.value.columnFormatters).filter(([, formatter]) => {
+        return formatter.kind !== "custom-ref" || formatter.formatterId !== id;
+      }),
+    );
+    updateEditorSettings({ customColumnFormatters, columnFormatters });
+  }
+
   return {
     aiConfig,
     isAiConfigLoaded,
@@ -318,5 +361,7 @@ export const useSettingsStore = defineStore("settings", () => {
     editorSettings,
     updateEditorSettings,
     updateColumnFormatter,
+    upsertCustomColumnFormatter,
+    deleteCustomColumnFormatter,
   };
 });

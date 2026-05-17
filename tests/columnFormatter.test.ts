@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   applyColumnFormatter,
   buildColumnFormatterKey,
+  resolveColumnFormatter,
   normalizeColumnFormatter,
   type ColumnFormatterConfig,
 } from "../src/lib/columnFormatter.ts";
@@ -50,6 +51,14 @@ test("normalizes only supported formatter configs", () => {
     path: "$.a[0]",
   });
   assert.equal(normalizeColumnFormatter({ kind: "json-path", path: "a.b" }), undefined);
+  assert.deepEqual(normalizeColumnFormatter({ kind: "custom-template", template: "ID-${value}" }), {
+    kind: "custom-template",
+    template: "ID-${value}",
+  });
+  assert.deepEqual(normalizeColumnFormatter({ kind: "custom-ref", formatterId: "fmt_1" }), {
+    kind: "custom-ref",
+    formatterId: "fmt_1",
+  });
 });
 
 test("builds stable formatter keys for table columns", () => {
@@ -63,4 +72,23 @@ test("builds stable formatter keys for table columns", () => {
     }),
     "conn::db::public::users::created_at",
   );
+});
+
+test("applies safe custom formatter templates", () => {
+  assert.equal(applyColumnFormatter("ada", { kind: "custom-template", template: "user:${value}" }), "user:ada");
+  assert.equal(applyColumnFormatter("Ada", { kind: "custom-template", template: "${upper}" }), "ADA");
+  assert.equal(applyColumnFormatter("Ada", { kind: "custom-template", template: "${lower}" }), "ada");
+  assert.equal(applyColumnFormatter("Ada", { kind: "custom-template", template: "${length}" }), "3");
+  assert.equal(applyColumnFormatter(null, { kind: "custom-template", template: "value=${value}" }), "value=NULL");
+});
+
+test("resolves saved custom formatter references", () => {
+  assert.deepEqual(
+    resolveColumnFormatter(
+      { kind: "custom-ref", formatterId: "fmt_1" },
+      { fmt_1: { id: "fmt_1", name: "User label", template: "user:${value}" } },
+    ),
+    { kind: "custom-template", template: "user:${value}" },
+  );
+  assert.equal(resolveColumnFormatter({ kind: "custom-ref", formatterId: "missing" }, {}), undefined);
 });
