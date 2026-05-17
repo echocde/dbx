@@ -339,16 +339,32 @@ pub async fn list_objects_core(
         }
     }
 
-    Ok(list_tables_core(state, connection_id, database, schema, None, None)
-        .await?
-        .into_iter()
-        .map(|table| db::ObjectInfo {
-            name: table.name,
-            object_type: table.table_type,
-            schema: if schema.is_empty() { None } else { Some(schema.to_string()) },
-            comment: table.comment,
-        })
-        .collect())
+    let connections = state.connections.read().await;
+    let pool = connections.get(&pool_key).ok_or("Pool not found")?;
+
+    match pool {
+        PoolKind::Mysql(p, mode) => {
+            if *mode == MysqlMode::OceanBaseOracle {
+                db::ob_oracle::list_objects(p, schema).await
+            } else {
+                db::mysql::list_objects(p, database).await
+            }
+        }
+        PoolKind::Postgres(p) => db::postgres::list_objects(p, schema).await,
+        _ => {
+            drop(connections);
+            Ok(list_tables_core(state, connection_id, database, schema, None, None)
+                .await?
+                .into_iter()
+                .map(|table| db::ObjectInfo {
+                    name: table.name,
+                    object_type: table.table_type,
+                    schema: if schema.is_empty() { None } else { Some(schema.to_string()) },
+                    comment: table.comment,
+                })
+                .collect())
+        }
+    }
 }
 
 pub async fn get_columns_core(

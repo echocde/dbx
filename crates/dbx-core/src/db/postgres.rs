@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 
 use super::file_validator::validate_file_path;
 use crate::sql::starts_with_executable_sql_keyword;
-use crate::types::{ColumnInfo, DatabaseInfo, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, TriggerInfo};
+use crate::types::{
+    ColumnInfo, DatabaseInfo, ForeignKeyInfo, IndexInfo, ObjectInfo, QueryResult, TableInfo, TriggerInfo,
+};
 
 fn pg_temporal_to_json_value(row: &PgRow, idx: usize) -> Option<serde_json::Value> {
     if let Ok(v) = row.try_get::<DateTime<Utc>, _>(idx) {
@@ -222,6 +224,44 @@ pub async fn list_tables(pool: &PgPool, schema: &str) -> Result<Vec<TableInfo>, 
             name: row.get::<String, _>("table_name"),
             table_type: row.get::<String, _>("table_type"),
             comment: row.get::<Option<String>, _>("table_comment").filter(|s| !s.is_empty()),
+        })
+        .collect())
+}
+
+fn list_objects_sql() -> &'static str {
+    "SELECT c.relname AS object_name, \
+       CASE c.relkind \
+         WHEN 'v' THEN 'VIEW' \
+         WHEN 'm' THEN 'VIEW' \
+         ELSE 'TABLE' \
+       END AS object_type, \
+       obj_description(c.oid) AS object_comment, \
+       CASE c.relkind WHEN 'v' THEN 1 WHEN 'm' THEN 1 ELSE 0 END AS sort_order \
+     FROM pg_catalog.pg_class c \
+     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace \
+     WHERE n.nspname = $1 AND c.relkind IN ('r','v','m','f','p') \
+     UNION ALL \
+     SELECT p.proname AS object_name, \
+       CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS object_type, \
+       obj_description(p.oid) AS object_comment, \
+       CASE p.prokind WHEN 'p' THEN 2 ELSE 3 END AS sort_order \
+     FROM pg_catalog.pg_proc p \
+     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace \
+     WHERE n.nspname = $1 AND p.prokind IN ('p','f') \
+     ORDER BY sort_order, object_name"
+}
+
+pub async fn list_objects(pool: &PgPool, schema: &str) -> Result<Vec<ObjectInfo>, String> {
+    let rows: Vec<PgRow> =
+        sqlx::query(list_objects_sql()).bind(schema).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .iter()
+        .map(|row| ObjectInfo {
+            name: row.get::<String, _>("object_name"),
+            object_type: row.get::<String, _>("object_type"),
+            schema: Some(schema.to_string()),
+            comment: row.get::<Option<String>, _>("object_comment").filter(|s| !s.is_empty()),
         })
         .collect())
 }
@@ -519,4 +559,19 @@ pub async fn list_triggers(pool: &PgPool, schema: &str, table: &str) -> Result<V
             timing: row.get::<String, _>("action_timing"),
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn postgres_list_objects_sql_includes_routines() {
+        let sql = list_objects_sql();
+
+        assert!(sql.contains("pg_catalog.pg_class"));
+        assert!(sql.contains("pg_catalog.pg_proc"));
+        assert!(sql.contains("'PROCEDURE'"));
+        assert!(sql.contains("'FUNCTION'"));
+    }
 }
