@@ -47,6 +47,8 @@ interface PersistedTreeChildrenLoadResult {
   isStale: boolean;
 }
 
+type BeforeConnectHandler = (config: ConnectionConfig) => Promise<void>;
+
 function redisDbLabel(db: number, loadedKeyCount?: number, totalKeyCount?: number): string {
   if (totalKeyCount == null) return `db${db}`;
   return `db${db} (${loadedKeyCount ?? 0}/${totalKeyCount})`;
@@ -120,6 +122,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const sidebarLayout = ref<SidebarLayout>(emptyLayout());
   let layoutPersistTimer: ReturnType<typeof setTimeout> | null = null;
   const staleTreeRefreshIds = new Set<string>();
+  let beforeConnectHandler: BeforeConnectHandler | null = null;
 
   function startEditing(id: string) {
     editingConnectionId.value = id;
@@ -566,6 +569,7 @@ export const useConnectionStore = defineStore("connection", () => {
     const pendingNode = findNode(treeNodes.value, config.id);
     if (pendingNode) pendingNode.isLoading = true;
     try {
+      await beforeConnectHandler?.(config);
       const id = await api.connectDb(config);
       activeConnectionId.value = id;
       connectedIds.value.add(id);
@@ -620,6 +624,7 @@ export const useConnectionStore = defineStore("connection", () => {
       throw error;
     }
     try {
+      await beforeConnectHandler?.(config);
       await api.connectDb(config);
       connectedIds.value.add(connectionId);
       activeConnectionId.value = connectionId;
@@ -628,6 +633,10 @@ export const useConnectionStore = defineStore("connection", () => {
       recordConnectionError(connectionId, e);
       throw e;
     }
+  }
+
+  function setBeforeConnectHandler(handler: BeforeConnectHandler | null) {
+    beforeConnectHandler = handler;
   }
 
   async function loadDatabases(connectionId: string, options?: LoadTreeOptions) {
@@ -1671,6 +1680,7 @@ export const useConnectionStore = defineStore("connection", () => {
     connect,
     disconnect,
     ensureConnected,
+    setBeforeConnectHandler,
     initFromDisk,
     loadDatabases,
     loadRedisDatabases,

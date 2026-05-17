@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
+import { invoke } from "@tauri-apps/api/core";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AiAssistant from "@/components/editor/AiAssistant.vue";
 import QueryHistory from "@/components/editor/QueryHistory.vue";
@@ -48,10 +49,17 @@ import { isPreviewTab } from "@/lib/tabPresentation";
 import { supportsSqlFileExecution } from "@/lib/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/aiSqlExecutionPolicy";
 import { buildHistoryAiAnalysisPrompt } from "@/lib/historyAiAnalysis";
+import {
+  agentDriverUpdateIgnoreKey,
+  findAgentDriverUpdatePrompt,
+  type AgentDriverUpdatePrompt,
+  type AgentDriverUpdateState,
+} from "@/lib/agentDriverUpdatePrompt";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { ConnectionConfig } from "@/types/database";
 import type { HistoryEntry } from "@/lib/tauri";
 
 const { t } = useI18n();
@@ -80,6 +88,8 @@ const { setupFileDrop } = useFileDrop();
 
 const isDesktop = isTauriRuntime();
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+const AGENT_DRIVER_UPDATE_IGNORES_STORAGE_KEY = "dbx-agent-driver-update-ignores";
+type AgentDriverUpdateChoice = "update" | "skip" | "ignore";
 let updateCheckTimer: ReturnType<typeof setInterval> | undefined;
 const needsAuth = ref(!isDesktop);
 const authenticated = ref(isDesktop);
@@ -88,6 +98,9 @@ const setupRequired = ref(false);
 const showConnectionDialog = ref(false);
 const showSettingsDialog = ref(false);
 const showDriverStore = ref(false);
+const showAgentDriverUpdateDialog = ref(false);
+const agentDriverUpdatePrompt = ref<AgentDriverUpdatePrompt | null>(null);
+const isInstallingAgentDriverUpdate = ref(false);
 const showHistory = ref(false);
 const showAiPanel = ref(localStorage.getItem("dbx-ai-panel-open") !== "false");
 const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
@@ -111,6 +124,70 @@ const activeConnection = computed(() => {
   const tab = activeTab.value;
   return tab ? connectionStore.getConfig(tab.connectionId) : undefined;
 });
+
+let resolveAgentDriverUpdateChoice: ((choice: AgentDriverUpdateChoice) => void) | null = null;
+
+function loadIgnoredAgentDriverUpdates(): Set<string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(AGENT_DRIVER_UPDATE_IGNORES_STORAGE_KEY) || "[]");
+    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveIgnoredAgentDriverUpdate(prompt: AgentDriverUpdatePrompt) {
+  const ignored = loadIgnoredAgentDriverUpdates();
+  ignored.add(agentDriverUpdateIgnoreKey(prompt.dbType, prompt.latestVersion));
+  localStorage.setItem(AGENT_DRIVER_UPDATE_IGNORES_STORAGE_KEY, JSON.stringify([...ignored]));
+}
+
+function requestAgentDriverUpdateChoice(prompt: AgentDriverUpdatePrompt): Promise<AgentDriverUpdateChoice> {
+  agentDriverUpdatePrompt.value = prompt;
+  showAgentDriverUpdateDialog.value = true;
+  return new Promise((resolve) => {
+    resolveAgentDriverUpdateChoice = resolve;
+  });
+}
+
+function chooseAgentDriverUpdate(choice: AgentDriverUpdateChoice) {
+  showAgentDriverUpdateDialog.value = false;
+  resolveAgentDriverUpdateChoice?.(choice);
+  resolveAgentDriverUpdateChoice = null;
+}
+
+function onAgentDriverUpdateOpenChange(value: boolean) {
+  if (value) {
+    showAgentDriverUpdateDialog.value = true;
+    return;
+  }
+  if (isInstallingAgentDriverUpdate.value) return;
+  chooseAgentDriverUpdate("skip");
+}
+
+async function checkAgentDriverUpdateBeforeConnect(config: ConnectionConfig) {
+  if (!isDesktop) return;
+  const drivers = await invoke<AgentDriverUpdateState[]>("list_installed_agents").catch(() => []);
+  const prompt = findAgentDriverUpdatePrompt(config, drivers, loadIgnoredAgentDriverUpdates());
+  if (!prompt) return;
+
+  const choice = await requestAgentDriverUpdateChoice(prompt);
+  if (choice === "ignore") {
+    saveIgnoredAgentDriverUpdate(prompt);
+    return;
+  }
+  if (choice === "skip") return;
+
+  isInstallingAgentDriverUpdate.value = true;
+  try {
+    await invoke("install_agent", { dbType: prompt.dbType });
+    toast(`${prompt.label} 驱动已更新到 v${prompt.latestVersion}`);
+  } finally {
+    isInstallingAgentDriverUpdate.value = false;
+  }
+}
+
+connectionStore.setBeforeConnectHandler(checkAgentDriverUpdateBeforeConnect);
 
 function restoreHistorySql(sql: string, entry: HistoryEntry) {
   const tab = activeTab.value;
@@ -648,6 +725,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  connectionStore.setBeforeConnectHandler(null);
   cleanupTauriListeners();
   if (updateCheckTimer) {
     clearInterval(updateCheckTimer);
@@ -881,6 +959,40 @@ onUnmounted(() => {
           @download-and-install="downloadAndInstallUpdate"
           @restart="restartApp"
         />
+        <Dialog :open="showAgentDriverUpdateDialog" @update:open="onAgentDriverUpdateOpenChange">
+          <DialogContent class="sm:max-w-[440px]">
+            <DialogHeader>
+              <DialogTitle>驱动有新版本</DialogTitle>
+            </DialogHeader>
+            <div v-if="agentDriverUpdatePrompt" class="space-y-3 text-sm text-muted-foreground">
+              <p>
+                {{ agentDriverUpdatePrompt.label }} 驱动可从 v{{ agentDriverUpdatePrompt.currentVersion }} 更新到 v{{
+                  agentDriverUpdatePrompt.latestVersion
+                }}。
+              </p>
+              <p>可以先更新驱动再连接，也可以本次直接连接。</p>
+            </div>
+            <DialogFooter class="gap-2 sm:gap-2">
+              <Button
+                variant="ghost"
+                :disabled="isInstallingAgentDriverUpdate"
+                @click="chooseAgentDriverUpdate('ignore')"
+              >
+                本版本不再提醒
+              </Button>
+              <Button
+                variant="outline"
+                :disabled="isInstallingAgentDriverUpdate"
+                @click="chooseAgentDriverUpdate('skip')"
+              >
+                直接连接
+              </Button>
+              <Button :disabled="isInstallingAgentDriverUpdate" @click="chooseAgentDriverUpdate('update')">
+                {{ isInstallingAgentDriverUpdate ? "更新中..." : "更新后连接" }}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Transition name="toast">
           <div
