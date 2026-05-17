@@ -160,7 +160,7 @@ DBX provides a web version that can be deployed via Docker.
 docker run -d --name dbx -p 4224:4224 -v dbx-data:/app/data t8y2/dbx
 ```
 
-Or with Docker Compose:
+Or with Docker Compose. A ready-to-use example lives at `deploy/docker-compose.yml`:
 
 ```yaml
 services:

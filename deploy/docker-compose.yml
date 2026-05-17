@@ -1,6 +1,8 @@
 services:
   dbx:
-    build: .
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
     ports:
       - "4224:4224"
     environment:

@@ -160,7 +160,7 @@ DBX 提供 Web 版本，可通过 Docker 部署。
 docker run -d --name dbx -p 4224:4224 -v dbx-data:/app/data t8y2/dbx
 ```
 
-或使用 Docker Compose：
+或使用 Docker Compose，示例文件位于 `deploy/docker-compose.yml`：
 
 ```yaml
 services:
