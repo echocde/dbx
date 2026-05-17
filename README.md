@@ -1,4 +1,6 @@
 <div align="center">
+  <h2>30+ databases in 15 MB. Desktop & Docker self-hosting, with built-in AI assistant.</h2>
+
   <p>
     <img src="https://dl.dbxio.com/assets/readme-hero-20260517.png" alt="DBX screenshot" width="820" />
   </p>
