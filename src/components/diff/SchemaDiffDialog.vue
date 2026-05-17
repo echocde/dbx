@@ -19,7 +19,7 @@ import {
   generateSyncSql,
   type TableDiff,
 } from "@/lib/schemaDiff";
-import { sqlMetadataRefreshScope } from "@/lib/sqlMetadataRefresh";
+import { sqlMetadataRefreshTarget } from "@/lib/sqlMetadataRefresh";
 import { useToast } from "@/composables/useToast";
 import { Loader2, Copy, Play, GitCompareArrows, ArrowLeftRight } from "lucide-vue-next";
 
@@ -286,11 +286,11 @@ async function executeSql() {
     }
     const failed = syncErrors.value.length;
     if (failed === 0) {
-      const scope = sqlMetadataRefreshScope(sql);
-      if (scope === "connection") {
+      const refreshTarget = sqlMetadataRefreshTarget(sql, targetSchema.value);
+      if (refreshTarget.scope === "connection") {
         await store.loadDatabases(targetConnectionId.value, { force: true });
-      } else if (scope === "database") {
-        await store.refreshObjectListTreeNode(targetConnectionId.value, targetDatabase.value, targetSchema.value);
+      } else if (refreshTarget.scope === "database") {
+        await store.refreshObjectListTreeNode(targetConnectionId.value, targetDatabase.value, refreshTarget.schema);
       }
       toast(t("diff.syncSuccess"), 2000);
       open.value = false;

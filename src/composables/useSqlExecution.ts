@@ -5,7 +5,7 @@ import { useHistoryStore } from "@/stores/historyStore";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import { classifySqlActivityKind } from "@/lib/historyActivityKind";
-import { sqlMetadataRefreshScope } from "@/lib/sqlMetadataRefresh";
+import { sqlMetadataRefreshTarget } from "@/lib/sqlMetadataRefresh";
 import type { ConnectionConfig, QueryTab } from "@/types/database";
 
 const DANGER_RE = /^\s*(DROP|DELETE|TRUNCATE|ALTER|UPDATE|MERGE|REPLACE)\b/i;
@@ -82,11 +82,11 @@ export function useSqlExecution(deps: {
       affected_rows: success ? tab.result?.affected_rows : undefined,
     });
     if (success) {
-      const scope = sqlMetadataRefreshScope(sql);
-      if (scope === "connection") {
+      const refreshTarget = sqlMetadataRefreshTarget(sql, tab.schema);
+      if (refreshTarget.scope === "connection") {
         await connectionStore.loadDatabases(tab.connectionId, { force: true });
-      } else if (scope === "database") {
-        await connectionStore.refreshObjectListTreeNode(tab.connectionId, tab.database, tab.schema);
+      } else if (refreshTarget.scope === "database") {
+        await connectionStore.refreshObjectListTreeNode(tab.connectionId, tab.database, refreshTarget.schema);
       }
     }
   }

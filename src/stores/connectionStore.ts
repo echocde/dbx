@@ -32,6 +32,7 @@ import {
   expandCachedObjectBrowserNodes,
   objectGroupRefreshParentId,
 } from "@/lib/tableTree";
+import { decodeSchemaTreeCache, encodeSchemaTreeCache } from "@/lib/schemaTreeCache";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
@@ -39,6 +40,11 @@ type ImportSource = "dbx" | "navicat" | "dbeaver";
 
 interface LoadTreeOptions {
   force?: boolean;
+}
+
+interface PersistedTreeChildrenLoadResult {
+  hit: boolean;
+  isStale: boolean;
 }
 
 function redisDbLabel(db: number, loadedKeyCount?: number, totalKeyCount?: number): string {
@@ -113,6 +119,7 @@ export const useConnectionStore = defineStore("connection", () => {
   } | null>(null);
   const sidebarLayout = ref<SidebarLayout>(emptyLayout());
   let layoutPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  const staleTreeRefreshIds = new Set<string>();
 
   function startEditing(id: string) {
     editingConnectionId.value = id;
@@ -331,10 +338,17 @@ export const useConnectionStore = defineStore("connection", () => {
     return parts.map((part) => encodeURIComponent(part)).join(":");
   }
 
-  async function loadPersistedTreeChildren(node: TreeNode, cacheKey: string): Promise<boolean> {
-    const children = await api.loadSchemaCache<TreeNode[]>(cacheKey).catch(() => null);
-    if (!children) return false;
-    const normalizedChildren = expandCachedObjectBrowserNodes(children);
+  function refreshStaleTreeNode(node: TreeNode) {
+    if (staleTreeRefreshIds.has(node.id)) return;
+    staleTreeRefreshIds.add(node.id);
+    void loadTreeNodeChildren(node, { force: true }).finally(() => staleTreeRefreshIds.delete(node.id));
+  }
+
+  async function loadPersistedTreeChildren(node: TreeNode, cacheKey: string): Promise<PersistedTreeChildrenLoadResult> {
+    const payload = await api.loadSchemaCache<unknown>(cacheKey).catch(() => null);
+    const decoded = decodeSchemaTreeCache<TreeNode[]>(payload);
+    if (!decoded) return { hit: false, isStale: false };
+    const normalizedChildren = expandCachedObjectBrowserNodes(decoded.children);
     setChildren(
       node,
       node.type === "connection" && node.connectionId
@@ -342,11 +356,11 @@ export const useConnectionStore = defineStore("connection", () => {
         : normalizedChildren,
     );
     node.isExpanded = true;
-    return true;
+    return { hit: true, isStale: decoded.isStale };
   }
 
   async function savePersistedTreeChildren(cacheKey: string, children: TreeNode[]) {
-    await api.saveSchemaCache(cacheKey, children).catch(() => undefined);
+    await api.saveSchemaCache(cacheKey, encodeSchemaTreeCache(children)).catch(() => undefined);
   }
 
   function useCachedChildren(node: TreeNode, options?: LoadTreeOptions): boolean {
@@ -628,7 +642,13 @@ export const useConnectionStore = defineStore("connection", () => {
       if (config?.db_type === "dameng" || config?.db_type === "oracle") {
         const effectiveDb = config.database || "";
         const cacheKey = schemaCacheKey(connectionId, effectiveDb, "schemas");
-        if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+        if (!options?.force) {
+          const cached = await loadPersistedTreeChildren(node, cacheKey);
+          if (cached.hit) {
+            if (cached.isStale) refreshStaleTreeNode(node);
+            return;
+          }
+        }
         const schemas = await api.listSchemas(connectionId, effectiveDb);
         const visibleSchemas = filterVisibleDatabaseNames(schemas, config?.visible_databases);
         const schemaNodes: TreeNode[] = visibleSchemas.map((s) => ({
@@ -645,7 +665,13 @@ export const useConnectionStore = defineStore("connection", () => {
         await savePersistedTreeChildren(cacheKey, schemaNodes);
       } else {
         const cacheKey = schemaCacheKey(connectionId, "databases");
-        if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+        if (!options?.force) {
+          const cached = await loadPersistedTreeChildren(node, cacheKey);
+          if (cached.hit) {
+            if (cached.isStale) refreshStaleTreeNode(node);
+            return;
+          }
+        }
         const databases = await api.listDatabases(connectionId);
         const visibleNames = filterVisibleDatabaseNames(
           databases.map((database) => database.name),
@@ -796,7 +822,13 @@ export const useConnectionStore = defineStore("connection", () => {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
       const cacheKey = schemaCacheKey(connectionId, database, "schemas");
-      if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+      if (!options?.force) {
+        const cached = await loadPersistedTreeChildren(node, cacheKey);
+        if (cached.hit) {
+          if (cached.isStale) refreshStaleTreeNode(node);
+          return;
+        }
+      }
 
       const schemas = await api.listSchemas(connectionId, database);
       const children = schemas.map((s) => ({
@@ -829,7 +861,13 @@ export const useConnectionStore = defineStore("connection", () => {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
       const cacheKey = schemaCacheKey(connectionId, database, "sqlserver-objects");
-      if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+      if (!options?.force) {
+        const cached = await loadPersistedTreeChildren(node, cacheKey);
+        if (cached.hit) {
+          if (cached.isStale) refreshStaleTreeNode(node);
+          return;
+        }
+      }
 
       const [schemas, defaultSchemaObjects] = await Promise.all([
         api.listSchemas(connectionId, database),
@@ -856,7 +894,13 @@ export const useConnectionStore = defineStore("connection", () => {
       await ensureConnected(connectionId);
       if (useCachedChildren(node, options)) return;
       const cacheKey = schemaCacheKey(connectionId, database, schema || "", "objects");
-      if (!options?.force && (await loadPersistedTreeChildren(node, cacheKey))) return;
+      if (!options?.force) {
+        const cached = await loadPersistedTreeChildren(node, cacheKey);
+        if (cached.hit) {
+          if (cached.isStale) refreshStaleTreeNode(node);
+          return;
+        }
+      }
 
       const querySchema = schema || database;
       const config = getConfig(connectionId);
