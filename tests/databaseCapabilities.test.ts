@@ -9,6 +9,7 @@ import {
   supportsDriverManagement,
   supportsFieldLineage,
   supportsObjectBrowser,
+  supportsObjectBrowserTreeNode,
   supportsSchemaDiagram,
   supportsSqlFileExecution,
   supportsTableImport,
@@ -110,4 +111,11 @@ test("describes feature support through capability helpers", () => {
   assert.equal(supportsObjectBrowser("mongodb"), false);
   assert.equal(supportsTableTruncate("mysql"), true);
   assert.equal(supportsTableTruncate("duckdb"), false);
+});
+
+test("schema-aware database nodes do not open an object browser tab", () => {
+  assert.equal(supportsObjectBrowserTreeNode("postgres", "database"), false);
+  assert.equal(supportsObjectBrowserTreeNode("postgres", "schema"), true);
+  assert.equal(supportsObjectBrowserTreeNode("mysql", "database"), true);
+  assert.equal(supportsObjectBrowserTreeNode("mongodb", "database"), false);
 });

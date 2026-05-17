@@ -1,4 +1,4 @@
-import type { DatabaseType } from "@/types/database";
+import type { DatabaseType, TreeNodeType } from "@/types/database";
 import {
   AGENT_DRIVER_TYPES,
   CREATE_DATABASE_SUPPORTED_TYPES,
@@ -70,6 +70,12 @@ export function supportsDriverManagement(dbType?: DatabaseType): boolean {
 
 export function supportsObjectBrowser(dbType?: DatabaseType): boolean {
   return !!dbType && !["redis", "mongodb", "elasticsearch"].includes(dbType);
+}
+
+export function supportsObjectBrowserTreeNode(dbType: DatabaseType | undefined, nodeType: TreeNodeType): boolean {
+  if (!supportsObjectBrowser(dbType)) return false;
+  if (nodeType === "database" && isSchemaAware(dbType)) return false;
+  return nodeType === "database" || nodeType === "schema" || nodeType === "object-browser";
 }
 
 export function supportsTableTruncate(dbType?: DatabaseType): boolean {

@@ -76,7 +76,7 @@ import {
   supportsDatabaseCreation,
   supportsDatabaseSearch,
   supportsFieldLineage,
-  supportsObjectBrowser,
+  supportsObjectBrowserTreeNode,
   supportsSchemaDiagram,
   supportsSqlFileExecution,
   supportsTableImport,
@@ -1283,10 +1283,7 @@ const canOpenDatabaseSearch = computed(() => {
   return !!props.node.database && supportsDatabaseSearch(nodeConfig.value?.db_type);
 });
 const canOpenObjectBrowser = computed(() => {
-  return (
-    (props.node.type === "database" || props.node.type === "schema" || props.node.type === "object-browser") &&
-    supportsObjectBrowser(nodeConfig.value?.db_type)
-  );
+  return supportsObjectBrowserTreeNode(nodeConfig.value?.db_type, props.node.type);
 });
 const canOpenTableImport = computed(() => {
   return props.node.type === "table" && !!props.node.database && supportsTableImport(nodeConfig.value?.db_type);
