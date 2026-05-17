@@ -1,6 +1,7 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use axum::extract::{Multipart, Path, State};
+use axum::extract::{Multipart, Path as AxumPath, State};
 use axum::response::sse::{Event, Sse};
 use axum::Json;
 use dbx_core::query;
@@ -45,7 +46,7 @@ pub async fn preview_sql_file(
         let file_name = field.file_name().unwrap_or("upload.sql").to_string();
         let data = field.bytes().await.map_err(|e| AppError(e.to_string()))?;
 
-        let file_path = tmp_dir.join(&file_name);
+        let file_path = safe_uploaded_sql_path(&tmp_dir, &file_name)?;
         std::fs::write(&file_path, &data).map_err(|e| AppError(e.to_string()))?;
 
         let size_bytes = data.len() as u64;
@@ -76,16 +77,10 @@ pub async fn execute_sql_file(
     let app = state.app.clone();
     let state_clone = state.clone();
 
-    let file_path = std::path::Path::new(&req.file_path);
-    if !file_path.is_absolute() {
-        return Err(AppError("File path must be absolute".to_string()));
-    }
-    if req.file_path.contains("..") {
-        return Err(AppError("File path must not contain '..'".to_string()));
-    }
+    let file_path = validated_uploaded_sql_path(&state.data_dir, &req.file_path)?;
 
     tokio::spawn(async move {
-        match std::fs::metadata(&req.file_path) {
+        match std::fs::metadata(&file_path) {
             Ok(meta) if meta.len() > 200 * 1024 * 1024 => {
                 let progress = dbx_core::sql::SqlFileProgress {
                     execution_id: req.execution_id.clone(),
@@ -123,7 +118,7 @@ pub async fn execute_sql_file(
             _ => {}
         }
 
-        let file_content = match std::fs::read_to_string(&req.file_path) {
+        let file_content = match std::fs::read_to_string(&file_path) {
             Ok(c) => c,
             Err(e) => {
                 let progress = dbx_core::sql::SqlFileProgress {
@@ -286,9 +281,32 @@ pub async fn execute_sql_file(
     Ok(Json(serde_json::json!({ "executionId": execution_id })))
 }
 
+fn safe_uploaded_sql_path(tmp_dir: &Path, file_name: &str) -> Result<PathBuf, AppError> {
+    let base_name =
+        file_name.rsplit(|ch| ch == '/' || ch == '\\').find(|part| !part.is_empty()).unwrap_or("upload.sql").trim();
+    if base_name.is_empty() || base_name == "." || base_name == ".." {
+        return Err(AppError("Invalid SQL file name".to_string()));
+    }
+    Ok(tmp_dir.join(base_name))
+}
+
+fn validated_uploaded_sql_path(data_dir: &Path, file_path: &str) -> Result<PathBuf, AppError> {
+    let path = PathBuf::from(file_path);
+    if !path.is_absolute() {
+        return Err(AppError("File path must be absolute".to_string()));
+    }
+
+    let tmp_dir = data_dir.join("tmp").canonicalize().map_err(|e| AppError(e.to_string()))?;
+    let canonical_path = path.canonicalize().map_err(|e| AppError(e.to_string()))?;
+    if !canonical_path.starts_with(&tmp_dir) {
+        return Err(AppError("File path must be inside the uploaded SQL directory".to_string()));
+    }
+    Ok(canonical_path)
+}
+
 pub async fn sql_file_progress(
     State(state): State<Arc<WebState>>,
-    Path(execution_id): Path<String>,
+    AxumPath(execution_id): AxumPath<String>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>>, AppError> {
     let channels = state.sse_channels.read().await;
     let tx = channels.get(&execution_id).ok_or_else(|| AppError("Execution not found".to_string()))?;
@@ -304,4 +322,37 @@ pub async fn cancel_sql_file(
     // Remove the channel to stop the execution loop
     state.sse_channels.write().await.remove(&req.execution_id);
     Json(serde_json::json!({ "cancelled": true }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{safe_uploaded_sql_path, validated_uploaded_sql_path};
+
+    #[test]
+    fn uploaded_sql_path_uses_only_the_file_name() {
+        let data_dir = std::env::temp_dir().join(format!("dbx-web-sql-file-test-{}", uuid::Uuid::new_v4()));
+        let tmp_dir = data_dir.join("tmp");
+
+        let path = match safe_uploaded_sql_path(&tmp_dir, "../outside.sql") {
+            Ok(path) => path,
+            Err(error) => panic!("{}", error.0),
+        };
+
+        assert_eq!(path, tmp_dir.join("outside.sql"));
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
+
+    #[test]
+    fn execution_path_must_stay_inside_uploaded_tmp_dir() {
+        let data_dir = std::env::temp_dir().join(format!("dbx-web-sql-file-test-{}", uuid::Uuid::new_v4()));
+        let tmp_dir = data_dir.join("tmp");
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let outside = data_dir.join("outside.sql");
+        std::fs::write(&outside, "select 1;").unwrap();
+
+        let result = validated_uploaded_sql_path(&data_dir, &outside.to_string_lossy());
+
+        assert!(result.is_err());
+        let _ = std::fs::remove_dir_all(data_dir);
+    }
 }
