@@ -236,18 +236,7 @@ pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<
 }
 
 pub async fn get_columns(client: &mut SqlServerClient, schema: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
-    let sql = format!(
-        "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, \
-         CASE WHEN kcu.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK, \
-         c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH, c.DATETIME_PRECISION \
-         FROM INFORMATION_SCHEMA.COLUMNS c \
-         LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu \
-           ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA AND c.TABLE_NAME = kcu.TABLE_NAME AND c.COLUMN_NAME = kcu.COLUMN_NAME \
-           AND kcu.CONSTRAINT_NAME IN (SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'PRIMARY KEY' AND TABLE_SCHEMA = '{s}' AND TABLE_NAME = '{t}') \
-         WHERE c.TABLE_SCHEMA = '{s}' AND c.TABLE_NAME = '{t}' \
-         ORDER BY c.ORDINAL_POSITION",
-        s = schema.replace('\'', "''"), t = table.replace('\'', "''")
-    );
+    let sql = sqlserver_columns_sql(schema, table);
     let stream = client.query(&*sql, &[]).await.map_err(|e| e.to_string())?;
     let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
     Ok(rows
@@ -320,21 +309,23 @@ pub async fn get_columns(client: &mut SqlServerClient, schema: &str, table: &str
         .collect())
 }
 
-pub async fn list_indexes(client: &mut SqlServerClient, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
-    let sql = format!(
-        "SELECT i.name, \
-         STRING_AGG(CASE WHEN ic.is_included_column = 0 THEN c.name END, ',') WITHIN GROUP (ORDER BY ic.key_ordinal) AS columns, \
-         i.is_unique, i.is_primary_key, i.type_desc, \
-         STRING_AGG(CASE WHEN ic.is_included_column = 1 THEN c.name END, ',') AS included_cols, \
-         i.filter_definition \
-         FROM sys.indexes i \
-         JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id \
-         JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id \
-         WHERE i.object_id = OBJECT_ID('{s}.{t}') AND i.name IS NOT NULL \
-         GROUP BY i.name, i.is_unique, i.is_primary_key, i.type_desc, i.filter_definition \
-         ORDER BY i.name",
+fn sqlserver_columns_sql(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, \
+         CASE WHEN kcu.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK, \
+         c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH, c.DATETIME_PRECISION \
+         FROM INFORMATION_SCHEMA.COLUMNS c \
+         LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu \
+           ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA AND c.TABLE_NAME = kcu.TABLE_NAME AND c.COLUMN_NAME = kcu.COLUMN_NAME \
+           AND kcu.CONSTRAINT_NAME IN (SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'PRIMARY KEY' AND TABLE_SCHEMA = '{s}' AND TABLE_NAME = '{t}') \
+         WHERE c.TABLE_SCHEMA = '{s}' AND c.TABLE_NAME = '{t}' \
+         ORDER BY c.ORDINAL_POSITION",
         s = schema.replace('\'', "''"), t = table.replace('\'', "''")
-    );
+    )
+}
+
+pub async fn list_indexes(client: &mut SqlServerClient, schema: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
+    let sql = sqlserver_indexes_sql(schema, table);
     let stream = client.query(&*sql, &[]).await.map_err(|e| e.to_string())?;
     let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
     Ok(rows
@@ -358,6 +349,31 @@ pub async fn list_indexes(client: &mut SqlServerClient, schema: &str, table: &st
             }
         })
         .collect())
+}
+
+fn sqlserver_indexes_sql(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT i.name, \
+         STUFF((SELECT ',' + c2.name \
+                FROM sys.index_columns ic2 \
+                JOIN sys.columns c2 ON ic2.object_id = c2.object_id AND ic2.column_id = c2.column_id \
+                WHERE ic2.object_id = i.object_id AND ic2.index_id = i.index_id AND ic2.is_included_column = 0 \
+                ORDER BY ic2.key_ordinal \
+                FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 1, '') AS columns, \
+         i.is_unique, i.is_primary_key, i.type_desc, \
+         STUFF((SELECT ',' + c3.name \
+                FROM sys.index_columns ic3 \
+                JOIN sys.columns c3 ON ic3.object_id = c3.object_id AND ic3.column_id = c3.column_id \
+                WHERE ic3.object_id = i.object_id AND ic3.index_id = i.index_id AND ic3.is_included_column = 1 \
+                ORDER BY ic3.index_column_id \
+                FOR XML PATH(''), TYPE).value('.', 'nvarchar(max)'), 1, 1, '') AS included_cols, \
+         i.filter_definition \
+         FROM sys.indexes i \
+         WHERE i.object_id = OBJECT_ID('{s}.{t}') AND i.name IS NOT NULL \
+         ORDER BY i.name",
+        s = schema.replace('\'', "''"),
+        t = table.replace('\'', "''")
+    )
 }
 
 pub async fn list_foreign_keys(
@@ -565,7 +581,7 @@ fn first_sql_tokens(sql: &str, limit: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{requires_simple_query_batch, sqlserver_cell_to_json};
+    use super::{requires_simple_query_batch, sqlserver_cell_to_json, sqlserver_columns_sql, sqlserver_indexes_sql};
     use chrono::NaiveDate;
     use tiberius::{ColumnData, IntoSql};
 
@@ -584,6 +600,25 @@ mod tests {
         assert!(!requires_simple_query_batch("ALTER TABLE dbo.t ADD name NVARCHAR(20);"));
         assert!(!requires_simple_query_batch("CREATE TABLE dbo.t(id INT);"));
         assert!(!requires_simple_query_batch("UPDATE dbo.t SET id = 1;"));
+    }
+
+    #[test]
+    fn sqlserver_index_metadata_sql_avoids_string_agg_for_older_compatibility_levels() {
+        let sql = sqlserver_indexes_sql("dbo", "DF_Rule");
+
+        assert!(!sql.contains("STRING_AGG"));
+        assert!(sql.contains("FOR XML PATH"));
+        assert!(sql.contains("OBJECT_ID('dbo.DF_Rule')"));
+    }
+
+    #[test]
+    fn sqlserver_metadata_sql_escapes_literals() {
+        let columns_sql = sqlserver_columns_sql("d'bo", "t'able");
+        let indexes_sql = sqlserver_indexes_sql("d'bo", "t'able");
+
+        assert!(columns_sql.contains("TABLE_SCHEMA = 'd''bo'"));
+        assert!(columns_sql.contains("TABLE_NAME = 't''able'"));
+        assert!(indexes_sql.contains("OBJECT_ID('d''bo.t''able')"));
     }
 
     #[test]

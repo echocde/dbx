@@ -166,11 +166,22 @@ async function loadStructure() {
   errorMessage.value = "";
   try {
     await store.ensureConnected(props.prefillConnectionId);
-    const [nextColumns, nextIndexes, nextForeignKeys, nextTriggers] = await Promise.all([
-      api.getColumns(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable),
-      api.listIndexes(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable),
-      api.listForeignKeys(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable),
-      api.listTriggers(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable),
+    const nextColumns = await api.getColumns(
+      props.prefillConnectionId,
+      props.prefillDatabase,
+      targetSchema.value,
+      props.prefillTable,
+    );
+    const [nextIndexes, nextForeignKeys, nextTriggers] = await Promise.all([
+      api
+        .listIndexes(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable)
+        .catch(() => []),
+      api
+        .listForeignKeys(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable)
+        .catch(() => []),
+      api
+        .listTriggers(props.prefillConnectionId, props.prefillDatabase, targetSchema.value, props.prefillTable)
+        .catch(() => []),
     ]);
     columns.value = createColumnDrafts(nextColumns);
     indexes.value = createIndexDrafts(nextIndexes);
