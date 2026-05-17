@@ -829,6 +829,37 @@ mod object_source_tests {
     }
 }
 
+#[cfg(test)]
+mod ddl_tests {
+    use super::*;
+
+    fn column(name: &str, data_type: &str) -> db::ColumnInfo {
+        db::ColumnInfo {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            is_nullable: true,
+            column_default: None,
+            is_primary_key: false,
+            extra: None,
+            comment: None,
+            numeric_precision: None,
+            numeric_scale: None,
+            character_maximum_length: None,
+        }
+    }
+
+    #[test]
+    fn postgres_table_ddl_includes_column_comments() {
+        let mut display_name = column("display_name", "text");
+        display_name.comment = Some("User's display name".to_string());
+        let columns = vec![display_name];
+
+        let ddl = render_postgres_table_ddl("public", "users", &columns, &[], &[]);
+
+        assert!(ddl.contains("COMMENT ON COLUMN \"public\".\"users\".\"display_name\" IS 'User''s display name';"));
+    }
+}
+
 pub async fn mysql_ddl(pool: &sqlx::mysql::MySqlPool, table: &str) -> Result<String, String> {
     use sqlx::Row;
     let sql = format!("SHOW CREATE TABLE `{}`", table.replace('`', "``"));
@@ -855,11 +886,22 @@ pub async fn pg_ddl(pool: &sqlx::postgres::PgPool, schema: &str, table: &str) ->
         db::postgres::list_foreign_keys(pool, schema, table),
     )?;
 
-    let mut ddl = format!("CREATE TABLE \"{schema}\".\"{table}\" (\n");
+    Ok(render_postgres_table_ddl(schema, table, &columns, &indexes, &fkeys))
+}
+
+fn render_postgres_table_ddl(
+    schema: &str,
+    table: &str,
+    columns: &[db::ColumnInfo],
+    indexes: &[db::IndexInfo],
+    fkeys: &[db::ForeignKeyInfo],
+) -> String {
+    let table_name = format!("{}.{}", pg_ident(schema), pg_ident(table));
+    let mut ddl = format!("CREATE TABLE {table_name} (\n");
     let col_lines: Vec<String> = columns
         .iter()
         .map(|c| {
-            let mut line = format!("  \"{}\" {}", c.name, c.data_type);
+            let mut line = format!("  {} {}", pg_ident(&c.name), c.data_type);
             if !c.is_nullable {
                 line.push_str(" NOT NULL");
             }
@@ -873,44 +915,57 @@ pub async fn pg_ddl(pool: &sqlx::postgres::PgPool, schema: &str, table: &str) ->
 
     let pks: Vec<&str> = columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.as_str()).collect();
     if !pks.is_empty() {
-        ddl.push_str(&format!(
-            ",\n  PRIMARY KEY ({})",
-            pks.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(", ")
-        ));
+        ddl.push_str(&format!(",\n  PRIMARY KEY ({})", pks.iter().map(|k| pg_ident(k)).collect::<Vec<_>>().join(", ")));
     }
-    for fk in &fkeys {
+    for fk in fkeys {
         ddl.push_str(&format!(
-            ",\n  CONSTRAINT \"{}\" FOREIGN KEY (\"{}\") REFERENCES \"{}\"(\"{}\")",
-            fk.name, fk.column, fk.ref_table, fk.ref_column
+            ",\n  CONSTRAINT {} FOREIGN KEY ({}) REFERENCES {}({})",
+            pg_ident(&fk.name),
+            pg_ident(&fk.column),
+            pg_ident(&fk.ref_table),
+            pg_ident(&fk.ref_column)
         ));
     }
     ddl.push_str("\n);\n");
 
-    for idx in &indexes {
+    for col in columns {
+        if let Some(comment) = col.comment.as_deref().filter(|comment| !comment.is_empty()) {
+            ddl.push_str(&format!(
+                "\nCOMMENT ON COLUMN {table_name}.{} IS {};",
+                pg_ident(&col.name),
+                sql_string(comment)
+            ));
+        }
+    }
+
+    for idx in indexes {
         if idx.is_primary {
             continue;
         }
         let unique = if idx.is_unique { "UNIQUE " } else { "" };
-        let cols = idx.columns.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+        let cols = idx.columns.iter().map(|c| pg_ident(c)).collect::<Vec<_>>().join(", ");
         let using = idx.index_type.as_deref().map(|t| format!(" USING {t}")).unwrap_or_default();
         let include = idx
             .included_columns
             .as_deref()
             .filter(|c| !c.is_empty())
-            .map(|cols| {
-                format!(" INCLUDE ({})", cols.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", "))
-            })
+            .map(|cols| format!(" INCLUDE ({})", cols.iter().map(|c| pg_ident(c)).collect::<Vec<_>>().join(", ")))
             .unwrap_or_default();
         let filter = idx.filter.as_deref().map(|f| format!(" WHERE {f}")).unwrap_or_default();
         ddl.push_str(&format!(
-            "\nCREATE {unique}INDEX \"{}\" ON \"{schema}\".\"{table}\"{using} ({cols}){include}{filter};",
-            idx.name
+            "\nCREATE {unique}INDEX {} ON {table_name}{using} ({cols}){include}{filter};",
+            pg_ident(&idx.name)
         ));
         if let Some(ref c) = idx.comment {
-            ddl.push_str(&format!("\nCOMMENT ON INDEX \"{schema}\".\"{}\" IS '{}';", idx.name, c.replace('\'', "''")));
+            ddl.push_str(&format!(
+                "\nCOMMENT ON INDEX {}.{} IS {};",
+                pg_ident(schema),
+                pg_ident(&idx.name),
+                sql_string(c)
+            ));
         }
     }
-    Ok(ddl)
+    ddl
 }
 
 pub async fn build_sqlserver_ddl(
