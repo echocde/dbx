@@ -101,9 +101,15 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     canEditExistingRows = computed(() => true),
     onExecuteSql,
     customSave,
+    sql,
+    searchText,
+    whereFilterInput,
+    orderByInput,
     rowStatusFilter,
     initialEditColumn,
     getRowItem,
+    pageSize,
+    currentPage,
   } = options;
 
   const editingCell = ref<{ rowId: number; col: number } | null>(null);
@@ -557,9 +563,22 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     });
   }
 
+  function reloadCurrentData() {
+    options.emit(
+      "reload",
+      sql.value,
+      searchText.value,
+      whereFilterInput.value.trim() || undefined,
+      orderByInput.value.trim() || undefined,
+      pageSize.value,
+      (currentPage.value - 1) * pageSize.value,
+    );
+  }
+
   async function saveChanges() {
     saveError.value = "";
     isSaving.value = true;
+    const shouldReloadAfterSave = deletedRows.value.size > 0;
 
     if (customSave?.value) {
       try {
@@ -580,6 +599,9 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
       deletedRows.value.clear();
       exitTransaction();
       isSaving.value = false;
+      if (shouldReloadAfterSave) {
+        reloadCurrentData();
+      }
       return;
     }
 
@@ -669,6 +691,9 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     deletedRows.value.clear();
     exitTransaction();
     isSaving.value = false;
+    if (shouldReloadAfterSave) {
+      reloadCurrentData();
+    }
   }
 
   function discardChanges() {

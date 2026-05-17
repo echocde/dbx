@@ -160,3 +160,113 @@ test("cloning a row clears auto-generated key columns", async () => {
 
   assert.deepEqual(editor.newRows.value, [[null, "Ada"]]);
 });
+
+test("saving deleted rows reloads current table data", async () => {
+  setActivePinia(createPinia());
+  installBrowserTestGlobals();
+
+  const result = computed(() => ({
+    columns: ["id", "name"],
+    rows: [[1, "Ada"] as CellValue[]],
+  }));
+  const rowStatusFilter = ref<"all" | "changed" | "edited" | "new" | "deleted">("all");
+  const emitted: unknown[][] = [];
+  let editor: ReturnType<typeof useDataGridEditor>;
+
+  editor = useDataGridEditor({
+    result,
+    editable: computed(() => true),
+    databaseType: computed(() => "postgres"),
+    connectionId: computed(() => "conn-1"),
+    database: computed(() => "main"),
+    tableMeta: computed(() => ({
+      tableName: "people",
+      columns: [column("id", true), column("name")],
+      primaryKeys: ["id"],
+    })),
+    onExecuteSql: computed(() => undefined),
+    customSave: computed(() => async () => {}),
+    sql: computed(() => "SELECT id, name FROM people"),
+    searchText: ref("ada"),
+    whereFilterInput: ref("name ILIKE '%a%'"),
+    orderByInput: ref("id DESC"),
+    rowStatusFilter,
+    pageSize: ref(50),
+    currentPage: ref(3),
+    getRowItem: (rowId) => {
+      if (rowId !== 0) return undefined;
+      return {
+        id: 0,
+        sourceIndex: 0,
+        data: result.value.rows[0],
+        isNew: false,
+        isDeleted: false,
+        isDirtyCol: [false, false],
+        status: "clean",
+      };
+    },
+    emit: (...args) => {
+      emitted.push(args);
+    },
+  });
+
+  editor.applyDeleteRow(0);
+  await editor.saveChanges();
+
+  assert.deepEqual(emitted, [["reload", "SELECT id, name FROM people", "ada", "name ILIKE '%a%'", "id DESC", 50, 100]]);
+});
+
+test("saving edited rows without deletes does not reload table data", async () => {
+  setActivePinia(createPinia());
+  installBrowserTestGlobals();
+
+  const result = computed(() => ({
+    columns: ["id", "name"],
+    rows: [[1, "Ada"] as CellValue[]],
+  }));
+  const rowStatusFilter = ref<"all" | "changed" | "edited" | "new" | "deleted">("all");
+  const emitted: unknown[][] = [];
+  let editor: ReturnType<typeof useDataGridEditor>;
+
+  editor = useDataGridEditor({
+    result,
+    editable: computed(() => true),
+    databaseType: computed(() => "postgres"),
+    connectionId: computed(() => "conn-1"),
+    database: computed(() => "main"),
+    tableMeta: computed(() => ({
+      tableName: "people",
+      columns: [column("id", true), column("name")],
+      primaryKeys: ["id"],
+    })),
+    onExecuteSql: computed(() => undefined),
+    customSave: computed(() => async () => {}),
+    sql: computed(() => "SELECT id, name FROM people"),
+    searchText: ref(""),
+    whereFilterInput: ref(""),
+    orderByInput: ref(""),
+    rowStatusFilter,
+    pageSize: ref(50),
+    currentPage: ref(1),
+    getRowItem: (rowId) => {
+      if (rowId !== 0) return undefined;
+      return {
+        id: 0,
+        sourceIndex: 0,
+        data: result.value.rows[0],
+        isNew: false,
+        isDeleted: false,
+        isDirtyCol: [false, false],
+        status: "clean",
+      };
+    },
+    emit: (...args) => {
+      emitted.push(args);
+    },
+  });
+
+  editor.applyCellValue(0, 1, "Ada Lovelace");
+  await editor.saveChanges();
+
+  assert.deepEqual(emitted, []);
+});
