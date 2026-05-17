@@ -28,7 +28,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.MCP_RELEASE_TOKEN || github.token }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -49,6 +48,15 @@ jobs:
         run: |
           if [ -z "${NODE_AUTH_TOKEN}" ]; then
             echo "::error::NPM_TOKEN secret is required to publish @dbx-app/mcp-server."
+            exit 1
+          fi
+
+      - name: Check release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.MCP_RELEASE_TOKEN }}
+        run: |
+          if [ -z "${RELEASE_TOKEN}" ]; then
+            echo "::error::MCP_RELEASE_TOKEN secret is required to push the MCP release commit and tag because main is protected."
             exit 1
           fi
 
@@ -141,8 +149,11 @@ jobs:
           git tag "mcp-v${VERSION}"
 
       - name: Push MCP release commit and tag
+        env:
+          RELEASE_TOKEN: ${{ secrets.MCP_RELEASE_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:main
           git push origin "mcp-v${VERSION}"
 
