@@ -1,7 +1,8 @@
 <div align="center">
-  <img src="docs/logo.png" width="80" />
-  <h1>DBX</h1>
-  <p>30+ databases in 15 MB. Desktop & Docker self-hosting, with built-in AI assistant.</p>
+  <p>
+    <img src="https://dl.dbxio.com/assets/readme-hero-20260517.png" alt="DBX screenshot" width="820" />
+  </p>
+
   <p>
     <a href="https://github.com/t8y2/dbx/releases"><img src="https://img.shields.io/github/downloads/t8y2/dbx/total?style=for-the-badge&color=blue" /></a>
     <a href="https://github.com/t8y2/dbx/graphs/contributors"><img src="https://img.shields.io/github/contributors/t8y2/dbx?style=for-the-badge" /></a>
