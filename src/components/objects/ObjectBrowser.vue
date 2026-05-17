@@ -7,6 +7,7 @@ import {
   Copy,
   Eye,
   Loader2,
+  Pencil,
   PencilLine,
   RefreshCw,
   Search,
@@ -34,11 +35,13 @@ import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
 import { useToast } from "@/composables/useToast";
 import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
+import { buildRenameObjectSql, supportsObjectRename } from "@/lib/objectRenameSql";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type ObjectRow = {
   id: string;
@@ -85,6 +88,10 @@ const sourceSaveError = ref("");
 const error = ref("");
 const showDropConfirm = ref(false);
 const dropTarget = ref<ObjectRow | null>(null);
+const showRenameDialog = ref(false);
+const renameTarget = ref<ObjectRow | null>(null);
+const renameInput = ref("");
+const renameError = ref("");
 let loadId = 0;
 
 const needsSchema = computed(() => isSchemaAware(props.connection.db_type));
@@ -176,6 +183,10 @@ function canOpenSource(row: ObjectRow) {
   return row.type === "VIEW" || row.type === "PROCEDURE" || row.type === "FUNCTION";
 }
 
+function canRename(row: ObjectRow) {
+  return supportsObjectRename(props.connection.db_type, row.type);
+}
+
 function sourceTitle(row: ObjectRow | null) {
   if (!row) return t("objects.source");
   return `${row.name} ${t("objects.source")}`;
@@ -239,6 +250,59 @@ function qualifiedName(row: ObjectRow): string {
 function requestDrop(row: ObjectRow) {
   dropTarget.value = row;
   showDropConfirm.value = true;
+}
+
+function requestRename(row: ObjectRow) {
+  renameTarget.value = row;
+  renameInput.value = row.name;
+  renameError.value = "";
+  showRenameDialog.value = true;
+}
+
+function renamePreviewSql() {
+  const row = renameTarget.value;
+  const newName = renameInput.value.trim();
+  if (!row || !newName || newName === row.name) return "";
+  try {
+    return buildRenameObjectSql({
+      databaseType: props.connection.db_type,
+      objectType: row.type,
+      schema: row.schema || selectedSchema.value,
+      oldName: row.name,
+      newName,
+    });
+  } catch {
+    return "";
+  }
+}
+
+async function confirmRename() {
+  const row = renameTarget.value;
+  const newName = renameInput.value.trim();
+  if (!row || !newName || newName === row.name) return;
+  renameError.value = "";
+  try {
+    const schema = row.schema || selectedSchema.value || props.database;
+    const sql = buildRenameObjectSql({
+      databaseType: props.connection.db_type,
+      objectType: row.type,
+      schema,
+      oldName: row.name,
+      newName,
+    });
+    await api.executeQuery(props.connection.id, props.database, sql, schema);
+    toast(t("contextMenu.renameObjectSuccess", { oldName: row.name, newName }));
+    showRenameDialog.value = false;
+    if (sourceRow.value?.id === row.id) closeSource();
+    await reload();
+    await connectionStore.refreshObjectListTreeNode(
+      props.connection.id,
+      props.database,
+      row.schema || selectedSchema.value,
+    );
+  } catch (e: any) {
+    renameError.value = e?.message || String(e);
+  }
 }
 
 async function confirmDrop() {
@@ -570,6 +634,9 @@ watch(
                 <ContextMenuItem @click="openNewQuery(item)">
                   <TerminalSquare class="w-4 h-4 mr-2" /> {{ t("contextMenu.newQuery") }}
                 </ContextMenuItem>
+                <ContextMenuItem v-if="canRename(item)" @click="requestRename(item)">
+                  <Pencil class="w-4 h-4 mr-2" /> {{ t("contextMenu.renameObject") }}
+                </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem class="text-destructive" @click="requestDrop(item)">
                   <Trash2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.dropTable") }}
@@ -580,6 +647,9 @@ watch(
                 <ContextMenuItem @click="openSource(item)">
                   <Code2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.viewSource") }}
                 </ContextMenuItem>
+                <ContextMenuItem v-if="canRename(item)" @click="requestRename(item)">
+                  <Pencil class="w-4 h-4 mr-2" /> {{ t("contextMenu.renameObject") }}
+                </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem class="text-destructive" @click="requestDrop(item)">
                   <Trash2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.dropView") }}
@@ -589,6 +659,9 @@ watch(
               <template v-else>
                 <ContextMenuItem @click="openSource(item)">
                   <Code2 class="w-4 h-4 mr-2" /> {{ t("contextMenu.viewSource") }}
+                </ContextMenuItem>
+                <ContextMenuItem v-if="canRename(item)" @click="requestRename(item)">
+                  <Pencil class="w-4 h-4 mr-2" /> {{ t("contextMenu.renameObject") }}
                 </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem class="text-destructive" @click="requestDrop(item)">
@@ -694,6 +767,33 @@ watch(
     :confirm-label="t('dangerDialog.deleteConfirm')"
     @confirm="confirmDrop"
   />
+
+  <Dialog v-model:open="showRenameDialog">
+    <DialogContent class="sm:max-w-[420px]">
+      <DialogHeader>
+        <DialogTitle>{{ t("contextMenu.renameObjectTitle") }}</DialogTitle>
+      </DialogHeader>
+      <div class="grid gap-3">
+        <Input
+          v-model="renameInput"
+          :placeholder="t('contextMenu.renameObjectNamePlaceholder')"
+          @keydown.enter.prevent="confirmRename"
+        />
+        <pre
+          v-if="renamePreviewSql()"
+          class="max-h-32 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap"
+          >{{ renamePreviewSql() }}</pre
+        >
+        <p v-if="renameError" class="text-sm text-destructive">{{ renameError }}</p>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" @click="showRenameDialog = false">{{ t("dangerDialog.cancel") }}</Button>
+        <Button :disabled="!renameInput.trim() || renameInput.trim() === renameTarget?.name" @click="confirmRename">
+          {{ t("contextMenu.renameObject") }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <style scoped>

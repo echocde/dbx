@@ -645,6 +645,10 @@ export default {
     emptyTable: "Empty Table",
     truncateTable: "Truncate Table",
     duplicateStructure: "Duplicate Structure",
+    renameObject: "Rename",
+    renameObjectTitle: "Rename Object",
+    renameObjectNamePlaceholder: "New name",
+    renameObjectSuccess: '"{oldName}" renamed to "{newName}"',
     confirmDropTableTitle: "Drop Table",
     confirmDropTableMessage:
       'Are you sure you want to drop "{name}"? This will permanently delete the table and all its data.',

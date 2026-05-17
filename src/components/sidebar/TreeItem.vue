@@ -89,6 +89,7 @@ import {
 import { sidebarSelectionCopyAction, treeNodeRowAction, treeNodeRowDoubleClickAction } from "@/lib/treeNodeClick";
 import { formatCsv, formatJson, formatSqlInsert } from "@/lib/exportFormats";
 import { buildCreateDatabaseSql, supportsCreateDatabaseCharset } from "@/lib/createDatabaseSql";
+import { buildRenameObjectSql, supportsObjectRename, type RenameableObjectType } from "@/lib/objectRenameSql";
 import { hexToRgba } from "@/lib/color";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
@@ -602,6 +603,9 @@ async function duplicateConnection() {
 const showDropTableConfirm = ref(false);
 const showEmptyTableConfirm = ref(false);
 const showTruncateTableConfirm = ref(false);
+const showRenameObjectDialog = ref(false);
+const renameObjectName = ref("");
+const renameObjectError = ref("");
 const showDuplicateDialog = ref(false);
 const duplicateTableName = ref("");
 
@@ -651,6 +655,66 @@ function viewObjectSource() {
 
 function requestDropObject() {
   showDropObjectConfirm.value = true;
+}
+
+function nodeRenameObjectType(): RenameableObjectType | null {
+  if (props.node.type === "table") return "TABLE";
+  if (props.node.type === "view") return "VIEW";
+  if (props.node.type === "procedure") return "PROCEDURE";
+  if (props.node.type === "function") return "FUNCTION";
+  return null;
+}
+
+const canRenameObject = computed(() => {
+  const objectType = nodeRenameObjectType();
+  return !!objectType && supportsObjectRename(currentDatabaseType(), objectType);
+});
+
+function openRenameObjectDialog() {
+  renameObjectName.value = props.node.label;
+  renameObjectError.value = "";
+  showRenameObjectDialog.value = true;
+}
+
+function buildRenameObjectPreviewSql(): string {
+  const objectType = nodeRenameObjectType();
+  const newName = renameObjectName.value.trim();
+  if (!objectType || !newName || newName === props.node.label) return "";
+  try {
+    return buildRenameObjectSql({
+      databaseType: currentDatabaseType(),
+      objectType,
+      schema: props.node.schema,
+      oldName: props.node.label,
+      newName,
+    });
+  } catch {
+    return "";
+  }
+}
+
+async function confirmRenameObject() {
+  const node = props.node;
+  const objectType = nodeRenameObjectType();
+  const newName = renameObjectName.value.trim();
+  if (!objectType || !newName || newName === node.label || !node.connectionId || !node.database) return;
+  renameObjectError.value = "";
+  try {
+    const sql = buildRenameObjectSql({
+      databaseType: currentDatabaseType(),
+      objectType,
+      schema: node.schema,
+      oldName: node.label,
+      newName,
+    });
+    await connectionStore.ensureConnected(node.connectionId);
+    await api.executeQuery(node.connectionId, node.database, sql, node.schema);
+    toast(t("contextMenu.renameObjectSuccess", { oldName: node.label, newName }), 3000);
+    showRenameObjectDialog.value = false;
+    await refreshTableList(node);
+  } catch (e: any) {
+    renameObjectError.value = e?.message || String(e);
+  }
 }
 
 async function confirmDropObject() {
@@ -1758,6 +1822,9 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         <ContextMenuItem v-if="canOpenStructureEditor" @click="openStructureEditor">
           <PencilRuler class="w-4 h-4" /> {{ t("contextMenu.editStructure") }}
         </ContextMenuItem>
+        <ContextMenuItem v-if="canRenameObject" @click="openRenameObjectDialog">
+          <Pencil class="w-4 h-4" /> {{ t("contextMenu.renameObject") }}
+        </ContextMenuItem>
         <ContextMenuItem @click="newQuery">
           <TerminalSquare class="w-4 h-4" /> {{ t("contextMenu.newQuery") }}
         </ContextMenuItem>
@@ -1821,6 +1888,10 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         <ContextMenuItem @click="viewObjectSource">
           <Code2 class="w-4 h-4 mr-2" />
           {{ t("contextMenu.viewSource") }}
+        </ContextMenuItem>
+        <ContextMenuItem v-if="canRenameObject" @click="openRenameObjectDialog">
+          <Pencil class="w-4 h-4 mr-2" />
+          {{ t("contextMenu.renameObject") }}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem class="text-destructive" @click="requestDropObject">
@@ -1949,6 +2020,36 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         <Button :disabled="!savedSqlNameInput.trim()" @click="confirmSavedSqlName">{{
           t("dangerDialog.confirm")
         }}</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog v-model:open="showRenameObjectDialog">
+    <DialogContent class="sm:max-w-[420px]">
+      <DialogHeader>
+        <DialogTitle>{{ t("contextMenu.renameObjectTitle") }}</DialogTitle>
+      </DialogHeader>
+      <div class="grid gap-3">
+        <Input
+          v-model="renameObjectName"
+          :placeholder="t('contextMenu.renameObjectNamePlaceholder')"
+          @keydown.enter.prevent="confirmRenameObject"
+        />
+        <pre
+          v-if="buildRenameObjectPreviewSql()"
+          class="max-h-32 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap"
+          >{{ buildRenameObjectPreviewSql() }}</pre
+        >
+        <p v-if="renameObjectError" class="text-sm text-destructive">{{ renameObjectError }}</p>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" @click="showRenameObjectDialog = false">{{ t("dangerDialog.cancel") }}</Button>
+        <Button
+          :disabled="!renameObjectName.trim() || renameObjectName.trim() === node.label"
+          @click="confirmRenameObject"
+        >
+          {{ t("contextMenu.renameObject") }}
+        </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
