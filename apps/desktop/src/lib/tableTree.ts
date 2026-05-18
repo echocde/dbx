@@ -1,5 +1,9 @@
 import type { ObjectInfo, TableInfo, TreeNode, TreeNodeType } from "@/types/database";
 
+export function normalizeDatabaseObjectName(name: string): string {
+  return name.trim();
+}
+
 export function buildTableTreeNodes({
   nodeId,
   connectionId,
@@ -13,16 +17,22 @@ export function buildTableTreeNodes({
   schema?: string;
   tables: TableInfo[];
 }): TreeNode[] {
-  return tables.map((table) => ({
-    id: `${nodeId}:${table.name}`,
-    label: table.name,
-    type: table.table_type === "VIEW" ? "view" : "table",
-    connectionId,
-    database,
-    schema,
-    isExpanded: false,
-    children: [],
-  }));
+  return tables.flatMap((table) => {
+    const name = normalizeDatabaseObjectName(table.name);
+    if (!name) return [];
+    return [
+      {
+        id: `${nodeId}:${name}`,
+        label: name,
+        type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
+        connectionId,
+        database,
+        schema,
+        isExpanded: false,
+        children: [],
+      },
+    ];
+  });
 }
 
 function normalizeObjectType(type: string): "TABLE" | "VIEW" | "PROCEDURE" | "FUNCTION" {
@@ -87,9 +97,11 @@ export function buildGroupedObjectTreeNodes({
 }): TreeNode[] {
   const buckets = new Map<string, ObjectInfo[]>();
   for (const obj of objects) {
+    const name = normalizeDatabaseObjectName(obj.name);
+    if (!name) continue;
     const t = normalizeObjectType(obj.object_type);
     const arr = buckets.get(t) ?? [];
-    arr.push(obj);
+    arr.push({ ...obj, name, schema: obj.schema ? normalizeDatabaseObjectName(obj.schema) : obj.schema });
     buckets.set(t, arr);
   }
 

@@ -43,6 +43,24 @@ test("preserves table and view node types", () => {
   );
 });
 
+test("normalizes padded table names from database drivers", () => {
+  const nodes = buildTableTreeNodes({
+    nodeId: "conn:db:public",
+    connectionId: "conn",
+    database: "db",
+    schema: "public",
+    tables: [table(" users  "), table("\norders\t"), table("   ")],
+  });
+
+  assert.deepEqual(
+    nodes.map((node) => [node.id, node.label]),
+    [
+      ["conn:db:public:users", "users"],
+      ["conn:db:public:orders", "orders"],
+    ],
+  );
+});
+
 test("expands cached object-browser nodes back into regular table nodes", () => {
   const nodes = expandCachedObjectBrowserNodes([
     {

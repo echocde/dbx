@@ -33,6 +33,7 @@ import * as api from "@/lib/api";
 import type { ConnectionConfig, ObjectInfo, ObjectSourceKind } from "@/types/database";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
+import { normalizeDatabaseObjectName } from "@/lib/tableTree";
 import { useToast } from "@/composables/useToast";
 import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
 import { buildRenameObjectSql, supportsObjectRename } from "@/lib/objectRenameSql";
@@ -444,13 +445,20 @@ async function loadObjects() {
     const schema = needsSchema.value ? selectedSchema.value || "" : props.database;
     const objects: ObjectInfo[] = await api.listObjects(props.connection.id, props.database, schema);
     if (id !== loadId) return;
-    rows.value = objects.map((object) => ({
-      id: `${object.schema || schema || props.database}:${object.name}:${object.object_type}`,
-      name: object.name,
-      schema: object.schema || (needsSchema.value ? schema : undefined),
-      type: normalizeType(object.object_type),
-      comment: object.comment,
-    }));
+    rows.value = objects.flatMap((object) => {
+      const name = normalizeDatabaseObjectName(object.name);
+      if (!name) return [];
+      const objectSchema = object.schema ? normalizeDatabaseObjectName(object.schema) : undefined;
+      return [
+        {
+          id: `${objectSchema || schema || props.database}:${name}:${object.object_type}`,
+          name,
+          schema: objectSchema || (needsSchema.value ? schema : undefined),
+          type: normalizeType(object.object_type),
+          comment: object.comment,
+        },
+      ];
+    });
   } catch (e: any) {
     if (id !== loadId) return;
     error.value = e?.message || String(e);
