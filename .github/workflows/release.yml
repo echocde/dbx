@@ -189,6 +189,7 @@ jobs:
         run: |
           gh release upload "${GITHUB_REF_NAME}" \
             "plugins/jdbc/dist/dbx-jdbc-plugin-${{ steps.jdbc-plugin.outputs.version }}.zip" \
+            "plugins/jdbc/dist/dbx-jdbc-plugin-latest.zip" \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
 

@@ -6,8 +6,9 @@ use serde::Serialize;
 
 use super::connection::AppState;
 
-const JDBC_PLUGIN_DOWNLOAD_URL: &str = "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-0.1.1.zip";
-const JDBC_PLUGIN_R2_PATH: &str = "releases/latest/dbx-jdbc-plugin-0.1.1.zip";
+const JDBC_PLUGIN_DOWNLOAD_URL: &str =
+    "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-latest.zip";
+const JDBC_PLUGIN_R2_PATH: &str = "releases/latest/dbx-jdbc-plugin-latest.zip";
 
 #[tauri::command]
 pub async fn list_plugins(state: State<'_, Arc<AppState>>) -> Result<Vec<InstalledPlugin>, String> {
