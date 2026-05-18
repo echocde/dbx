@@ -347,8 +347,6 @@ export default {
     zoomIn: "Zoom In",
     zoomOut: "Zoom Out",
     fitImage: "Fit to Window",
-    actualSize: "Actual Size",
-    rotateImage: "Rotate",
     openImage: "Open Image",
     columnName: "Column",
     columnType: "Type",

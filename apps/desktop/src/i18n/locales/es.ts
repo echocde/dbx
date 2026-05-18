@@ -323,8 +323,6 @@ export default {
     zoomIn: "Acercar",
     zoomOut: "Alejar",
     fitImage: "Ajustar a ventana",
-    actualSize: "Tamaño real",
-    rotateImage: "Rotar",
     openImage: "Abrir imagen",
     columnName: "Columna",
     columnType: "Tipo",

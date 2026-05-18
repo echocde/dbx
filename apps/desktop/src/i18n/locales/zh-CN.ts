@@ -343,8 +343,6 @@ export default {
     zoomIn: "放大",
     zoomOut: "缩小",
     fitImage: "适应窗口",
-    actualSize: "原始大小",
-    rotateImage: "旋转",
     openImage: "打开图片",
     columnName: "列名",
     columnType: "类型",

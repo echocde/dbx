@@ -14,11 +14,27 @@ export function nextImagePreviewScale(scale: number, direction: ImagePreviewZoom
   return clampImagePreviewScale(scale + delta);
 }
 
-export function imagePreviewTransform(options: {
-  scale: number;
-  rotation: number;
-  offsetX: number;
-  offsetY: number;
-}): string {
-  return `translate(${options.offsetX}px, ${options.offsetY}px) rotate(${options.rotation}deg) scale(${options.scale})`;
+export function imagePreviewFitScale(options: {
+  imageWidth: number;
+  imageHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  paddingRatio?: number;
+}): number {
+  if (
+    options.imageWidth <= 0 ||
+    options.imageHeight <= 0 ||
+    options.viewportWidth <= 0 ||
+    options.viewportHeight <= 0
+  ) {
+    return 1;
+  }
+  const paddingRatio = options.paddingRatio ?? 0.9;
+  const widthScale = (options.viewportWidth * paddingRatio) / options.imageWidth;
+  const heightScale = (options.viewportHeight * paddingRatio) / options.imageHeight;
+  return clampImagePreviewScale(Math.min(widthScale, heightScale, 1));
+}
+
+export function imagePreviewTransform(options: { scale: number; offsetX: number; offsetY: number }): string {
+  return `translate(${options.offsetX}px, ${options.offsetY}px) scale(${options.scale})`;
 }

@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
+  imagePreviewFitScale,
   clampImagePreviewScale,
   imagePreviewTransform,
   nextImagePreviewScale,
@@ -20,7 +21,28 @@ test("zooms in fixed steps from wheel direction", () => {
 
 test("builds a stable CSS transform for image previews", () => {
   assert.equal(
-    imagePreviewTransform({ scale: 1.5, rotation: 90, offsetX: 12, offsetY: -8 }),
-    "translate(12px, -8px) rotate(90deg) scale(1.5)",
+    imagePreviewTransform({ scale: 1.5, offsetX: 12, offsetY: -8 }),
+    "translate(12px, -8px) scale(1.5)",
+  );
+});
+
+test("calculates fit scale from image and viewport dimensions", () => {
+  assert.equal(
+    imagePreviewFitScale({
+      imageWidth: 2000,
+      imageHeight: 1000,
+      viewportWidth: 1000,
+      viewportHeight: 800,
+    }),
+    0.45,
+  );
+  assert.equal(
+    imagePreviewFitScale({
+      imageWidth: 200,
+      imageHeight: 100,
+      viewportWidth: 1000,
+      viewportHeight: 800,
+    }),
+    1,
   );
 });

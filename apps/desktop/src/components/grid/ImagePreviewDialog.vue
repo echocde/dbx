@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { ExternalLink, Maximize2, Minimize2, RotateCw, X, ZoomIn, ZoomOut } from "lucide-vue-next";
+import { ExternalLink, Maximize2, X, ZoomIn, ZoomOut } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { imagePreviewTransform, nextImagePreviewScale } from "@/lib/imagePreviewViewer";
+import { imagePreviewFitScale, imagePreviewTransform, nextImagePreviewScale } from "@/lib/imagePreviewViewer";
 
 const props = defineProps<{
   open: boolean;
@@ -18,11 +18,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const scale = ref(1);
-const rotation = ref(0);
 const offsetX = ref(0);
 const offsetY = ref(0);
 const imageLoaded = ref(false);
 const imageError = ref(false);
+const stageRef = ref<HTMLElement>();
+const naturalWidth = ref(0);
+const naturalHeight = ref(0);
 const dragStart = ref<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
 
 const hostLabel = computed(() => {
@@ -37,9 +39,10 @@ const hostLabel = computed(() => {
 const imageTitle = computed(() => props.title || t("grid.imagePreview"));
 const zoomLabel = computed(() => `${Math.round(scale.value * 100)}%`);
 const imageStyle = computed(() => ({
+  width: naturalWidth.value ? `${naturalWidth.value}px` : "auto",
+  height: naturalHeight.value ? `${naturalHeight.value}px` : "auto",
   transform: `translate(-50%, -50%) ${imagePreviewTransform({
     scale: scale.value,
-    rotation: rotation.value,
     offsetX: offsetX.value,
     offsetY: offsetY.value,
   })}`,
@@ -47,11 +50,12 @@ const imageStyle = computed(() => ({
 
 function resetViewer() {
   scale.value = 1;
-  rotation.value = 0;
   offsetX.value = 0;
   offsetY.value = 0;
   imageLoaded.value = false;
   imageError.value = false;
+  naturalWidth.value = 0;
+  naturalHeight.value = 0;
   dragStart.value = null;
 }
 
@@ -68,19 +72,28 @@ function zoomOut() {
 }
 
 function fitImage() {
-  scale.value = 1;
+  scale.value = currentFitScale();
   offsetX.value = 0;
   offsetY.value = 0;
 }
 
-function actualSize() {
-  scale.value = 1;
-  offsetX.value = 0;
-  offsetY.value = 0;
+function currentFitScale(): number {
+  const stage = stageRef.value;
+  if (!stage) return 1;
+  return imagePreviewFitScale({
+    imageWidth: naturalWidth.value,
+    imageHeight: naturalHeight.value,
+    viewportWidth: stage.clientWidth,
+    viewportHeight: stage.clientHeight,
+  });
 }
 
-function rotateImage() {
-  rotation.value = (rotation.value + 90) % 360;
+function onImageLoad(event: Event) {
+  const img = event.currentTarget as HTMLImageElement;
+  naturalWidth.value = img.naturalWidth;
+  naturalHeight.value = img.naturalHeight;
+  imageLoaded.value = true;
+  fitImage();
 }
 
 function onWheel(event: WheelEvent) {
@@ -111,8 +124,13 @@ function onDoubleClick() {
   offsetY.value = 0;
 }
 
-function openExternal() {
-  window.open(props.src, "_blank", "noopener,noreferrer");
+async function openExternal() {
+  try {
+    const { open } = await import("@tauri-apps/plugin-shell");
+    await open(props.src);
+  } catch {
+    window.open(props.src, "_blank", "noopener,noreferrer");
+  }
 }
 
 watch(
@@ -168,24 +186,6 @@ watch(
             variant="ghost"
             size="icon"
             class="h-7 w-7 text-white/75 hover:bg-white/10 hover:text-white"
-            :title="t('grid.actualSize')"
-            @click="actualSize"
-          >
-            <Minimize2 class="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-7 w-7 text-white/75 hover:bg-white/10 hover:text-white"
-            :title="t('grid.rotateImage')"
-            @click="rotateImage"
-          >
-            <RotateCw class="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-7 w-7 text-white/75 hover:bg-white/10 hover:text-white"
             :title="t('grid.openImage')"
             @click="openExternal"
           >
@@ -204,6 +204,7 @@ watch(
       </div>
 
       <div
+        ref="stageRef"
         class="image-preview-stage relative min-h-0 flex-1 overflow-hidden"
         :class="{ 'cursor-grabbing': dragStart, 'cursor-grab': !dragStart && imageLoaded && !imageError }"
         @wheel="onWheel"
@@ -226,10 +227,10 @@ watch(
           draggable="false"
           decoding="async"
           referrerpolicy="no-referrer"
-          class="absolute left-1/2 top-1/2 max-h-[78vh] max-w-[88vw] select-none object-contain transition-opacity duration-150"
+          class="absolute left-1/2 top-1/2 max-w-none select-none object-contain transition-opacity duration-150"
           :class="{ 'opacity-100': imageLoaded, 'opacity-0': !imageLoaded }"
           :style="imageStyle"
-          @load="imageLoaded = true"
+          @load="onImageLoad"
           @error="imageError = true"
           @pointerdown="onImagePointerDown"
           @pointermove="onImagePointerMove"
