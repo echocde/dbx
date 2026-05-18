@@ -139,6 +139,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "rename-started": [];
+  "node-toggled": [node: TreeNode, wasExpanded: boolean];
   "search-toggle": [node: TreeNode];
 }>();
 
@@ -260,11 +261,13 @@ async function toggle() {
   if (node.type === "connection-group") {
     node.isExpanded = !node.isExpanded;
     connectionStore.toggleConnectionGroupCollapsed(node.id);
+    emit("node-toggled", node, wasExpanded);
     return;
   }
 
   if (node.type === "saved-sql-root" || node.type === "saved-sql-folder") {
     node.isExpanded = !node.isExpanded;
+    emit("node-toggled", node, wasExpanded);
     return;
   }
 
@@ -275,11 +278,13 @@ async function toggle() {
     node.type === "group-functions"
   ) {
     node.isExpanded = !node.isExpanded;
+    emit("node-toggled", node, wasExpanded);
     return;
   }
 
   if (node.isExpanded) {
     node.isExpanded = false;
+    emit("node-toggled", node, wasExpanded);
     return;
   }
 
@@ -324,6 +329,7 @@ async function toggle() {
     } else if (node.type === "group-triggers" && node.connectionId && node.database && node.tableName) {
       await connectionStore.loadTriggers(node.connectionId, node.database, node.tableName, node.schema);
     }
+    emit("node-toggled", node, wasExpanded);
   } catch (e: any) {
     if (!wasExpanded) node.isExpanded = false;
     const errMsg = e?.message || String(e);
