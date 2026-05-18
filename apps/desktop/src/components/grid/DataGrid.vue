@@ -65,6 +65,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database";
 import * as api from "@/lib/api";
 import {
@@ -256,6 +257,9 @@ const detailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const showCellDetail = ref(false);
 const detailWidth = ref(320);
 const isResizingDetail = ref(false);
+const imagePreviewOpen = ref(false);
+const imagePreviewSrc = ref("");
+const imagePreviewTitle = ref("");
 const transposeRowIndex = ref<number | null>(null);
 const showTranspose = ref(false);
 const transposeScrollRef = ref<HTMLElement | { $el?: HTMLElement }>();
@@ -1896,6 +1900,12 @@ const {
 function showCellDetails(rowIndex: number, colIndex: number) {
   detailCell.value = { rowIndex, col: colIndex };
   showCellDetail.value = true;
+}
+
+function openImagePreview(src: string, title: string) {
+  imagePreviewSrc.value = src;
+  imagePreviewTitle.value = title;
+  imagePreviewOpen.value = true;
 }
 
 function eventTargetAllowsNativeClipboard(event: KeyboardEvent): boolean {
@@ -3625,9 +3635,9 @@ defineExpose({
                     <div class="text-muted-foreground">{{ t("grid.imagePreview") }}</div>
                     <a
                       :href="activeCellDetail.imagePreviewUrl"
-                      target="_blank"
-                      rel="noreferrer"
+                      role="button"
                       class="block overflow-hidden rounded border bg-muted/20"
+                      @click.prevent="openImagePreview(activeCellDetail.imagePreviewUrl, activeCellDetail.column)"
                     >
                       <img
                         :src="activeCellDetail.imagePreviewUrl"
@@ -3933,6 +3943,7 @@ defineExpose({
       "
       @confirm="confirmDeleteRow"
     />
+    <ImagePreviewDialog v-model:open="imagePreviewOpen" :src="imagePreviewSrc" :title="imagePreviewTitle" />
   </div>
 </template>
 
@@ -3971,6 +3982,10 @@ defineExpose({
 }
 
 .ddl-drawer-resizing {
+  transition: none;
+}
+
+.detail-drawer-resizing {
   transition: none;
 }
 
