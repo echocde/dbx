@@ -442,7 +442,7 @@ onUnmounted(() => {
       <div class="max-w-5xl mx-auto px-7 py-7">
         <Tabs default-value="agent">
           <div class="flex items-center justify-between">
-            <TabsList class="driver-store-segmented w-fit">
+            <TabsList class="w-fit">
               <TabsTrigger value="agent">内置驱动</TabsTrigger>
               <TabsTrigger value="jdbc">JDBC 驱动</TabsTrigger>
             </TabsList>
@@ -815,15 +815,6 @@ onUnmounted(() => {
   background: linear-gradient(180deg, oklch(0.985 0 0) 0%, oklch(0.965 0 0) 100%), var(--background);
 }
 
-.driver-store-segmented {
-  height: 32px;
-  border: 0.5px solid oklch(0 0 0 / 0.1);
-  border-radius: 9px;
-  background: oklch(1 0 0 / 0.7);
-  padding: 2px;
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.7);
-}
-
 .driver-store-panel,
 .driver-store-list {
   border: 0.5px solid oklch(0 0 0 / 0.11);
@@ -905,26 +896,10 @@ onUnmounted(() => {
   background: oklch(1 0 0 / 0.72);
 }
 
-:deep(.driver-store-segmented [data-state="active"]) {
-  border-radius: 7px;
-  background: oklch(1 0 0);
-  box-shadow:
-    0 1px 3px oklch(0 0 0 / 0.12),
-    inset 0 0 0 0.5px oklch(0 0 0 / 0.08);
-}
-
-:deep(.driver-store-segmented [role="tab"]) {
-  height: 26px;
-  min-width: 84px;
-  border-radius: 7px;
-  font-size: 12px;
-}
-
 .dark .driver-store-page {
   background: linear-gradient(180deg, oklch(0.18 0 0) 0%, oklch(0.145 0 0) 100%), var(--background);
 }
 
-.dark .driver-store-segmented,
 .dark .driver-store-panel,
 .dark .driver-store-list {
   border-color: oklch(1 0 0 / 0.11);
