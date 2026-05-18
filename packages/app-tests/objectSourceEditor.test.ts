@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   buildExecutableObjectSourceSql,
   buildExecutableObjectSourceStatements,
+  buildRoutineRenameObjectSourceStatements,
   objectSourceSaveExecutionMode,
+  supportsSourceBackedRoutineRename,
 } from "../../apps/desktop/src/lib/objectSourceEditor.ts";
 
 test("SQL Server edited source saves as ALTER", () => {
@@ -103,4 +105,63 @@ test("object source SQL joins generated save statements for previews", () => {
     sql,
     'CREATE OR REPLACE PROCEDURE "public"."refresh_cache_v2"(mode text)\nLANGUAGE SQL\nAS $$ SELECT 1 $$;\nDROP PROCEDURE IF EXISTS "public"."refresh_cache"(mode text);',
   );
+});
+
+test("Oracle and Dameng object source saves as semicolon-terminated source", () => {
+  assert.equal(
+    buildExecutableObjectSourceSql({
+      databaseType: "oracle",
+      objectType: "VIEW",
+      schema: "HR",
+      name: "ACTIVE_USERS",
+      source: "CREATE OR REPLACE VIEW HR.ACTIVE_USERS AS SELECT ID FROM USERS",
+    }),
+    "CREATE OR REPLACE VIEW HR.ACTIVE_USERS AS SELECT ID FROM USERS;",
+  );
+
+  assert.equal(
+    buildExecutableObjectSourceSql({
+      databaseType: "dameng",
+      objectType: "PROCEDURE",
+      schema: "SYSDBA",
+      name: "REFRESH_CACHE",
+      source: "CREATE OR REPLACE PROCEDURE SYSDBA.REFRESH_CACHE AS BEGIN SELECT 1; END;",
+    }),
+    "CREATE OR REPLACE PROCEDURE SYSDBA.REFRESH_CACHE AS BEGIN SELECT 1; END;",
+  );
+});
+
+test("MySQL routine rename creates the renamed routine and drops the original routine", () => {
+  const statements = buildExecutableObjectSourceStatements({
+    databaseType: "mysql",
+    objectType: "PROCEDURE",
+    schema: "app",
+    name: "refresh_cache",
+    source: "CREATE DEFINER=`root`@`%` PROCEDURE `refresh_cache_v2`(IN mode_name varchar(20)) BEGIN SELECT 1; END",
+  });
+
+  assert.deepEqual(statements, [
+    "CREATE DEFINER=`root`@`%` PROCEDURE `refresh_cache_v2`(IN mode_name varchar(20)) BEGIN SELECT 1; END;",
+    "DROP PROCEDURE IF EXISTS `app`.`refresh_cache`;",
+  ]);
+});
+
+test("Oracle-family routine rename rewrites source and drops the original routine", () => {
+  assert.equal(supportsSourceBackedRoutineRename("dameng", "PROCEDURE"), true);
+  assert.equal(supportsSourceBackedRoutineRename("oracle", "FUNCTION"), true);
+
+  const statements = buildRoutineRenameObjectSourceStatements({
+    databaseType: "dameng",
+    objectType: "PROCEDURE",
+    schema: "SYSDBA",
+    name: "SP_TAB_BAKSET_REMOVE_BATCH",
+    newName: "SP_TAB_BAKSET_REMOVE_BATCH_2",
+    source:
+      'CREATE OR REPLACE PROCEDURE "SYSDBA"."SP_TAB_BAKSET_REMOVE_BATCH" AS\nBEGIN\n  SELECT 1;\nEND;',
+  });
+
+  assert.deepEqual(statements, [
+    'CREATE OR REPLACE PROCEDURE "SYSDBA"."SP_TAB_BAKSET_REMOVE_BATCH_2" AS\nBEGIN\n  SELECT 1;\nEND;',
+    'DROP PROCEDURE "SYSDBA"."SP_TAB_BAKSET_REMOVE_BATCH";',
+  ]);
 });

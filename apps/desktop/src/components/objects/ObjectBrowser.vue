@@ -34,7 +34,12 @@ import type { ConnectionConfig, ObjectInfo, ObjectSourceKind } from "@/types/dat
 import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
 import { useToast } from "@/composables/useToast";
-import { buildExecutableObjectSourceStatements, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
+import {
+  buildExecutableObjectSourceStatements,
+  buildRoutineRenameObjectSourceStatements,
+  objectSourceSaveExecutionMode,
+  supportsSourceBackedRoutineRename,
+} from "@/lib/objectSourceEditor";
 import { buildRenameObjectSql, supportsObjectRename } from "@/lib/objectRenameSql";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
@@ -169,7 +174,10 @@ function canOpenSource(row: ObjectBrowserRow) {
 }
 
 function canRename(row: ObjectBrowserRow) {
-  return supportsObjectRename(props.connection.db_type, row.type);
+  return (
+    supportsObjectRename(props.connection.db_type, row.type) ||
+    supportsSourceBackedRoutineRename(props.connection.db_type, row.type as ObjectSourceKind)
+  );
 }
 
 function sourceTitle(row: ObjectBrowserRow | null) {
@@ -250,6 +258,9 @@ function renamePreviewSql() {
   const row = renameTarget.value;
   const newName = renameInput.value.trim();
   if (!row || !newName || newName === row.name) return "";
+  if (supportsSourceBackedRoutineRename(props.connection.db_type, row.type as ObjectSourceKind)) {
+    return `-- Recreate ${row.type} from source, then drop the original object.`;
+  }
   try {
     return buildRenameObjectSql({
       databaseType: props.connection.db_type,
@@ -270,14 +281,35 @@ async function confirmRename() {
   renameError.value = "";
   try {
     const schema = row.schema || selectedSchema.value || props.database;
-    const sql = buildRenameObjectSql({
-      databaseType: props.connection.db_type,
-      objectType: row.type,
-      schema,
-      oldName: row.name,
-      newName,
-    });
-    await api.executeQuery(props.connection.id, props.database, sql, schema);
+    if (supportsSourceBackedRoutineRename(props.connection.db_type, row.type as ObjectSourceKind)) {
+      const source = await api.getObjectSource(
+        props.connection.id,
+        props.database,
+        schema,
+        row.name,
+        row.type as ObjectSourceKind,
+      );
+      const statements = buildRoutineRenameObjectSourceStatements({
+        databaseType: props.connection.db_type,
+        objectType: row.type as ObjectSourceKind,
+        schema,
+        name: row.name,
+        newName,
+        source: source.source,
+      });
+      for (const sql of statements) {
+        await api.executeQuery(props.connection.id, props.database, sql, schema);
+      }
+    } else {
+      const sql = buildRenameObjectSql({
+        databaseType: props.connection.db_type,
+        objectType: row.type,
+        schema,
+        oldName: row.name,
+        newName,
+      });
+      await api.executeQuery(props.connection.id, props.database, sql, schema);
+    }
     toast(t("contextMenu.renameObjectSuccess", { oldName: row.name, newName }));
     showRenameDialog.value = false;
     if (sourceRow.value?.id === row.id) closeSource();

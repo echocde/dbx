@@ -98,6 +98,8 @@ export const TABLE_STRUCTURE_SUPPORTED_TYPES = new Set<DatabaseType>([
   "sqlite",
   "duckdb",
   "sqlserver",
+  "oracle",
+  "dameng",
 ]);
 
 export const CREATE_DATABASE_SUPPORTED_TYPES = new Set<DatabaseType>([

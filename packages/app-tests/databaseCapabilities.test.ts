@@ -113,7 +113,8 @@ test("describes feature support through capability helpers", () => {
   assert.equal(supportsTableImport("hive"), false);
   assert.equal(supportsTableStructureEditing("postgres"), true);
   assert.equal(supportsTableStructureEditing("duckdb"), true);
-  assert.equal(supportsTableStructureEditing("oracle"), false);
+  assert.equal(supportsTableStructureEditing("oracle"), true);
+  assert.equal(supportsTableStructureEditing("dameng"), true);
   assert.equal(supportsDatabaseCreation("clickhouse"), true);
   assert.equal(supportsDatabaseCreation("sqlite"), false);
   assert.equal(supportsFieldLineage("gaussdb"), true);

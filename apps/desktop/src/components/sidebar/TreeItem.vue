@@ -102,6 +102,7 @@ import {
   uniqueDuckDbAttachedDatabaseName,
 } from "@/lib/createDatabaseSql";
 import { buildRenameObjectSql, supportsObjectRename, type RenameableObjectType } from "@/lib/objectRenameSql";
+import { buildRoutineRenameObjectSourceStatements, supportsSourceBackedRoutineRename } from "@/lib/objectSourceEditor";
 import { hexToRgba } from "@/lib/color";
 import { focusSidebarRenameInput, shouldPreventRenameCloseAutoFocus } from "@/lib/sidebarRenameFocus";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
@@ -687,7 +688,11 @@ function nodeRenameObjectType(): RenameableObjectType | null {
 
 const canRenameObject = computed(() => {
   const objectType = nodeRenameObjectType();
-  return !!objectType && supportsObjectRename(currentDatabaseType(), objectType);
+  return (
+    !!objectType &&
+    (supportsObjectRename(currentDatabaseType(), objectType) ||
+      supportsSourceBackedRoutineRename(currentDatabaseType(), objectType as any))
+  );
 });
 
 function openRenameObjectDialog() {
@@ -700,6 +705,9 @@ function buildRenameObjectPreviewSql(): string {
   const objectType = nodeRenameObjectType();
   const newName = renameObjectName.value.trim();
   if (!objectType || !newName || newName === props.node.label) return "";
+  if (supportsSourceBackedRoutineRename(currentDatabaseType(), objectType as any)) {
+    return `-- Recreate ${objectType} from source, then drop the original object.`;
+  }
   try {
     return buildRenameObjectSql({
       databaseType: currentDatabaseType(),
@@ -720,15 +728,32 @@ async function confirmRenameObject() {
   if (!objectType || !newName || newName === node.label || !node.connectionId || !node.database) return;
   renameObjectError.value = "";
   try {
-    const sql = buildRenameObjectSql({
-      databaseType: currentDatabaseType(),
-      objectType,
-      schema: node.schema,
-      oldName: node.label,
-      newName,
-    });
+    const dbType = currentDatabaseType();
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, node.database, sql, node.schema);
+    if (supportsSourceBackedRoutineRename(dbType, objectType as any)) {
+      const schema = node.schema || node.database;
+      const source = await api.getObjectSource(node.connectionId, node.database, schema, node.label, objectType as any);
+      const statements = buildRoutineRenameObjectSourceStatements({
+        databaseType: dbType!,
+        objectType: objectType as any,
+        schema,
+        name: node.label,
+        newName,
+        source: source.source,
+      });
+      for (const sql of statements) {
+        await api.executeQuery(node.connectionId, node.database, sql, schema);
+      }
+    } else {
+      const sql = buildRenameObjectSql({
+        databaseType: dbType,
+        objectType,
+        schema: node.schema,
+        oldName: node.label,
+        newName,
+      });
+      await api.executeQuery(node.connectionId, node.database, sql, node.schema);
+    }
     toast(t("contextMenu.renameObjectSuccess", { oldName: node.label, newName }), 3000);
     showRenameObjectDialog.value = false;
     await refreshTableList(node);

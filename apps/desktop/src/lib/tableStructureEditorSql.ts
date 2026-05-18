@@ -45,8 +45,12 @@ function quoteIdent(databaseType: DatabaseType | undefined, name: string): strin
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+function isOracleLike(databaseType: DatabaseType | undefined): databaseType is "oracle" | "dameng" {
+  return databaseType === "oracle" || databaseType === "dameng";
+}
+
 function qualifiedTable(databaseType: DatabaseType | undefined, schema: string | undefined, tableName: string): string {
-  if ((databaseType === "postgres" || databaseType === "oracle" || databaseType === "sqlserver") && schema) {
+  if ((databaseType === "postgres" || isOracleLike(databaseType) || databaseType === "sqlserver") && schema) {
     return `${quoteIdent(databaseType, schema)}.${quoteIdent(databaseType, tableName)}`;
   }
   return quoteIdent(databaseType, tableName);
@@ -67,7 +71,7 @@ function normalizeDefault(value: string | null | undefined): string {
 
 function columnDefinition(databaseType: DatabaseType | undefined, column: EditableStructureColumn): string {
   const parts = [quoteIdent(databaseType, column.name), column.dataType.trim()];
-  if (!column.isNullable) parts.push("NOT NULL");
+  if (!column.isNullable && !isOracleLike(databaseType)) parts.push("NOT NULL");
   const defaultValue = normalizeDefault(column.defaultValue);
   if (defaultValue) parts.push(`DEFAULT ${defaultValue}`);
   if (databaseType === "mysql" && clean(column.comment)) {
@@ -102,11 +106,50 @@ function buildAddColumnSql(
   column: EditableStructureColumn,
 ): string[] {
   const addKeyword = databaseType === "sqlserver" ? "ADD" : "ADD COLUMN";
-  const statements = [`ALTER TABLE ${table} ${addKeyword} ${columnDefinition(databaseType, column)};`];
-  if (databaseType === "postgres" && clean(column.comment)) {
+  const definition = columnDefinition(databaseType, column);
+  const statements = isOracleLike(databaseType)
+    ? [`ALTER TABLE ${table} ADD (${definition});`]
+    : [`ALTER TABLE ${table} ${addKeyword} ${definition};`];
+  if ((databaseType === "postgres" || isOracleLike(databaseType)) && clean(column.comment)) {
     statements.push(
       `COMMENT ON COLUMN ${table}.${quoteIdent(databaseType, column.name)} IS ${quoteString(clean(column.comment))};`,
     );
+  }
+  return statements;
+}
+
+function buildOracleLikeExistingColumnSql(
+  databaseType: DatabaseType,
+  table: string,
+  column: EditableStructureColumn,
+): string[] {
+  const original = column.original;
+  if (!original) return [];
+
+  const statements: string[] = [];
+  let currentName = original.name;
+  if (column.name !== original.name) {
+    statements.push(
+      `ALTER TABLE ${table} RENAME COLUMN ${quoteIdent(databaseType, original.name)} TO ${quoteIdent(databaseType, column.name)};`,
+    );
+    currentName = column.name;
+  }
+  if (column.dataType.trim() !== original.data_type.trim()) {
+    statements.push(
+      `ALTER TABLE ${table} MODIFY (${quoteIdent(databaseType, currentName)} ${column.dataType.trim()});`,
+    );
+  }
+  if (column.isNullable !== original.is_nullable) {
+    const nullability = column.isNullable ? "NULL" : "NOT NULL";
+    statements.push(`ALTER TABLE ${table} MODIFY (${quoteIdent(databaseType, currentName)} ${nullability});`);
+  }
+  if (normalizeDefault(column.defaultValue) !== originalDefault(column)) {
+    const defaultValue = normalizeDefault(column.defaultValue) || "NULL";
+    statements.push(`ALTER TABLE ${table} MODIFY (${quoteIdent(databaseType, currentName)} DEFAULT ${defaultValue});`);
+  }
+  if (clean(column.comment) !== originalComment(column)) {
+    const commentValue = clean(column.comment) ? quoteString(clean(column.comment)) : "NULL";
+    statements.push(`COMMENT ON COLUMN ${table}.${quoteIdent(databaseType, currentName)} IS ${commentValue};`);
   }
   return statements;
 }
@@ -199,6 +242,8 @@ function buildColumnSql(options: BuildTableStructureChangeSqlOptions, warnings: 
       statements.push(...buildMysqlExistingColumnSql(table, column));
     } else if (databaseType === "postgres") {
       statements.push(...buildPostgresExistingColumnSql(table, column));
+    } else if (isOracleLike(databaseType)) {
+      statements.push(...buildOracleLikeExistingColumnSql(databaseType, table, column));
     } else if (databaseType === "sqlite") {
       statements.push(...buildSqliteExistingColumnSql(table, column, warnings));
     } else {
@@ -217,7 +262,7 @@ function buildDropIndexSql(
 ): string {
   if (databaseType === "mysql") return `DROP INDEX ${quoteIdent(databaseType, indexName)} ON ${table};`;
   if (databaseType === "sqlserver") return `DROP INDEX ${quoteIdent(databaseType, indexName)} ON ${table};`;
-  if ((databaseType === "postgres" || databaseType === "oracle") && schema) {
+  if ((databaseType === "postgres" || isOracleLike(databaseType)) && schema) {
     return `DROP INDEX ${quoteIdent(databaseType, schema)}.${quoteIdent(databaseType, indexName)};`;
   }
   return `DROP INDEX ${quoteIdent(databaseType, indexName)};`;
@@ -344,7 +389,7 @@ export function buildCreateTableSql(options: BuildTableStructureChangeSqlOptions
 
   statements.push(`CREATE TABLE ${table} (\n  ${colDefs.join(",\n  ")}\n);`);
 
-  if (databaseType === "postgres") {
+  if (databaseType === "postgres" || isOracleLike(databaseType)) {
     for (const col of activeColumns) {
       if (clean(col.comment)) {
         statements.push(

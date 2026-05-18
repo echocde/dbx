@@ -473,3 +473,122 @@ test("index with empty name and columns produces warnings and no statements", ()
   ]);
   assert.deepEqual(result.statements, []);
 });
+
+test("builds Oracle column, comment, and index change statements", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "oracle",
+    schema: "HR",
+    tableName: "EMPLOYEES",
+    columns: [
+      column({
+        id: "status",
+        name: "EMP_STATUS",
+        dataType: "VARCHAR2(20)",
+        isNullable: false,
+        defaultValue: "'ACTIVE'",
+        comment: "Employment status",
+        original: {
+          name: "STATUS",
+          data_type: "VARCHAR2(10)",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: null,
+          comment: "",
+        },
+      }),
+      column({ id: "email", name: "EMAIL", dataType: "VARCHAR2(255)", isNullable: true, comment: "Work email" }),
+      column({
+        id: "legacy",
+        name: "LEGACY_CODE",
+        markedForDrop: true,
+        original: {
+          name: "LEGACY_CODE",
+          data_type: "VARCHAR2(20)",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: null,
+        },
+      }),
+    ],
+    indexes: [
+      index({
+        id: "old",
+        name: "IDX_EMP_OLD",
+        markedForDrop: true,
+        original: { name: "IDX_EMP_OLD", columns: ["STATUS"], is_unique: false, is_primary: false },
+      }),
+      index({ id: "new", name: "IDX_EMP_STATUS", columns: ["EMP_STATUS"], isUnique: true }),
+    ],
+  });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.statements, [
+    'ALTER TABLE "HR"."EMPLOYEES" RENAME COLUMN "STATUS" TO "EMP_STATUS";',
+    'ALTER TABLE "HR"."EMPLOYEES" MODIFY ("EMP_STATUS" VARCHAR2(20));',
+    'ALTER TABLE "HR"."EMPLOYEES" MODIFY ("EMP_STATUS" NOT NULL);',
+    'ALTER TABLE "HR"."EMPLOYEES" MODIFY ("EMP_STATUS" DEFAULT \'ACTIVE\');',
+    'COMMENT ON COLUMN "HR"."EMPLOYEES"."EMP_STATUS" IS \'Employment status\';',
+    'ALTER TABLE "HR"."EMPLOYEES" ADD ("EMAIL" VARCHAR2(255));',
+    'COMMENT ON COLUMN "HR"."EMPLOYEES"."EMAIL" IS \'Work email\';',
+    'ALTER TABLE "HR"."EMPLOYEES" DROP COLUMN "LEGACY_CODE";',
+    'DROP INDEX "HR"."IDX_EMP_OLD";',
+    'CREATE UNIQUE INDEX "IDX_EMP_STATUS" ON "HR"."EMPLOYEES" ("EMP_STATUS");',
+  ]);
+});
+
+test("builds Dameng existing column and create table statements", () => {
+  const change = buildTableStructureChangeSql({
+    databaseType: "dameng",
+    schema: "SYSDBA",
+    tableName: "USERS",
+    columns: [
+      column({
+        id: "name",
+        name: "DISPLAY_NAME",
+        dataType: "VARCHAR(120)",
+        isNullable: true,
+        defaultValue: "",
+        comment: "",
+        original: {
+          name: "NAME",
+          data_type: "VARCHAR(80)",
+          is_nullable: false,
+          column_default: "'guest'",
+          is_primary_key: false,
+          extra: null,
+          comment: "Old name",
+        },
+      }),
+    ],
+    indexes: [],
+  });
+
+  assert.deepEqual(change.warnings, []);
+  assert.deepEqual(change.statements, [
+    'ALTER TABLE "SYSDBA"."USERS" RENAME COLUMN "NAME" TO "DISPLAY_NAME";',
+    'ALTER TABLE "SYSDBA"."USERS" MODIFY ("DISPLAY_NAME" VARCHAR(120));',
+    'ALTER TABLE "SYSDBA"."USERS" MODIFY ("DISPLAY_NAME" NULL);',
+    'ALTER TABLE "SYSDBA"."USERS" MODIFY ("DISPLAY_NAME" DEFAULT NULL);',
+    'COMMENT ON COLUMN "SYSDBA"."USERS"."DISPLAY_NAME" IS NULL;',
+  ]);
+
+  const create = buildCreateTableSql({
+    databaseType: "dameng",
+    schema: "SYSDBA",
+    tableName: "USERS",
+    columns: [
+      column({ id: "id", name: "ID", dataType: "NUMBER", isNullable: false, isPrimaryKey: true }),
+      column({ id: "name", name: "NAME", dataType: "VARCHAR(120)", isNullable: false, comment: "Display name" }),
+    ],
+    indexes: [index({ id: "idx", name: "IDX_USERS_NAME", columns: ["NAME"] })],
+  });
+
+  assert.deepEqual(create.warnings, []);
+  assert.deepEqual(create.statements, [
+    'CREATE TABLE "SYSDBA"."USERS" (\n  "ID" NUMBER,\n  "NAME" VARCHAR(120) NOT NULL,\n  PRIMARY KEY ("ID")\n);',
+    'COMMENT ON COLUMN "SYSDBA"."USERS"."NAME" IS \'Display name\';',
+    'CREATE INDEX "IDX_USERS_NAME" ON "SYSDBA"."USERS" ("NAME");',
+  ]);
+});
