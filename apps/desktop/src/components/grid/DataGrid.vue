@@ -83,8 +83,8 @@ import {
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
 import {
   buildTransposeRows,
+  nextContextTransposeState,
   nextTransposeState,
-  transposeAnchorRowIndex,
   transposeFieldWidth,
   transposeScrollLeftForRecord,
   visibleTransposeRecordWindow,
@@ -2029,14 +2029,21 @@ function openTranspose(rowIndex: number) {
 
 function openContextTranspose() {
   if (!contextCell.value) return;
-  openTranspose(
-    transposeAnchorRowIndex({
-      requestedRowIndex: contextCell.value.rowIndex,
-      rowIds: displayItems.value.map((item) => item.id),
-      selectedRowIds: selectedRowIds.value,
-      selectedRange: selectedRange.value,
-    }),
-  );
+  const next = nextContextTransposeState({
+    showTranspose: showTranspose.value,
+    transposeRowIndex: transposeRowIndex.value,
+    requestedRowIndex: contextCell.value.rowIndex,
+    rowIds: displayItems.value.map((item) => item.id),
+    selectedRowIds: selectedRowIds.value,
+    selectedRange: selectedRange.value,
+  });
+  transposeRowIndex.value = next.transposeRowIndex;
+  showTranspose.value = next.showTranspose;
+  if (next.showTranspose) {
+    showCellDetail.value = false;
+    nextTick(updateTransposeViewport);
+    if (next.transposeRowIndex !== null) scrollTransposeRecordIntoView(next.transposeRowIndex);
+  }
 }
 
 function toggleTranspose(rowIndex: number) {
