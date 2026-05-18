@@ -27,6 +27,7 @@ const assetIcons: Record<string, string> = {
   opengauss: "opengauss",
   gaussdb: "gaussdb",
   kingbase: "kingbase",
+  highgo: "highgo.png",
   goldendb: "goldendb.png",
   vastbase: "vastbase.png",
   yashandb: "yashandb.png",
@@ -53,9 +54,7 @@ const assetIcons: Record<string, string> = {
   informix: "informix",
 };
 
-const letterIcons: Record<string, { letter: string; color: string }> = {
-  highgo: { letter: "瀚", color: "#005bac" },
-};
+const letterIcons: Record<string, { letter: string; color: string }> = {};
 
 const normalizedType = computed(() => props.dbType.toLowerCase().replace(/[\s-]+/g, "_"));
 const assetName = computed(() => assetIcons[normalizedType.value]);
