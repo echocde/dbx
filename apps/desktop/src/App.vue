@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import AiAssistant from "@/components/editor/AiAssistant.vue";
-import QueryHistory from "@/components/editor/QueryHistory.vue";
 import AppToolbar from "@/components/layout/AppToolbar.vue";
 import AppTabBar from "@/components/layout/AppTabBar.vue";
 import AppSidebar from "@/components/layout/AppSidebar.vue";
@@ -12,9 +10,6 @@ import EditorToolbar from "@/components/layout/EditorToolbar.vue";
 import ContentArea from "@/components/layout/ContentArea.vue";
 import AppDialogs from "@/components/layout/AppDialogs.vue";
 import WelcomeScreen from "@/components/layout/WelcomeScreen.vue";
-import DriverStorePage from "@/components/config/DriverStoreDialog.vue";
-import UpdateDialog from "@/components/layout/UpdateDialog.vue";
-import LoginPage from "@/components/auth/LoginPage.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -56,6 +51,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { HistoryEntry } from "@/lib/tauri";
+import type { AiAction } from "@/lib/ai";
+
+const AiAssistant = defineAsyncComponent(() => import("@/components/editor/AiAssistant.vue"));
+const QueryHistory = defineAsyncComponent(() => import("@/components/editor/QueryHistory.vue"));
+const DriverStorePage = defineAsyncComponent(() => import("@/components/config/DriverStoreDialog.vue"));
+const UpdateDialog = defineAsyncComponent(() => import("@/components/layout/UpdateDialog.vue"));
+const LoginPage = defineAsyncComponent(() => import("@/components/auth/LoginPage.vue"));
+
+type AiAssistantHandle = {
+  triggerAction: (action: AiAction, instruction?: string) => void;
+};
 
 const { t } = useI18n();
 const connectionStore = useConnectionStore();
@@ -94,9 +100,10 @@ const showDriverStore = ref(false);
 const agentDriverUpdateCount = ref(0);
 const showHistory = ref(false);
 const showAiPanel = ref(localStorage.getItem("dbx-ai-panel-open") !== "false");
+const aiPanelReady = ref(false);
 const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
   usePanelResize();
-const aiAssistantRef = ref<InstanceType<typeof AiAssistant> | null>(null);
+const aiAssistantRef = ref<AiAssistantHandle | null>(null);
 const appSidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null);
 const contentAreaRef = ref<InstanceType<typeof ContentArea> | null>(null);
 
@@ -629,6 +636,9 @@ function openDriverStoreFromEvent() {
 onMounted(async () => {
   console.log("[STARTUP] onMounted begin");
   const mountStart = performance.now();
+  requestAnimationFrame(() => {
+    aiPanelReady.value = true;
+  });
   applyTheme();
   window.addEventListener("keydown", handleKeydown, true);
   window.addEventListener("dbx-open-driver-store", openDriverStoreFromEvent);
@@ -857,6 +867,7 @@ onUnmounted(() => {
             <div class="panel-resize-handle panel-resize-handle--left" @mousedown="startAiPanelResize" />
             <div class="h-full min-h-0 overflow-hidden">
               <AiAssistant
+                v-if="aiPanelReady"
                 ref="aiAssistantRef"
                 :tab="activeTab"
                 :connection="activeConnection"
@@ -910,6 +921,7 @@ onUnmounted(() => {
           @open-database-search-target="openDatabaseSearchTarget"
         />
         <UpdateDialog
+          v-if="showUpdateDialog"
           v-model:open="showUpdateDialog"
           :update-info="updateInfo"
           :update-check-message="updateCheckMessage"
