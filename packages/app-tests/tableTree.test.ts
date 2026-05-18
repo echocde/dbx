@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildTableTreeNodes, expandCachedObjectBrowserNodes, objectGroupRefreshParentId } from "../../apps/desktop/src/lib/tableTree.ts";
+import { readFileSync } from "node:fs";
+import {
+  buildTableTreeNodes,
+  expandCachedObjectBrowserNodes,
+  objectGroupRefreshParentId,
+} from "../../apps/desktop/src/lib/tableTree.ts";
 import type { TableInfo } from "../../apps/desktop/src/types/database.ts";
+
+const treeItemSource = readFileSync("apps/desktop/src/components/sidebar/TreeItem.vue", "utf8");
 
 function table(name: string, tableType: "TABLE" | "VIEW" = "TABLE"): TableInfo {
   return { name, table_type: tableType };
@@ -112,5 +119,12 @@ test("resolves grouped object refreshes to the parent schema node", () => {
       schema: "public",
     }),
     "conn:db:public",
+  );
+});
+
+test("table expander loads groups by the actual tree node id", () => {
+  assert.match(
+    treeItemSource,
+    /loadTableGroups\(node\.connectionId,\s*node\.database,\s*node\.label,\s*node\.schema,\s*node\.id\)/,
   );
 });

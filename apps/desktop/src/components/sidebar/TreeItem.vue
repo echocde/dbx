@@ -320,7 +320,7 @@ async function toggle() {
     } else if (node.type === "schema" && node.connectionId && node.database && node.schema) {
       await connectionStore.loadTables(node.connectionId, node.database, node.schema);
     } else if ((node.type === "table" || node.type === "view") && node.connectionId && node.database) {
-      await connectionStore.loadTableGroups(node.connectionId, node.database, node.label, node.schema);
+      await connectionStore.loadTableGroups(node.connectionId, node.database, node.label, node.schema, node.id);
     } else if (node.type === "group-columns" && node.connectionId && node.database && node.tableName) {
       await connectionStore.loadColumns(node.connectionId, node.database, node.tableName, node.schema);
     } else if (node.type === "group-indexes" && node.connectionId && node.database && node.tableName) {
