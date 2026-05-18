@@ -318,6 +318,7 @@ export default {
     selectedCells: "{count} seleccionadas",
     cellDetails: "Detalles de celda",
     cellValue: "Valor",
+    imagePreview: "Vista previa de imagen",
     columnName: "Columna",
     columnType: "Tipo",
     columnComment: "Comentario",

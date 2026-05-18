@@ -338,6 +338,7 @@ export default {
     selectedCells: "已选 {count} 个单元格",
     cellDetails: "单元格详情",
     cellValue: "值",
+    imagePreview: "图片预览",
     columnName: "列名",
     columnType: "类型",
     columnComment: "注释",

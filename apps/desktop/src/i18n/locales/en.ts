@@ -342,6 +342,7 @@ export default {
     selectedCells: "{count} selected",
     cellDetails: "Cell Details",
     cellValue: "Value",
+    imagePreview: "Image Preview",
     columnName: "Column",
     columnType: "Type",
     columnComment: "Comment",

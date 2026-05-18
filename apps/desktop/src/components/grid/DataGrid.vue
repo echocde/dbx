@@ -91,6 +91,7 @@ import {
 } from "@/lib/dataGridTranspose";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
+import { cellImagePreviewUrl } from "@/lib/cellImageUrl";
 import {
   applyColumnFormatter,
   buildColumnFormatterKey,
@@ -253,6 +254,8 @@ function typeColorClass(t: string): string {
 const contextCell = ref<{ rowId: number; rowIndex: number; col: number } | null>(null);
 const detailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const showCellDetail = ref(false);
+const detailWidth = ref(320);
+const isResizingDetail = ref(false);
 const transposeRowIndex = ref<number | null>(null);
 const showTranspose = ref(false);
 const transposeScrollRef = ref<HTMLElement | { $el?: HTMLElement }>();
@@ -1596,6 +1599,7 @@ const activeCellDetail = computed(() => {
     value,
     rawValue,
     displayValue,
+    imagePreviewUrl: cellImagePreviewUrl(value),
     length: value === null ? 0 : String(value).length,
     formattedJson,
     isEditable: canEditCellItem(item, cell.col),
@@ -2143,6 +2147,8 @@ const ddlWrap = ref(true);
 const isResizingDdl = ref(false);
 let ddlResizeStartX = 0;
 let ddlResizeStartWidth = 0;
+let detailResizeStartX = 0;
+let detailResizeStartWidth = 0;
 const indexes = ref<IndexInfo[]>([]);
 const indexesLoaded = ref(false);
 const indexesLoading = ref(false);
@@ -2158,6 +2164,10 @@ const triggersError = ref("");
 
 const ddlDrawerStyle = computed(() => ({
   width: `${ddlWidth.value}px`,
+}));
+
+const detailDrawerStyle = computed(() => ({
+  width: `${detailWidth.value}px`,
 }));
 
 const tableInfoTabs = computed(
@@ -2325,6 +2335,28 @@ function onDdlResizeEnd() {
   window.removeEventListener("mouseup", onDdlResizeEnd);
 }
 
+function onDetailResizeStart(event: MouseEvent) {
+  isResizingDetail.value = true;
+  detailResizeStartX = event.clientX;
+  detailResizeStartWidth = detailWidth.value;
+  document.body.classList.add("select-none", "cursor-col-resize");
+  window.addEventListener("mousemove", onDetailResizeMove);
+  window.addEventListener("mouseup", onDetailResizeEnd);
+}
+
+function onDetailResizeMove(event: MouseEvent) {
+  if (!isResizingDetail.value) return;
+  const nextWidth = detailResizeStartWidth + detailResizeStartX - event.clientX;
+  detailWidth.value = Math.min(Math.max(nextWidth, 260), 900);
+}
+
+function onDetailResizeEnd() {
+  isResizingDetail.value = false;
+  document.body.classList.remove("select-none", "cursor-col-resize");
+  window.removeEventListener("mousemove", onDetailResizeMove);
+  window.removeEventListener("mouseup", onDetailResizeEnd);
+}
+
 const loadingElapsed = ref(0);
 let _loadingTimer: ReturnType<typeof setInterval> | undefined;
 let _loadingStart = 0;
@@ -2346,6 +2378,7 @@ watch(
 onUnmounted(() => {
   cleanupFrames();
   onDdlResizeEnd();
+  onDetailResizeEnd();
   finishCellSelection();
   clearTimeout(_searchTimer);
   clearInterval(_loadingTimer);
@@ -3537,8 +3570,14 @@ defineExpose({
             <!-- Cell Detail Drawer -->
             <div
               v-if="showCellDetail && activeCellDetail"
-              class="relative w-80 shrink-0 border-l flex flex-col bg-background min-w-0"
+              class="relative shrink-0 border-l flex flex-col bg-background min-w-0"
+              :class="{ 'detail-drawer-resizing': isResizingDetail }"
+              :style="detailDrawerStyle"
             >
+              <div
+                class="absolute left-0 top-0 bottom-0 z-20 w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/30"
+                @mousedown.prevent="onDetailResizeStart"
+              />
               <div class="h-9 flex items-center gap-2 px-3 border-b shrink-0 bg-muted/20">
                 <Info class="w-3.5 h-3.5 text-muted-foreground" />
                 <span class="text-xs font-medium flex-1 min-w-0 truncate">{{ t("grid.cellDetails") }}</span>
@@ -3582,6 +3621,24 @@ defineExpose({
                 </div>
                 <div class="space-y-1">
                   <div class="text-muted-foreground">{{ t("grid.cellValue") }}</div>
+                  <div v-if="activeCellDetail.imagePreviewUrl && !isEditingDetail" class="space-y-1.5">
+                    <div class="text-muted-foreground">{{ t("grid.imagePreview") }}</div>
+                    <a
+                      :href="activeCellDetail.imagePreviewUrl"
+                      target="_blank"
+                      rel="noreferrer"
+                      class="block overflow-hidden rounded border bg-muted/20"
+                    >
+                      <img
+                        :src="activeCellDetail.imagePreviewUrl"
+                        :alt="activeCellDetail.column"
+                        loading="lazy"
+                        decoding="async"
+                        referrerpolicy="no-referrer"
+                        class="max-h-72 w-full object-contain"
+                      />
+                    </a>
+                  </div>
                   <template v-if="isEditingDetail">
                     <textarea
                       v-model="detailEditValue"
