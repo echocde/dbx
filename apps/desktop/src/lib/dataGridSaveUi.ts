@@ -14,3 +14,21 @@ export function dataGridSaveActionMode(options: {
     secondaryActionKey: options.useTransaction ? "grid.rollback" : "grid.discard",
   };
 }
+
+export interface DataGridSaveToolbarState {
+  showActions: boolean;
+  actionsDisabled: boolean;
+}
+
+export function dataGridSaveToolbarState(options: {
+  editable: boolean;
+  hasSaveTarget: boolean;
+  hasPendingChanges: boolean;
+  isSaving: boolean;
+}): DataGridSaveToolbarState {
+  const showActions = options.editable && options.hasSaveTarget;
+  return {
+    showActions,
+    actionsDisabled: !showActions || !options.hasPendingChanges || options.isSaving,
+  };
+}

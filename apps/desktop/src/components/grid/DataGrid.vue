@@ -103,7 +103,7 @@ import {
 } from "@/lib/columnFormatter";
 import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
-import { dataGridSaveActionMode } from "@/lib/dataGridSaveUi";
+import { dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGridSaveUi";
 import { appendColumnValueFilterCondition, buildColumnValueFilterCondition } from "@/lib/dataGridColumnFilter";
 import {
   filterColumnVisibilityOptions,
@@ -1333,6 +1333,14 @@ const saveActionMode = computed(() =>
   dataGridSaveActionMode({
     pendingChangeCount: pendingChangeCount.value,
     useTransaction: !!useTransaction.value,
+  }),
+);
+const saveToolbarState = computed(() =>
+  dataGridSaveToolbarState({
+    editable: props.editable,
+    hasSaveTarget: !!props.tableMeta || !!props.customSave,
+    hasPendingChanges: hasPendingChanges.value,
+    isSaving: isSaving.value,
   }),
 );
 
@@ -2711,14 +2719,14 @@ defineExpose({
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 {{ t("grid.transactionActive") }}
               </span>
-              <template v-if="editable && (tableMeta || customSave) && hasPendingChanges">
+              <template v-if="saveToolbarState.showActions">
                 <Tooltip>
                   <TooltipTrigger as-child>
                     <Button
                       variant="default"
                       size="sm"
                       class="h-5 text-xs px-1.5 shrink-0"
-                      :disabled="isSaving"
+                      :disabled="saveToolbarState.actionsDisabled"
                       @click="onToolbarCommit"
                     >
                       <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
@@ -2734,7 +2742,7 @@ defineExpose({
                   variant="outline"
                   size="sm"
                   class="h-5 text-xs px-1.5 shrink-0"
-                  :disabled="isSaving"
+                  :disabled="saveToolbarState.actionsDisabled"
                   @click="useTransaction ? onToolbarRollback() : discardChanges()"
                 >
                   <RotateCcw class="w-3 h-3 mr-1" />
