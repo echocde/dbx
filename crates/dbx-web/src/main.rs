@@ -123,6 +123,7 @@ async fn main() {
         // Redis
         .route("/redis/list-databases", post(routes::redis::list_databases))
         .route("/redis/scan-keys", post(routes::redis::scan_keys))
+        .route("/redis/scan-values", post(routes::redis::scan_values))
         .route("/redis/get-value", post(routes::redis::get_value))
         .route("/redis/set-string", post(routes::redis::set_string))
         .route("/redis/delete-key", post(routes::redis::delete_key))

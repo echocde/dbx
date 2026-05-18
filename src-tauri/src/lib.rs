@@ -202,6 +202,7 @@ pub fn run() {
             commands::table_import::cancel_table_import,
             commands::redis_cmd::redis_list_databases,
             commands::redis_cmd::redis_scan_keys,
+            commands::redis_cmd::redis_scan_values,
             commands::redis_cmd::redis_get_value,
             commands::redis_cmd::redis_set_string,
             commands::redis_cmd::redis_delete_key,

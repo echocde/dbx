@@ -354,6 +354,52 @@ pub async fn scan_keys_page(
     Ok(RedisScanResult { cursor: next_cursor, keys: result, total_keys })
 }
 
+pub async fn scan_values_page(
+    con: &mut redis::aio::MultiplexedConnection,
+    cursor: u64,
+    pattern: &str,
+    query: &str,
+    count: usize,
+) -> Result<RedisScanResult, String> {
+    let raw: RedisRawValue = redis::cmd("SCAN")
+        .arg(cursor)
+        .arg("MATCH")
+        .arg(pattern)
+        .arg("COUNT")
+        .arg(count)
+        .query_async(con)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let (next_cursor, keys) = parse_scan_keys(raw)?;
+    let total_keys: u64 = redis::cmd("DBSIZE").query_async(con).await.unwrap_or(0);
+    if keys.is_empty() || query.trim().is_empty() {
+        return Ok(RedisScanResult { cursor: next_cursor, keys: Vec::new(), total_keys });
+    }
+
+    let mut result = Vec::new();
+    for key in keys {
+        let Ok(value) = get_value(con, &key).await else {
+            continue;
+        };
+        if !redis_value_matches_query(&value.value, query) {
+            continue;
+        }
+
+        let value_preview = redis_search_value_preview(&value.value);
+        result.push(RedisKeyInfo {
+            key_display: value.key_display,
+            key_raw: value.key_raw,
+            key_type: value.key_type,
+            ttl: value.ttl,
+            size: redis_search_value_size(&value.value, value.total),
+            value_preview,
+        });
+    }
+
+    Ok(RedisScanResult { cursor: next_cursor, keys: result, total_keys })
+}
+
 pub async fn get_value(con: &mut redis::aio::MultiplexedConnection, key: &[u8]) -> Result<RedisValue, String> {
     let key_type: String = redis::cmd("TYPE").arg(key).query_async(con).await.map_err(|e| e.to_string())?;
 
@@ -410,6 +456,42 @@ pub async fn get_value(con: &mut redis::aio::MultiplexedConnection, key: &[u8]) 
         total,
         scan_cursor,
     })
+}
+
+fn redis_value_matches_query(value: &serde_json::Value, query: &str) -> bool {
+    let query = query.trim();
+    if query.is_empty() {
+        return false;
+    }
+    redis_search_value_text(value).to_lowercase().contains(&query.to_lowercase())
+}
+
+fn redis_search_value_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        other => serde_json::to_string(other).unwrap_or_else(|_| other.to_string()),
+    }
+}
+
+fn redis_search_value_preview(value: &serde_json::Value) -> String {
+    const MAX_PREVIEW_LEN: usize = 160;
+    let text = redis_search_value_text(value);
+    if text.chars().count() <= MAX_PREVIEW_LEN {
+        return text;
+    }
+    let mut preview = text.chars().take(MAX_PREVIEW_LEN).collect::<String>();
+    preview.push('…');
+    preview
+}
+
+fn redis_search_value_size(value: &serde_json::Value, total: Option<u64>) -> u64 {
+    if let Some(total) = total {
+        return total;
+    }
+    match value {
+        serde_json::Value::String(text) => text.len() as u64,
+        _ => 0,
+    }
 }
 
 async fn get_stream_entries(
@@ -819,7 +901,7 @@ mod tests {
         classify_command, is_redis_json_type, parse_command_argv, parse_database_count, parse_scan_keys,
         parse_stream_entries, redis_command_raw_to_json, redis_json_raw_to_json, redis_json_value_preview,
         redis_key_bytes_to_display, redis_key_bytes_to_raw, redis_key_raw_to_bytes, redis_key_value_preview,
-        redis_raw_to_json, redis_value_contains_binary, RedisCommandSafety, RedisRawValue,
+        redis_raw_to_json, redis_value_contains_binary, redis_value_matches_query, RedisCommandSafety, RedisRawValue,
     };
 
     fn bulk(value: &str) -> RedisRawValue {
@@ -948,6 +1030,14 @@ mod tests {
     #[test]
     fn rejects_empty_command_text() {
         assert_eq!(parse_command_argv("   ").unwrap_err(), "Redis command is empty");
+    }
+
+    #[test]
+    fn matches_redis_values_case_insensitively() {
+        assert!(redis_value_matches_query(&serde_json::json!("Hello Redis"), "redis"));
+        assert!(redis_value_matches_query(&serde_json::json!({"field": "Ada Lovelace"}), "lovelace"));
+        assert!(!redis_value_matches_query(&serde_json::json!("Hello Redis"), ""));
+        assert!(!redis_value_matches_query(&serde_json::json!("Hello Redis"), "mysql"));
     }
 
     #[test]

@@ -638,6 +638,17 @@ export async function redisScanKeys(
   return post("/api/redis/scan-keys", { connectionId, db, cursor, pattern, count });
 }
 
+export async function redisScanValues(
+  connectionId: string,
+  db: number,
+  cursor: number,
+  pattern: string,
+  query: string,
+  count: number,
+): Promise<RedisScanResult> {
+  return post("/api/redis/scan-values", { connectionId, db, cursor, pattern, query, count });
+}
+
 export async function redisGetValue(connectionId: string, db: number, keyRaw: string): Promise<RedisValue> {
   return post("/api/redis/get-value", { connectionId, db, keyRaw });
 }

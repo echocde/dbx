@@ -120,6 +120,7 @@ export const cancelDatabaseExport = forward("cancelDatabaseExport");
 // Redis
 export const redisListDatabases = forward("redisListDatabases");
 export const redisScanKeys = forward("redisScanKeys");
+export const redisScanValues = forward("redisScanValues");
 export const redisGetValue = forward("redisGetValue");
 export const redisSetString = forward("redisSetString");
 export const redisDeleteKey = forward("redisDeleteKey");
