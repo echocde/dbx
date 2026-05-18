@@ -9,6 +9,47 @@ permissions:
   contents: write
 
 jobs:
+  bump-jdbc-plugin-version:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.bump.outputs.changed }}
+      old_version: ${{ steps.bump.outputs.old_version }}
+      new_version: ${{ steps.bump.outputs.new_version }}
+      prev_tag: ${{ steps.prev-tag.outputs.prev_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find previous release tag
+        id: prev-tag
+        shell: bash
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep '^v' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Comparing ${PREV_TAG}..HEAD"
+
+      - name: Detect JDBC plugin changes and bump version
+        id: bump
+        shell: bash
+        run: |
+          BUMP_OUTPUT="$(node .github/scripts/bump-jdbc-plugin-version.mjs "${{ steps.prev-tag.outputs.prev_tag }}" HEAD --write)"
+          echo "$BUMP_OUTPUT"
+          echo "$BUMP_OUTPUT" >> "$GITHUB_OUTPUT"
+
+      - name: Commit JDBC plugin version bump
+        if: steps.bump.outputs.changed == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add plugins/jdbc/pom.xml plugins/jdbc/manifest.json
+          git commit -m "chore(jdbc): bump plugin version [skip ci]"
+          git push origin HEAD:main
+
   build:
     strategy:
       fail-fast: false
@@ -161,10 +202,12 @@ jobs:
           gh release upload "${env:GITHUB_REF_NAME}" $zipName --repo "${env:GITHUB_REPOSITORY}" --clobber
 
   jdbc-plugin:
-    needs: build
+    needs: [build, bump-jdbc-plugin-version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -172,6 +215,10 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
+
+      - name: Apply automatic JDBC plugin version bump
+        shell: bash
+        run: node .github/scripts/bump-jdbc-plugin-version.mjs "${{ needs.bump-jdbc-plugin-version.outputs.prev_tag }}" HEAD --write
 
       - name: Read JDBC plugin version
         id: jdbc-plugin
