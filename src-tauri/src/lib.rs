@@ -2,7 +2,6 @@ mod commands;
 mod data_dir;
 mod db;
 mod models;
-mod window_state_guard;
 
 use commands::connection::AppState;
 use dbx_core::storage::Storage;
@@ -76,8 +75,6 @@ pub fn run() {
                 }
             }
 
-            window_state_guard::enforce_main_window_bounds(app.handle());
-
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -85,10 +82,6 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 window.hide().unwrap();
                 api.prevent_close();
-            }
-
-            if matches!(event, tauri::WindowEvent::Resized(_)) {
-                window_state_guard::enforce_window_bounds(window);
             }
         })
         .invoke_handler(tauri::generate_handler![
