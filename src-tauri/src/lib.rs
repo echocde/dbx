@@ -2,6 +2,7 @@ mod commands;
 mod data_dir;
 mod db;
 mod models;
+mod window_state_guard;
 
 use commands::connection::AppState;
 use dbx_core::storage::Storage;
@@ -74,6 +75,7 @@ pub fn run() {
                     let _ = window.set_decorations(false);
                 }
             }
+            window_state_guard::enforce_main_window_bounds(app.handle());
 
             Ok(())
         })
