@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import appPackage from "../../package.json" with { type: "json" };
@@ -64,26 +64,19 @@ test("docs deploy does not rerun just to refresh R2 changelog data", () => {
   assert.equal(source.includes("Sync Changelog to R2"), false);
 });
 
-test("changelog sync configures R2 CORS for browser runtime reads", () => {
+test("changelog sync does not configure bucket-level R2 CORS during upload", () => {
   const workflow = readFileSync(".github/workflows/sync-changelog.yml", "utf8");
-  const cors = JSON.parse(readFileSync(".github/r2-cors.json", "utf8")) as {
-    CORSRules: Array<{
-      AllowedMethods: string[];
-      AllowedOrigins: string[];
-    }>;
-  };
-  const rule = cors.CORSRules[0];
 
-  assert.match(workflow, /put-bucket-cors/);
-  assert.deepEqual(rule.AllowedOrigins, ["*"]);
-  assert.ok(rule.AllowedMethods.includes("GET"));
-  assert.ok(rule.AllowedMethods.includes("HEAD"));
+  assert.equal(existsSync(".github/r2-cors.json"), false);
+  assert.equal(workflow.includes("put-bucket-cors"), false);
+  assert.equal(workflow.includes("r2-cors.json"), false);
 });
 
-test("changelog sync also runs after release workflow publishes with GITHUB_TOKEN", () => {
+test("changelog sync runs after package publishing promotes the release", () => {
   const workflow = readFileSync(".github/workflows/sync-changelog.yml", "utf8");
 
   assert.match(workflow, /workflow_run:/);
-  assert.match(workflow, /workflows: \['Release'\]/);
+  assert.match(workflow, /workflows: \['Publish Packages'\]/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.equal(workflow.includes("types: [published]"), false);
 });
