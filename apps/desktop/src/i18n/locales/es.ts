@@ -265,6 +265,7 @@ export default {
     localFilter: "Filtro local de columna",
     localFilterFor: "Filtro local para '{column}'",
     searchValues: "Buscar valores...",
+    filterTypedValue: "Usar '{value}'",
     value: "Valor",
     count: "Conteo",
     applyFilter: "Aplicar filtro",

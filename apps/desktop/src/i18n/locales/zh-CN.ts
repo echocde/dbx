@@ -285,6 +285,7 @@ export default {
     saveFormatter: "保存",
     clearFormatter: "清除",
     searchValues: "搜索值...",
+    filterTypedValue: "使用“{value}”筛选",
     value: "值",
     count: "数量",
     applyFilter: "应用筛选",

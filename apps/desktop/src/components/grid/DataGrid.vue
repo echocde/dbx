@@ -104,6 +104,7 @@ import {
 import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
 import { dataGridSaveActionMode } from "@/lib/dataGridSaveUi";
+import { appendColumnValueFilterCondition, buildColumnValueFilterCondition } from "@/lib/dataGridColumnFilter";
 import {
   filterColumnVisibilityOptions,
   nextHiddenColumnIndexes,
@@ -411,6 +412,23 @@ const localFilterAllVisibleSelected = computed(() => {
   return localFilterOptions.value.every((option) => draft.values.has(option.key));
 });
 
+const localFilterTypedValue = computed(() => localFilterSearch.value.trim());
+
+const localFilterDraftIsAllSelected = computed(() => {
+  const draft = localFilterDraft.value;
+  if (!draft) return false;
+  const allKeys = localFilterAllOptions.value.map((option) => option.key);
+  return allKeys.length > 0 && allKeys.every((key) => draft.values.has(key));
+});
+
+const canApplyTypedLocalFilterValue = computed(() => {
+  const draft = localFilterDraft.value;
+  const typed = localFilterTypedValue.value;
+  if (!draft || !typed || !canUseWhereSearch.value) return false;
+  const normalized = typed.toLowerCase();
+  return !localFilterAllOptions.value.some((option) => option.label.toLowerCase() === normalized);
+});
+
 function openLocalFilter(colIdx: number) {
   localFilterSearch.value = "";
   const allKeys = buildLocalFilterOptions(colIdx).map((option) => option.key);
@@ -594,9 +612,17 @@ function toggleAllLocalFilterOptions() {
   localFilterDraft.value = { ...draft, values: next };
 }
 
-function applyLocalFilter() {
+async function applyLocalFilter() {
   const draft = localFilterDraft.value;
   if (!draft) return;
+  if (
+    canApplyTypedLocalFilterValue.value &&
+    localFilterDraftIsAllSelected.value &&
+    localFilterOptions.value.length === 0
+  ) {
+    await applyTypedLocalFilterValue();
+    return;
+  }
   const allKeys = new Set(localFilterAllOptions.value.map((option) => option.key));
   const next = { ...localColumnFilters.value };
   let selected = draft.values;
@@ -612,6 +638,26 @@ function applyLocalFilter() {
   localColumnFilters.value = next;
   closeLocalFilter();
   resetGridVerticalScroll();
+}
+
+async function applyTypedLocalFilterValue() {
+  const draft = localFilterDraft.value;
+  if (!draft) return;
+  const columnName = props.result.columns[draft.columnIndex];
+  if (!columnName) return;
+  const condition = buildColumnValueFilterCondition({
+    databaseType: props.databaseType,
+    columnName,
+    columnInfo: props.tableMeta?.columns.find((column) => column.name === columnName),
+    rawValue: localFilterTypedValue.value,
+  });
+  if (!condition) return;
+  const next = { ...localColumnFilters.value };
+  delete next[draft.columnIndex];
+  localColumnFilters.value = next;
+  whereFilterInput.value = appendColumnValueFilterCondition(whereFilterInput.value, condition);
+  closeLocalFilter();
+  await applyWhereFilter();
 }
 
 function clearLocalFilter(colIdx?: number) {
@@ -3243,8 +3289,19 @@ defineExpose({
                                       })
                                     }}
                                   </div>
+                                  <button
+                                    v-if="canApplyTypedLocalFilterValue"
+                                    type="button"
+                                    class="grid w-full grid-cols-[2rem_minmax(0,1fr)] items-center px-3 py-2 text-left text-sm text-blue-700 hover:bg-sky-50"
+                                    @click="applyTypedLocalFilterValue"
+                                  >
+                                    <Search class="h-4 w-4" />
+                                    <span class="truncate font-mono">
+                                      {{ t("grid.filterTypedValue", { value: localFilterTypedValue }) }}
+                                    </span>
+                                  </button>
                                   <div
-                                    v-if="localFilterOptions.length === 0"
+                                    v-if="localFilterOptions.length === 0 && !canApplyTypedLocalFilterValue"
                                     class="px-3 py-8 text-center text-sm text-slate-500"
                                   >
                                     {{ t("grid.noSearchResults") }}

@@ -289,6 +289,7 @@ export default {
     saveFormatter: "Save",
     clearFormatter: "Clear",
     searchValues: "Search values...",
+    filterTypedValue: "Use '{value}'",
     value: "Value",
     count: "Count",
     applyFilter: "Apply Filter",
