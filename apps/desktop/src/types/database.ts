@@ -46,6 +46,7 @@ export interface ConnectionConfig {
   password: string;
   database?: string;
   visible_databases?: string[];
+  attached_databases?: AttachedDatabaseConfig[];
   color?: string;
   ssh_enabled?: boolean;
   ssh_host?: string;
@@ -67,6 +68,11 @@ export interface ConnectionConfig {
   connection_string?: string;
   jdbc_driver_class?: string;
   jdbc_driver_paths?: string[];
+}
+
+export interface AttachedDatabaseConfig {
+  name: string;
+  path: string;
 }
 
 export interface PluginDriverManifest {

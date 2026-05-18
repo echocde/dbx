@@ -6,18 +6,113 @@ use crate::db;
 use crate::models::connection::DatabaseType;
 
 pub fn duckdb_query_tables(con: &duckdb::Connection) -> Result<Vec<db::TableInfo>, String> {
+    duckdb_query_tables_in_database(con, "main")
+}
+
+pub fn duckdb_query_tables_in_database(con: &duckdb::Connection, database: &str) -> Result<Vec<db::TableInfo>, String> {
+    duckdb_query_tables_in_database_with_attached(con, database, &[])
+}
+
+pub fn duckdb_query_tables_in_database_with_attached(
+    con: &duckdb::Connection,
+    database: &str,
+    attached_names: &[String],
+) -> Result<Vec<db::TableInfo>, String> {
+    let database = duckdb_catalog_name(con, database, attached_names)?;
     let mut stmt = con.prepare(
-        "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name"
+        "SELECT table_name, table_type FROM information_schema.tables WHERE table_catalog = ? AND table_schema = 'main' ORDER BY table_name"
     ).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |row| {
+        .query_map([database.as_str()], |row| {
             Ok(db::TableInfo { name: row.get::<_, String>(0)?, table_type: row.get::<_, String>(1)?, comment: None })
         })
         .map_err(|e| e.to_string())?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+pub fn duckdb_attach_database(con: &duckdb::Connection, name: &str, path: &str) -> Result<(), String> {
+    let name = name.trim();
+    let path = path.trim();
+    if name.is_empty() || path.is_empty() {
+        return Err("DuckDB attached database name and path are required".to_string());
+    }
+    let sql = format!("ATTACH {} AS {}", duckdb_quote_string(path), duckdb_quote_ident(name));
+    con.execute_batch(&sql).map_err(|e| e.to_string())
+}
+
+pub fn duckdb_list_databases(con: &duckdb::Connection) -> Result<Vec<db::DatabaseInfo>, String> {
+    duckdb_list_databases_with_attached(con, &[])
+}
+
+pub fn duckdb_list_databases_with_attached(
+    con: &duckdb::Connection,
+    attached_names: &[String],
+) -> Result<Vec<db::DatabaseInfo>, String> {
+    let primary = duckdb_primary_catalog(con, attached_names)?;
+    let mut stmt = con.prepare("SHOW DATABASES").map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            let name = row.get::<_, String>(0)?;
+            Ok(db::DatabaseInfo { name: if name == primary { "main".to_string() } else { name } })
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(rows.filter_map(|row| row.ok()).collect())
+}
+
+fn duckdb_catalog_name(con: &duckdb::Connection, database: &str, attached_names: &[String]) -> Result<String, String> {
+    if database.trim().is_empty() || database == "main" {
+        return duckdb_primary_catalog(con, attached_names);
+    }
+    Ok(database.to_string())
+}
+
+pub fn duckdb_primary_catalog(con: &duckdb::Connection, attached_names: &[String]) -> Result<String, String> {
+    if attached_names.is_empty() {
+        return duckdb_current_database(con);
+    }
+    let attached: std::collections::HashSet<String> = attached_names.iter().map(|name| name.to_lowercase()).collect();
+    let mut stmt = con.prepare("SHOW DATABASES").map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+    for row in rows {
+        let name = row.map_err(|e| e.to_string())?;
+        if !attached.contains(&name.to_lowercase()) {
+            return Ok(name);
+        }
+    }
+    duckdb_current_database(con)
+}
+
+fn duckdb_current_database(con: &duckdb::Connection) -> Result<String, String> {
+    con.query_row("SELECT current_database()", [], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())
+}
+
+fn duckdb_quote_ident(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+fn duckdb_quote_string(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
 pub fn duckdb_query_columns(con: &duckdb::Connection, table: &str) -> Result<Vec<db::ColumnInfo>, String> {
+    duckdb_query_columns_in_database(con, "main", table)
+}
+
+pub fn duckdb_query_columns_in_database(
+    con: &duckdb::Connection,
+    database: &str,
+    table: &str,
+) -> Result<Vec<db::ColumnInfo>, String> {
+    duckdb_query_columns_in_database_with_attached(con, database, table, &[])
+}
+
+pub fn duckdb_query_columns_in_database_with_attached(
+    con: &duckdb::Connection,
+    database: &str,
+    table: &str,
+    attached_names: &[String],
+) -> Result<Vec<db::ColumnInfo>, String> {
+    let database = duckdb_catalog_name(con, database, attached_names)?;
     let mut pk_stmt = con
         .prepare(
             "SELECT kcu.column_name
@@ -27,24 +122,26 @@ pub fn duckdb_query_columns(con: &duckdb::Connection, table: &str) -> Result<Vec
           AND tc.table_schema = kcu.table_schema
           AND tc.table_name = kcu.table_name
          WHERE tc.constraint_type = 'PRIMARY KEY'
+           AND tc.table_catalog = ?
            AND tc.table_schema = 'main'
            AND tc.table_name = ?
          ORDER BY kcu.ordinal_position",
         )
         .map_err(|e| e.to_string())?;
-    let pk_rows = pk_stmt.query_map([table], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
+    let pk_rows =
+        pk_stmt.query_map([database.as_str(), table], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())?;
     let primary_keys: std::collections::HashSet<String> = pk_rows.filter_map(|r| r.ok()).collect();
 
     let mut stmt = con
         .prepare(
             "SELECT column_name, data_type, is_nullable, column_default
          FROM information_schema.columns
-         WHERE table_schema = 'main' AND table_name = ?
+         WHERE table_catalog = ? AND table_schema = 'main' AND table_name = ?
          ORDER BY ordinal_position",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([table], |row| {
+        .query_map([database.as_str(), table], |row| {
             let name = row.get::<_, String>(0)?;
             Ok(db::ColumnInfo {
                 is_primary_key: primary_keys.contains(&name),
@@ -113,6 +210,16 @@ pub fn extract_agent(
     }
 }
 
+async fn duckdb_attached_database_names(state: &AppState, connection_id: &str) -> Vec<String> {
+    state
+        .configs
+        .read()
+        .await
+        .get(connection_id)
+        .map(|config| config.attached_databases.iter().map(|database| database.name.clone()).collect())
+        .unwrap_or_default()
+}
+
 pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Result<Vec<db::DatabaseInfo>, String> {
     log::info!("[list_databases] connection_id={connection_id}");
     {
@@ -151,6 +258,7 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
         }
     }
 
+    let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
     let connections = state.connections.read().await;
     let pool = connections.get(connection_id).ok_or("Connection not found")?;
 
@@ -164,7 +272,10 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
         }
         PoolKind::Postgres(p) => db::postgres::list_databases(p).await,
         PoolKind::Sqlite(p) => db::sqlite::list_databases(p).await,
-        PoolKind::DuckDb(_) => Ok(vec![db::DatabaseInfo { name: "main".to_string() }]),
+        PoolKind::DuckDb(con) => {
+            let con = con.lock().map_err(|e| e.to_string())?;
+            duckdb_list_databases_with_attached(&con, &duckdb_attached_names)
+        }
         _ => Ok(vec![]),
     }
 }
@@ -212,6 +323,7 @@ pub async fn list_tables_core(
     limit: Option<usize>,
 ) -> Result<Vec<db::TableInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+    let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
 
     {
         let connections = state.connections.read().await;
@@ -239,7 +351,7 @@ pub async fn list_tables_core(
         if let Some(con) = extract_duckdb(&connections, &pool_key) {
             drop(connections);
             let con = con.lock().map_err(|e| e.to_string())?;
-            return duckdb_query_tables(&con);
+            return duckdb_query_tables_in_database_with_attached(&con, database, &duckdb_attached_names);
         }
         if let Some(client) = extract_clickhouse(&connections, &pool_key) {
             drop(connections);
@@ -286,6 +398,49 @@ fn filter_table_infos(tables: Vec<db::TableInfo>, filter: Option<&str>, limit: O
         .filter(|table| filter.is_empty() || table.name.to_lowercase().contains(&filter))
         .take(limit)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{duckdb_attach_database, duckdb_list_databases, duckdb_query_tables_in_database};
+
+    #[test]
+    fn duckdb_list_databases_includes_attached_database() {
+        let unique = uuid::Uuid::new_v4();
+        let path = std::env::temp_dir().join(format!("dbx-attached-{unique}.duckdb"));
+        let _ = std::fs::remove_file(&path);
+        let con = duckdb::Connection::open_in_memory().unwrap();
+
+        duckdb_attach_database(&con, "analytics", path.to_str().unwrap()).unwrap();
+        let databases = duckdb_list_databases(&con).unwrap();
+
+        assert!(databases.iter().any(|database| database.name == "main"));
+        assert!(databases.iter().any(|database| database.name == "analytics"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn duckdb_query_tables_filters_by_attached_database() {
+        let unique = uuid::Uuid::new_v4();
+        let path = std::env::temp_dir().join(format!("dbx-attached-tables-{unique}.duckdb"));
+        let _ = std::fs::remove_file(&path);
+        let con = duckdb::Connection::open_in_memory().unwrap();
+
+        con.execute_batch("CREATE TABLE main_table(id INTEGER);").unwrap();
+        duckdb_attach_database(&con, "analytics", path.to_str().unwrap()).unwrap();
+        con.execute_batch("CREATE TABLE analytics.attached_table(id INTEGER);").unwrap();
+
+        let main_tables = duckdb_query_tables_in_database(&con, "main").unwrap();
+        let attached_tables = duckdb_query_tables_in_database(&con, "analytics").unwrap();
+
+        assert!(main_tables.iter().any(|table| table.name == "main_table"));
+        assert!(!main_tables.iter().any(|table| table.name == "attached_table"));
+        assert!(attached_tables.iter().any(|table| table.name == "attached_table"));
+        assert!(!attached_tables.iter().any(|table| table.name == "main_table"));
+
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 pub async fn list_objects_core(
@@ -375,6 +530,7 @@ pub async fn get_columns_core(
     table: &str,
 ) -> Result<Vec<db::ColumnInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+    let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
 
     {
         let connections = state.connections.read().await;
@@ -408,7 +564,7 @@ pub async fn get_columns_core(
         if let Some(con) = extract_duckdb(&connections, &pool_key) {
             drop(connections);
             let con = con.lock().map_err(|e| e.to_string())?;
-            return duckdb_query_columns(&con, table);
+            return duckdb_query_columns_in_database_with_attached(&con, database, table, &duckdb_attached_names);
         }
         if let Some(client) = extract_clickhouse(&connections, &pool_key) {
             drop(connections);

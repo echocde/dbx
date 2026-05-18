@@ -88,7 +88,13 @@ export const TABLE_IMPORT_SUPPORTED_TYPES = new Set<DatabaseType>([
   "access",
 ]);
 
-export const TABLE_STRUCTURE_SUPPORTED_TYPES = new Set<DatabaseType>(["mysql", "postgres", "sqlite", "sqlserver"]);
+export const TABLE_STRUCTURE_SUPPORTED_TYPES = new Set<DatabaseType>([
+  "mysql",
+  "postgres",
+  "sqlite",
+  "duckdb",
+  "sqlserver",
+]);
 
 export const CREATE_DATABASE_SUPPORTED_TYPES = new Set<DatabaseType>([
   "mysql",

@@ -169,6 +169,12 @@ impl AppState {
             }
             DatabaseType::DuckDb => {
                 let con = db::duckdb_driver::connect_path(&expand_tilde(&db_config.host))?;
+                {
+                    let locked = con.lock().map_err(|e| e.to_string())?;
+                    for attached in &db_config.attached_databases {
+                        crate::schema::duckdb_attach_database(&locked, &attached.name, &expand_tilde(&attached.path))?;
+                    }
+                }
                 PoolKind::DuckDb(con)
             }
             DatabaseType::MongoDb => {
@@ -489,6 +495,7 @@ mod tests {
             password: "secret".to_string(),
             database: database.map(str::to_string),
             visible_databases: None,
+            attached_databases: Vec::new(),
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),

@@ -94,7 +94,13 @@ import {
 } from "@/lib/treeNodeClick";
 import { formatCsv, formatJson, formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
-import { buildCreateDatabaseSql, supportsCreateDatabaseCharset } from "@/lib/createDatabaseSql";
+import {
+  buildCreateDatabaseSql,
+  buildDuckDbAttachDatabaseSql,
+  duckDbAttachedDatabaseNameFromPath,
+  supportsCreateDatabaseCharset,
+  uniqueDuckDbAttachedDatabaseName,
+} from "@/lib/createDatabaseSql";
 import { buildRenameObjectSql, supportsObjectRename, type RenameableObjectType } from "@/lib/objectRenameSql";
 import { hexToRgba } from "@/lib/color";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
@@ -755,7 +761,14 @@ const canCreateTable = computed(() => {
 
 const canCreateDatabase = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
-  return props.node.type === "connection" && supportsDatabaseCreation(config?.db_type);
+  return (
+    props.node.type === "connection" && (supportsDatabaseCreation(config?.db_type) || config?.db_type === "duckdb")
+  );
+});
+
+const isDuckDbConnection = computed(() => {
+  const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
+  return props.node.type === "connection" && config?.db_type === "duckdb";
 });
 
 const canSetCreateDatabaseCharset = computed(() => {
@@ -865,11 +878,63 @@ function buildDropSchemaSql(): string {
   return `DROP SCHEMA ${name};`;
 }
 
+async function openCreateDatabase() {
+  if (isDuckDbConnection.value) {
+    await createDuckDbAttachedDatabaseFile();
+    return;
+  }
+  openCreateDatabaseDialog();
+}
+
 function openCreateDatabaseDialog() {
   createDatabaseName.value = "";
   createDatabaseCharset.value = "utf8mb4";
   createDatabaseCollation.value = "utf8mb4_unicode_ci";
   showCreateDatabaseDialog.value = true;
+}
+
+function ensureDuckDbFileExtension(path: string): string {
+  return /\.(duckdb|db)$/i.test(path) ? path : `${path}.duckdb`;
+}
+
+async function createDuckDbAttachedDatabaseFile() {
+  const node = props.node;
+  if (!node.connectionId) return;
+  if (!isTauriRuntime()) {
+    toast(t("contextMenu.createDuckDbFileDesktopOnly"), 4000);
+    return;
+  }
+
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const selectedPath = await save({
+      defaultPath: "database.duckdb",
+      filters: [{ name: "DuckDB", extensions: ["duckdb", "db"] }],
+    });
+    if (!selectedPath) return;
+
+    const path = ensureDuckDbFileExtension(selectedPath);
+    await connectionStore.ensureConnected(node.connectionId);
+    const existingDatabases = await api.listDatabases(node.connectionId);
+    const name = uniqueDuckDbAttachedDatabaseName(
+      duckDbAttachedDatabaseNameFromPath(path),
+      existingDatabases.map((database) => database.name),
+    );
+    await api.executeQuery(node.connectionId, "", buildDuckDbAttachDatabaseSql(path, name));
+
+    const config = connectionStore.getConfig(node.connectionId);
+    if (config) {
+      await connectionStore.updateConnection({
+        ...config,
+        attached_databases: [...(config.attached_databases ?? []), { name, path }],
+      });
+    }
+    await connectionStore.loadDatabases(node.connectionId, { force: true });
+    connectionStore.selectedTreeNodeId = `${node.connectionId}:${name}`;
+    toast(t("contextMenu.createDuckDbFileSuccess", { name }), 3000);
+  } catch (e: any) {
+    toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 async function confirmCreateDatabase() {
@@ -1691,8 +1756,9 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         <ContextMenuItem v-if="canOpenSqlFileExecution" @click="openSqlFileExecution">
           <FileCode class="w-4 h-4" /> {{ t("sqlFile.title") }}
         </ContextMenuItem>
-        <ContextMenuItem v-if="canCreateDatabase" @click="openCreateDatabaseDialog">
-          <Plus class="w-4 h-4" /> {{ t("contextMenu.createDatabase") }}
+        <ContextMenuItem v-if="canCreateDatabase" @click="openCreateDatabase">
+          <Plus class="w-4 h-4" />
+          {{ isDuckDbConnection ? t("contextMenu.createDuckDbFile") : t("contextMenu.createDatabase") }}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuSub v-if="availableGroups.length > 0 || currentGroupId">

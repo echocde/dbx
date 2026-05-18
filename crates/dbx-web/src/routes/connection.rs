@@ -142,6 +142,7 @@ mod tests {
             password: String::new(),
             database: None,
             visible_databases: None,
+            attached_databases: Vec::new(),
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),

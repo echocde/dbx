@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCreateTableSql,
   buildTableStructureChangeSql,
   type EditableStructureColumn,
   type EditableStructureIndex,
@@ -183,6 +184,24 @@ test("quotes SQL Server table, column, and index names with brackets", () => {
   assert.deepEqual(result.statements, [
     "ALTER TABLE [dbo].[users] ADD [email] nvarchar(255) NOT NULL;",
     "CREATE INDEX [idx_users_email] ON [dbo].[users] ([email]);",
+  ]);
+});
+
+test("builds DuckDB create table statements", () => {
+  const result = buildCreateTableSql({
+    databaseType: "duckdb",
+    tableName: "events",
+    columns: [
+      column({ id: "name", name: "name", dataType: "VARCHAR", isNullable: false }),
+      column({ id: "created_at", name: "created_at", dataType: "TIMESTAMP", defaultValue: "current_timestamp" }),
+    ],
+    indexes: [index({ id: "idx_name", name: "idx_events_name", columns: ["name"] })],
+  });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.statements, [
+    'CREATE TABLE "events" (\n  "name" VARCHAR NOT NULL,\n  "created_at" TIMESTAMP DEFAULT current_timestamp\n);',
+    'CREATE INDEX "idx_events_name" ON "events" ("name");',
   ]);
 });
 

@@ -232,6 +232,9 @@ export const useConnectionStore = defineStore("connection", () => {
       driver_profile: profile,
       driver_label: config.driver_label || labelMap[profile] || config.db_type,
       url_params: config.url_params || "",
+      attached_databases: Array.isArray(config.attached_databases)
+        ? config.attached_databases.filter((database) => database.name?.trim() && database.path?.trim())
+        : [],
       ssh_connect_timeout_secs: config.ssh_connect_timeout_secs || 5,
       proxy_type: config.proxy_type || "socks5",
       proxy_port: config.proxy_port || 1080,

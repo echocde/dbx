@@ -193,6 +193,9 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
         }
         DatabaseType::DuckDb => {
             let con = duckdb::Connection::open(&expand_tilde(&db_config.host)).map_err(|e| e.to_string())?;
+            for attached in &db_config.attached_databases {
+                dbx_core::schema::duckdb_attach_database(&con, &attached.name, &expand_tilde(&attached.path))?;
+            }
             PoolKind::DuckDb(std::sync::Arc::new(std::sync::Mutex::new(con)))
         }
         DatabaseType::MongoDb => {

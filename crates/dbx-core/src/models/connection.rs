@@ -19,6 +19,8 @@ pub struct ConnectionConfig {
     pub database: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible_databases: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attached_databases: Vec<AttachedDatabaseConfig>,
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
@@ -64,6 +66,12 @@ pub struct ConnectionConfig {
     pub jdbc_driver_class: Option<String>,
     #[serde(default)]
     pub jdbc_driver_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AttachedDatabaseConfig {
+    pub name: String,
+    pub path: String,
 }
 
 fn default_ssh_port() -> u16 {
@@ -578,6 +586,7 @@ mod tests {
             password: password.to_string(),
             database: database.map(str::to_string),
             visible_databases: None,
+            attached_databases: Vec::new(),
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),
@@ -668,6 +677,29 @@ mod tests {
         let saved = serde_json::to_value(config).unwrap();
 
         assert_eq!(saved["visible_databases"], serde_json::json!(["app", "billing"]));
+    }
+
+    #[test]
+    fn duckdb_attached_databases_round_trip_through_connection_config() {
+        let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
+            "id": "id",
+            "name": "DuckDB",
+            "db_type": "duckdb",
+            "host": "/tmp/main.duckdb",
+            "port": 0,
+            "username": "",
+            "password": "",
+            "database": null,
+            "attached_databases": [{ "name": "analytics", "path": "/tmp/analytics.duckdb" }]
+        }))
+        .unwrap();
+
+        let saved = serde_json::to_value(config).unwrap();
+
+        assert_eq!(
+            saved["attached_databases"],
+            serde_json::json!([{ "name": "analytics", "path": "/tmp/analytics.duckdb" }])
+        );
     }
 
     #[test]

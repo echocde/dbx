@@ -79,6 +79,27 @@ pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryRe
     }
 }
 
+fn duckdb_execute_for_database(
+    con: &duckdb::Connection,
+    attached_names: &[String],
+    database: Option<&str>,
+    sql: &str,
+) -> Result<db::QueryResult, String> {
+    if let Some(database) = database.map(str::trim).filter(|database| !database.is_empty()) {
+        let catalog = if database == "main" {
+            crate::schema::duckdb_primary_catalog(con, attached_names)?
+        } else {
+            database.to_string()
+        };
+        con.execute_batch(&format!("USE {}", duckdb_quote_ident(&catalog))).map_err(|e| e.to_string())?;
+    }
+    duckdb_execute(con, sql)
+}
+
+fn duckdb_quote_ident(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
 pub fn truncate_result(mut result: db::QueryResult) -> db::QueryResult {
     if result.rows.len() > MAX_ROWS {
         result.rows.truncate(MAX_ROWS);
@@ -200,11 +221,19 @@ where
 pub async fn do_execute(
     state: &AppState,
     pool_key: &str,
+    database: Option<&str>,
     sql: &str,
     schema: Option<&str>,
     cancel_token: Option<CancellationToken>,
     options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
+    let duckdb_attached_names = state
+        .configs
+        .read()
+        .await
+        .get(pool_key)
+        .map(|config| config.attached_databases.iter().map(|database| database.name.clone()).collect::<Vec<_>>())
+        .unwrap_or_default();
     let connections = state.connections.read().await;
     let pool = connections.get(pool_key).ok_or("Connection not found")?;
 
@@ -212,11 +241,13 @@ pub async fn do_execute(
         PoolKind::DuckDb(con) => {
             let con = con.clone();
             let sql = sql.to_string();
+            let database = database.map(str::to_string);
+            let attached_names = duckdb_attached_names;
             drop(connections);
             wait_for_query(cancel_token, async move {
                 let task = tokio::task::spawn_blocking(move || {
                     let con = con.lock().map_err(|e| e.to_string())?;
-                    duckdb_execute(&con, &sql)
+                    duckdb_execute_for_database(&con, &attached_names, database.as_deref(), &sql)
                 });
                 task.await.map_err(|e| e.to_string())?
             })
@@ -381,13 +412,13 @@ pub async fn execute_sql_statement_with_options(
         return Err(canceled_error());
     }
 
-    let result = do_execute(state, &pool_key, sql, schema, cancel_token.clone(), options.clone()).await;
+    let result = do_execute(state, &pool_key, Some(database), sql, schema, cancel_token.clone(), options.clone()).await;
 
     match &result {
         Err(e) if is_connection_error(e) && !is_canceled(&cancel_token) => {
             let db_opt = if database.is_empty() { None } else { Some(database) };
             let new_key = state.reconnect_pool(connection_id, db_opt).await?;
-            do_execute(state, &new_key, sql, schema, cancel_token, options).await
+            do_execute(state, &new_key, Some(database), sql, schema, cancel_token, options).await
         }
         _ => result,
     }
@@ -599,7 +630,7 @@ pub async fn execute_statements(
     let start = std::time::Instant::now();
 
     for (i, sql) in statements.iter().enumerate() {
-        match do_execute(state, &pool_key, sql, schema, None, QueryExecutionOptions::default()).await {
+        match do_execute(state, &pool_key, Some(database), sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
             }
@@ -824,19 +855,19 @@ async fn exec_tx_explicit_inner(
     }
     drop(conns);
 
-    do_execute(state, pool_key, "BEGIN", schema, None, QueryExecutionOptions::default())
+    do_execute(state, pool_key, None, "BEGIN", schema, None, QueryExecutionOptions::default())
         .await
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
-        match do_execute(state, pool_key, sql, schema, None, QueryExecutionOptions::default()).await {
+        match do_execute(state, pool_key, None, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
             }
             Err(e) => {
                 if let Err(rb_err) =
-                    do_execute(state, pool_key, "ROLLBACK", schema, None, QueryExecutionOptions::default()).await
+                    do_execute(state, pool_key, None, "ROLLBACK", schema, None, QueryExecutionOptions::default()).await
                 {
                     log::error!("ROLLBACK failed after statement {} error: {}", i + 1, rb_err);
                 }
@@ -845,7 +876,7 @@ async fn exec_tx_explicit_inner(
         }
     }
 
-    do_execute(state, pool_key, "COMMIT", schema, None, QueryExecutionOptions::default())
+    do_execute(state, pool_key, None, "COMMIT", schema, None, QueryExecutionOptions::default())
         .await
         .map_err(|e| format!("COMMIT failed: {}", e))?;
 
@@ -870,7 +901,7 @@ async fn exec_tx_none_inner(
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
         log::info!("[query][tx-none:statement:start] index={} sql={}", i + 1, sql);
-        match do_execute(state, pool_key, sql, schema, None, QueryExecutionOptions::default()).await {
+        match do_execute(state, pool_key, None, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
                 log::info!("[query][tx-none:statement:done] index={} affected_rows={}", i + 1, result.affected_rows);
@@ -991,6 +1022,7 @@ mod tests {
             password: String::new(),
             database: None,
             visible_databases: None,
+            attached_databases: Vec::new(),
             color: None,
             ssh_enabled: false,
             ssh_host: String::new(),

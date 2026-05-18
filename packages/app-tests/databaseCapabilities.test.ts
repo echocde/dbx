@@ -96,6 +96,7 @@ test("describes feature support through capability helpers", () => {
   assert.equal(supportsTableImport("duckdb"), true);
   assert.equal(supportsTableImport("hive"), false);
   assert.equal(supportsTableStructureEditing("postgres"), true);
+  assert.equal(supportsTableStructureEditing("duckdb"), true);
   assert.equal(supportsTableStructureEditing("oracle"), false);
   assert.equal(supportsDatabaseCreation("clickhouse"), true);
   assert.equal(supportsDatabaseCreation("sqlite"), false);

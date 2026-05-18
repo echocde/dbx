@@ -289,6 +289,7 @@ mod tests {
             password: password.to_string(),
             database: Some("postgres".to_string()),
             visible_databases: None,
+            attached_databases: Vec::new(),
             color: None,
             ssh_enabled: !ssh_password.is_empty(),
             ssh_host: String::new(),
