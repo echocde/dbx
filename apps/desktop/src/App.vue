@@ -34,7 +34,7 @@ import "@/i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
 import * as api from "@/lib/api";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
-import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
+import { buildExecutableObjectSourceStatements, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
 import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { sqlFileTitleFromPath } from "@/lib/sqlFileOpen";
@@ -284,17 +284,19 @@ async function saveActiveObjectSource(tab: NonNullable<typeof activeTab.value>) 
   if (!connection || !source) return;
 
   try {
-    const sql = buildExecutableObjectSourceSql({
+    const statements = buildExecutableObjectSourceStatements({
       databaseType: connection.db_type,
       objectType: source.objectType,
       schema: source.schema || tab.schema || tab.database,
       name: source.name,
       source: tab.sql,
     });
-    if (objectSourceSaveExecutionMode(connection.db_type) === "single") {
-      await api.executeQuery(tab.connectionId, tab.database, sql, source.schema || tab.schema);
-    } else {
-      await api.executeScript(tab.connectionId, tab.database, sql, source.schema || tab.schema);
+    for (const sql of statements) {
+      if (objectSourceSaveExecutionMode(connection.db_type) === "single") {
+        await api.executeQuery(tab.connectionId, tab.database, sql, source.schema || tab.schema);
+      } else {
+        await api.executeScript(tab.connectionId, tab.database, sql, source.schema || tab.schema);
+      }
     }
     toast(t("objects.sourceSaved"), 2000);
   } catch (e: any) {

@@ -1,6 +1,10 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "../../apps/desktop/src/lib/objectSourceEditor.ts";
+import {
+  buildExecutableObjectSourceSql,
+  buildExecutableObjectSourceStatements,
+  objectSourceSaveExecutionMode,
+} from "../../apps/desktop/src/lib/objectSourceEditor.ts";
 
 test("SQL Server edited source saves as ALTER", () => {
   const sql = buildExecutableObjectSourceSql({
@@ -53,4 +57,50 @@ test("Postgres view body opens as CREATE OR REPLACE VIEW", () => {
   });
 
   assert.equal(sql, 'CREATE OR REPLACE VIEW "public"."active users" AS\nSELECT id, name FROM users WHERE active;');
+});
+
+test("Kingbase function rename creates the renamed routine and then drops the original routine", () => {
+  const statements = buildExecutableObjectSourceStatements({
+    databaseType: "kingbase",
+    objectType: "FUNCTION",
+    schema: "DLJPM",
+    name: "CONVERTSPECIALNAME",
+    source:
+      'CREATE OR REPLACE function "DLJPM"."CONVERTSPECIALNAME1" (SpName varchar2)\nRETURN VARCHAR2\nas\nbegin\nreturn SpName;\nend;',
+  });
+
+  assert.deepEqual(statements, [
+    'CREATE OR REPLACE function "DLJPM"."CONVERTSPECIALNAME1" (SpName varchar2)\nRETURN VARCHAR2\nas\nbegin\nreturn SpName;\nend;',
+    'DROP FUNCTION IF EXISTS "DLJPM"."CONVERTSPECIALNAME"(SpName varchar2);',
+  ]);
+});
+
+test("Postgres procedure rename creates the renamed routine and then drops the original routine", () => {
+  const statements = buildExecutableObjectSourceStatements({
+    databaseType: "postgres",
+    objectType: "PROCEDURE",
+    schema: "public",
+    name: "refresh_cache",
+    source: 'CREATE OR REPLACE PROCEDURE "public"."refresh_cache_v2"(mode text)\nLANGUAGE SQL\nAS $$ SELECT 1 $$;',
+  });
+
+  assert.deepEqual(statements, [
+    'CREATE OR REPLACE PROCEDURE "public"."refresh_cache_v2"(mode text)\nLANGUAGE SQL\nAS $$ SELECT 1 $$;',
+    'DROP PROCEDURE IF EXISTS "public"."refresh_cache"(mode text);',
+  ]);
+});
+
+test("object source SQL joins generated save statements for previews", () => {
+  const sql = buildExecutableObjectSourceSql({
+    databaseType: "postgres",
+    objectType: "PROCEDURE",
+    schema: "public",
+    name: "refresh_cache",
+    source: 'CREATE OR REPLACE PROCEDURE "public"."refresh_cache_v2"(mode text)\nLANGUAGE SQL\nAS $$ SELECT 1 $$;',
+  });
+
+  assert.equal(
+    sql,
+    'CREATE OR REPLACE PROCEDURE "public"."refresh_cache_v2"(mode text)\nLANGUAGE SQL\nAS $$ SELECT 1 $$;\nDROP PROCEDURE IF EXISTS "public"."refresh_cache"(mode text);',
+  );
 });

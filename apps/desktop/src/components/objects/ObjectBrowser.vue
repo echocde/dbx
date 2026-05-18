@@ -35,7 +35,7 @@ import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
 import { normalizeDatabaseObjectName } from "@/lib/tableTree";
 import { useToast } from "@/composables/useToast";
-import { buildExecutableObjectSourceSql, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
+import { buildExecutableObjectSourceStatements, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
 import { buildRenameObjectSql, supportsObjectRename } from "@/lib/objectRenameSql";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
@@ -220,6 +220,8 @@ async function openSource(row: ObjectRow) {
       row.type as ObjectSourceKind,
     );
     sourceContent.value = result.source;
+    sourceDraft.value = result.source;
+    sourceEditing.value = true;
   } catch (e: any) {
     sourceError.value = e?.message || String(e);
   } finally {
@@ -395,17 +397,19 @@ async function saveSource() {
   sourceSaving.value = true;
   sourceSaveError.value = "";
   try {
-    const sql = buildExecutableObjectSourceSql({
+    const statements = buildExecutableObjectSourceStatements({
       databaseType: props.connection.db_type,
       objectType: row.type as ObjectSourceKind,
       schema,
       name: row.name,
       source: sourceDraft.value,
     });
-    if (objectSourceSaveExecutionMode(props.connection.db_type) === "single") {
-      await api.executeQuery(props.connection.id, props.database, sql, schema);
-    } else {
-      await api.executeScript(props.connection.id, props.database, sql, schema);
+    for (const sql of statements) {
+      if (objectSourceSaveExecutionMode(props.connection.db_type) === "single") {
+        await api.executeQuery(props.connection.id, props.database, sql, schema);
+      } else {
+        await api.executeScript(props.connection.id, props.database, sql, schema);
+      }
     }
     toast(t("objects.sourceSaved"));
     sourceEditing.value = false;
