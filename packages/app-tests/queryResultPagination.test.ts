@@ -24,12 +24,21 @@ test("uses MySQL style quoting for paginated query alias", () => {
   });
 });
 
-test("uses SQL Server offset fetch pagination", () => {
-  const result = buildPaginatedQuerySql("SELECT id FROM users", "sqlserver", 100, 300);
+test("uses SQL Server TOP pagination for the first page to support SQL Server 2008", () => {
+  const result = buildPaginatedQuerySql("SELECT id FROM users", "sqlserver", 100, 0);
 
   assert.deepEqual(result, {
     ok: true,
-    sql: "SELECT * FROM (SELECT id FROM users) [dbx_page] ORDER BY (SELECT NULL) OFFSET 300 ROWS FETCH NEXT 100 ROWS ONLY",
+    sql: "SELECT TOP (100) * FROM (SELECT id FROM users) [dbx_page]",
+  });
+});
+
+test("does not generate SQL Server OFFSET pagination for later query-result pages", () => {
+  const result = buildPaginatedQuerySql("SELECT id FROM users", "sqlserver", 100, 300);
+
+  assert.deepEqual(result, {
+    ok: false,
+    reason: "unsupported",
   });
 });
 
@@ -133,7 +142,10 @@ test("uses SQL pagination instead of jdbc cursor for random agent page jumps", (
     useAgentCursor: true,
   });
 
-  assert.equal(plan.sqlToExecute, 'SELECT * FROM (SELECT * FROM events) "dbx_page" OFFSET 1500 ROWS FETCH FIRST 500 ROWS ONLY');
+  assert.equal(
+    plan.sqlToExecute,
+    'SELECT * FROM (SELECT * FROM events) "dbx_page" OFFSET 1500 ROWS FETCH FIRST 500 ROWS ONLY',
+  );
   assert.equal(plan.pageSql, plan.sqlToExecute);
   assert.equal(plan.pageLimit, 500);
   assert.equal(plan.pageOffset, 1500);

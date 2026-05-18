@@ -87,9 +87,10 @@ export function buildPaginatedQuerySql(
   const base = `SELECT * FROM (${statement.sql}) ${alias}`;
 
   if (databaseType === "sqlserver") {
+    if (safeOffset > 0) return { ok: false, reason: "unsupported" };
     return {
       ok: true,
-      sql: `${base} ORDER BY (SELECT NULL) OFFSET ${safeOffset} ROWS FETCH NEXT ${safeLimit} ROWS ONLY`,
+      sql: `SELECT TOP (${safeLimit}) * FROM (${statement.sql}) ${alias}`,
     };
   }
 

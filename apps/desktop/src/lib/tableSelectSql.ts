@@ -90,8 +90,14 @@ export function buildTableSelectSql(options: BuildTableSelectSqlOptions): string
   }
 
   if (databaseType === "sqlserver") {
-    const stableOrder = order || " ORDER BY (SELECT NULL)";
-    return `SELECT * FROM ${table}${where}${stableOrder} OFFSET ${options.offset ?? 0} ROWS FETCH NEXT ${limit} ROWS ONLY`;
+    return buildSqlServerTableSelectSql({
+      table,
+      where,
+      orderBy: orderBy ?? "(SELECT NULL)",
+      columns: options.columns,
+      limit,
+      offset: options.offset ?? 0,
+    });
   }
 
   const offset = options.offset ? ` OFFSET ${options.offset}` : "";
@@ -119,6 +125,34 @@ function buildSelectColumns(databaseType: DatabaseType | undefined, columns?: st
       return `${ident} AS ${ident}`;
     })
     .join(", ");
+}
+
+function buildSqlServerTableSelectSql(options: {
+  table: string;
+  where: string;
+  orderBy: string;
+  columns?: string[];
+  limit: number;
+  offset: number;
+}): string {
+  const columns = options.columns?.length
+    ? options.columns.map((column) => quoteTableIdentifier("sqlserver", column)).join(", ")
+    : "*";
+  const order = options.orderBy === "(SELECT NULL)" ? "" : ` ORDER BY ${options.orderBy}`;
+  if (options.offset <= 0) {
+    return `SELECT TOP (${options.limit}) ${columns} FROM ${options.table}${options.where}${order}`;
+  }
+
+  const pageAlias = quoteTableIdentifier("sqlserver", "dbx_page");
+  const rowNumberAlias = quoteTableIdentifier("sqlserver", "__dbx_row_num");
+  const end = options.offset + options.limit;
+  const rowNumberOrder = `ORDER BY ${options.orderBy}`;
+  return (
+    `WITH ${pageAlias} AS (` +
+    `SELECT ${columns}, ROW_NUMBER() OVER (${rowNumberOrder}) AS ${rowNumberAlias} FROM ${options.table}${options.where}` +
+    `) SELECT ${columns} FROM ${pageAlias}` +
+    ` WHERE ${rowNumberAlias} > ${options.offset} AND ${rowNumberAlias} <= ${end} ORDER BY ${rowNumberAlias}`
+  );
 }
 
 function isTdengineTbname(databaseType: DatabaseType | undefined, name: string): boolean {
