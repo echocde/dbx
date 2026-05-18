@@ -486,14 +486,14 @@ fn uses_tcp_probe(config: &ConnectionConfig, host: &str, port: u16) -> bool {
     if database_capabilities::skips_tcp_probe(&config.db_type) {
         return false;
     }
-    if matches!(config.db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks)
-        && host == config.host
-        && port == config.port
-        && host.parse::<std::net::IpAddr>().is_err()
-    {
+    if is_original_hostname_endpoint(config, host, port) {
         return false;
     }
     true
+}
+
+fn is_original_hostname_endpoint(config: &ConnectionConfig, host: &str, port: u16) -> bool {
+    host == config.host && port == config.port && host.parse::<std::net::IpAddr>().is_err()
 }
 
 async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &sqlx::mysql::MySqlPool) -> MysqlMode {
@@ -673,6 +673,26 @@ mod tests {
         assert!(!uses_tcp_probe(&config, "mysql.example.com", 3306));
         assert!(uses_tcp_probe(&config, "192.0.2.10", 3306));
         assert!(uses_tcp_probe(&config, "127.0.0.1", 53306));
+    }
+
+    #[test]
+    fn native_hostname_connections_skip_tcp_probe() {
+        for db_type in [
+            DatabaseType::Postgres,
+            DatabaseType::Redshift,
+            DatabaseType::Redis,
+            DatabaseType::ClickHouse,
+            DatabaseType::SqlServer,
+            DatabaseType::Elasticsearch,
+        ] {
+            let mut config = mysql_config(Some("app"));
+            config.db_type = db_type;
+            config.host = "db.example.com".to_string();
+
+            assert!(!uses_tcp_probe(&config, "db.example.com", config.port), "{db_type:?} hostname");
+            assert!(uses_tcp_probe(&config, "192.0.2.10", config.port), "{db_type:?} ip");
+            assert!(uses_tcp_probe(&config, "127.0.0.1", 54000), "{db_type:?} forwarded");
+        }
     }
 
     #[tokio::test]
