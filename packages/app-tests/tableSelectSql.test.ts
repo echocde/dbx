@@ -90,6 +90,21 @@ test("builds Access table data queries with backtick identifiers", () => {
   assert.equal(sql, "SELECT * FROM `Order Details` ORDER BY `Order ID` ASC LIMIT 100 OFFSET 200;");
 });
 
+test("qualifies JDBC table data default order columns with a table alias", () => {
+  const sql = buildTableSelectSql({
+    databaseType: "jdbc",
+    schema: "SJT_THEME",
+    tableName: "BATCH_QUERY",
+    primaryKeys: ["TABLE_NAME"],
+    limit: 100,
+  });
+
+  assert.equal(
+    sql,
+    'SELECT * FROM "SJT_THEME"."BATCH_QUERY" dbx_t ORDER BY dbx_t."TABLE_NAME" ASC LIMIT 100;',
+  );
+});
+
 test("expands Hive table data queries into aliased table columns", () => {
   const sql = buildTableSelectSql({
     databaseType: "hive",

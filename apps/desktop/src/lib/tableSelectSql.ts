@@ -36,7 +36,8 @@ function isOracleRowId(databaseType: DatabaseType | undefined, name: string): bo
 function quoteOrderIdentifier(databaseType: DatabaseType | undefined, name: string, tableAlias?: string): string {
   if (isOracleRowId(databaseType, name)) return tableAlias ? `${tableAlias}.ROWID` : "ROWID";
   if (isTdengineTbname(databaseType, name)) return DBX_TDENGINE_TBNAME_COLUMN;
-  return quoteTableIdentifier(databaseType, name);
+  const quoted = quoteTableIdentifier(databaseType, name);
+  return tableAlias ? `${tableAlias}.${quoted}` : quoted;
 }
 
 export function qualifiedTableName(
@@ -63,8 +64,9 @@ export function buildTableSelectSql(options: BuildTableSelectSqlOptions): string
   const predicate = normalizeWhereInput(options.whereInput);
   const where = predicate ? ` WHERE (${predicate})` : "";
   const rowIdAlias = options.includeRowId && databaseType === "oracle" ? "t" : undefined;
+  const defaultOrderAlias = databaseType === "jdbc" ? "dbx_t" : rowIdAlias;
   const defaultOrderBy = options.primaryKeys?.length
-    ? options.primaryKeys.map((pk) => `${quoteOrderIdentifier(databaseType, pk, rowIdAlias)} ASC`).join(", ")
+    ? options.primaryKeys.map((pk) => `${quoteOrderIdentifier(databaseType, pk, defaultOrderAlias)} ASC`).join(", ")
     : options.fallbackOrderColumns?.length
       ? options.fallbackOrderColumns.map((column) => `${quoteTableIdentifier(databaseType, column)} ASC`).join(", ")
       : undefined;
@@ -75,7 +77,12 @@ export function buildTableSelectSql(options: BuildTableSelectSqlOptions): string
     options.includeRowId && databaseType === "oracle"
       ? `ROWIDTOCHAR(t.ROWID) AS "${DBX_ROWID_COLUMN}", t.*`
       : buildSelectColumns(databaseType, options.columns);
-  const tableAlias = options.includeRowId && usesFetchFirst(databaseType) ? `${table} t` : table;
+  const tableAlias =
+    options.includeRowId && usesFetchFirst(databaseType)
+      ? `${table} t`
+      : databaseType === "jdbc" && defaultOrderBy
+        ? `${table} dbx_t`
+        : table;
 
   if (usesFetchFirst(databaseType)) {
     const offset = options.offset ? ` OFFSET ${options.offset} ROWS` : "";
@@ -88,7 +95,7 @@ export function buildTableSelectSql(options: BuildTableSelectSqlOptions): string
   }
 
   const offset = options.offset ? ` OFFSET ${options.offset}` : "";
-  return `SELECT ${selectColumns} FROM ${table}${where}${order} LIMIT ${limit}${offset};`;
+  return `SELECT ${selectColumns} FROM ${tableAlias}${where}${order} LIMIT ${limit}${offset};`;
 }
 
 function buildSelectColumns(databaseType: DatabaseType | undefined, columns?: string[]): string {
