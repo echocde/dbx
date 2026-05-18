@@ -49,6 +49,7 @@ import { useToast } from "@/composables/useToast";
 import { buildAiContext, runAiStream, type AiAction } from "@/lib/ai";
 import { buildAiAgentPlan } from "@/lib/aiAgentPlan";
 import { buildAiAgentStepItems, type AiAgentStepItem, type AiAgentStepTone } from "@/lib/aiAgentStepPresentation";
+import { createAiMessageRenderer } from "@/lib/aiMessageRender";
 import { Marked } from "marked";
 import {
   aiCancelStream,
@@ -624,44 +625,6 @@ function triggerAction(action: AiAction, instruction?: string) {
 
 defineExpose({ triggerAction });
 
-interface MessageSegment {
-  type: "text" | "code";
-  content: string;
-  lang?: string;
-}
-
-function parseMessage(text: string): MessageSegment[] {
-  const segments: MessageSegment[] = [];
-  const lines = text.split("\n");
-  let i = 0;
-
-  while (i < lines.length) {
-    const fenceMatch = lines[i].match(/^```(sql|mysql|postgresql|sqlite|tsql|clickhouse)?\s*$/i);
-    if (fenceMatch) {
-      const lang = (fenceMatch[1] || "sql").toUpperCase();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      if (i < lines.length) i++;
-      const content = codeLines.join("\n").trim();
-      if (content) segments.push({ type: "code", lang, content });
-    } else {
-      const textLines: string[] = [];
-      while (i < lines.length && !/^```(sql|mysql|postgresql|sqlite|tsql|clickhouse)?\s*$/i.test(lines[i])) {
-        textLines.push(lines[i]);
-        i++;
-      }
-      const content = textLines.join("\n");
-      if (content.trim()) segments.push({ type: "text", content });
-    }
-  }
-
-  return segments;
-}
-
 const markedInstance = new Marked({
   breaks: true,
   gfm: true,
@@ -675,6 +638,8 @@ const markedInstance = new Marked({
 function formatInlineText(text: string): string {
   return markedInstance.parse(text) as string;
 }
+
+const messageRenderer = createAiMessageRenderer({ markdown: formatInlineText });
 </script>
 
 <template>
@@ -792,9 +757,9 @@ function formatInlineText(text: string): string {
                   <span class="truncate">{{ t(step.labelKey) }}</span>
                 </span>
               </div>
-              <template v-for="(seg, j) in parseMessage(msg.content)" :key="j">
+              <template v-for="(seg, j) in messageRenderer.render(msg.content)" :key="j">
                 <div v-if="seg.type === 'text'" class="ai-markdown whitespace-normal">
-                  <div v-html="formatInlineText(seg.content)" />
+                  <div v-html="seg.html" />
                 </div>
                 <div v-else class="my-2 rounded-md overflow-hidden bg-zinc-900 dark:bg-zinc-900">
                   <div
