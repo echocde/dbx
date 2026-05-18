@@ -1154,6 +1154,7 @@ export default {
     jdbcPlugin: "DBX JDBC plugin",
     jdbcPluginInstall: "Install JDBC plugin",
     jdbcPluginInstallSuccess: "JDBC plugin installed",
+    jdbcPluginUpdate: "Update",
     jdbcPluginUninstall: "Uninstall",
     jdbcPluginUninstallSuccess: "JDBC plugin uninstalled",
     jdbcPluginInstalled: "Installed: v{version}",

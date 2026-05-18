@@ -110,6 +110,9 @@ export interface JdbcPluginStatus {
   version?: string | null;
   protocol_version?: number | null;
   compatible: boolean;
+  latest_version?: string | null;
+  latest_protocol_version?: number | null;
+  update_available: boolean;
   path: string;
 }
 

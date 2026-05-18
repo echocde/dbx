@@ -1131,6 +1131,7 @@ export default {
     jdbcPlugin: "DBX JDBC 插件",
     jdbcPluginInstall: "安装 JDBC 插件",
     jdbcPluginInstallSuccess: "JDBC 插件已安装",
+    jdbcPluginUpdate: "更新",
     jdbcPluginUninstall: "卸载",
     jdbcPluginUninstallSuccess: "JDBC 插件已卸载",
     jdbcPluginInstalled: "已安装：v{version}",

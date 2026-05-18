@@ -121,19 +121,28 @@ export async function deleteJdbcDriver(_path: string): Promise<JdbcDriverInfo[]>
 }
 
 export async function jdbcPluginStatus(): Promise<JdbcPluginStatus> {
-  return { installed: false, version: null, protocol_version: null, compatible: true, path: "" };
+  return {
+    installed: false,
+    version: null,
+    protocol_version: null,
+    compatible: true,
+    latest_version: null,
+    latest_protocol_version: null,
+    update_available: false,
+    path: "",
+  };
 }
 
 export async function installJdbcPlugin(): Promise<JdbcPluginStatus> {
-  return { installed: false, version: null, protocol_version: null, compatible: true, path: "" };
+  return jdbcPluginStatus();
 }
 
 export async function installJdbcPluginLocal(_path: string): Promise<JdbcPluginStatus> {
-  return { installed: false, version: null, protocol_version: null, compatible: true, path: "" };
+  return jdbcPluginStatus();
 }
 
 export async function uninstallJdbcPlugin(): Promise<JdbcPluginStatus> {
-  return { installed: false, version: null, protocol_version: null, compatible: true, path: "" };
+  return jdbcPluginStatus();
 }
 
 export async function listInstalledAgentsLocal(): Promise<AgentDriverInfo[]> {

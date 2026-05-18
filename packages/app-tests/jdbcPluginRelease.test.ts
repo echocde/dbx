@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 import { evaluateJdbcPluginReleaseBump } from "../../.github/scripts/bump-jdbc-plugin-version.mjs";
 import { evaluateJdbcPluginVersionChange } from "../../.github/scripts/check-jdbc-plugin-version.mjs";
+import { augmentLatestJsonWithJdbcPlugin } from "../../.github/scripts/augment-latest-json-jdbc-plugin.mjs";
 
 test("allows JDBC plugin runtime changes without a manual version bump before release", () => {
   assert.deepEqual(
@@ -91,4 +92,31 @@ test("auto bump refuses mismatched JDBC plugin source versions", () => {
       }),
     /JDBC plugin version mismatch/,
   );
+});
+
+test("adds JDBC plugin metadata to latest.json without disturbing updater fields", () => {
+  const result = augmentLatestJsonWithJdbcPlugin({
+    latestJson: JSON.stringify({
+      version: "0.5.12",
+      notes: "Release notes",
+      platforms: {
+        "darwin-aarch64": {
+          signature: "sig",
+          url: "https://example.com/app.dmg",
+        },
+      },
+    }),
+    jdbcVersion: "0.1.3",
+    protocolVersion: 1,
+    url: "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-latest.zip",
+  });
+  const parsed = JSON.parse(result);
+
+  assert.equal(parsed.version, "0.5.12");
+  assert.equal(parsed.platforms["darwin-aarch64"].signature, "sig");
+  assert.deepEqual(parsed.jdbc_plugin, {
+    version: "0.1.3",
+    protocol_version: 1,
+    url: "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-latest.zip",
+  });
 });

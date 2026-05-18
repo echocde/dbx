@@ -11,7 +11,7 @@ import DriverInstallProgressCircle from "@/components/config/DriverInstallProgre
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { useToast } from "@/composables/useToast";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
-import { countAvailableAgentDriverUpdates } from "@/lib/agentDriverUpdateBadge";
+import { countAvailableDriverUpdates } from "@/lib/agentDriverUpdateBadge";
 import type { JdbcDriverInfo, JdbcPluginStatus } from "@/types/database";
 import * as api from "@/lib/api";
 import type { AgentDriverInfo, JavaRuntimeConfig } from "@/lib/api";
@@ -84,7 +84,11 @@ const updatableCount = computed(() => drivers.value.filter((d) => d.update_avail
 
 function updateAgentDrivers(nextDrivers: AgentDriverInfo[]) {
   drivers.value = nextDrivers;
-  emit("update-count-change", countAvailableAgentDriverUpdates(nextDrivers));
+  emitDriverUpdateCount();
+}
+
+function emitDriverUpdateCount() {
+  emit("update-count-change", countAvailableDriverUpdates(drivers.value, jdbcPluginStatus.value));
 }
 
 function isDriverProgressActive(dbType: string): boolean {
@@ -299,6 +303,7 @@ async function loadJdbcPluginStatus() {
   if (isWeb) return;
   try {
     jdbcPluginStatus.value = await api.jdbcPluginStatus();
+    emitDriverUpdateCount();
   } catch (e: any) {
     toast(String(e?.message || e), 5000);
   }
@@ -309,6 +314,7 @@ async function installJdbcPlugin() {
   isInstallingJdbcPlugin.value = true;
   try {
     jdbcPluginStatus.value = await api.installJdbcPlugin();
+    emitDriverUpdateCount();
     toast(t("settings.jdbcPluginInstallSuccess"));
     await loadJdbcDrivers();
   } catch (e: any) {
@@ -330,6 +336,7 @@ async function installJdbcPluginLocal() {
   isInstallingJdbcPlugin.value = true;
   try {
     jdbcPluginStatus.value = await api.installJdbcPluginLocal(selected);
+    emitDriverUpdateCount();
     toast(t("settings.jdbcPluginInstallSuccess"));
     await loadJdbcDrivers();
   } catch (e: any) {
@@ -344,6 +351,7 @@ async function uninstallJdbcPlugin() {
   isUninstallingJdbcPlugin.value = true;
   try {
     jdbcPluginStatus.value = await api.uninstallJdbcPlugin();
+    emitDriverUpdateCount();
     toast(t("settings.jdbcPluginUninstallSuccess"));
     await loadJdbcDrivers();
   } catch (e: any) {
@@ -702,6 +710,20 @@ onUnmounted(() => {
                         : t("settings.jdbcPluginIncompatible")
                     }}
                   </span>
+                  <span
+                    v-if="jdbcPluginStatus?.installed && jdbcPluginStatus.update_available"
+                    class="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-600"
+                    >→ v{{ jdbcPluginStatus.latest_version }}</span
+                  >
+                  <Button
+                    v-if="jdbcPluginStatus?.installed && jdbcPluginStatus.update_available"
+                    type="button"
+                    variant="outline"
+                    :disabled="isInstallingJdbcPlugin"
+                    @click="installJdbcPlugin"
+                  >
+                    {{ isInstallingJdbcPlugin ? t("common.loading") : t("settings.jdbcPluginUpdate") }}
+                  </Button>
                   <Button
                     v-if="jdbcPluginStatus?.installed"
                     type="button"

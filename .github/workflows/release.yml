@@ -240,6 +240,26 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
 
+      - name: Add JDBC plugin metadata to latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/latest-json"
+          gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern latest.json \
+            --dir "$RUNNER_TEMP/latest-json"
+          node .github/scripts/augment-latest-json-jdbc-plugin.mjs \
+            "$RUNNER_TEMP/latest-json/latest.json" \
+            "${{ steps.jdbc-plugin.outputs.version }}" \
+            "1" \
+            "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-latest.zip"
+          gh release upload "${GITHUB_REF_NAME}" \
+            "$RUNNER_TEMP/latest-json/latest.json" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
+
   publish:
     needs: [build, docker-manifest, jdbc-plugin]
     runs-on: ubuntu-latest
