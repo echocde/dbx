@@ -43,6 +43,7 @@ import {
   isExecuteSqlShortcut,
   isFocusSearchShortcut,
   isObjectSourceSaveShortcutTarget,
+  isRefreshDataShortcut,
   isSaveShortcut,
 } from "@/lib/keyboardShortcuts";
 import { isPreviewTab } from "@/lib/tabPresentation";
@@ -560,6 +561,12 @@ function handleKeydown(e: KeyboardEvent) {
       e.preventDefault();
       e.stopPropagation();
     }
+    return;
+  }
+  if (isRefreshDataShortcut(e, shortcuts)) {
+    e.preventDefault();
+    e.stopPropagation();
+    contentAreaRef.value?.refreshData();
     return;
   }
   if (isCloseTabShortcut(e, shortcuts)) {

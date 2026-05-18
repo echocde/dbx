@@ -198,7 +198,13 @@ function focusSearch(): boolean {
   return dataGridRef.value?.focusSearch() ?? false;
 }
 
-defineExpose({ focusSearch });
+function refreshData(): boolean {
+  if (!dataGridRef.value) return false;
+  void dataGridRef.value.onToolbarRefresh();
+  return true;
+}
+
+defineExpose({ focusSearch, refreshData });
 </script>
 
 <template>

@@ -1118,6 +1118,7 @@ export default {
     shortcutSaveSql: "保存 SQL",
     shortcutCloseTab: "关闭标签页",
     shortcutFocusSearch: "聚焦搜索",
+    shortcutRefreshData: "刷新数据",
     shortcutCancelSearch: "取消搜索",
     shortcutScopeGlobal: "全局",
     shortcutScopeEditor: "SQL 编辑器",

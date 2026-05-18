@@ -1046,6 +1046,7 @@ export default {
     shortcutSaveSql: "Guardar SQL",
     shortcutCloseTab: "Cerrar pestaña",
     shortcutFocusSearch: "Enfocar búsqueda",
+    shortcutRefreshData: "Actualizar datos",
     shortcutCancelSearch: "Cancelar búsqueda",
     shortcutScopeGlobal: "Global",
     shortcutScopeEditor: "Editor SQL",
