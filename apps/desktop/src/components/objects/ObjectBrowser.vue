@@ -33,7 +33,6 @@ import * as api from "@/lib/api";
 import type { ConnectionConfig, ObjectInfo, ObjectSourceKind } from "@/types/database";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
-import { normalizeDatabaseObjectName } from "@/lib/tableTree";
 import { useToast } from "@/composables/useToast";
 import { buildExecutableObjectSourceStatements, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
 import { buildRenameObjectSql, supportsObjectRename } from "@/lib/objectRenameSql";
@@ -43,14 +42,7 @@ import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-type ObjectRow = {
-  id: string;
-  name: string;
-  schema?: string;
-  type: "TABLE" | "VIEW" | "PROCEDURE" | "FUNCTION";
-  comment?: string | null;
-};
+import { buildObjectBrowserRows, type ObjectBrowserRow } from "@/lib/objectBrowserRows";
 
 type ObjectFilter = "all" | "tables" | "views" | "procedures" | "functions";
 
@@ -72,7 +64,7 @@ const queryStore = useQueryStore();
 
 const schemas = ref<string[]>([]);
 const selectedSchema = ref<string | undefined>(props.schema);
-const rows = ref<ObjectRow[]>([]);
+const rows = ref<ObjectBrowserRow[]>([]);
 const rootRef = ref<HTMLElement>();
 const search = ref("");
 const objectFilter = ref<ObjectFilter>("all");
@@ -81,16 +73,16 @@ const loadingObjects = ref(false);
 const sourceLoading = ref(false);
 const sourceContent = ref("");
 const sourceError = ref("");
-const sourceRow = ref<ObjectRow | null>(null);
+const sourceRow = ref<ObjectBrowserRow | null>(null);
 const sourceEditing = ref(false);
 const sourceDraft = ref("");
 const sourceSaving = ref(false);
 const sourceSaveError = ref("");
 const error = ref("");
 const showDropConfirm = ref(false);
-const dropTarget = ref<ObjectRow | null>(null);
+const dropTarget = ref<ObjectBrowserRow | null>(null);
 const showRenameDialog = ref(false);
-const renameTarget = ref<ObjectRow | null>(null);
+const renameTarget = ref<ObjectBrowserRow | null>(null);
 const renameInput = ref("");
 const renameError = ref("");
 let loadId = 0;
@@ -151,49 +143,41 @@ const filteredRows = computed(() => {
   return searchedRows.value;
 });
 
-function normalizeType(type: string): ObjectRow["type"] {
-  const value = type.toUpperCase();
-  if (value.includes("VIEW")) return "VIEW";
-  if (value.includes("PROC")) return "PROCEDURE";
-  if (value.includes("FUNC")) return "FUNCTION";
-  return "TABLE";
-}
-
-function iconFor(row: ObjectRow) {
+function iconFor(row: ObjectBrowserRow) {
   if (row.type === "VIEW") return Eye;
   if (row.type === "PROCEDURE") return ScrollText;
   if (row.type === "FUNCTION") return Braces;
   return Table2;
 }
 
-function typeLabel(type: ObjectRow["type"]) {
+function typeLabel(type: ObjectBrowserRow["type"]) {
   if (type === "VIEW") return t("objects.view");
   if (type === "PROCEDURE") return t("objects.procedure");
   if (type === "FUNCTION") return t("objects.function");
   return t("objects.table");
 }
 
-function iconClass(type: ObjectRow["type"]) {
+function iconClass(type: ObjectBrowserRow["type"]) {
   if (type === "VIEW") return "text-purple-500";
   if (type === "PROCEDURE") return "text-blue-500";
   if (type === "FUNCTION") return "text-amber-500";
   return "text-green-500";
 }
 
-function canOpenSource(row: ObjectRow) {
+function canOpenSource(row: ObjectBrowserRow) {
   return row.type === "VIEW" || row.type === "PROCEDURE" || row.type === "FUNCTION";
 }
 
-function canRename(row: ObjectRow) {
+function canRename(row: ObjectBrowserRow) {
   return supportsObjectRename(props.connection.db_type, row.type);
 }
 
-function sourceTitle(row: ObjectRow | null) {
+function sourceTitle(row: ObjectBrowserRow | null) {
   if (!row) return t("objects.source");
   return `${row.name} ${t("objects.source")}`;
 }
 
-function openRow(row: ObjectRow) {
+function openRow(row: ObjectBrowserRow) {
   if (row.type === "TABLE") {
     emit("openTable", { tableName: row.name, schema: row.schema });
     return;
@@ -203,7 +187,7 @@ function openRow(row: ObjectRow) {
   }
 }
 
-async function openSource(row: ObjectRow) {
+async function openSource(row: ObjectBrowserRow) {
   sourceRow.value = row;
   sourceContent.value = "";
   sourceError.value = "";
@@ -229,7 +213,7 @@ async function openSource(row: ObjectRow) {
   }
 }
 
-function openNewQuery(row: ObjectRow) {
+function openNewQuery(row: ObjectBrowserRow) {
   const tabId = queryStore.createTab(props.connection.id, props.database, row.name);
   queryStore.updateSql(
     tabId,
@@ -242,7 +226,7 @@ function openNewQuery(row: ObjectRow) {
   );
 }
 
-function qualifiedName(row: ObjectRow): string {
+function qualifiedName(row: ObjectBrowserRow): string {
   return qualifiedTableName({
     databaseType: props.connection.db_type,
     schema: row.schema || selectedSchema.value,
@@ -250,12 +234,12 @@ function qualifiedName(row: ObjectRow): string {
   });
 }
 
-function requestDrop(row: ObjectRow) {
+function requestDrop(row: ObjectBrowserRow) {
   dropTarget.value = row;
   showDropConfirm.value = true;
 }
 
-function requestRename(row: ObjectRow) {
+function requestRename(row: ObjectBrowserRow) {
   renameTarget.value = row;
   renameInput.value = row.name;
   renameError.value = "";
@@ -449,19 +433,11 @@ async function loadObjects() {
     const schema = needsSchema.value ? selectedSchema.value || "" : props.database;
     const objects: ObjectInfo[] = await api.listObjects(props.connection.id, props.database, schema);
     if (id !== loadId) return;
-    rows.value = objects.flatMap((object) => {
-      const name = normalizeDatabaseObjectName(object.name);
-      if (!name) return [];
-      const objectSchema = object.schema ? normalizeDatabaseObjectName(object.schema) : undefined;
-      return [
-        {
-          id: `${objectSchema || schema || props.database}:${name}:${object.object_type}`,
-          name,
-          schema: objectSchema || (needsSchema.value ? schema : undefined),
-          type: normalizeType(object.object_type),
-          comment: object.comment,
-        },
-      ];
+    rows.value = buildObjectBrowserRows({
+      objects,
+      database: props.database,
+      fallbackSchema: schema,
+      needsSchema: needsSchema.value,
     });
   } catch (e: any) {
     if (id !== loadId) return;
