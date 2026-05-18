@@ -48,6 +48,23 @@ final class DbxJdbcPluginTest {
     }
 
     @Test
+    void driverQuirksDetectYashanJdbcUrl() throws Exception {
+        JsonNode yashan = MAPPER.readTree("""
+            {
+              "connection_string": "jdbc:yasdb://172.26.128.159:20027/yasdb"
+            }
+            """);
+        JsonNode h2 = MAPPER.readTree("""
+            {
+              "connection_string": "jdbc:h2:mem:dbx_quirks"
+            }
+            """);
+
+        assertEquals(true, DbxJdbcPlugin.driverQuirks(yashan).skipExecutionContext());
+        assertEquals(false, DbxJdbcPlugin.driverQuirks(h2).skipExecutionContext());
+    }
+
+    @Test
     void listTablesFallsBackWhenCatalogFiltersEverything() throws Exception {
         request("executeQuery", """
             {
@@ -72,6 +89,31 @@ final class DbxJdbcPluginTest {
 
         assertFalse(response.has("error"), response.toString());
         assertEquals("PEOPLE", response.path("result").path(0).path("name").asText());
+    }
+
+    @Test
+    void listDatabasesIncludesConfiguredDatabaseWhenDriverDoesNotReturnIt() throws Exception {
+        String connection = """
+            {
+              "connection_string": "jdbc:h2:mem:dbx_catalog;DB_CLOSE_DELAY=-1",
+              "username": "sa",
+              "database": "DBX_DEMO"
+            }
+            """;
+
+        JsonNode response = request("listDatabases", """
+            { "connection": %s }
+            """.formatted(connection));
+
+        assertFalse(response.has("error"), response.toString());
+        boolean found = false;
+        for (JsonNode database : response.path("result")) {
+            if ("DBX_DEMO".equals(database.path("name").asText())) {
+                found = true;
+                break;
+            }
+        }
+        assertEquals(true, found);
     }
 
     @Test

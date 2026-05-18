@@ -38,9 +38,20 @@ import java.util.logging.Logger;
 public final class DbxJdbcPlugin {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MAX_ROWS = 10_000;
+    private static final JdbcDriverQuirks DEFAULT_QUIRKS = new JdbcDriverQuirks(false);
+    private static final JdbcDriverQuirks YASHAN_QUIRKS = new JdbcDriverQuirks(true);
+    private static final List<JdbcDriverQuirkRule> DRIVER_QUIRK_RULES = List.of(
+        new JdbcDriverQuirkRule("jdbc:yasdb:", YASHAN_QUIRKS)
+    );
     private static String registeredDriverKey = "";
     private static String sharedConnectionKey = "";
     private static Connection sharedConnection;
+
+    record JdbcDriverQuirks(boolean skipExecutionContext) {
+    }
+
+    private record JdbcDriverQuirkRule(String urlPrefix, JdbcDriverQuirks quirks) {
+    }
 
     private DbxJdbcPlugin() {
     }
@@ -192,7 +203,7 @@ public final class DbxJdbcPlugin {
     private static JsonNode executeQuery(JsonNode connection, String sql, String database, String schema) throws SQLException {
         long start = System.nanoTime();
         Connection conn = openConnection(connection);
-        applyExecutionContext(conn, database, schema);
+        applyExecutionContext(connection, conn, database, schema);
         try (Statement statement = conn.createStatement()) {
             statement.setMaxRows(MAX_ROWS + 1);
             boolean hasResultSet = statement.execute(sql);
@@ -232,7 +243,10 @@ public final class DbxJdbcPlugin {
         }
     }
 
-    private static void applyExecutionContext(Connection conn, String database, String schema) throws SQLException {
+    private static void applyExecutionContext(JsonNode connection, Connection conn, String database, String schema) throws SQLException {
+        if (driverQuirks(connection).skipExecutionContext()) {
+            return;
+        }
         if (database != null) {
             try {
                 conn.setCatalog(database);
@@ -247,25 +261,46 @@ public final class DbxJdbcPlugin {
         }
     }
 
+    static JdbcDriverQuirks driverQuirks(JsonNode connection) {
+        String url = optionalText(connection, "connection_string");
+        for (JdbcDriverQuirkRule rule : DRIVER_QUIRK_RULES) {
+            if (urlMatchesPrefix(url, rule.urlPrefix())) {
+                return rule.quirks();
+            }
+        }
+        return DEFAULT_QUIRKS;
+    }
+
+    private static boolean urlMatchesPrefix(String url, String prefix) {
+        return url != null && url.regionMatches(true, 0, prefix, 0, prefix.length());
+    }
+
     private static JsonNode listDatabases(JsonNode connection) throws SQLException {
         ArrayNode result = MAPPER.createArrayNode();
         Connection conn = openConnection(connection);
-            try (ResultSet rs = conn.getMetaData().getCatalogs()) {
-                while (rs.next()) {
-                    String name = rs.getString("TABLE_CAT");
-                    if (name != null && !name.isBlank()) {
-                        ObjectNode item = MAPPER.createObjectNode();
-                        item.put("name", name);
-                        result.add(item);
-                    }
-                }
+        try (ResultSet rs = conn.getMetaData().getCatalogs()) {
+            while (rs.next()) {
+                String name = rs.getString("TABLE_CAT");
+                addDatabase(result, name);
             }
-            if (result.isEmpty() && conn.getCatalog() != null) {
-                ObjectNode item = MAPPER.createObjectNode();
-                item.put("name", conn.getCatalog());
-                result.add(item);
-            }
+        }
+        addDatabase(result, optionalText(connection, "database"));
+        addDatabase(result, conn.getCatalog());
         return result;
+    }
+
+    private static void addDatabase(ArrayNode result, String name) {
+        if (name == null || name.isBlank()) {
+            return;
+        }
+        for (JsonNode item : result) {
+            if (name.equals(item.path("name").asText())) {
+                return;
+            }
+        }
+        ObjectNode item = MAPPER.createObjectNode();
+        item.put("name", name);
+        result.add(item);
     }
 
     private static JsonNode listSchemas(JsonNode connection, String database) throws SQLException {
