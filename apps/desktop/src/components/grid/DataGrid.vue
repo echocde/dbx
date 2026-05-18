@@ -103,6 +103,7 @@ import {
 } from "@/lib/columnFormatter";
 import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
+import { dataGridSaveActionMode } from "@/lib/dataGridSaveUi";
 import {
   filterColumnVisibilityOptions,
   nextHiddenColumnIndexes,
@@ -1281,6 +1282,13 @@ const {
   clearResetScrollAfterResult,
   cleanupFrames,
 } = editor;
+
+const saveActionMode = computed(() =>
+  dataGridSaveActionMode({
+    pendingChangeCount: pendingChangeCount.value,
+    useTransaction: !!useTransaction.value,
+  }),
+);
 
 function canEditRowItem(item: RowItem | undefined): boolean {
   return !!props.editable && !!item && !item.isDeleted && (item.isNew || canEditExistingRows.value);
@@ -2657,29 +2665,36 @@ defineExpose({
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 {{ t("grid.transactionActive") }}
               </span>
-              <Button
-                v-if="useTransaction"
-                :variant="transactionActive ? 'default' : 'secondary'"
-                size="sm"
-                class="h-5 text-xs px-1.5"
-                :disabled="!transactionActive || isSaving"
-                @click="onToolbarCommit"
-              >
-                <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
-                <Save v-else class="w-3 h-3 mr-1" />
-                {{ t("grid.commit") }}
-              </Button>
-              <Button
-                v-if="useTransaction"
-                variant="outline"
-                size="sm"
-                class="h-5 text-xs px-1.5"
-                :disabled="!transactionActive"
-                @click="onToolbarRollback"
-              >
-                <RotateCcw class="w-3 h-3 mr-1" />
-                {{ t("grid.rollback") }}
-              </Button>
+              <template v-if="editable && (tableMeta || customSave) && hasPendingChanges">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      class="h-5 text-xs px-1.5 shrink-0"
+                      :disabled="isSaving"
+                      @click="onToolbarCommit"
+                    >
+                      <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
+                      <Save v-else class="w-3 h-3 mr-1" />
+                      {{ t(saveActionMode.labelKey, { count: pendingChangeCount }) }}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" class="max-w-sm">
+                    {{ t(saveActionMode.tooltipKey, { count: pendingChangeCount }) }}
+                  </TooltipContent>
+                </Tooltip>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-5 text-xs px-1.5 shrink-0"
+                  :disabled="isSaving"
+                  @click="useTransaction ? onToolbarRollback() : discardChanges()"
+                >
+                  <RotateCcw class="w-3 h-3 mr-1" />
+                  {{ t(saveActionMode.secondaryActionKey) }}
+                </Button>
+              </template>
             </div>
           </div>
           <!-- Truncation warning banner -->
@@ -3852,16 +3867,10 @@ defineExpose({
       <span>{{ result.execution_time_ms }}ms</span>
       <span v-if="selectedRowCount > 0 || hasCellSelection" class="text-foreground">{{ selectionSummary }}</span>
 
-      <template v-if="editable && (tableMeta || customSave) && !useTransaction">
+      <template v-if="editable && (tableMeta || customSave)">
         <span v-if="hasPendingChanges" class="ml-2 text-foreground">
           {{ t("grid.pendingChanges", { count: pendingChangeCount }) }}
         </span>
-        <Button v-if="hasPendingChanges" variant="default" size="sm" class="h-5 text-xs ml-2" @click="saveChanges">
-          <Save class="w-3 h-3 mr-1" /> {{ t("grid.save") }}
-        </Button>
-        <Button v-if="hasPendingChanges" variant="ghost" size="sm" class="h-5 text-xs" @click="discardChanges">
-          {{ t("grid.discard") }}
-        </Button>
       </template>
 
       <span class="ml-auto flex items-center gap-1">

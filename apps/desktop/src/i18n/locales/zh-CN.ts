@@ -372,9 +372,11 @@ export default {
     refresh: "刷新",
     commit: "提交",
     rollback: "回滚",
+    transactionSaveHint: "在事务中提交 {count} 项待保存更改。",
+    nonTransactionalSaveHint: "逐条保存 {count} 项更改；如果中途失败，前面已成功的更改不会回滚。",
     transactionActive: "编辑中",
     queryEditReady: "可编辑",
-    queryEditReadyHint: "这是来自“{table}”的单表结果，可直接修改、删除或新增行，最后点击提交保存。",
+    queryEditReadyHint: "这是来自“{table}”的单表结果，可直接修改、删除或新增行，最后点击待保存按钮保存。",
     queryEditReadOnly: "只读结果",
     queryEditUnsupported: {
       "not-select": "只有 SELECT 查询结果可以直接编辑。",

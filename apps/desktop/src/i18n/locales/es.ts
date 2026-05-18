@@ -344,6 +344,9 @@ export default {
     refresh: "Actualizar",
     commit: "Confirmar",
     rollback: "Revertir",
+    transactionSaveHint: "Confirma {count} cambio(s) pendiente(s) en una transacción.",
+    nonTransactionalSaveHint:
+      "Guarda {count} cambio(s) pendiente(s) uno por uno. Si uno falla, los cambios anteriores correctos no se revierten.",
     transactionActive: "Editando",
     sortUnsupported: "Este SQL no admite ordenamiento del resultado completo. Intenta con una consulta SELECT simple.",
     truncatedHint: "Los resultados están limitados a 10.000 filas. Usa LIMIT/OFFSET en tu consulta para paginar.",

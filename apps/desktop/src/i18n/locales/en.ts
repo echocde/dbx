@@ -376,10 +376,13 @@ export default {
     refresh: "Refresh",
     commit: "Commit",
     rollback: "Rollback",
+    transactionSaveHint: "Commit {count} pending change(s) in a transaction.",
+    nonTransactionalSaveHint:
+      "Save {count} pending change(s) one by one. If one fails, earlier successful changes will not be rolled back.",
     transactionActive: "Editing",
     queryEditReady: "Editable",
     queryEditReadyHint:
-      "This single-table result comes from “{table}”. You can edit, delete, or add rows, then commit to save.",
+      "This single-table result comes from “{table}”. You can edit, delete, or add rows, then use the pending-changes action to save.",
     queryEditReadOnly: "Read-only result",
     queryEditUnsupported: {
       "not-select": "Only SELECT query results can be edited directly.",
