@@ -101,6 +101,11 @@ import {
 } from "@/lib/columnFormatter";
 import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
+import {
+  filterColumnVisibilityOptions,
+  nextHiddenColumnIndexes,
+  visibleColumnIndexesForFilter,
+} from "@/lib/dataGridColumnVisibility";
 
 import { useToast } from "@/composables/useToast";
 import { useDataGridExport } from "@/composables/useDataGridExport";
@@ -972,16 +977,40 @@ const rowStatusFilter = ref<RowStatusFilter>("all");
 const gridRef = ref<HTMLDivElement>();
 const headerRef = ref<HTMLDivElement>();
 const gridScrollbarGutter = ref(0);
-const visibleColumnIndexes = computed(() =>
+const hiddenColumnIndexes = ref<Set<number>>(new Set());
+const displayableColumnIndexes = computed(() =>
   props.result.columns
     .map((column, index) => ({ column, index }))
     .filter(({ column }) => !isHiddenGridColumn(props.databaseType, column, props.tableMeta?.primaryKeys ?? []))
     .map(({ index }) => index),
 );
+const visibleColumnIndexes = computed(() =>
+  visibleColumnIndexesForFilter(displayableColumnIndexes.value, hiddenColumnIndexes.value),
+);
 const visibleColumns = computed(() => visibleColumnIndexes.value.map((index) => props.result.columns[index]));
 const visibleRows = computed(() =>
   props.result.rows.map((row) => visibleColumnIndexes.value.map((index) => row[index])),
 );
+const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
+const displayableColumnCount = computed(() => displayableColumnIndexes.value.length);
+const hiddenColumnCount = computed(() => displayableColumnCount.value - visibleColumnCount.value);
+function filteredColumnVisibilityOptions(query: string) {
+  const displayable = new Set(displayableColumnIndexes.value);
+  return filterColumnVisibilityOptions(props.result.columns, query).filter((option) => displayable.has(option.index));
+}
+function isColumnVisible(columnIndex: number): boolean {
+  return !hiddenColumnIndexes.value.has(columnIndex);
+}
+function toggleColumnVisibility(columnIndex: number) {
+  hiddenColumnIndexes.value = nextHiddenColumnIndexes({
+    columnIndex,
+    hiddenIndexes: hiddenColumnIndexes.value,
+    totalColumns: displayableColumnCount.value,
+  });
+}
+function showAllColumns() {
+  hiddenColumnIndexes.value = new Set();
+}
 const firstVisibleColumnIndex = computed(() => visibleColumnIndexes.value[0] ?? 0);
 function actualColumnIndex(visibleColumnIndex: number): number {
   return visibleColumnIndexes.value[visibleColumnIndex] ?? visibleColumnIndex;
@@ -1025,6 +1054,7 @@ watch(
   () => props.result,
   () => {
     localColumnFilters.value = {};
+    hiddenColumnIndexes.value = new Set();
     closeLocalFilter();
   },
 );
@@ -2019,14 +2049,6 @@ function scrollTransposeRecordIntoView(rowIndex: number) {
   });
 }
 
-function openTranspose(rowIndex: number) {
-  transposeRowIndex.value = rowIndex;
-  showTranspose.value = true;
-  showCellDetail.value = false;
-  nextTick(updateTransposeViewport);
-  scrollTransposeRecordIntoView(rowIndex);
-}
-
 function openContextTranspose() {
   if (!contextCell.value) return;
   const next = nextContextTransposeState({
@@ -2370,6 +2392,13 @@ defineExpose({
   showTableInfo,
   toggleTableInfo,
   focusSearch,
+  visibleColumnCount,
+  displayableColumnCount,
+  hiddenColumnCount,
+  filteredColumnVisibilityOptions,
+  isColumnVisible,
+  toggleColumnVisibility,
+  showAllColumns,
 });
 </script>
 
