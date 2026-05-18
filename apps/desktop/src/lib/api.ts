@@ -102,6 +102,7 @@ export const executeSqlFile = forward("executeSqlFile");
 export const cancelSqlFileExecution = forward("cancelSqlFileExecution");
 export const listenSqlFileProgress = forward("listenSqlFileProgress");
 export const pendingOpenSqlFiles = forward("pendingOpenSqlFiles");
+export const readExternalSqlFile = forward("readExternalSqlFile");
 
 // Data Transfer
 export const startTransfer = forward("startTransfer");

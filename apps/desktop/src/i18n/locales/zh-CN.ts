@@ -1150,6 +1150,7 @@ export default {
   databaseExport: {
     title: "导出数据库",
     includeStructure: "表结构 (DDL)",
+    dropTableIfExists: "导出前添加 DROP TABLE IF EXISTS",
     includeData: "表数据 (INSERT)",
     includeObjects: "视图 / 存储过程 / 函数",
     tableSelection: "选择表",

@@ -1078,6 +1078,7 @@ export default {
   databaseExport: {
     title: "Exportar base de datos",
     includeStructure: "Estructura de tablas (DDL)",
+    dropTableIfExists: "Agregar DROP TABLE IF EXISTS antes del DDL",
     includeData: "Datos de tablas (INSERT)",
     includeObjects: "Vistas / Procedimientos / Funciones",
     tableSelection: "Tablas",

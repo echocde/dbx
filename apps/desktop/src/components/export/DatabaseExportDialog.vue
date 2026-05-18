@@ -43,6 +43,7 @@ const tableError = ref<string | null>(null);
 const includeStructure = ref(true);
 const includeData = ref(true);
 const includeObjects = ref(true);
+const dropTableIfExists = ref(false);
 
 // Export state
 const isExporting = ref(false);
@@ -197,6 +198,7 @@ async function startExport() {
     includeStructure: includeStructure.value,
     includeData: includeData.value,
     includeObjects: includeObjects.value,
+    dropTableIfExists: dropTableIfExists.value,
     batchSize: 1000,
   };
 
@@ -240,6 +242,7 @@ function resetState() {
   includeStructure.value = true;
   includeData.value = true;
   includeObjects.value = true;
+  dropTableIfExists.value = false;
   isExporting.value = false;
   exportProgress.value = null;
   exportDone.value = false;
@@ -414,6 +417,15 @@ watch(open, async (val) => {
               <CheckSquare v-if="includeStructure" class="w-3.5 h-3.5 text-primary shrink-0" />
               <Square v-else class="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
               {{ t("databaseExport.includeStructure") }}
+            </div>
+            <div
+              class="flex items-center gap-2 text-xs"
+              :class="includeStructure ? 'cursor-pointer' : 'cursor-not-allowed text-muted-foreground/50'"
+              @click="includeStructure && (dropTableIfExists = !dropTableIfExists)"
+            >
+              <CheckSquare v-if="dropTableIfExists && includeStructure" class="w-3.5 h-3.5 text-primary shrink-0" />
+              <Square v-else class="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />
+              {{ t("databaseExport.dropTableIfExists") }}
             </div>
             <div class="flex items-center gap-2 cursor-pointer text-xs" @click="includeData = !includeData">
               <CheckSquare v-if="includeData" class="w-3.5 h-3.5 text-primary shrink-0" />

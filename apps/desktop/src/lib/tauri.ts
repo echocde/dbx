@@ -112,6 +112,10 @@ export async function pendingOpenSqlFiles(): Promise<string[]> {
   return invoke("pending_open_sql_files");
 }
 
+export async function readExternalSqlFile(path: string): Promise<string> {
+  return invoke("read_external_sql_file", { path });
+}
+
 // --- AI Conversations ---
 
 export interface AiChatMessage {
@@ -868,6 +872,7 @@ export interface DatabaseExportRequest {
   includeStructure: boolean;
   includeData: boolean;
   includeObjects: boolean;
+  dropTableIfExists?: boolean;
   batchSize: number;
 }
 

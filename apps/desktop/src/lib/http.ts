@@ -482,6 +482,10 @@ export async function pendingOpenSqlFiles(): Promise<string[]> {
   return [];
 }
 
+export async function readExternalSqlFile(_path: string): Promise<string> {
+  throw new Error("Opening external SQL file paths is only available in the desktop app");
+}
+
 // ---------------------------------------------------------------------------
 // Data Transfer
 // ---------------------------------------------------------------------------

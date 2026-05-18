@@ -1173,6 +1173,7 @@ export default {
   databaseExport: {
     title: "Export Database",
     includeStructure: "Table structure (DDL)",
+    dropTableIfExists: "Add DROP TABLE IF EXISTS before DDL",
     includeData: "Table data (INSERT)",
     includeObjects: "Views / Procedures / Functions",
     tableSelection: "Tables",

@@ -365,8 +365,7 @@ async function openSqlFile() {
 async function openSqlFilePath(path: string) {
   if (!isTauriRuntime()) return;
   try {
-    const { readTextFile } = await import("@tauri-apps/plugin-fs");
-    const content = await readTextFile(path);
+    const content = await api.readExternalSqlFile(path);
     const connectionId =
       connectionStore.activeConnectionId || activeTab.value?.connectionId || connectionStore.connections[0]?.id || "";
     const connection = connectionId ? connectionStore.getConfig(connectionId) : undefined;
