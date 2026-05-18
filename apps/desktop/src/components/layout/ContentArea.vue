@@ -18,12 +18,12 @@ import "splitpanes/dist/splitpanes.css";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
-import DataGrid from "@/components/grid/DataGrid.vue";
-import RedisKeyBrowser from "@/components/redis/RedisKeyBrowser.vue";
-import MongoDocBrowser from "@/components/mongo/MongoDocBrowser.vue";
-import ObjectBrowser from "@/components/objects/ObjectBrowser.vue";
 import ColumnInfoPanel from "@/components/editor/ColumnInfoPanel.vue";
 import type { ColumnInfo } from "@/components/editor/ColumnInfoPanel.vue";
+const DataGrid = defineAsyncComponent(() => import("@/components/grid/DataGrid.vue"));
+const RedisKeyBrowser = defineAsyncComponent(() => import("@/components/redis/RedisKeyBrowser.vue"));
+const MongoDocBrowser = defineAsyncComponent(() => import("@/components/mongo/MongoDocBrowser.vue"));
+const ObjectBrowser = defineAsyncComponent(() => import("@/components/objects/ObjectBrowser.vue"));
 const ExplainPlanViewer = defineAsyncComponent(() => import("@/components/explain/ExplainPlanViewer.vue"));
 const QueryChart = defineAsyncComponent(() => import("@/components/chart/QueryChart.vue"));
 import { useQueryStore } from "@/stores/queryStore";
@@ -32,6 +32,24 @@ import { databaseDisplayNameForTab } from "@/lib/tabPresentation";
 import { isTableDataEditable } from "@/lib/tableEditing";
 import type { QueryTab, ConnectionConfig } from "@/types/database";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
+
+type DataGridHandle = {
+  onToolbarRefresh: () => Promise<void> | void;
+  focusSearch: () => boolean;
+  visibleColumnCount: number;
+  displayableColumnCount: number;
+  hiddenColumnCount: number;
+  filteredColumnVisibilityOptions: (search: string) => Array<{ index: number; column: string }>;
+  isColumnVisible: (columnIndex: number) => boolean;
+  toggleColumnVisibility: (columnIndex: number) => void;
+  showAllColumns: () => void;
+  showDdl: boolean;
+  toggleDdl: () => void;
+};
+
+type SearchableBrowserHandle = {
+  focusSearch: () => boolean;
+};
 
 const props = defineProps<{
   activeTab: QueryTab;
@@ -71,13 +89,13 @@ const showColumnInfo = ref(false);
 const columnInfoColumns = ref<ColumnInfo[]>([]);
 const columnInfoLoading = ref(false);
 const columnInfoError = ref<string | undefined>(undefined);
-const dataGridRef = ref<InstanceType<typeof DataGrid>>();
+const dataGridRef = ref<DataGridHandle>();
 const columnVisibilitySearch = ref("");
 const columnVisibilityOptions = computed(
   () => dataGridRef.value?.filteredColumnVisibilityOptions(columnVisibilitySearch.value) ?? [],
 );
-const redisKeyBrowserRef = ref<InstanceType<typeof RedisKeyBrowser>>();
-const objectBrowserRef = ref<InstanceType<typeof ObjectBrowser>>();
+const redisKeyBrowserRef = ref<SearchableBrowserHandle>();
+const objectBrowserRef = ref<SearchableBrowserHandle>();
 
 const activeSqlFormatDialect = computed<SqlFormatDialect>(() => {
   switch (props.activeConnection?.db_type) {
