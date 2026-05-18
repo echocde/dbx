@@ -361,22 +361,23 @@ pub async fn scan_values_page(
     query: &str,
     count: usize,
 ) -> Result<RedisScanResult, String> {
+    let total_keys: u64 = redis::cmd("DBSIZE").query_async(con).await.unwrap_or(0);
+    if query.trim().is_empty() {
+        return Ok(RedisScanResult { cursor, keys: Vec::new(), total_keys });
+    }
+
+    let scan_count = count.max(1);
     let raw: RedisRawValue = redis::cmd("SCAN")
         .arg(cursor)
         .arg("MATCH")
         .arg(pattern)
         .arg("COUNT")
-        .arg(count)
+        .arg(scan_count)
         .query_async(con)
         .await
         .map_err(|e| e.to_string())?;
 
     let (next_cursor, keys) = parse_scan_keys(raw)?;
-    let total_keys: u64 = redis::cmd("DBSIZE").query_async(con).await.unwrap_or(0);
-    if keys.is_empty() || query.trim().is_empty() {
-        return Ok(RedisScanResult { cursor: next_cursor, keys: Vec::new(), total_keys });
-    }
-
     let mut result = Vec::new();
     for key in keys {
         let Ok(value) = get_value(con, &key).await else {
