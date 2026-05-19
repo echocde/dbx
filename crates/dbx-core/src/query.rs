@@ -1,3 +1,5 @@
+use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use duckdb::types::{TimeUnit, ValueRef};
 use std::future::Future;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -27,6 +29,65 @@ pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryRe
     duckdb_execute_with_max_rows(con, sql, None)
 }
 
+fn duckdb_temporal_value_to_json(row: &duckdb::Row<'_>, idx: usize) -> Option<serde_json::Value> {
+    match row.get_ref(idx).ok()? {
+        ValueRef::Null => Some(serde_json::Value::Null),
+        ValueRef::Date32(days) => duckdb_date32_to_string(days).map(serde_json::Value::String),
+        ValueRef::Time64(unit, value) => duckdb_time64_to_string(unit, value).map(serde_json::Value::String),
+        ValueRef::Timestamp(unit, value) => duckdb_timestamp_to_string(unit, value).map(serde_json::Value::String),
+        _ => None,
+    }
+}
+
+fn duckdb_date32_to_string(days: i32) -> Option<String> {
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1)?;
+    epoch.checked_add_signed(ChronoDuration::days(i64::from(days))).map(|date| date.to_string())
+}
+
+fn duckdb_time64_to_string(unit: TimeUnit, value: i64) -> Option<String> {
+    let nanos = duckdb_time_unit_to_nanos(unit, value)?;
+    let seconds = nanos.div_euclid(1_000_000_000);
+    let nanos_remainder = nanos.rem_euclid(1_000_000_000) as u32;
+    if !(0..86_400).contains(&seconds) {
+        return None;
+    }
+    let time = NaiveTime::from_num_seconds_from_midnight_opt(seconds as u32, nanos_remainder)?;
+    Some(format_temporal_without_empty_fraction(time.to_string()))
+}
+
+fn duckdb_timestamp_to_string(unit: TimeUnit, value: i64) -> Option<String> {
+    let nanos = duckdb_time_unit_to_nanos(unit, value)?;
+    let seconds = nanos.div_euclid(1_000_000_000);
+    let nanos_remainder = nanos.rem_euclid(1_000_000_000) as u32;
+    let dt: DateTime<Utc> = DateTime::from_timestamp(seconds, nanos_remainder)?;
+    Some(format_naive_datetime(dt.naive_utc()))
+}
+
+fn duckdb_time_unit_to_nanos(unit: TimeUnit, value: i64) -> Option<i64> {
+    match unit {
+        TimeUnit::Second => value.checked_mul(1_000_000_000),
+        TimeUnit::Millisecond => value.checked_mul(1_000_000),
+        TimeUnit::Microsecond => value.checked_mul(1_000),
+        TimeUnit::Nanosecond => Some(value),
+    }
+}
+
+fn format_naive_datetime(value: NaiveDateTime) -> String {
+    if value.and_utc().timestamp_subsec_nanos() == 0 {
+        value.format("%Y-%m-%d %H:%M:%S").to_string()
+    } else {
+        format_temporal_without_empty_fraction(value.to_string())
+    }
+}
+
+fn format_temporal_without_empty_fraction(value: String) -> String {
+    if !value.contains('.') {
+        return value;
+    }
+    let trimmed = value.trim_end_matches('0').trim_end_matches('.');
+    trimmed.to_string()
+}
+
 pub fn duckdb_execute_with_max_rows(
     con: &duckdb::Connection,
     sql: &str,
@@ -48,6 +109,9 @@ pub fn duckdb_execute_with_max_rows(
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let vals: Vec<serde_json::Value> = (0..col_count)
                 .map(|i| {
+                    if let Some(value) = duckdb_temporal_value_to_json(row, i) {
+                        return value;
+                    }
                     row.get::<_, String>(i)
                         .map(serde_json::Value::String)
                         .or_else(|_| row.get::<_, i64>(i).map(|v| serde_json::Value::Number(v.into())))
@@ -1048,6 +1112,27 @@ mod tests {
         assert!(!is_connection_error("ORA-00942: table or view does not exist"));
         assert!(!is_connection_error("syntax error at position 5"));
         assert!(!is_connection_error("os error 13"));
+    }
+
+    #[test]
+    fn duckdb_execute_formats_temporal_values_by_column_type() {
+        let con = duckdb::Connection::open_in_memory().expect("connect in-memory DuckDB");
+        let result = duckdb_execute(
+            &con,
+            "SELECT DATE '2026-05-14' AS d, TIME '16:58:15' AS t, TIMESTAMP '2026-05-14 16:58:15.0' AS ts, NULL::TIMESTAMP AS nts",
+        )
+        .expect("execute temporal query");
+
+        assert_eq!(result.columns, vec!["d", "t", "ts", "nts"]);
+        assert_eq!(
+            result.rows,
+            vec![vec![
+                serde_json::Value::String("2026-05-14".to_string()),
+                serde_json::Value::String("16:58:15".to_string()),
+                serde_json::Value::String("2026-05-14 16:58:15".to_string()),
+                serde_json::Value::Null,
+            ]]
+        );
     }
 
     #[test]
