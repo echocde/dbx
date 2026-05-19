@@ -738,7 +738,7 @@ const messageRenderer = createAiMessageRenderer({ markdown: formatInlineText });
                 <div
                   class="overflow-hidden transition-all duration-200 ease-in-out"
                   :style="{
-                    maxHeight: expandedReasoning.has(i) || msg.isThinking ? '2000px' : '0px',
+                    maxHeight: expandedReasoning.has(i) || msg.isThinking ? '20000px' : '0px',
                     opacity: expandedReasoning.has(i) || msg.isThinking ? '1' : '0',
                   }"
                 >

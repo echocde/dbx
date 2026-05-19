@@ -94,6 +94,7 @@ export async function runAiStream(
 
   const sid = sessionId || uuid();
   const params = actionParams(input.action);
+  const maxTokens = input.config.enableThinking ? Math.max(params.maxTokens, 8192) : params.maxTokens;
 
   await api.aiStream(
     sid,
@@ -101,7 +102,7 @@ export async function runAiStream(
       config: input.config,
       systemPrompt,
       messages,
-      maxTokens: params.maxTokens,
+      maxTokens,
       temperature: params.temperature,
     },
     (chunk) => {
