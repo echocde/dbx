@@ -69,6 +69,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
+import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database";
 import * as api from "@/lib/api";
 import {
@@ -105,12 +106,7 @@ import {
   type ColumnFormatterConfig,
   type DateTimeFormatterUnit,
 } from "@/lib/columnFormatter";
-import {
-  formatTemporalInputValue,
-  parseTemporalInputValue,
-  temporalCellEditorKind,
-  type TemporalCellEditorKind,
-} from "@/lib/dataGridTemporalEditor";
+import { temporalCellEditorKind, type TemporalCellEditorKind } from "@/lib/dataGridTemporalEditor";
 import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
 import { dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGridSaveUi";
@@ -1342,6 +1338,7 @@ const {
   startEdit,
   commitEdit,
   applyCellValue,
+  cancelEdit,
   onEditKeydown,
   addRow,
   cloneRow,
@@ -1400,33 +1397,6 @@ function tableColumnForGridColumn(columnIndex: number): ColumnInfo | undefined {
 
 function temporalEditorKindForColumn(columnIndex: number): TemporalCellEditorKind | undefined {
   return temporalCellEditorKind(tableColumnForGridColumn(columnIndex)?.data_type, props.databaseType);
-}
-
-function cellEditInputType(columnIndex: number): string {
-  const kind = temporalEditorKindForColumn(columnIndex);
-  if (kind === "date") return "date";
-  if (kind === "time") return "time";
-  if (kind === "datetime") return "datetime-local";
-  return "text";
-}
-
-function cellEditInputStep(columnIndex: number): string | undefined {
-  return temporalEditorKindForColumn(columnIndex) ? "1" : undefined;
-}
-
-function cellEditInputValue(columnIndex: number): string {
-  const kind = temporalEditorKindForColumn(columnIndex);
-  return kind ? formatTemporalInputValue(editValue.value, kind) : editValue.value;
-}
-
-function onCellEditInput(columnIndex: number, event: Event) {
-  const target = event.target as HTMLInputElement;
-  const kind = temporalEditorKindForColumn(columnIndex);
-  if (!kind) {
-    editValue.value = target.value;
-    return;
-  }
-  editValue.value = parseTemporalInputValue(target.value, kind) ?? "NULL";
 }
 
 function canDeleteRowItem(item: RowItem | undefined): boolean {
@@ -3542,15 +3512,20 @@ defineExpose({
                         @contextmenu="onCellContext(item.id, index, actualColIdx, visibleColIdx)"
                       >
                         <template v-if="editingCell?.rowId === item.id && editingCell?.col === actualColIdx">
+                          <TemporalCellEditor
+                            v-if="temporalEditorKindForColumn(actualColIdx)"
+                            v-model="editValue"
+                            :kind="temporalEditorKindForColumn(actualColIdx)!"
+                            @cancel="cancelEdit"
+                            @commit="commitEdit"
+                          />
                           <input
-                            :type="cellEditInputType(actualColIdx)"
-                            :step="cellEditInputStep(actualColIdx)"
-                            :value="cellEditInputValue(actualColIdx)"
+                            v-else
+                            v-model="editValue"
                             autocapitalize="off"
                             autocorrect="off"
                             spellcheck="false"
                             class="cell-edit-input absolute inset-0 bg-background border-2 border-primary px-2 py-0.5 text-xs outline-none z-10"
-                            @input="onCellEditInput(actualColIdx, $event)"
                             @blur="commitEdit"
                             @click.stop
                             @keydown.stop="onEditKeydown"
