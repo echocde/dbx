@@ -220,6 +220,14 @@ async fn duckdb_attached_database_names(state: &AppState, connection_id: &str) -
         .unwrap_or_default()
 }
 
+fn clickhouse_metadata_database<'a>(database: &'a str, schema: &'a str) -> &'a str {
+    if database.is_empty() {
+        schema
+    } else {
+        database
+    }
+}
+
 pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Result<Vec<db::DatabaseInfo>, String> {
     log::info!("[list_databases] connection_id={connection_id}");
     {
@@ -355,7 +363,7 @@ pub async fn list_tables_core(
         }
         if let Some(client) = extract_clickhouse(&connections, &pool_key) {
             drop(connections);
-            return db::clickhouse_driver::list_tables(&client, database).await;
+            return db::clickhouse_driver::list_tables(&client, clickhouse_metadata_database(database, schema)).await;
         }
         if let Some(client) = extract_sqlserver(&connections, &pool_key) {
             drop(connections);
@@ -402,7 +410,9 @@ fn filter_table_infos(tables: Vec<db::TableInfo>, filter: Option<&str>, limit: O
 
 #[cfg(test)]
 mod tests {
-    use super::{duckdb_attach_database, duckdb_list_databases, duckdb_query_tables_in_database};
+    use super::{
+        clickhouse_metadata_database, duckdb_attach_database, duckdb_list_databases, duckdb_query_tables_in_database,
+    };
 
     #[test]
     fn duckdb_list_databases_includes_attached_database() {
@@ -440,6 +450,13 @@ mod tests {
         assert!(!attached_tables.iter().any(|table| table.name == "main_table"));
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn clickhouse_metadata_uses_schema_when_database_is_empty() {
+        assert_eq!(clickhouse_metadata_database("", "testdb"), "testdb");
+        assert_eq!(clickhouse_metadata_database("testdb", ""), "testdb");
+        assert_eq!(clickhouse_metadata_database("default", "testdb"), "default");
     }
 }
 
@@ -568,7 +585,8 @@ pub async fn get_columns_core(
         }
         if let Some(client) = extract_clickhouse(&connections, &pool_key) {
             drop(connections);
-            return db::clickhouse_driver::get_columns(&client, database, table).await;
+            return db::clickhouse_driver::get_columns(&client, clickhouse_metadata_database(database, schema), table)
+                .await;
         }
         if let Some(client) = extract_sqlserver(&connections, &pool_key) {
             drop(connections);
@@ -745,9 +763,13 @@ pub async fn get_table_ddl_core(
         }
         if let Some(client) = extract_clickhouse(&connections, &pool_key) {
             drop(connections);
-            let result =
-                db::clickhouse_driver::execute_query(&client, database, &format!("SHOW CREATE TABLE `{table}`"))
-                    .await?;
+            let clickhouse_database = clickhouse_metadata_database(database, schema);
+            let result = db::clickhouse_driver::execute_query(
+                &client,
+                clickhouse_database,
+                &format!("SHOW CREATE TABLE `{table}`"),
+            )
+            .await?;
             return result
                 .rows
                 .first()
