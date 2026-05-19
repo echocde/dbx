@@ -321,7 +321,6 @@ export default {
     sortAscending: "Sort Ascending",
     sortDescending: "Sort Descending",
     clearSort: "Clear Sort",
-    copied: "Copied!",
     pasted: "Pasted!",
     search: "Search...",
     searchOrWhere: "Search, or enter a WHERE clause...",
