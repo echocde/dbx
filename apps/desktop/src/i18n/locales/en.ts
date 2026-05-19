@@ -267,6 +267,7 @@ export default {
     exportSelectedRowsMarkdown: "Export Selected Rows as Markdown",
     exported: "Exported",
     exportFailed: "Export failed: {message}",
+    copied: "Copied",
     copyFailed: "Copy failed: {message}",
     filter: "Filter",
     localFilter: "Local column filter",

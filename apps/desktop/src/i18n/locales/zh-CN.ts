@@ -265,6 +265,7 @@ export default {
     exportSelectedRowsMarkdown: "导出选中行为 Markdown",
     exported: "导出完成",
     exportFailed: "导出失败：{message}",
+    copied: "已复制",
     copyFailed: "复制失败：{message}",
     filter: "筛选",
     localFilter: "本地列筛选",
