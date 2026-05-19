@@ -47,7 +47,7 @@ import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { buildObjectBrowserRows, type ObjectBrowserRow } from "@/lib/objectBrowserRows";
+import { buildObjectBrowserRows, filterObjectBrowserRows, type ObjectBrowserRow } from "@/lib/objectBrowserRows";
 
 type ObjectFilter = "all" | "tables" | "views" | "procedures" | "functions";
 
@@ -129,16 +129,10 @@ const objectFilters = computed<ObjectFilter[]>(() =>
 const showObjectFilter = computed(() => objectFilters.value.length > 2);
 const hasComments = computed(() => rows.value.some((row) => row.comment?.trim()));
 const gridTemplateColumns = computed(() =>
-  hasComments.value ? "minmax(0,1fr) 120px 160px minmax(160px,0.7fr)" : "minmax(0,1fr) 120px 160px",
+  hasComments.value ? "minmax(0,1fr) 120px minmax(160px,0.7fr)" : "minmax(0,1fr) 120px",
 );
 const searchedRows = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  if (!q) return rows.value;
-  return rows.value.filter((row) =>
-    [row.name, row.schema, row.type, row.comment]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(q)),
-  );
+  return filterObjectBrowserRows(rows.value, search.value);
 });
 const filteredRows = computed(() => {
   if (objectFilter.value === "tables") return searchedRows.value.filter((row) => row.type === "TABLE");
@@ -614,7 +608,6 @@ watch(
       >
         <div class="truncate">{{ t("objects.name") }}</div>
         <div class="truncate">{{ t("objects.type") }}</div>
-        <div class="truncate">{{ t("objects.schemaColumn") }}</div>
         <div v-if="hasComments" class="truncate">{{ t("objects.comment") }}</div>
       </div>
       <RecycleScroller
@@ -639,7 +632,6 @@ watch(
                   <span class="truncate text-[13px] font-medium text-foreground">{{ item.name }}</span>
                 </div>
                 <div class="truncate text-xs text-muted-foreground">{{ typeLabel(item.type) }}</div>
-                <div class="truncate text-xs text-muted-foreground">{{ item.schema || props.database }}</div>
                 <div v-if="hasComments" class="truncate text-xs text-muted-foreground" :title="item.comment || ''">
                   {{ item.comment || "" }}
                 </div>
