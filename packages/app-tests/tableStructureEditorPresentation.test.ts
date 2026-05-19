@@ -18,6 +18,10 @@ test("structure editor keeps columns when optional metadata fails", () => {
   assert.match(source, /api\s*\n\s*\.listTriggers[\s\S]*\.catch\(\(\) => \[\]\)/);
 });
 
+test("structure editor loads immediately when mounted open", () => {
+  assert.match(source, /watch\(\s*open,[\s\S]*\{\s*immediate:\s*true\s*\},?\s*\)/);
+});
+
 test("structure editor gates controls through table structure capabilities", () => {
   assert.match(source, /getTableStructureCapabilities/);
   assert.match(source, /const structureCapabilities = computed/);

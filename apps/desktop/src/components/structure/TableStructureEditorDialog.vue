@@ -39,7 +39,12 @@ import {
   type EditableStructureIndex,
 } from "@/lib/tableStructureEditorSql";
 import { getTableStructureCapabilities } from "@/lib/tableStructureCapabilities";
-import { createColumnDrafts, createIndexDrafts, toColumnNames } from "@/lib/tableStructureEditorState";
+import {
+  buildStructureTargetLabel,
+  createColumnDrafts,
+  createIndexDrafts,
+  toColumnNames,
+} from "@/lib/tableStructureEditorState";
 import type { ForeignKeyInfo, TriggerInfo } from "@/types/database";
 import * as api from "@/lib/api";
 
@@ -116,11 +121,14 @@ const indexColLabels = computed(() => [
 const targetSchema = computed(() => props.prefillSchema || props.prefillDatabase || "");
 const isCreateMode = computed(() => !props.prefillTable);
 const newTableName = ref("");
-const targetLabel = computed(() => {
-  const parts = [connection.value?.name, props.prefillDatabase, props.prefillSchema];
-  if (!isCreateMode.value) parts.push(props.prefillTable);
-  return parts.filter(Boolean).join(" / ");
-});
+const targetLabel = computed(() =>
+  buildStructureTargetLabel(
+    connection.value?.name,
+    props.prefillDatabase,
+    props.prefillSchema,
+    isCreateMode.value ? undefined : props.prefillTable,
+  ),
+);
 
 const changeSql = computed(() => {
   if (isCreateMode.value) {
@@ -331,12 +339,16 @@ async function applyChanges() {
   }
 }
 
-watch(open, (value) => {
-  if (value) {
-    resetState();
-    void loadStructure();
-  }
-});
+watch(
+  open,
+  (value) => {
+    if (value) {
+      resetState();
+      void loadStructure();
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
