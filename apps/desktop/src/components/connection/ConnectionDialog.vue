@@ -517,10 +517,11 @@ const isJdbcConnection = computed(() => form.value.db_type === "jdbc");
 
 const connectionUrlPlaceholder = computed(() => getUrlPlaceholder(form.value.db_type));
 const filePathPlaceholder = computed(() => {
-  if (form.value.db_type === "duckdb") return "/path/to/database.duckdb";
+  if (form.value.db_type === "duckdb") return "/path/to/database.duckdb or :memory:";
   if (form.value.db_type === "access") return "/path/to/database.accdb";
-  return "/path/to/database.db";
+  return "/path/to/database.db or :memory:";
 });
+const supportsMemoryDatabasePath = computed(() => form.value.db_type === "sqlite" || form.value.db_type === "duckdb");
 const canUseSsh = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "access");
 const canUseProxy = computed(
   () => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb" && form.value.db_type !== "access",
@@ -1109,16 +1110,21 @@ function openExternalUrl(url: string) {
                 >
                   <div class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right">{{ t("connection.filePath") }}</Label>
-                    <div class="col-span-3 flex items-center gap-1">
-                      <Input v-model="form.host" class="flex-1" :placeholder="filePathPlaceholder" />
-                      <Tooltip v-if="isDesktop">
-                        <TooltipTrigger as-child>
-                          <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" @click="browseDbFilePath">
-                            <FolderOpen class="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>{{ t("connection.sshKeyPathBrowse") }}</TooltipContent>
-                      </Tooltip>
+                    <div class="col-span-3 space-y-1">
+                      <div class="flex items-center gap-1">
+                        <Input v-model="form.host" class="flex-1" :placeholder="filePathPlaceholder" />
+                        <Tooltip v-if="isDesktop">
+                          <TooltipTrigger as-child>
+                            <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" @click="browseDbFilePath">
+                              <FolderOpen class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.sshKeyPathBrowse") }}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p v-if="supportsMemoryDatabasePath" class="text-xs text-muted-foreground">
+                        {{ t("connection.memoryDatabasePathHint") }}
+                      </p>
                     </div>
                   </div>
                 </template>

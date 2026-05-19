@@ -96,6 +96,7 @@ export default {
     type: "类型",
     host: "主机",
     filePath: "文件路径",
+    memoryDatabasePathHint: "输入 :memory: 可创建 SQLite 或 DuckDB 内存数据库。",
     user: "用户名",
     password: "密码",
     database: "数据库",

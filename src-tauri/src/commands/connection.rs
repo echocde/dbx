@@ -152,9 +152,8 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                 Err(e) => Err(e),
             },
             DatabaseType::Redis => db::redis_driver::connect(&url).await.map(|_| "Connection successful".to_string()),
-            DatabaseType::DuckDb => duckdb::Connection::open(&expand_tilde(&config.host))
-                .map(|_| "Connection successful".to_string())
-                .map_err(|e| e.to_string()),
+            DatabaseType::DuckDb => db::duckdb_driver::connect_path(&expand_tilde(&config.host))
+                .map(|_| "Connection successful".to_string()),
             DatabaseType::MongoDb => {
                 let native_err = match db::mongo_driver::connect(&url).await {
                     Ok(client) => match db::mongo_driver::test_connection(&client).await {
@@ -258,11 +257,14 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             PoolKind::Redis(tokio::sync::Mutex::new(con))
         }
         DatabaseType::DuckDb => {
-            let con = duckdb::Connection::open(&expand_tilde(&db_config.host)).map_err(|e| e.to_string())?;
-            for attached in &db_config.attached_databases {
-                dbx_core::schema::duckdb_attach_database(&con, &attached.name, &expand_tilde(&attached.path))?;
+            let con = db::duckdb_driver::connect_path(&expand_tilde(&db_config.host))?;
+            {
+                let locked = con.lock().map_err(|e| e.to_string())?;
+                for attached in &db_config.attached_databases {
+                    dbx_core::schema::duckdb_attach_database(&locked, &attached.name, &expand_tilde(&attached.path))?;
+                }
             }
-            PoolKind::DuckDb(std::sync::Arc::new(std::sync::Mutex::new(con)))
+            PoolKind::DuckDb(con)
         }
         DatabaseType::MongoDb => {
             let native_err = match db::mongo_driver::connect(&url).await {
