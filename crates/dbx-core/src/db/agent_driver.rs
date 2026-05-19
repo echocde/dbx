@@ -20,6 +20,7 @@ pub struct AgentDriverClient {
     stdin: Option<BufWriter<ChildStdin>>,
     stdout: Option<BufReader<ChildStdout>>,
     stderr_tail: Arc<Mutex<StderrTail>>,
+    handshake: Option<AgentHandshake>,
     next_id: u64,
 }
 
@@ -276,7 +277,7 @@ impl AgentDriverClient {
             }
         };
 
-        Ok(Self { child, stdin: Some(stdin), stdout: Some(ready_stdout), stderr_tail, next_id: 0 })
+        Ok(Self { child, stdin: Some(stdin), stdout: Some(ready_stdout), stderr_tail, handshake: None, next_id: 0 })
     }
 
     /// Send a JSON-RPC 2.0 request and wait for the response.
@@ -523,6 +524,7 @@ impl AgentDriverClient {
                     handshake.agent_protocol_version,
                     handshake.capabilities
                 );
+                self.handshake = Some(handshake.clone());
                 Some(handshake)
             }
             Err(err) if is_unsupported_handshake_error(&err) => {
@@ -534,6 +536,14 @@ impl AgentDriverClient {
                 None
             }
         }
+    }
+
+    pub fn handshake(&self) -> Option<&AgentHandshake> {
+        self.handshake.as_ref()
+    }
+
+    pub fn supports_capability(&self, capability: AgentCapability) -> bool {
+        agent_supports_capability(self.handshake.as_ref(), capability)
     }
 
     /// Send a shutdown message to the agent and wait for the process to exit.
@@ -577,6 +587,10 @@ pub fn is_unsupported_handshake_error(error: &str) -> bool {
     error.contains("Unknown method: handshake")
         || error.contains("Method not found: handshake")
         || error.contains("method not found: handshake")
+}
+
+pub fn agent_supports_capability(handshake: Option<&AgentHandshake>, capability: AgentCapability) -> bool {
+    handshake.map(|value| value.supports(capability)).unwrap_or(true)
 }
 
 pub fn agent_schema_params(schema: &str) -> Value {
@@ -722,10 +736,10 @@ impl Drop for AgentDriverClient {
 mod tests {
     use super::{
         agent_close_query_session_params, agent_handshake_params, agent_java_args, agent_object_source_params,
-        agent_proxy_env_vars, agent_schema_params, agent_schema_table_params, agent_transaction_params,
-        format_agent_process_error, is_unsupported_handshake_error, mongo_collection_params, mongo_database_params,
-        mongo_document_id_params, read_agent_line, AgentCapability, AgentDriverClient, AgentHandshake, AgentMethod,
-        MongoAgentMethod, StderrTail, AGENT_PROTOCOL_VERSION,
+        agent_proxy_env_vars, agent_schema_params, agent_schema_table_params, agent_supports_capability,
+        agent_transaction_params, format_agent_process_error, is_unsupported_handshake_error, mongo_collection_params,
+        mongo_database_params, mongo_document_id_params, read_agent_line, AgentCapability, AgentDriverClient,
+        AgentHandshake, AgentMethod, MongoAgentMethod, StderrTail, AGENT_PROTOCOL_VERSION,
     };
     use std::io::Cursor;
 
@@ -962,6 +976,19 @@ mod tests {
         assert!(handshake.supports(AgentCapability::Connect));
         assert!(handshake.supports(AgentCapability::Metadata));
         assert!(!handshake.supports(AgentCapability::Query));
+    }
+
+    #[test]
+    fn treats_missing_handshake_as_legacy_capability_support() {
+        let handshake = AgentHandshake {
+            protocol_version: AGENT_PROTOCOL_VERSION,
+            agent_protocol_version: AGENT_PROTOCOL_VERSION,
+            capabilities: vec!["connect".to_string()],
+        };
+
+        assert!(agent_supports_capability(None, AgentCapability::Query));
+        assert!(agent_supports_capability(Some(&handshake), AgentCapability::Connect));
+        assert!(!agent_supports_capability(Some(&handshake), AgentCapability::Query));
     }
 
     #[test]
