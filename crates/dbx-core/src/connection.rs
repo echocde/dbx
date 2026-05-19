@@ -192,7 +192,10 @@ impl AppState {
                     log::info!("Native MongoDB driver failed ({native_err}), falling back to agent driver");
                     let connect_params = serde_json::json!({ "connection": agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")) });
                     let mut client = self.agent_manager.spawn(&DatabaseType::MongoDb, None).await?;
-                    client.call::<serde_json::Value>("connect", connect_params).await?;
+                    client
+                        .call::<serde_json::Value>("connect", connect_params)
+                        .await
+                        .map_err(|err| mongo_legacy_error_with_auth_hint(&err))?;
                     PoolKind::Agent(Arc::new(tokio::sync::Mutex::new(client)))
                 } else {
                     return Err(native_err);
@@ -466,6 +469,23 @@ pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, da
     })
 }
 
+pub fn mongo_legacy_error_with_auth_hint(err: &str) -> String {
+    let Some(source_start) = err.find("source='") else {
+        return err.to_string();
+    };
+    if !err.contains("Exception authenticating MongoCredential") || err.contains("Current authentication database:") {
+        return err.to_string();
+    }
+    let source = &err[source_start + "source='".len()..];
+    let Some(source_end) = source.find('\'') else {
+        return err.to_string();
+    };
+    let source = &source[..source_end];
+    format!(
+        "{err}\n\nCurrent authentication database: {source}. If this user was created in admin, set Authentication database to admin or add authSource=admin to URL params."
+    )
+}
+
 fn oracle_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> String {
     let database = database.trim();
     if database.is_empty() {
@@ -600,6 +620,16 @@ mod tests {
         let params = agent_connect_params(&config, "172.22.4.42", 27017, "RestCloud_V45PUB_Gateway");
 
         assert_eq!(params["connection_string"], "mongodb://mongouser:secret@172.22.4.42:27017/RestCloud%5FV45PUB%5FGateway?authSource=admin&authMechanism=SCRAM-SHA-1");
+    }
+
+    #[test]
+    fn mongo_legacy_auth_error_adds_auth_source_hint() {
+        let err = "Agent RPC error: Exception authenticating MongoCredential{mechanism=SCRAM-SHA-1, userName='rwuser', source='gray_lite_twin_fat'}";
+
+        assert_eq!(
+            super::mongo_legacy_error_with_auth_hint(err),
+            "Agent RPC error: Exception authenticating MongoCredential{mechanism=SCRAM-SHA-1, userName='rwuser', source='gray_lite_twin_fat'}\n\nCurrent authentication database: gray_lite_twin_fat. If this user was created in admin, set Authentication database to admin or add authSource=admin to URL params."
+        );
     }
 
     #[test]

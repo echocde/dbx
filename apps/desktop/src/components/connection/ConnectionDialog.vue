@@ -17,6 +17,7 @@ import * as api from "@/lib/api";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { applyParsedConnectionUrl, parseConnectionUrl } from "@/lib/connectionUrl";
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connectionPresentation";
+import { mongodbAuthFailureHint, mongoUrlParam, setMongoUrlParam } from "@/lib/mongoConnectionOptions";
 import { showAgentDriverInstallHint, type AgentDriverInstallState } from "@/lib/agentDriverInstallHint";
 import { ArrowLeft, ChevronRight, Copy, ExternalLink, FolderOpen, Grid3X3, Link2, List, Search } from "lucide-vue-next";
 
@@ -533,6 +534,18 @@ const testResultMessage = computed(() => {
   if (!testResult.value) return "";
   return testResult.value.ok ? t("connection.testSuccess") : testResult.value.message;
 });
+const mongoAuthDatabase = computed({
+  get: () => mongoUrlParam(form.value.url_params, "authSource"),
+  set: (value: string) => {
+    form.value.url_params = setMongoUrlParam(form.value.url_params, "authSource", value);
+  },
+});
+const mongoAuthMechanism = computed({
+  get: () => mongoUrlParam(form.value.url_params, "authMechanism") || "default",
+  set: (value: string) => {
+    form.value.url_params = setMongoUrlParam(form.value.url_params, "authMechanism", value === "default" ? "" : value);
+  },
+});
 
 function goToConnectionStep(value = selectedType.value) {
   if (value !== selectedType.value) {
@@ -565,7 +578,7 @@ async function testConnection() {
     testResult.value = { ok: true, message: msg };
   } catch (e: any) {
     if (runId !== testRunId) return;
-    testResult.value = { ok: false, message: String(e) };
+    testResult.value = { ok: false, message: mongodbAuthFailureHint(String(e)) };
   } finally {
     if (runId === testRunId) {
       isTesting.value = false;
@@ -703,13 +716,13 @@ async function save() {
           emit("connectSucceeded", config.name);
         })
         .catch((e: any) => {
-          emit("connectFailed", String(e?.message || e));
+          emit("connectFailed", mongodbAuthFailureHint(String(e?.message || e)));
         });
       return;
     }
     open.value = false;
   } catch (e: any) {
-    testResult.value = { ok: false, message: String(e?.message || e) };
+    testResult.value = { ok: false, message: mongodbAuthFailureHint(String(e?.message || e)) };
   } finally {
     isSaving.value = false;
   }
@@ -1196,12 +1209,33 @@ function openExternalUrl(url: string) {
                       <Input v-model="form.password" type="password" class="col-span-3" />
                     </div>
                     <div class="grid grid-cols-4 items-center gap-4">
-                      <Label class="text-right">{{ t("connection.database") }}</Label>
+                      <Label class="text-right">{{ t("connection.defaultDatabase") }}</Label>
                       <Input
                         v-model="form.database"
                         class="col-span-3"
                         :placeholder="t('connection.databasePlaceholder')"
                       />
+                    </div>
+                    <div class="grid grid-cols-4 items-center gap-4">
+                      <Label class="text-right">{{ t("connection.authDatabase") }}</Label>
+                      <Input
+                        v-model="mongoAuthDatabase"
+                        class="col-span-3"
+                        :placeholder="t('connection.authDatabasePlaceholder')"
+                      />
+                    </div>
+                    <div class="grid grid-cols-4 items-center gap-4">
+                      <Label class="text-right">{{ t("connection.authMechanism") }}</Label>
+                      <Select v-model="mongoAuthMechanism">
+                        <SelectTrigger class="col-span-3">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="default">{{ t("connection.authMechanismDefault") }}</SelectItem>
+                          <SelectItem value="SCRAM-SHA-1">SCRAM-SHA-1</SelectItem>
+                          <SelectItem value="SCRAM-SHA-256">SCRAM-SHA-256</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div class="grid grid-cols-4 items-center gap-4">
                       <Label class="text-right">{{ t("connection.urlParams") }}</Label>

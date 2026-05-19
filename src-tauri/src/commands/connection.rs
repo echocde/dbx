@@ -3,7 +3,8 @@ use tauri::State;
 
 pub use dbx_core::connection::{
     agent_connect_params, connection_url_for_endpoint, expand_tilde, metadata_connection_config,
-    probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
+    mongo_legacy_error_with_auth_hint, probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState,
+    MysqlMode, PoolKind,
 };
 use dbx_core::database_capabilities;
 use dbx_core::db;
@@ -167,7 +168,8 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     let mut client = am.spawn(&config.db_type, config.driver_profile.as_deref()).await?;
                     client
                         .call::<serde_json::Value>("connect", mongo_legacy_connect_params(&config, &host, port))
-                        .await?;
+                        .await
+                        .map_err(|err| mongo_legacy_error_with_auth_hint(&err))?;
                     client.call::<serde_json::Value>("disconnect", serde_json::json!({})).await.ok();
                     Ok("Connection successful (via legacy driver)".to_string())
                 } else {
