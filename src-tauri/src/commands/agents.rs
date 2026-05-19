@@ -6,8 +6,8 @@ use dbx_core::agent_manager::{
     AgentDriverInfo, AgentManager, InstalledDriver, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY,
 };
 use dbx_core::agent_service::{
-    build_agent_list, download_temp_path, ensure_driver_app_version, fetch_registry, find_local_agent_jar,
-    github_url_to_r2_path, install_local_agent, invalidate_registry_cache, verify_and_replace_download,
+    build_agent_list, download_temp_path, fetch_registry, find_local_agent_jar, github_url_to_r2_path,
+    install_local_agent, invalidate_registry_cache, verify_and_replace_download,
 };
 use dbx_core::connection::AppState;
 
@@ -49,7 +49,6 @@ pub async fn install_agent(
         }
         return Err(format!("Unknown driver type: {db_type}"));
     };
-    ensure_driver_app_version(&db_type, driver, env!("CARGO_PKG_VERSION"))?;
     let jre_key = &driver.jre;
     let needs_jre = am.load_state().java_runtime.mode == JavaRuntimeMode::Managed && !am.is_jre_installed(jre_key);
 
@@ -138,7 +137,6 @@ pub async fn upgrade_all_agents(app: tauri::AppHandle, state: State<'_, Arc<AppS
         let current = (i + 1) as u32;
         let db_type = &agent.db_type;
         let driver = registry.drivers.get(db_type).ok_or_else(|| format!("Unknown driver type: {db_type}"))?;
-        ensure_driver_app_version(db_type, driver, env!("CARGO_PKG_VERSION"))?;
         let jre_key = &driver.jre;
         let needs_jre = am.load_state().java_runtime.mode == JavaRuntimeMode::Managed && !am.is_jre_installed(jre_key);
 

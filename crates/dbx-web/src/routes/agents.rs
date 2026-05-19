@@ -8,8 +8,8 @@ use dbx_core::agent_manager::{
     DEFAULT_JRE_KEY,
 };
 use dbx_core::agent_service::{
-    build_agent_list, download_temp_path, ensure_driver_app_version, fetch_registry, find_local_agent_jar,
-    github_url_to_r2_path, install_local_agent, invalidate_registry_cache, verify_and_replace_download,
+    build_agent_list, download_temp_path, fetch_registry, find_local_agent_jar, github_url_to_r2_path,
+    install_local_agent, invalidate_registry_cache, verify_and_replace_download,
 };
 use futures::Stream;
 use serde::Deserialize;
@@ -215,8 +215,6 @@ async fn install_agent_from_registry(
         }
         return Err(format!("Unknown driver type: {db_type}"));
     };
-    ensure_driver_app_version(db_type, driver, env!("CARGO_PKG_VERSION"))?;
-
     let jre_key = &driver.jre;
     let needs_jre = am.load_state().java_runtime.mode == JavaRuntimeMode::Managed && !am.is_jre_installed(jre_key);
     if needs_jre {
