@@ -403,7 +403,7 @@ export default {
       "metadata-unavailable": "DBX could not load table metadata, so result editing is disabled.",
     },
     sortUnsupported: "This SQL does not support full-result sorting. Try again with a single SELECT query.",
-    truncatedHint: "Results truncated to 10,000 rows. Use LIMIT/OFFSET in your query to paginate.",
+    truncatedHint: "Results truncated to {count} rows. Use the footer pagination or adjust rows per page.",
   },
   welcome: {
     title: "Database Workspace",
@@ -1139,10 +1139,6 @@ export default {
     executeMode: "Execute Mode (Cmd+Enter)",
     executeModeAll: "Execute all SQL",
     executeModeCurrent: "Execute statement at cursor",
-    resultPageSize: "Query result rows per page",
-    resultPageSizeDescription:
-      "Used for new queries, table browsing, and result pagination. Very large values may slow queries and rendering.",
-    resultPageSizeOption: "{count} rows/page",
     wordWrap: "Word wrap",
     wordWrapDescription: "Wrap long SQL lines within the editor width",
     redisScanPageSize: "Redis scan count",

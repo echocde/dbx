@@ -395,7 +395,7 @@ export default {
       "metadata-unavailable": "无法读取目标表元数据，暂不能启用结果编辑。",
     },
     sortUnsupported: "当前 SQL 不支持全量排序，请改为单条 SELECT 查询后再尝试。",
-    truncatedHint: "结果已截断，仅显示前 10,000 行。如需更多数据，请使用 LIMIT/OFFSET 分页查询。",
+    truncatedHint: "结果已截断，仅显示前 {count} 行。可通过底部分页继续加载，或调整每页行数。",
   },
   welcome: {
     title: "数据库工作台",
@@ -1116,9 +1116,6 @@ export default {
     executeMode: "执行模式 (Cmd+Enter)",
     executeModeAll: "执行全部 SQL",
     executeModeCurrent: "执行光标所在语句",
-    resultPageSize: "查询结果每页行数",
-    resultPageSizeDescription: "用于新查询、表数据浏览和分页跳转。设置过大可能会降低查询和渲染速度。",
-    resultPageSizeOption: "{count} 行/页",
     wordWrap: "自动换行",
     wordWrapDescription: "长 SQL 在编辑器宽度内自动折行显示",
     redisScanPageSize: "Redis 扫描数量",

@@ -314,8 +314,22 @@ pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Resul
         .collect())
 }
 
+fn query_result_row_limit(max_rows: Option<usize>) -> usize {
+    max_rows.unwrap_or(crate::query::MAX_ROWS).max(1)
+}
+
 pub async fn execute_query(pool: &MySqlPool, sql: &str, bare: bool) -> Result<QueryResult, String> {
+    execute_query_with_max_rows(pool, sql, bare, None).await
+}
+
+pub async fn execute_query_with_max_rows(
+    pool: &MySqlPool,
+    sql: &str,
+    bare: bool,
+    max_rows: Option<usize>,
+) -> Result<QueryResult, String> {
     let start = Instant::now();
+    let row_limit = query_result_row_limit(max_rows);
 
     if is_result_set_query(sql) {
         if bare || requires_text_protocol_query(sql) {
@@ -335,14 +349,14 @@ pub async fn execute_query(pool: &MySqlPool, sql: &str, bare: bool) -> Result<Qu
                         .map(|i| mysql_value_to_json(&row, i, column_types.get(i).map(String::as_str).unwrap_or("")))
                         .collect(),
                 );
-                if result_rows.len() > crate::query::MAX_ROWS {
+                if result_rows.len() > row_limit {
                     break;
                 }
             }
 
-            let truncated = result_rows.len() > crate::query::MAX_ROWS;
+            let truncated = result_rows.len() > row_limit;
             if truncated {
-                result_rows.truncate(crate::query::MAX_ROWS);
+                result_rows.truncate(row_limit);
             }
 
             Ok(QueryResult {
@@ -369,14 +383,14 @@ pub async fn execute_query(pool: &MySqlPool, sql: &str, bare: bool) -> Result<Qu
                         .map(|i| mysql_value_to_json(&row, i, column_types.get(i).map(String::as_str).unwrap_or("")))
                         .collect(),
                 );
-                if result_rows.len() > crate::query::MAX_ROWS {
+                if result_rows.len() > row_limit {
                     break;
                 }
             }
 
-            let truncated = result_rows.len() > crate::query::MAX_ROWS;
+            let truncated = result_rows.len() > row_limit;
             if truncated {
-                result_rows.truncate(crate::query::MAX_ROWS);
+                result_rows.truncate(row_limit);
             }
 
             Ok(QueryResult {

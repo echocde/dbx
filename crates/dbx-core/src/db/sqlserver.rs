@@ -13,6 +13,10 @@ use crate::types::{ColumnInfo, DatabaseInfo, ForeignKeyInfo, IndexInfo, QueryRes
 pub type SqlServerClient = Client<Compat<TcpStream>>;
 const SIMPLE_QUERY_MODULE_KEYWORDS: &[&str] = &["FUNCTION", "PROC", "PROCEDURE", "TRIGGER", "VIEW"];
 
+fn query_result_row_limit(max_rows: Option<usize>) -> usize {
+    max_rows.unwrap_or(MAX_ROWS).max(1)
+}
+
 pub async fn connect(
     host: &str,
     port: u16,
@@ -64,7 +68,12 @@ fn columns_from_metadata(metadata: &tiberius::ResultMetadata) -> Vec<String> {
     metadata.columns().iter().map(|c| c.name().to_string()).collect()
 }
 
-async fn collect_first_result_limited(mut stream: QueryStream<'_>, start: Instant) -> Result<QueryResult, String> {
+async fn collect_first_result_limited(
+    mut stream: QueryStream<'_>,
+    start: Instant,
+    max_rows: Option<usize>,
+) -> Result<QueryResult, String> {
+    let row_limit = query_result_row_limit(max_rows);
     let mut columns: Vec<String> = vec![];
     let mut rows: Vec<Vec<serde_json::Value>> = Vec::new();
     let mut truncated = false;
@@ -76,7 +85,7 @@ async fn collect_first_result_limited(mut stream: QueryStream<'_>, start: Instan
             }
             QueryItem::Metadata(_) => {}
             QueryItem::Row(row) if row.result_index() == 0 => {
-                if rows.len() < MAX_ROWS {
+                if rows.len() < row_limit {
                     rows.push(row_to_json(&row));
                 } else {
                     truncated = true;
@@ -120,7 +129,12 @@ fn push_sqlserver_result_set(results: &mut Vec<QueryResult>, result: Option<SqlS
     }
 }
 
-async fn collect_result_sets_limited(mut stream: QueryStream<'_>, start: Instant) -> Result<Vec<QueryResult>, String> {
+async fn collect_result_sets_limited(
+    mut stream: QueryStream<'_>,
+    start: Instant,
+    max_rows: Option<usize>,
+) -> Result<Vec<QueryResult>, String> {
+    let row_limit = query_result_row_limit(max_rows);
     let mut results = Vec::new();
     let mut current: Option<SqlServerResultSet> = None;
 
@@ -140,7 +154,7 @@ async fn collect_result_sets_limited(mut stream: QueryStream<'_>, start: Instant
                     rows: Vec::new(),
                     truncated: false,
                 });
-                if result.rows.len() < MAX_ROWS {
+                if result.rows.len() < row_limit {
                     result.rows.push(row_to_json(&row));
                 } else {
                     result.truncated = true;
@@ -527,14 +541,22 @@ pub async fn list_triggers(
 }
 
 pub async fn execute_query(client: &mut SqlServerClient, sql: &str) -> Result<QueryResult, String> {
+    execute_query_with_max_rows(client, sql, None).await
+}
+
+pub async fn execute_query_with_max_rows(
+    client: &mut SqlServerClient,
+    sql: &str,
+    max_rows: Option<usize>,
+) -> Result<QueryResult, String> {
     let start = Instant::now();
 
     if starts_with_executable_sql_keyword(sql, &["SELECT", "EXEC", "WITH", "TABLE"]) {
         let stream = client.query(sql, &[]).await.map_err(|e| e.to_string())?;
-        collect_first_result_limited(stream, start).await
+        collect_first_result_limited(stream, start, max_rows).await
     } else if requires_simple_query_batch(sql) {
         let stream = client.simple_query(sql).await.map_err(|e| e.to_string())?;
-        let _ = collect_result_sets_limited(stream, start).await?;
+        let _ = collect_result_sets_limited(stream, start, max_rows).await?;
         Ok(QueryResult {
             columns: vec![],
             rows: vec![],
@@ -559,9 +581,17 @@ pub async fn execute_query(client: &mut SqlServerClient, sql: &str) -> Result<Qu
 }
 
 pub async fn execute_batch(client: &mut SqlServerClient, sql: &str) -> Result<Vec<QueryResult>, String> {
+    execute_batch_with_max_rows(client, sql, None).await
+}
+
+pub async fn execute_batch_with_max_rows(
+    client: &mut SqlServerClient,
+    sql: &str,
+    max_rows: Option<usize>,
+) -> Result<Vec<QueryResult>, String> {
     let start = Instant::now();
     let stream = client.simple_query(sql).await.map_err(|e| e.to_string())?;
-    let mut results = collect_result_sets_limited(stream, start).await?;
+    let mut results = collect_result_sets_limited(stream, start, max_rows).await?;
 
     if results.is_empty() {
         results.push(QueryResult {

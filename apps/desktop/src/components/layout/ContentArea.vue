@@ -534,6 +534,8 @@ defineExpose({ focusSearch, refreshData });
           :connection-id="activeTab.connectionId"
           :database="activeTab.database"
           :table-meta="activeTab.tableMeta"
+          :page-offset="activeTab.resultPageOffset"
+          :page-limit="activeTab.resultPageLimit"
           :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
           @update:where-input="(v: string) => (activeTab.whereInput = v)"
           @reload="

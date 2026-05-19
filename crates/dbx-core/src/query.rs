@@ -19,8 +19,21 @@ pub struct QueryExecutionOptions {
     pub result_session_id: Option<String>,
 }
 
+fn query_result_row_limit(max_rows: Option<usize>) -> usize {
+    max_rows.unwrap_or(MAX_ROWS).max(1)
+}
+
 pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryResult, String> {
+    duckdb_execute_with_max_rows(con, sql, None)
+}
+
+pub fn duckdb_execute_with_max_rows(
+    con: &duckdb::Connection,
+    sql: &str,
+    max_rows: Option<usize>,
+) -> Result<db::QueryResult, String> {
     let start = std::time::Instant::now();
+    let row_limit = query_result_row_limit(max_rows);
 
     if starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH", "PRAGMA"]) {
         let mut stmt = con.prepare(sql).map_err(|e| e.to_string())?;
@@ -33,9 +46,6 @@ pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryRe
 
         let mut result_rows = Vec::new();
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            if result_rows.len() >= MAX_ROWS {
-                break;
-            }
             let vals: Vec<serde_json::Value> = (0..col_count)
                 .map(|i| {
                     row.get::<_, String>(i)
@@ -53,9 +63,15 @@ pub fn duckdb_execute(con: &duckdb::Connection, sql: &str) -> Result<db::QueryRe
                 })
                 .collect();
             result_rows.push(vals);
+            if result_rows.len() > row_limit {
+                break;
+            }
         }
 
-        let truncated = result_rows.len() >= MAX_ROWS;
+        let truncated = result_rows.len() > row_limit;
+        if truncated {
+            result_rows.truncate(row_limit);
+        }
         Ok(db::QueryResult {
             columns,
             rows: result_rows,
@@ -84,6 +100,7 @@ fn duckdb_execute_for_database(
     attached_names: &[String],
     database: Option<&str>,
     sql: &str,
+    max_rows: Option<usize>,
 ) -> Result<db::QueryResult, String> {
     if let Some(database) = database.map(str::trim).filter(|database| !database.is_empty()) {
         let catalog = if database == "main" {
@@ -93,16 +110,21 @@ fn duckdb_execute_for_database(
         };
         con.execute_batch(&format!("USE {}", duckdb_quote_ident(&catalog))).map_err(|e| e.to_string())?;
     }
-    duckdb_execute(con, sql)
+    duckdb_execute_with_max_rows(con, sql, max_rows)
 }
 
 fn duckdb_quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
-pub fn truncate_result(mut result: db::QueryResult) -> db::QueryResult {
-    if result.rows.len() > MAX_ROWS {
-        result.rows.truncate(MAX_ROWS);
+pub fn truncate_result(result: db::QueryResult) -> db::QueryResult {
+    truncate_result_with_max_rows(result, None)
+}
+
+pub fn truncate_result_with_max_rows(mut result: db::QueryResult, max_rows: Option<usize>) -> db::QueryResult {
+    let row_limit = query_result_row_limit(max_rows);
+    if result.rows.len() > row_limit {
+        result.rows.truncate(row_limit);
         result.truncated = true;
     }
     result
@@ -243,11 +265,12 @@ pub async fn do_execute(
             let sql = sql.to_string();
             let database = database.map(str::to_string);
             let attached_names = duckdb_attached_names;
+            let max_rows = options.max_rows;
             drop(connections);
             wait_for_query(cancel_token, async move {
                 let task = tokio::task::spawn_blocking(move || {
                     let con = con.lock().map_err(|e| e.to_string())?;
-                    duckdb_execute_for_database(&con, &attached_names, database.as_deref(), &sql)
+                    duckdb_execute_for_database(&con, &attached_names, database.as_deref(), &sql, max_rows)
                 });
                 task.await.map_err(|e| e.to_string())?
             })
@@ -256,34 +279,46 @@ pub async fn do_execute(
         PoolKind::Mysql(p, mode) => {
             let p = p.clone();
             let bare = *mode == crate::connection::MysqlMode::Bare;
+            let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, db::mysql::execute_query(&p, sql, bare)).await
+            wait_for_query(cancel_token, db::mysql::execute_query_with_max_rows(&p, sql, bare, max_rows)).await
         }
         PoolKind::Postgres(p) => {
             let p = p.clone();
             let schema = schema.map(|s| s.to_string());
+            let max_rows = options.max_rows;
             drop(connections);
             if let Some(schema) = schema {
-                wait_for_query(cancel_token, db::postgres::execute_query_with_schema(&p, &schema, sql)).await
+                wait_for_query(
+                    cancel_token,
+                    db::postgres::execute_query_with_schema_and_max_rows(&p, &schema, sql, max_rows),
+                )
+                .await
             } else {
-                wait_for_query(cancel_token, db::postgres::execute_query(&p, sql)).await
+                wait_for_query(cancel_token, db::postgres::execute_query_with_max_rows(&p, sql, max_rows)).await
             }
         }
         PoolKind::Sqlite(p) => {
             let p = p.clone();
+            let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, db::sqlite::execute_query(&p, sql)).await
+            wait_for_query(cancel_token, db::sqlite::execute_query_with_max_rows(&p, sql, max_rows)).await
         }
         PoolKind::ClickHouse(client) => {
             let client = client.clone();
             let database = pool_key.split(':').nth(1).unwrap_or("default").to_string();
+            let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, db::clickhouse_driver::execute_query(&client, &database, sql))
-                .await
-                .map(truncate_result)
+            wait_for_query(
+                cancel_token,
+                db::clickhouse_driver::execute_query_with_max_rows(&client, &database, sql, max_rows),
+            )
+            .await
+            .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
         PoolKind::SqlServer(client) => {
             let client = client.clone();
+            let max_rows = options.max_rows;
             drop(connections);
             let mut client = match cancel_token.as_ref() {
                 Some(token) => tokio::select! {
@@ -293,15 +328,18 @@ pub async fn do_execute(
                 },
                 None => client.lock().await,
             };
-            wait_for_query(cancel_token, db::sqlserver::execute_query(&mut client, sql)).await.map(truncate_result)
+            wait_for_query(cancel_token, db::sqlserver::execute_query_with_max_rows(&mut client, sql, max_rows))
+                .await
+                .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
         PoolKind::Elasticsearch(client) => {
             let client = client.clone();
             let sql = sql.to_string();
+            let max_rows = options.max_rows;
             drop(connections);
             wait_for_query(cancel_token, db::elasticsearch_driver::execute_rest_query(&client, &sql))
                 .await
-                .map(truncate_result)
+                .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
         PoolKind::Redis(_) => Err("Use Redis-specific commands".to_string()),
         PoolKind::MongoDb(_) => Err("Use MongoDB-specific commands".to_string()),
@@ -309,6 +347,7 @@ pub async fn do_execute(
             let client = client.clone();
             let sql = sql.to_string();
             let schema = schema.map(|s| s.to_string());
+            let max_rows = options.max_rows;
             drop(connections);
             wait_for_query(cancel_token, async move {
                 let mut client = client.lock().await;
@@ -324,7 +363,7 @@ pub async fn do_execute(
                 }
             })
             .await
-            .map(truncate_result)
+            .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
         PoolKind::ExternalTabular(ext_pool) => {
             if !starts_with_executable_sql_keyword(sql, &["SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN", "PRAGMA"]) {
@@ -332,11 +371,12 @@ pub async fn do_execute(
             }
             let con = ext_pool.cache.clone();
             let sql = sql.to_string();
+            let max_rows = options.max_rows;
             drop(connections);
             wait_for_query(cancel_token, async move {
                 let task = tokio::task::spawn_blocking(move || {
                     let con = con.lock().map_err(|e| e.to_string())?;
-                    duckdb_execute(&con, &sql)
+                    duckdb_execute_with_max_rows(&con, &sql, max_rows)
                 });
                 task.await.map_err(|e| e.to_string())?
             })
@@ -348,13 +388,14 @@ pub async fn do_execute(
             let sql = sql.to_string();
             let schema = schema.map(str::to_string);
             let database = config.effective_database().unwrap_or("").to_string();
+            let max_rows = options.max_rows;
             drop(connections);
             wait_for_query(cancel_token, async move {
                 let params = external_driver_query_params(&config, &sql, &database, schema.as_deref());
                 session.invoke::<db::QueryResult>("executeQuery", params).await
             })
             .await
-            .map(truncate_result)
+            .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
     }
 }
@@ -490,7 +531,7 @@ pub async fn execute_multi_core_with_options(
     };
 
     if is_sqlserver {
-        return execute_multi_sqlserver(state, &pool_key, sql, cancel_token).await;
+        return execute_multi_sqlserver(state, &pool_key, sql, cancel_token, options).await;
     }
 
     let statements = split_sql_statements(sql);
@@ -547,9 +588,11 @@ async fn execute_multi_sqlserver(
     pool_key: &str,
     sql: &str,
     cancel_token: Option<CancellationToken>,
+    options: QueryExecutionOptions,
 ) -> Result<Vec<db::QueryResult>, String> {
     let batches = split_sql_batches(sql);
     let mut all_results = Vec::new();
+    let max_rows = options.max_rows;
 
     for batch in &batches {
         if is_canceled(&cancel_token) {
@@ -582,7 +625,7 @@ async fn execute_multi_sqlserver(
             None => client.lock().await,
         };
 
-        match db::sqlserver::execute_batch(&mut client, batch).await {
+        match db::sqlserver::execute_batch_with_max_rows(&mut client, batch, max_rows).await {
             Ok(results) => all_results.extend(results),
             Err(e) => {
                 all_results.push(db::QueryResult {

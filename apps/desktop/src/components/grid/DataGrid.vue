@@ -1131,6 +1131,12 @@ watch(pageSize, (value) => {
   customPageSizeInput.value = String(value);
 });
 watch(
+  () => settingsStore.editorSettings.pageSize,
+  (value) => {
+    pageSize.value = normalizeResultPageSize(value, pageSize.value);
+  },
+);
+watch(
   () => [props.pageOffset, props.pageLimit],
   ([offset, limit]) => {
     if (typeof offset !== "number" || typeof limit !== "number" || limit <= 0) return;
@@ -1141,6 +1147,9 @@ watch(
 );
 const canGoNextPage = computed(() => props.result.has_more === true || props.result.rows.length >= pageSize.value);
 const canJumpLastPage = computed(() => canGoNextPage.value && (!!props.tableMeta || !!props.countSql));
+const showTruncationWarning = computed(
+  () => props.result.truncated === true && typeof props.pageLimit !== "number" && props.result.has_more !== true,
+);
 const isResultsContext = computed(() => props.context === "results");
 const resultEditStatus = computed(() => {
   if (!isResultsContext.value || !hasData.value) return null;
@@ -2773,10 +2782,10 @@ defineExpose({
           </div>
           <!-- Truncation warning banner -->
           <div
-            v-if="result.truncated"
+            v-if="showTruncationWarning"
             class="shrink-0 px-3 py-1 bg-amber-500/10 border-b border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5"
           >
-            <span>{{ t("grid.truncatedHint") }}</span>
+            <span>{{ t("grid.truncatedHint", { count: pageSize }) }}</span>
           </div>
           <!-- Content area: table + DDL drawer -->
           <div class="flex-1 flex min-h-0 overflow-hidden">
@@ -3947,7 +3956,7 @@ defineExpose({
     <!-- Bottom status bar -->
     <div class="flex items-center gap-2 px-3 py-1 border-t text-xs text-muted-foreground bg-muted/30 shrink-0">
       <span v-if="hasData">{{ t("grid.totalRows", { count: result.rows.length }) }}</span>
-      <span v-if="result.truncated" class="text-amber-500 text-xs ml-1">(truncated)</span>
+      <span v-if="showTruncationWarning" class="text-amber-500 text-xs ml-1">(truncated)</span>
       <span v-if="!hasData">{{ t("grid.rowsAffected", { count: result.affected_rows }) }}</span>
       <span>{{ result.execution_time_ms }}ms</span>
       <span v-if="selectedRowCount > 0 || hasCellSelection" class="text-foreground">{{ selectionSummary }}</span>
@@ -3966,26 +3975,36 @@ defineExpose({
               {{ pageSize }}{{ t("grid.rowsPerPageShort") }}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-52">
+          <DropdownMenuContent align="end" class="w-36">
             <DropdownMenuItem v-for="s in pageSizeOptions" :key="s" @click="changePageSize(s)">
               {{ s }} {{ t("grid.rowsPerPageShort") }}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuLabel class="text-xs">{{ t("grid.customRowsPerPage") }}</DropdownMenuLabel>
-            <div class="flex items-center gap-1.5 px-2 pb-2" @click.stop @keydown.stop>
+            <div class="flex items-center gap-1 px-2 pb-2" @click.stop @keydown.stop>
               <Input
                 v-model="customPageSizeInput"
                 type="number"
                 inputmode="numeric"
                 :min="MIN_RESULT_PAGE_SIZE"
                 :max="MAX_RESULT_PAGE_SIZE"
-                class="h-7 text-xs"
+                class="h-7 w-24 text-xs tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 @keydown.enter.prevent.stop="applyCustomPageSize"
               />
-              <Button variant="outline" size="sm" class="h-7 px-2 text-xs" @click.stop="applyCustomPageSize">
-                <Check class="h-3 w-3" />
-                {{ t("grid.applyPageSize") }}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    class="h-7 w-7 shrink-0"
+                    :aria-label="t('grid.applyPageSize')"
+                    @click.stop="applyCustomPageSize"
+                  >
+                    <Check class="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{{ t("grid.applyPageSize") }}</TooltipContent>
+              </Tooltip>
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
