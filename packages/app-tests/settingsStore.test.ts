@@ -111,3 +111,15 @@ test("normalizes legacy AI config and fills provider defaults", () => {
   assert.equal(ollama.model, "llama3.1");
   assert.equal(ollama.apiKey, "");
 });
+
+test("infers legacy AI provider from saved endpoint and model", () => {
+  const deepseek = normalizeAiConfig({
+    apiKey: "key",
+    endpoint: "https://api.deepseek.com/anthropic/v1/messages",
+    model: "deepseek-v4-pro",
+  } as any);
+
+  assert.equal(deepseek.provider, "deepseek");
+  assert.equal(deepseek.endpoint, "https://api.deepseek.com/anthropic/v1/messages");
+  assert.equal(deepseek.model, "deepseek-v4-pro");
+});
