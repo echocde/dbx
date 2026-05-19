@@ -1,7 +1,49 @@
+use dbx_core::agent_service::AGENT_TYPES;
 use dbx_core::database_capabilities::{
     agent_key, is_agent_type, is_metadata_connection_scoped, is_single_connection_pool, skips_tcp_probe,
 };
 use dbx_core::models::connection::DatabaseType;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DriverManifest {
+    drivers: Vec<DriverManifestEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DriverManifestEntry {
+    db_type: DatabaseType,
+    label: String,
+    runtime_mode: String,
+    #[serde(default)]
+    agent_key: Option<String>,
+    #[serde(default)]
+    single_connection_pool: bool,
+    #[serde(default)]
+    metadata_connection_scoped: bool,
+    #[serde(default)]
+    skip_tcp_probe: bool,
+    #[serde(default)]
+    driver_profiles: Vec<DriverProfileEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DriverProfileEntry {
+    profile: String,
+    label: String,
+    agent_key: String,
+}
+
+fn driver_manifest() -> DriverManifest {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets").join("database-drivers.manifest.json");
+    let json = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        panic!("failed to read driver manifest {}: {err}", path.display());
+    });
+    serde_json::from_str(&json).expect("driver manifest should be valid JSON")
+}
 
 #[test]
 fn maps_agent_database_types_to_driver_keys() {
@@ -85,4 +127,70 @@ fn skips_tcp_probe_for_local_file_plugin_and_agent_types() {
     assert!(skips_tcp_probe(&DatabaseType::Gbase));
     assert!(!skips_tcp_probe(&DatabaseType::Postgres));
     assert!(!skips_tcp_probe(&DatabaseType::Mysql));
+}
+
+#[test]
+fn driver_manifest_matches_core_database_capabilities() {
+    let manifest = driver_manifest();
+
+    for driver in &manifest.drivers {
+        assert_eq!(
+            is_agent_type(&driver.db_type),
+            driver.runtime_mode == "agent",
+            "agent classification mismatch for {:?}",
+            driver.db_type
+        );
+        assert_eq!(
+            agent_key(&driver.db_type, None),
+            driver.agent_key.as_deref(),
+            "agent key mismatch for {:?}",
+            driver.db_type
+        );
+        assert_eq!(
+            is_single_connection_pool(&driver.db_type),
+            driver.single_connection_pool,
+            "single-pool mismatch for {:?}",
+            driver.db_type
+        );
+        assert_eq!(
+            is_metadata_connection_scoped(&driver.db_type),
+            driver.metadata_connection_scoped,
+            "metadata scope mismatch for {:?}",
+            driver.db_type
+        );
+        assert_eq!(
+            skips_tcp_probe(&driver.db_type),
+            driver.skip_tcp_probe,
+            "TCP probe behavior mismatch for {:?}",
+            driver.db_type
+        );
+
+        for profile in &driver.driver_profiles {
+            assert_eq!(
+                agent_key(&driver.db_type, Some(&profile.profile)),
+                Some(profile.agent_key.as_str()),
+                "profile agent key mismatch for {:?}/{}",
+                driver.db_type,
+                profile.profile
+            );
+        }
+    }
+}
+
+#[test]
+fn driver_manifest_matches_agent_driver_store_entries() {
+    let manifest = driver_manifest();
+    let mut expected: std::collections::BTreeMap<&str, &str> = std::collections::BTreeMap::new();
+    for driver in manifest.drivers.iter().filter(|driver| driver.runtime_mode == "agent") {
+        expected.insert(
+            driver.agent_key.as_deref().expect("agent drivers should have an agent key"),
+            driver.label.as_str(),
+        );
+        for profile in &driver.driver_profiles {
+            expected.insert(profile.agent_key.as_str(), profile.label.as_str());
+        }
+    }
+    let actual: std::collections::BTreeMap<&str, &str> = AGENT_TYPES.iter().copied().collect();
+
+    assert_eq!(actual, expected);
 }
