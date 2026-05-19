@@ -24,6 +24,7 @@ import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { aiTestConnection } from "@/lib/api";
 import { eventToShortcut } from "@/lib/keyboardShortcuts";
+import { MAX_RESULT_PAGE_SIZE, MIN_RESULT_PAGE_SIZE, normalizeResultPageSize } from "@/lib/paginationPageSize";
 import {
   SHORTCUT_DEFINITIONS,
   findShortcutConflict,
@@ -51,6 +52,7 @@ const editFontFamily = ref(settingsStore.editorSettings.fontFamily);
 const editFontSize = ref(settingsStore.editorSettings.fontSize);
 const editTheme = ref(settingsStore.editorSettings.theme);
 const editExecuteMode = ref(settingsStore.editorSettings.executeMode);
+const editPageSize = ref(settingsStore.editorSettings.pageSize);
 const editWordWrap = ref(settingsStore.editorSettings.wordWrap);
 const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
@@ -67,6 +69,7 @@ watch(
       editFontSize.value = settingsStore.editorSettings.fontSize;
       editTheme.value = settingsStore.editorSettings.theme;
       editExecuteMode.value = settingsStore.editorSettings.executeMode;
+      editPageSize.value = settingsStore.editorSettings.pageSize;
       editWordWrap.value = settingsStore.editorSettings.wordWrap;
       editAppLayout.value = settingsStore.editorSettings.appLayout;
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
@@ -90,6 +93,7 @@ function hasChanges(): boolean {
     editFontSize.value !== settingsStore.editorSettings.fontSize ||
     editTheme.value !== settingsStore.editorSettings.theme ||
     editExecuteMode.value !== settingsStore.editorSettings.executeMode ||
+    editPageSize.value !== settingsStore.editorSettings.pageSize ||
     editWordWrap.value !== settingsStore.editorSettings.wordWrap ||
     editAppLayout.value !== settingsStore.editorSettings.appLayout ||
     editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
@@ -105,6 +109,7 @@ function applySettings() {
     fontSize: editFontSize.value,
     theme: editTheme.value,
     executeMode: editExecuteMode.value,
+    pageSize: normalizeResultPageSize(editPageSize.value),
     wordWrap: editWordWrap.value,
     appLayout: editAppLayout.value,
     redisScanPageSize: editRedisScanPageSize.value,
@@ -119,6 +124,7 @@ function resetDefaults() {
   editFontSize.value = DEFAULT_EDITOR_SETTINGS.fontSize;
   editTheme.value = DEFAULT_EDITOR_SETTINGS.theme;
   editExecuteMode.value = DEFAULT_EDITOR_SETTINGS.executeMode;
+  editPageSize.value = DEFAULT_EDITOR_SETTINGS.pageSize;
   editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
   editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
@@ -128,6 +134,10 @@ function resetDefaults() {
 
 function onExecuteModeChange(v: any) {
   if (v === "all" || v === "current") editExecuteMode.value = v;
+}
+
+function onPageSizeInput(event: Event) {
+  editPageSize.value = normalizeResultPageSize((event.target as HTMLInputElement).value);
 }
 
 function onFontFamilyChange(v: any) {
@@ -565,6 +575,28 @@ watch(
                 </Select>
               </div>
 
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-3">
+                  <Label for="editor-result-page-size">{{ t("settings.resultPageSize") }}</Label>
+                  <span class="text-xs text-muted-foreground tabular-nums">
+                    {{ t("settings.resultPageSizeOption", { count: editPageSize }) }}
+                  </span>
+                </div>
+                <Input
+                  id="editor-result-page-size"
+                  type="number"
+                  inputmode="numeric"
+                  :min="MIN_RESULT_PAGE_SIZE"
+                  :max="MAX_RESULT_PAGE_SIZE"
+                  step="1"
+                  :model-value="editPageSize"
+                  @input="onPageSizeInput"
+                />
+                <p class="text-xs text-muted-foreground">{{ t("settings.resultPageSizeDescription") }}</p>
+              </div>
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2">
               <div class="flex items-start justify-between gap-4">
                 <div class="space-y-1">
                   <Label for="editor-word-wrap">{{ t("settings.wordWrap") }}</Label>

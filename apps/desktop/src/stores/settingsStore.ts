@@ -8,6 +8,7 @@ import {
   type CustomColumnFormatterConfig,
 } from "@/lib/columnFormatter";
 import { normalizeShortcutSettings, type ShortcutSettings } from "@/lib/shortcutRegistry";
+import { normalizeResultPageSize } from "@/lib/paginationPageSize";
 import type { SidebarActivation } from "@/lib/treeNodeClick";
 
 export type AiProvider =
@@ -227,7 +228,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
     executeMode: settings.executeMode ?? DEFAULT_EDITOR_SETTINGS.executeMode,
     wordWrap: settings.wordWrap ?? DEFAULT_EDITOR_SETTINGS.wordWrap,
     appLayout: settings.appLayout ?? DEFAULT_EDITOR_SETTINGS.appLayout,
-    pageSize: settings.pageSize ?? DEFAULT_EDITOR_SETTINGS.pageSize,
+    pageSize: normalizeResultPageSize(settings.pageSize),
     redisScanPageSize: settings.redisScanPageSize ?? DEFAULT_EDITOR_SETTINGS.redisScanPageSize,
     shortcuts: normalizeShortcutSettings(settings.shortcuts),
     sidebarActivation:
@@ -312,7 +313,11 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   function updateEditorSettings(partial: Partial<EditorSettings>) {
-    Object.assign(editorSettings.value, partial);
+    const normalizedPartial = {
+      ...partial,
+      ...(partial.pageSize !== undefined ? { pageSize: normalizeResultPageSize(partial.pageSize) } : {}),
+    };
+    Object.assign(editorSettings.value, normalizedPartial);
     saveEditorSettings(editorSettings.value);
   }
 

@@ -59,8 +59,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -105,6 +108,12 @@ import { isCancelSearchShortcut, isFocusSearchShortcut } from "@/lib/keyboardSho
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
 import { dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGridSaveUi";
 import { appendColumnValueFilterCondition, buildColumnValueFilterCondition } from "@/lib/dataGridColumnFilter";
+import {
+  MAX_RESULT_PAGE_SIZE,
+  MIN_RESULT_PAGE_SIZE,
+  normalizeResultPageSize,
+  resultPageSizeMenuOptions,
+} from "@/lib/paginationPageSize";
 import {
   filterColumnVisibilityOptions,
   nextHiddenColumnIndexes,
@@ -1114,14 +1123,20 @@ watch(
 );
 
 // --- Pagination ---
-const pageSize = ref(settingsStore.editorSettings.pageSize);
+const pageSize = ref(normalizeResultPageSize(settingsStore.editorSettings.pageSize));
 const currentPage = ref(1);
+const pageSizeOptions = computed(() => resultPageSizeMenuOptions(pageSize.value));
+const customPageSizeInput = ref(String(pageSize.value));
+watch(pageSize, (value) => {
+  customPageSizeInput.value = String(value);
+});
 watch(
   () => [props.pageOffset, props.pageLimit],
   ([offset, limit]) => {
     if (typeof offset !== "number" || typeof limit !== "number" || limit <= 0) return;
-    pageSize.value = limit;
-    currentPage.value = Math.floor(offset / limit) + 1;
+    const normalizedLimit = normalizeResultPageSize(limit);
+    pageSize.value = normalizedLimit;
+    currentPage.value = Math.floor(offset / normalizedLimit) + 1;
   },
 );
 const canGoNextPage = computed(() => props.result.has_more === true || props.result.rows.length >= pageSize.value);
@@ -1216,11 +1231,16 @@ function nextPage() {
   emit("paginate", (currentPage.value - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
 }
 function changePageSize(size: number) {
-  pageSize.value = size;
-  settingsStore.updateEditorSettings({ pageSize: size });
+  const normalizedSize = normalizeResultPageSize(size);
+  pageSize.value = normalizedSize;
+  settingsStore.updateEditorSettings({ pageSize: normalizedSize });
   currentPage.value = 1;
   resetGridVerticalScroll(true);
-  emit("paginate", 0, size, currentWhereInput(), currentOrderBy());
+  emit("paginate", 0, normalizedSize, currentWhereInput(), currentOrderBy());
+}
+
+function applyCustomPageSize() {
+  changePageSize(normalizeResultPageSize(customPageSizeInput.value, pageSize.value));
 }
 
 async function lastPage() {
@@ -3946,10 +3966,27 @@ defineExpose({
               {{ pageSize }}{{ t("grid.rowsPerPageShort") }}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem v-for="s in [50, 100, 500, 1000]" :key="s" @click="changePageSize(s)">
+          <DropdownMenuContent align="end" class="w-52">
+            <DropdownMenuItem v-for="s in pageSizeOptions" :key="s" @click="changePageSize(s)">
               {{ s }} {{ t("grid.rowsPerPageShort") }}
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel class="text-xs">{{ t("grid.customRowsPerPage") }}</DropdownMenuLabel>
+            <div class="flex items-center gap-1.5 px-2 pb-2" @click.stop @keydown.stop>
+              <Input
+                v-model="customPageSizeInput"
+                type="number"
+                inputmode="numeric"
+                :min="MIN_RESULT_PAGE_SIZE"
+                :max="MAX_RESULT_PAGE_SIZE"
+                class="h-7 text-xs"
+                @keydown.enter.prevent.stop="applyCustomPageSize"
+              />
+              <Button variant="outline" size="sm" class="h-7 px-2 text-xs" @click.stop="applyCustomPageSize">
+                <Check class="h-3 w-3" />
+                {{ t("grid.applyPageSize") }}
+              </Button>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
         <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="currentPage <= 1" @click="firstPage">

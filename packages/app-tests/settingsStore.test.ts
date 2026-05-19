@@ -16,6 +16,13 @@ test("keeps a saved Redis scan page size", () => {
   assert.equal(normalizeEditorSettings({ redisScanPageSize: 5000 }).redisScanPageSize, 5000);
 });
 
+test("normalizes saved query result page size", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.pageSize, 100);
+  assert.equal(normalizeEditorSettings({ pageSize: 5000 }).pageSize, 5000);
+  assert.equal(normalizeEditorSettings({ pageSize: 200000 }).pageSize, 100000);
+  assert.equal(normalizeEditorSettings({ pageSize: 0 }).pageSize, 100);
+});
+
 test("defaults shortcut settings", () => {
   const settings = normalizeEditorSettings({});
 
