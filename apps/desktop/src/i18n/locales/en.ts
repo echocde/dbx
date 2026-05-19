@@ -1197,6 +1197,7 @@ export default {
     tableSelection: "Tables",
     selectedTables: "{selected}/{total} selected",
     selectAllTables: "Select all",
+    filterTables: "Search tables...",
     clearTables: "Clear",
     loadingTables: "Loading tables...",
     tableLoadError: "Failed to load tables: {error}",
