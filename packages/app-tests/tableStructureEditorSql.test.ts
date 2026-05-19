@@ -592,3 +592,151 @@ test("builds Dameng existing column and create table statements", () => {
     'CREATE INDEX "IDX_USERS_NAME" ON "SYSDBA"."USERS" ("NAME");',
   ]);
 });
+
+test("builds GaussDB statements with PostgreSQL-compatible DDL", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "gaussdb",
+    schema: "public",
+    tableName: "accounts",
+    columns: [
+      column({
+        id: "status",
+        name: "account_status",
+        dataType: "text",
+        isNullable: false,
+        defaultValue: "'active'",
+        comment: "Current status",
+        original: {
+          name: "status",
+          data_type: "varchar",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: null,
+          comment: "",
+        },
+      }),
+    ],
+    indexes: [index({ id: "idx", name: "idx_accounts_status", columns: ["account_status"] })],
+  });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.statements, [
+    'ALTER TABLE "public"."accounts" RENAME COLUMN "status" TO "account_status";',
+    'ALTER TABLE "public"."accounts" ALTER COLUMN "account_status" TYPE text;',
+    'ALTER TABLE "public"."accounts" ALTER COLUMN "account_status" SET NOT NULL;',
+    'ALTER TABLE "public"."accounts" ALTER COLUMN "account_status" SET DEFAULT \'active\';',
+    'COMMENT ON COLUMN "public"."accounts"."account_status" IS \'Current status\';',
+    'CREATE INDEX "idx_accounts_status" ON "public"."accounts" ("account_status");',
+  ]);
+});
+
+test("builds openGauss statements with PostgreSQL-compatible DDL", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "opengauss",
+    schema: "public",
+    tableName: "accounts",
+    columns: [column({ id: "email", name: "email", dataType: "text", isNullable: true })],
+    indexes: [],
+  });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.statements, ['ALTER TABLE "public"."accounts" ADD COLUMN "email" text;']);
+});
+
+test("Redshift skips unsupported index operations while keeping column DDL", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "redshift",
+    schema: "public",
+    tableName: "events",
+    columns: [column({ id: "email", name: "email", dataType: "varchar(255)", isNullable: true })],
+    indexes: [index({ id: "idx", name: "idx_events_email", columns: ["email"], filter: "email IS NOT NULL" })],
+  });
+
+  assert.deepEqual(result.statements, ['ALTER TABLE "public"."events" ADD COLUMN "email" varchar(255);']);
+  assert.deepEqual(result.warnings, ['Creating indexes is not supported for redshift from this editor.']);
+});
+
+test("builds ClickHouse limited column DDL and skips indexes", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "clickhouse",
+    tableName: "events",
+    columns: [
+      column({ id: "new", name: "name", dataType: "String", isNullable: true }),
+      column({
+        id: "legacy",
+        name: "legacy",
+        markedForDrop: true,
+        original: {
+          name: "legacy",
+          data_type: "String",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: null,
+        },
+      }),
+      column({
+        id: "kind",
+        name: "event_kind",
+        dataType: "String",
+        original: {
+          name: "kind",
+          data_type: "String",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: null,
+        },
+      }),
+    ],
+    indexes: [index({ id: "idx", name: "idx_events_name", columns: ["name"] })],
+  });
+
+  assert.deepEqual(result.statements, [
+    'ALTER TABLE "events" ADD COLUMN "name" String;',
+    'ALTER TABLE "events" DROP COLUMN "legacy";',
+  ]);
+  assert.deepEqual(result.warnings, [
+    'Renaming columns is not supported for clickhouse from this editor.',
+    'Creating indexes is not supported for clickhouse from this editor.',
+  ]);
+});
+
+test("builds H2 schema-qualified existing column statements", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "h2",
+    schema: "PUBLIC",
+    tableName: "USERS",
+    columns: [
+      column({
+        id: "name",
+        name: "DISPLAY_NAME",
+        dataType: "VARCHAR(120)",
+        isNullable: false,
+        defaultValue: "'guest'",
+        comment: "Display name",
+        original: {
+          name: "NAME",
+          data_type: "VARCHAR(80)",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: null,
+          comment: "",
+        },
+      }),
+    ],
+    indexes: [index({ id: "idx", name: "IDX_USERS_DISPLAY_NAME", columns: ["DISPLAY_NAME"] })],
+  });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.statements, [
+    'ALTER TABLE "PUBLIC"."USERS" ALTER COLUMN "NAME" RENAME TO "DISPLAY_NAME";',
+    'ALTER TABLE "PUBLIC"."USERS" ALTER COLUMN "DISPLAY_NAME" SET DATA TYPE VARCHAR(120);',
+    'ALTER TABLE "PUBLIC"."USERS" ALTER COLUMN "DISPLAY_NAME" SET NOT NULL;',
+    'ALTER TABLE "PUBLIC"."USERS" ALTER COLUMN "DISPLAY_NAME" SET DEFAULT \'guest\';',
+    'COMMENT ON COLUMN "PUBLIC"."USERS"."DISPLAY_NAME" IS \'Display name\';',
+    'CREATE INDEX "IDX_USERS_DISPLAY_NAME" ON "PUBLIC"."USERS" ("DISPLAY_NAME");',
+  ]);
+});

@@ -137,6 +137,11 @@ test("describes feature support through capability helpers", () => {
   assert.equal(supportsTableStructureEditing("duckdb"), true);
   assert.equal(supportsTableStructureEditing("oracle"), true);
   assert.equal(supportsTableStructureEditing("dameng"), true);
+  assert.equal(supportsTableStructureEditing("gaussdb"), true);
+  assert.equal(supportsTableStructureEditing("opengauss"), true);
+  assert.equal(supportsTableStructureEditing("redshift"), true);
+  assert.equal(supportsTableStructureEditing("clickhouse"), true);
+  assert.equal(supportsTableStructureEditing("mongodb"), false);
   assert.equal(supportsDatabaseCreation("clickhouse"), true);
   assert.equal(supportsDatabaseCreation("sqlite"), false);
   assert.equal(supportsFieldLineage("gaussdb"), true);

@@ -123,9 +123,22 @@ export const TABLE_STRUCTURE_SUPPORTED_TYPES = new Set<DatabaseType>([
   "postgres",
   "sqlite",
   "duckdb",
+  "clickhouse",
   "sqlserver",
   "oracle",
+  "doris",
+  "starrocks",
+  "redshift",
   "dameng",
+  "gaussdb",
+  "kingbase",
+  "highgo",
+  "vastbase",
+  "goldendb",
+  "opengauss",
+  "oceanbase-oracle",
+  "h2",
+  "sundb",
 ]);
 
 export const CREATE_DATABASE_SUPPORTED_TYPES = new Set<DatabaseType>([

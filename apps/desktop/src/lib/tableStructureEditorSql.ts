@@ -1,4 +1,5 @@
 import type { ColumnInfo, DatabaseType, IndexInfo } from "../types/database.ts";
+import { getTableStructureCapabilities, type TableStructureDialect } from "./tableStructureCapabilities.ts";
 
 export interface EditableStructureColumn {
   id: string;
@@ -39,18 +40,33 @@ export interface TableStructureChangeSql {
   warnings: string[];
 }
 
-function quoteIdent(databaseType: DatabaseType | undefined, name: string): string {
-  if (databaseType === "mysql") return `\`${name.replace(/`/g, "``")}\``;
+type StructureSqlFlavor = DatabaseType | TableStructureDialect | undefined;
+
+function quoteIdent(databaseType: StructureSqlFlavor, name: string): string {
+  if (
+    databaseType === "mysql" ||
+    databaseType === "doris" ||
+    databaseType === "starrocks" ||
+    databaseType === "goldendb" ||
+    databaseType === "sundb"
+  )
+    return `\`${name.replace(/`/g, "``")}\``;
   if (databaseType === "sqlserver") return `[${name.replace(/\]/g, "]]")}]`;
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-function isOracleLike(databaseType: DatabaseType | undefined): databaseType is "oracle" | "dameng" {
-  return databaseType === "oracle" || databaseType === "dameng";
+function isOracleLike(databaseType: StructureSqlFlavor): boolean {
+  return databaseType === "oracle" || databaseType === "dameng" || databaseType === "oceanbase-oracle";
 }
 
-function qualifiedTable(databaseType: DatabaseType | undefined, schema: string | undefined, tableName: string): string {
-  if ((databaseType === "postgres" || isOracleLike(databaseType) || databaseType === "sqlserver") && schema) {
+function qualifiedTable(databaseType: StructureSqlFlavor, schema: string | undefined, tableName: string): string {
+  if (
+    (databaseType === "postgres" ||
+      isOracleLike(databaseType) ||
+      databaseType === "sqlserver" ||
+      databaseType === "h2") &&
+    schema
+  ) {
     return `${quoteIdent(databaseType, schema)}.${quoteIdent(databaseType, tableName)}`;
   }
   return quoteIdent(databaseType, tableName);
@@ -69,7 +85,7 @@ function normalizeDefault(value: string | null | undefined): string {
   return trimmed.toLowerCase() === "null" ? "" : trimmed;
 }
 
-function columnDefinition(databaseType: DatabaseType | undefined, column: EditableStructureColumn): string {
+function columnDefinition(databaseType: StructureSqlFlavor, column: EditableStructureColumn): string {
   const parts = [quoteIdent(databaseType, column.name), column.dataType.trim()];
   if (!column.isNullable && !isOracleLike(databaseType)) parts.push("NOT NULL");
   const defaultValue = normalizeDefault(column.defaultValue);
@@ -100,11 +116,7 @@ function hasExistingColumnAttributeChange(column: EditableStructureColumn): bool
   );
 }
 
-function buildAddColumnSql(
-  databaseType: DatabaseType | undefined,
-  table: string,
-  column: EditableStructureColumn,
-): string[] {
+function buildAddColumnSql(databaseType: StructureSqlFlavor, table: string, column: EditableStructureColumn): string[] {
   const addKeyword = databaseType === "sqlserver" ? "ADD" : "ADD COLUMN";
   const definition = columnDefinition(databaseType, column);
   const statements = isOracleLike(databaseType)
@@ -119,7 +131,7 @@ function buildAddColumnSql(
 }
 
 function buildOracleLikeExistingColumnSql(
-  databaseType: DatabaseType,
+  databaseType: StructureSqlFlavor,
   table: string,
   column: EditableStructureColumn,
 ): string[] {
@@ -195,6 +207,39 @@ function buildPostgresExistingColumnSql(table: string, column: EditableStructure
   return statements;
 }
 
+function buildH2ExistingColumnSql(table: string, column: EditableStructureColumn): string[] {
+  const original = column.original;
+  if (!original) return [];
+
+  const statements: string[] = [];
+  let currentName = original.name;
+  if (column.name !== original.name) {
+    statements.push(
+      `ALTER TABLE ${table} ALTER COLUMN ${quoteIdent("h2", original.name)} RENAME TO ${quoteIdent("h2", column.name)};`,
+    );
+    currentName = column.name;
+  }
+  if (column.dataType.trim() !== original.data_type.trim()) {
+    statements.push(
+      `ALTER TABLE ${table} ALTER COLUMN ${quoteIdent("h2", currentName)} SET DATA TYPE ${column.dataType.trim()};`,
+    );
+  }
+  if (column.isNullable !== original.is_nullable) {
+    const action = column.isNullable ? "DROP NOT NULL" : "SET NOT NULL";
+    statements.push(`ALTER TABLE ${table} ALTER COLUMN ${quoteIdent("h2", currentName)} ${action};`);
+  }
+  if (normalizeDefault(column.defaultValue) !== originalDefault(column)) {
+    const defaultValue = normalizeDefault(column.defaultValue);
+    const action = defaultValue ? `SET DEFAULT ${defaultValue}` : "DROP DEFAULT";
+    statements.push(`ALTER TABLE ${table} ALTER COLUMN ${quoteIdent("h2", currentName)} ${action};`);
+  }
+  if (clean(column.comment) !== originalComment(column)) {
+    const commentValue = clean(column.comment) ? quoteString(clean(column.comment)) : "NULL";
+    statements.push(`COMMENT ON COLUMN ${table}.${quoteIdent("h2", currentName)} IS ${commentValue};`);
+  }
+  return statements;
+}
+
 function buildSqliteExistingColumnSql(table: string, column: EditableStructureColumn, warnings: string[]): string[] {
   const original = column.original;
   if (!original) return [];
@@ -218,36 +263,68 @@ function buildSqliteExistingColumnSql(table: string, column: EditableStructureCo
 
 function buildColumnSql(options: BuildTableStructureChangeSqlOptions, warnings: string[]): string[] {
   const databaseType = options.databaseType;
-  const table = qualifiedTable(databaseType, options.schema, options.tableName);
+  const capabilities = getTableStructureCapabilities(databaseType);
+  const dialect = capabilities.dialect;
+  const table = qualifiedTable(dialect, options.schema, options.tableName);
   const statements: string[] = [];
+  const databaseLabel = databaseType ?? "this database";
 
   for (const column of options.columns) {
     if (column.markedForDrop) {
       if (!column.original) continue;
+      if (!capabilities.dropColumn) {
+        warnings.push(`Dropping columns is not supported for ${databaseLabel} from this editor.`);
+        continue;
+      }
       if (column.original.is_primary_key) {
         warnings.push(`Primary key column "${column.original.name}" cannot be dropped from this editor.`);
         continue;
       }
-      statements.push(`ALTER TABLE ${table} DROP COLUMN ${quoteIdent(databaseType, column.original.name)};`);
+      statements.push(`ALTER TABLE ${table} DROP COLUMN ${quoteIdent(dialect, column.original.name)};`);
       continue;
     }
 
     if (!column.original) {
-      statements.push(...buildAddColumnSql(databaseType, table, column));
+      if (!capabilities.addColumn) {
+        warnings.push(`Adding columns is not supported for ${databaseLabel} from this editor.`);
+        continue;
+      }
+      statements.push(...buildAddColumnSql(dialect, table, column));
       continue;
     }
 
     if (!hasExistingColumnAttributeChange(column)) continue;
-    if (databaseType === "mysql") {
+    const original = column.original;
+    const hasRename = column.name !== original.name;
+    const hasAttributeChange =
+      column.dataType.trim() !== original.data_type.trim() ||
+      column.isNullable !== original.is_nullable ||
+      normalizeDefault(column.defaultValue) !== originalDefault(column) ||
+      clean(column.comment) !== originalComment(column);
+    if (hasRename && !capabilities.renameColumn) {
+      warnings.push(`Renaming columns is not supported for ${databaseLabel} from this editor.`);
+    }
+    if (hasAttributeChange && !capabilities.alterExistingColumn && dialect !== "sqlite") {
+      warnings.push(`Editing existing columns is not supported for ${databaseLabel} yet.`);
+    }
+    if (
+      (hasRename && !capabilities.renameColumn) ||
+      (hasAttributeChange && !capabilities.alterExistingColumn && dialect !== "sqlite")
+    ) {
+      continue;
+    }
+    if (dialect === "mysql") {
       statements.push(...buildMysqlExistingColumnSql(table, column));
-    } else if (databaseType === "postgres") {
+    } else if (dialect === "postgres") {
       statements.push(...buildPostgresExistingColumnSql(table, column));
-    } else if (isOracleLike(databaseType)) {
-      statements.push(...buildOracleLikeExistingColumnSql(databaseType, table, column));
-    } else if (databaseType === "sqlite") {
+    } else if (dialect === "oracle") {
+      statements.push(...buildOracleLikeExistingColumnSql(dialect, table, column));
+    } else if (dialect === "h2") {
+      statements.push(...buildH2ExistingColumnSql(table, column));
+    } else if (dialect === "sqlite") {
       statements.push(...buildSqliteExistingColumnSql(table, column, warnings));
     } else {
-      warnings.push(`Editing existing columns is not supported for ${databaseType ?? "this database"} yet.`);
+      warnings.push(`Editing existing columns is not supported for ${databaseLabel} yet.`);
     }
   }
 
@@ -255,7 +332,7 @@ function buildColumnSql(options: BuildTableStructureChangeSqlOptions, warnings: 
 }
 
 function buildDropIndexSql(
-  databaseType: DatabaseType | undefined,
+  databaseType: StructureSqlFlavor,
   table: string,
   schema: string | undefined,
   indexName: string,
@@ -270,17 +347,24 @@ function buildDropIndexSql(
 
 function buildIndexSql(options: BuildTableStructureChangeSqlOptions, warnings: string[]): string[] {
   const databaseType = options.databaseType;
-  const table = qualifiedTable(databaseType, options.schema, options.tableName);
+  const capabilities = getTableStructureCapabilities(databaseType);
+  const dialect = capabilities.dialect;
+  const table = qualifiedTable(dialect, options.schema, options.tableName);
   const statements: string[] = [];
+  const databaseLabel = databaseType ?? "this database";
 
   for (const index of options.indexes) {
     if (index.markedForDrop) {
       if (!index.original) continue;
+      if (!capabilities.dropIndex) {
+        warnings.push(`Dropping indexes is not supported for ${databaseLabel} from this editor.`);
+        continue;
+      }
       if (index.original.is_primary) {
         warnings.push(`Primary index "${index.original.name}" cannot be dropped from this editor.`);
         continue;
       }
-      statements.push(buildDropIndexSql(databaseType, table, options.schema, index.original.name));
+      statements.push(buildDropIndexSql(dialect, table, options.schema, index.original.name));
       continue;
     }
 
@@ -288,25 +372,30 @@ function buildIndexSql(options: BuildTableStructureChangeSqlOptions, warnings: s
     const name = clean(index.name);
     const columns = index.columns.map(clean).filter(Boolean);
     if (!name || columns.length === 0) continue;
+    if (!capabilities.createIndex) {
+      warnings.push(`Creating indexes is not supported for ${databaseLabel} from this editor.`);
+      continue;
+    }
     const unique = index.isUnique ? "UNIQUE " : "";
-    const cols = columns.map((column) => quoteIdent(databaseType, column)).join(", ");
+    const cols = columns.map((column) => quoteIdent(dialect, column)).join(", ");
     const idxType = clean(index.indexType);
-    const usingClause = idxType && databaseType === "postgres" ? ` USING ${idxType}` : "";
-    const typePrefix = idxType && databaseType === "sqlserver" ? `${idxType} ` : "";
+    const usingClause = idxType && capabilities.indexType && dialect === "postgres" ? ` USING ${idxType}` : "";
+    const typePrefix = idxType && capabilities.indexType && dialect === "sqlserver" ? `${idxType} ` : "";
     const incCols = index.includedColumns.map(clean).filter(Boolean);
     const includeClause =
-      incCols.length > 0 && (databaseType === "postgres" || databaseType === "sqlserver")
-        ? ` INCLUDE (${incCols.map((c) => quoteIdent(databaseType, c)).join(", ")})`
+      incCols.length > 0 && capabilities.indexInclude && (dialect === "postgres" || dialect === "sqlserver")
+        ? ` INCLUDE (${incCols.map((c) => quoteIdent(dialect, c)).join(", ")})`
         : "";
     const filter = clean(index.filter);
-    const supportsWhere = databaseType === "postgres" || databaseType === "sqlserver" || databaseType === "sqlite";
+    const supportsWhere =
+      capabilities.indexFilter && (dialect === "postgres" || dialect === "sqlserver" || dialect === "sqlite");
     const whereClause = filter && supportsWhere ? ` WHERE ${filter}` : "";
     statements.push(
-      `CREATE ${unique}${typePrefix}INDEX ${quoteIdent(databaseType, name)} ON ${table}${usingClause} (${cols})${includeClause}${whereClause};`,
+      `CREATE ${unique}${typePrefix}INDEX ${quoteIdent(dialect, name)} ON ${table}${usingClause} (${cols})${includeClause}${whereClause};`,
     );
     const comment = clean(index.comment);
-    if (comment && databaseType === "postgres") {
-      statements.push(`COMMENT ON INDEX ${quoteIdent(databaseType, name)} IS ${quoteString(comment)};`);
+    if (comment && capabilities.indexComment && dialect === "postgres") {
+      statements.push(`COMMENT ON INDEX ${quoteIdent(dialect, name)} IS ${quoteString(comment)};`);
     }
   }
 
@@ -367,33 +456,35 @@ export function buildCreateTableSql(options: BuildTableStructureChangeSqlOptions
   if (warnings.length > 0) return { statements: [], warnings };
 
   const databaseType = options.databaseType;
-  const table = qualifiedTable(databaseType, options.schema, options.tableName);
+  const capabilities = getTableStructureCapabilities(databaseType);
+  const dialect = capabilities.dialect;
+  const table = qualifiedTable(dialect, options.schema, options.tableName);
   const statements: string[] = [];
 
   const pkColumns = activeColumns.filter((c) => c.isPrimaryKey);
   const colDefs = activeColumns.map((col) => {
-    const parts = [quoteIdent(databaseType, col.name), col.dataType.trim()];
+    const parts = [quoteIdent(dialect, col.name), col.dataType.trim()];
     if (!col.isNullable && !col.isPrimaryKey) parts.push("NOT NULL");
     const defaultValue = normalizeDefault(col.defaultValue);
     if (defaultValue) parts.push(`DEFAULT ${defaultValue}`);
-    if (databaseType === "mysql" && clean(col.comment)) {
+    if (dialect === "mysql" && capabilities.comment && clean(col.comment)) {
       parts.push(`COMMENT ${quoteString(clean(col.comment))}`);
     }
     return parts.join(" ");
   });
 
   if (pkColumns.length > 0) {
-    const pkList = pkColumns.map((c) => quoteIdent(databaseType, c.name)).join(", ");
+    const pkList = pkColumns.map((c) => quoteIdent(dialect, c.name)).join(", ");
     colDefs.push(`PRIMARY KEY (${pkList})`);
   }
 
   statements.push(`CREATE TABLE ${table} (\n  ${colDefs.join(",\n  ")}\n);`);
 
-  if (databaseType === "postgres" || isOracleLike(databaseType)) {
+  if (capabilities.comment && (dialect === "postgres" || dialect === "oracle" || dialect === "h2")) {
     for (const col of activeColumns) {
       if (clean(col.comment)) {
         statements.push(
-          `COMMENT ON COLUMN ${table}.${quoteIdent(databaseType, col.name)} IS ${quoteString(clean(col.comment))};`,
+          `COMMENT ON COLUMN ${table}.${quoteIdent(dialect, col.name)} IS ${quoteString(clean(col.comment))};`,
         );
       }
     }
@@ -403,13 +494,17 @@ export function buildCreateTableSql(options: BuildTableStructureChangeSqlOptions
     const name = clean(index.name);
     const columns = index.columns.map(clean).filter(Boolean);
     if (!name || columns.length === 0) continue;
+    if (!capabilities.createIndex) {
+      warnings.push(`Creating indexes is not supported for ${databaseType ?? "this database"} from this editor.`);
+      continue;
+    }
     const unique = index.isUnique ? "UNIQUE " : "";
-    const cols = columns.map((c) => quoteIdent(databaseType, c)).join(", ");
+    const cols = columns.map((c) => quoteIdent(dialect, c)).join(", ");
     const idxType = clean(index.indexType);
-    const usingClause = idxType && databaseType === "postgres" ? ` USING ${idxType}` : "";
-    const typePrefix = idxType && databaseType === "sqlserver" ? `${idxType} ` : "";
+    const usingClause = idxType && capabilities.indexType && dialect === "postgres" ? ` USING ${idxType}` : "";
+    const typePrefix = idxType && capabilities.indexType && dialect === "sqlserver" ? `${idxType} ` : "";
     statements.push(
-      `CREATE ${unique}${typePrefix}INDEX ${quoteIdent(databaseType, name)} ON ${table}${usingClause} (${cols});`,
+      `CREATE ${unique}${typePrefix}INDEX ${quoteIdent(dialect, name)} ON ${table}${usingClause} (${cols});`,
     );
   }
 
