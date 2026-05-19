@@ -935,12 +935,7 @@ pub async fn get_object_source_core(
         } else if let Some(client) = extract_agent(&connections, &pool_key) {
             drop(connections);
             let mut client = client.lock().await;
-            let result: db::ObjectSource = client
-                .call(
-                    "get_object_source",
-                    serde_json::json!({"schema": schema, "name": name, "object_type": object_type}),
-                )
-                .await?;
+            let result: db::ObjectSource = client.get_object_source(schema, name, &object_type).await?;
             return Ok(result);
         } else {
             match connections.get(&pool_key).ok_or("Pool not found")? {
