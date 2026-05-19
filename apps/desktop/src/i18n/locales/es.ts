@@ -261,6 +261,7 @@ export default {
     exportSelectedRowsMarkdown: "Exportar filas seleccionadas como Markdown",
     exported: "Exportado",
     exportFailed: "Error al exportar: {message}",
+    copyFailed: "Error al copiar: {message}",
     filter: "Filtrar",
     localFilter: "Filtro local de columna",
     localFilterFor: "Filtro local para '{column}'",
