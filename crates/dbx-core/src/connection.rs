@@ -84,6 +84,14 @@ impl AppState {
     }
 
     pub fn new_with_plugin_dir(storage: Storage, plugin_dir: PathBuf) -> Self {
+        Self::new_with_plugin_dir_and_app_version(storage, plugin_dir, env!("CARGO_PKG_VERSION"))
+    }
+
+    pub fn new_with_plugin_dir_and_app_version(
+        storage: Storage,
+        plugin_dir: PathBuf,
+        app_version: impl Into<String>,
+    ) -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
             configs: RwLock::new(HashMap::new()),
@@ -92,7 +100,10 @@ impl AppState {
             proxy_tunnels: ProxyTunnelManager::new(),
             storage,
             plugins: PluginRegistry::new(plugin_dir),
-            agent_manager: crate::agent_manager::AgentManager::new(),
+            agent_manager: crate::agent_manager::AgentManager::new_with_base_dir_and_app_version(
+                default_agent_dir(),
+                app_version,
+            ),
         }
     }
 
@@ -429,8 +440,16 @@ impl AppState {
 }
 
 fn default_plugin_dir() -> PathBuf {
+    default_dbx_dir().join("plugins")
+}
+
+fn default_agent_dir() -> PathBuf {
+    default_dbx_dir().join("agents")
+}
+
+fn default_dbx_dir() -> PathBuf {
     let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".dbx").join("plugins")
+    PathBuf::from(home).join(".dbx")
 }
 
 pub fn connection_url_for_endpoint(config: &ConnectionConfig, host: &str, port: u16) -> String {

@@ -119,7 +119,11 @@ pub fn run() {
             });
             eprintln!("[STARTUP] storage ready in {:?}", t.elapsed());
 
-            let state = Arc::new(AppState::new_with_plugin_dir(storage, data_dir.join("plugins")));
+            let state = Arc::new(AppState::new_with_plugin_dir_and_app_version(
+                storage,
+                data_dir.join("plugins"),
+                env!("CARGO_PKG_VERSION"),
+            ));
             app.manage(state.clone());
             app.manage(commands::external_sql::ExternalSqlOpenState::default());
 

@@ -5,8 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::Value;
 
+pub const AGENT_PROTOCOL_VERSION: u32 = 1;
 const RPC_TIMEOUT_SECS: u64 = 30;
 const STARTUP_TIMEOUT_SECS: u64 = 15;
 const STDERR_TAIL_LINES: usize = 20;
@@ -19,6 +21,14 @@ pub struct AgentDriverClient {
     stdout: Option<BufReader<ChildStdout>>,
     stderr_tail: Arc<Mutex<StderrTail>>,
     next_id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentHandshake {
+    pub protocol_version: u32,
+    pub agent_protocol_version: u32,
+    pub capabilities: Vec<String>,
 }
 
 struct StderrTail {
@@ -195,6 +205,28 @@ impl AgentDriverClient {
         result.map_err(|e| self.format_agent_process_error(&e))
     }
 
+    pub async fn try_optional_handshake(&mut self, app_version: &str) -> Option<AgentHandshake> {
+        match self.call::<AgentHandshake>("handshake", agent_handshake_params(app_version)).await {
+            Ok(handshake) => {
+                log::info!(
+                    "[agent] handshake complete: protocol={}, agent_protocol={}, capabilities={:?}",
+                    handshake.protocol_version,
+                    handshake.agent_protocol_version,
+                    handshake.capabilities
+                );
+                Some(handshake)
+            }
+            Err(err) if is_unsupported_handshake_error(&err) => {
+                log::info!("[agent] handshake unsupported by this driver; continuing with legacy protocol");
+                None
+            }
+            Err(err) => {
+                log::warn!("[agent] handshake failed; continuing with legacy protocol: {err}");
+                None
+            }
+        }
+    }
+
     /// Send a shutdown message to the agent and wait for the process to exit.
     pub async fn shutdown(&mut self) {
         // Try to send a shutdown RPC; ignore errors if the agent is already gone
@@ -223,6 +255,19 @@ impl AgentDriverClient {
         // Reap the child to avoid zombie processes
         let _ = self.child.wait();
     }
+}
+
+pub fn agent_handshake_params(app_version: &str) -> Value {
+    serde_json::json!({
+        "appVersion": app_version,
+        "supportedProtocolVersions": [AGENT_PROTOCOL_VERSION],
+    })
+}
+
+pub fn is_unsupported_handshake_error(error: &str) -> bool {
+    error.contains("Unknown method: handshake")
+        || error.contains("Method not found: handshake")
+        || error.contains("method not found: handshake")
 }
 
 fn agent_java_args(jar_path: &str) -> Vec<String> {
@@ -331,7 +376,10 @@ impl Drop for AgentDriverClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{agent_java_args, agent_proxy_env_vars, format_agent_process_error, read_agent_line, StderrTail};
+    use super::{
+        agent_handshake_params, agent_java_args, agent_proxy_env_vars, format_agent_process_error,
+        is_unsupported_handshake_error, read_agent_line, AgentHandshake, StderrTail, AGENT_PROTOCOL_VERSION,
+    };
     use std::io::Cursor;
 
     #[test]
@@ -401,5 +449,33 @@ mod tests {
         stderr_tail.push_line("line 4".to_string());
 
         assert_eq!(stderr_tail.snapshot(), "line 2\nline 3\nline 4");
+    }
+
+    #[test]
+    fn builds_agent_handshake_request_params() {
+        let params = agent_handshake_params("0.5.13");
+
+        assert_eq!(params["appVersion"], "0.5.13");
+        assert_eq!(params["supportedProtocolVersions"], serde_json::json!([AGENT_PROTOCOL_VERSION]));
+    }
+
+    #[test]
+    fn decodes_agent_handshake_response() {
+        let handshake: AgentHandshake = serde_json::from_value(serde_json::json!({
+            "protocolVersion": 1,
+            "agentProtocolVersion": 1,
+            "capabilities": ["connect", "query", "metadata"]
+        }))
+        .unwrap();
+
+        assert_eq!(handshake.protocol_version, 1);
+        assert_eq!(handshake.agent_protocol_version, 1);
+        assert_eq!(handshake.capabilities, vec!["connect", "query", "metadata"]);
+    }
+
+    #[test]
+    fn treats_unknown_handshake_method_as_compatible_fallback() {
+        assert!(is_unsupported_handshake_error("Agent RPC error (-1): Unknown method: handshake"));
+        assert!(!is_unsupported_handshake_error("Agent RPC error (-1): Connection failed"));
     }
 }
