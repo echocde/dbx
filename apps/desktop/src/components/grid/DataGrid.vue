@@ -77,6 +77,7 @@ import {
   normalizeWhereInput,
   quoteTableIdentifier,
 } from "@/lib/tableSelectSql";
+import { uuid } from "@/lib/utils";
 import {
   canEditExistingTableRows,
   hiveTablePropertiesIndicateTransactional,
@@ -586,8 +587,7 @@ function selectCustomFormatter(value: string) {
 }
 
 function createCustomFormatterId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `fmt_${crypto.randomUUID()}`;
-  return `fmt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  return `fmt_${uuid()}`;
 }
 
 function formatterPreviewRows(columnIndex: number) {

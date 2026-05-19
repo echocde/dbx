@@ -10,6 +10,7 @@ import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/api";
 import type { ExportProgress } from "@/lib/api";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
+import { generateDatabaseExportId } from "@/lib/databaseExport";
 import { buildSelectedTablesPayload } from "@/lib/databaseExportSelection";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { useToast } from "@/composables/useToast";
@@ -161,7 +162,7 @@ async function startExport() {
   exportCancelled.value = false;
   exportProgress.value = null;
 
-  exportId.value = crypto.randomUUID();
+  exportId.value = generateDatabaseExportId();
 
   let filePath = "";
 
