@@ -8,6 +8,7 @@ pub use dbx_core::connection::{
 };
 use dbx_core::database_capabilities;
 use dbx_core::db;
+use dbx_core::db::agent_driver::AgentMethod;
 use dbx_core::models::connection::{rewrite_jdbc_url_host, ConnectionConfig, DatabaseType};
 
 fn mongo_legacy_connect_params(config: &ConnectionConfig, host: &str, port: u16) -> serde_json::Value {
@@ -173,10 +174,10 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     let am = &state.agent_manager;
                     let mut client = am.spawn(&config.db_type, config.driver_profile.as_deref()).await?;
                     client
-                        .call::<serde_json::Value>("connect", mongo_legacy_connect_params(&config, &host, port))
+                        .connect(mongo_legacy_connect_params(&config, &host, port))
                         .await
                         .map_err(|err| mongo_legacy_error_with_auth_hint(&err))?;
-                    client.call::<serde_json::Value>("disconnect", serde_json::json!({})).await.ok();
+                    client.disconnect().await.ok();
                     Ok("Connection successful (via legacy driver)".to_string())
                 } else {
                     Err(native_err)
@@ -205,10 +206,10 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
             db_type if database_capabilities::is_agent_type(&db_type) => {
                 state
                     .agent_manager
-                    .call_daemon::<serde_json::Value>(
+                    .call_daemon_method::<serde_json::Value>(
                         &config.db_type,
                         config.driver_profile.as_deref(),
-                        "test_connection",
+                        AgentMethod::TestConnection,
                         agent_connect_params(&config, &host, port, config.database.as_deref().unwrap_or("")),
                     )
                     .await?;
@@ -290,9 +291,7 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
                 log::info!("Native MongoDB driver failed ({native_err}), falling back to agent driver");
                 let mut client =
                     state.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;
-                client
-                    .call::<serde_json::Value>("connect", mongo_legacy_connect_params(&db_config, &host, port))
-                    .await?;
+                client.connect(mongo_legacy_connect_params(&db_config, &host, port)).await?;
                 PoolKind::Agent(std::sync::Arc::new(tokio::sync::Mutex::new(client)))
             } else {
                 return Err(native_err);
@@ -330,8 +329,8 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
         db_type if database_capabilities::is_agent_type(&db_type) => {
             let mut client = state.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;
             client
-                .call::<serde_json::Value>(
-                    "connect",
+                .call_method::<serde_json::Value>(
+                    AgentMethod::Connect,
                     agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")),
                 )
                 .await?;

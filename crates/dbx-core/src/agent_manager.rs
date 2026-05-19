@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::database_capabilities;
-use crate::db::agent_driver::AgentDriverClient;
+use crate::db::agent_driver::{AgentDriverClient, AgentMethod};
 use crate::models::connection::DatabaseType;
 
 pub const DEFAULT_JRE_KEY: &str = "17";
@@ -387,6 +387,16 @@ impl AgentManager {
                 Ok(result)
             }
         }
+    }
+
+    pub async fn call_daemon_method<T: serde::de::DeserializeOwned + Send + 'static>(
+        &self,
+        db_type: &DatabaseType,
+        driver_profile: Option<&str>,
+        method: AgentMethod,
+        params: serde_json::Value,
+    ) -> Result<T, String> {
+        self.call_daemon(db_type, driver_profile, method.as_str(), params).await
     }
 
     pub async fn download_file(url: &str, dest: &Path) -> Result<(), String> {

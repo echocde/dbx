@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::database_capabilities;
 use crate::db;
+use crate::db::agent_driver::AgentMethod;
 use crate::db::proxy_tunnel::ProxyTunnelManager;
 use crate::db::ssh_tunnel::TunnelManager;
 use crate::external;
@@ -203,10 +204,7 @@ impl AppState {
                     log::info!("Native MongoDB driver failed ({native_err}), falling back to agent driver");
                     let connect_params = serde_json::json!({ "connection": agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")) });
                     let mut client = self.agent_manager.spawn(&DatabaseType::MongoDb, None).await?;
-                    client
-                        .call::<serde_json::Value>("connect", connect_params)
-                        .await
-                        .map_err(|err| mongo_legacy_error_with_auth_hint(&err))?;
+                    client.connect(connect_params).await.map_err(|err| mongo_legacy_error_with_auth_hint(&err))?;
                     PoolKind::Agent(Arc::new(tokio::sync::Mutex::new(client)))
                 } else {
                     return Err(native_err);
@@ -274,8 +272,8 @@ impl AppState {
                 let mut client =
                     self.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;
                 client
-                    .call::<serde_json::Value>(
-                        "connect",
+                    .call_method::<serde_json::Value>(
+                        AgentMethod::Connect,
                         agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")),
                     )
                     .await?;

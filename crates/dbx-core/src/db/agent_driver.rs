@@ -72,6 +72,37 @@ impl AgentCapability {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentMethod {
+    Handshake,
+    Connect,
+    TestConnection,
+    ListDatabases,
+    ListSchemas,
+    ExecuteQuery,
+    ExecuteQueryPage,
+    FetchQueryPage,
+    Disconnect,
+    Shutdown,
+}
+
+impl AgentMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Handshake => "handshake",
+            Self::Connect => "connect",
+            Self::TestConnection => "test_connection",
+            Self::ListDatabases => "list_databases",
+            Self::ListSchemas => "list_schemas",
+            Self::ExecuteQuery => "execute_query",
+            Self::ExecuteQueryPage => "execute_query_page",
+            Self::FetchQueryPage => "fetch_query_page",
+            Self::Disconnect => "disconnect",
+            Self::Shutdown => "shutdown",
+        }
+    }
+}
+
 struct StderrTail {
     lines: VecDeque<String>,
     capacity: usize,
@@ -246,8 +277,28 @@ impl AgentDriverClient {
         result.map_err(|e| self.format_agent_process_error(&e))
     }
 
+    pub async fn call_method<T: DeserializeOwned + Send + 'static>(
+        &mut self,
+        method: AgentMethod,
+        params: Value,
+    ) -> Result<T, String> {
+        self.call(method.as_str(), params).await
+    }
+
+    pub async fn connect(&mut self, params: Value) -> Result<Value, String> {
+        self.call_method(AgentMethod::Connect, params).await
+    }
+
+    pub async fn test_connection(&mut self, params: Value) -> Result<Value, String> {
+        self.call_method(AgentMethod::TestConnection, params).await
+    }
+
+    pub async fn disconnect(&mut self) -> Result<Value, String> {
+        self.call_method(AgentMethod::Disconnect, serde_json::json!({})).await
+    }
+
     pub async fn try_optional_handshake(&mut self, app_version: &str) -> Option<AgentHandshake> {
-        match self.call::<AgentHandshake>("handshake", agent_handshake_params(app_version)).await {
+        match self.call_method::<AgentHandshake>(AgentMethod::Handshake, agent_handshake_params(app_version)).await {
             Ok(handshake) => {
                 log::info!(
                     "[agent] handshake complete: protocol={}, agent_protocol={}, capabilities={:?}",
@@ -271,7 +322,7 @@ impl AgentDriverClient {
     /// Send a shutdown message to the agent and wait for the process to exit.
     pub async fn shutdown(&mut self) {
         // Try to send a shutdown RPC; ignore errors if the agent is already gone
-        let shutdown_result: Result<Value, String> = self.call("shutdown", Value::Null).await;
+        let shutdown_result: Result<Value, String> = self.call_method(AgentMethod::Shutdown, Value::Null).await;
         if let Err(e) = &shutdown_result {
             log::warn!("Agent shutdown RPC failed: {e}");
         }
@@ -419,7 +470,7 @@ impl Drop for AgentDriverClient {
 mod tests {
     use super::{
         agent_handshake_params, agent_java_args, agent_proxy_env_vars, format_agent_process_error,
-        is_unsupported_handshake_error, read_agent_line, AgentCapability, AgentHandshake, StderrTail,
+        is_unsupported_handshake_error, read_agent_line, AgentCapability, AgentHandshake, AgentMethod, StderrTail,
         AGENT_PROTOCOL_VERSION,
     };
     use std::io::Cursor;
@@ -525,6 +576,20 @@ mod tests {
         assert_eq!(AgentCapability::Transaction.as_str(), "transaction");
         assert_eq!(AgentCapability::Ddl.as_str(), "ddl");
         assert_eq!(AgentCapability::ALL.len(), 7);
+    }
+
+    #[test]
+    fn defines_agent_protocol_methods() {
+        assert_eq!(AgentMethod::Handshake.as_str(), "handshake");
+        assert_eq!(AgentMethod::Connect.as_str(), "connect");
+        assert_eq!(AgentMethod::TestConnection.as_str(), "test_connection");
+        assert_eq!(AgentMethod::ListDatabases.as_str(), "list_databases");
+        assert_eq!(AgentMethod::ListSchemas.as_str(), "list_schemas");
+        assert_eq!(AgentMethod::ExecuteQuery.as_str(), "execute_query");
+        assert_eq!(AgentMethod::ExecuteQueryPage.as_str(), "execute_query_page");
+        assert_eq!(AgentMethod::FetchQueryPage.as_str(), "fetch_query_page");
+        assert_eq!(AgentMethod::Disconnect.as_str(), "disconnect");
+        assert_eq!(AgentMethod::Shutdown.as_str(), "shutdown");
     }
 
     #[test]
