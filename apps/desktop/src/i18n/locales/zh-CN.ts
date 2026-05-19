@@ -318,7 +318,6 @@ export default {
     sortAscending: "升序排序",
     sortDescending: "降序排序",
     clearSort: "清除排序",
-    copied: "已复制!",
     pasted: "已粘贴!",
     search: "搜索...",
     searchOrWhere: "搜索，或输入 WHERE 条件...",
