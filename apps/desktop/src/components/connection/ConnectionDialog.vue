@@ -667,17 +667,21 @@ function resetForm() {
   resetTestState();
 }
 
-watch(open, (value) => {
-  if (!value) {
-    resetForm();
-    return;
-  }
-  if (!props.editConfig) {
-    resetForm();
-  }
-  void loadJdbcDrivers();
-  void loadAgentDrivers();
-});
+watch(
+  open,
+  (value) => {
+    if (!value) {
+      resetForm();
+      return;
+    }
+    if (!props.editConfig) {
+      resetForm();
+    }
+    void loadJdbcDrivers();
+    void loadAgentDrivers();
+  },
+  { immediate: true },
+);
 
 watch(canUseSsh, (value) => {
   if (!value && configTab.value === "ssh") {

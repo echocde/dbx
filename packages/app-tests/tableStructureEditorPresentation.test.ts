@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import test from "node:test";
 
 const source = readFileSync("apps/desktop/src/components/structure/TableStructureEditorDialog.vue", "utf8");
+const clickhouseSource = readFileSync("crates/dbx-core/src/db/clickhouse_driver.rs", "utf8");
 
 test("column comments can be expanded into a multiline editor", () => {
   assert.match(source, /PopoverContent/);
@@ -16,6 +17,11 @@ test("structure editor keeps columns when optional metadata fails", () => {
   assert.match(source, /api\s*\n\s*\.listIndexes[\s\S]*\.catch\(\(\) => \[\]\)/);
   assert.match(source, /api\s*\n\s*\.listForeignKeys[\s\S]*\.catch\(\(\) => \[\]\)/);
   assert.match(source, /api\s*\n\s*\.listTriggers[\s\S]*\.catch\(\(\) => \[\]\)/);
+});
+
+test("ClickHouse column metadata preserves comments for structure editing", () => {
+  assert.match(clickhouseSource, /SELECT name, type, default_kind, default_expression, is_in_primary_key, comment/);
+  assert.match(clickhouseSource, /comment:\s*row\.get\(5\)/);
 });
 
 test("structure editor loads immediately when mounted open", () => {

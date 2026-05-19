@@ -160,7 +160,7 @@ pub async fn list_tables(client: &ChClient, database: &str) -> Result<Vec<TableI
 
 pub async fn get_columns(client: &ChClient, database: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
     let sql = format!(
-        "SELECT name, type, default_kind, default_expression, is_in_primary_key \
+        "SELECT name, type, default_kind, default_expression, is_in_primary_key, comment \
          FROM system.columns WHERE database = '{}' AND table = '{}' ORDER BY position",
         database.replace('\'', "\\'"),
         table.replace('\'', "\\'")
@@ -183,7 +183,7 @@ pub async fn get_columns(client: &ChClient, database: &str, table: &str) -> Resu
                 column_default,
                 is_primary_key: is_pk,
                 extra: None,
-                comment: None,
+                comment: row.get(5).and_then(|v| v.as_str()).filter(|value| !value.is_empty()).map(str::to_string),
                 numeric_precision: None,
                 numeric_scale: None,
                 character_maximum_length: None,

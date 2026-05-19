@@ -167,6 +167,12 @@ const clickhouseCapabilities = capabilities({
   createTable: true,
   addColumn: true,
   dropColumn: true,
+  renameColumn: true,
+  alterExistingColumn: true,
+  alterType: true,
+  alterNullability: true,
+  alterDefault: true,
+  comment: true,
 });
 
 const capabilityByType: Partial<Record<DatabaseType, TableStructureCapabilities>> = {

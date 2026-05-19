@@ -85,9 +85,23 @@ function normalizeDefault(value: string | null | undefined): string {
   return trimmed.toLowerCase() === "null" ? "" : trimmed;
 }
 
+function unwrapClickHouseNullableType(dataType: string): string {
+  const match = dataType.trim().match(/^Nullable\s*\((.*)\)$/is);
+  return match ? match[1].trim() : dataType.trim();
+}
+
+function clickHouseColumnType(column: EditableStructureColumn): string {
+  const dataType = column.dataType.trim();
+  if (column.isNullable) {
+    return /^Nullable\s*\(/i.test(dataType) ? dataType : `Nullable(${dataType})`;
+  }
+  return unwrapClickHouseNullableType(dataType);
+}
+
 function columnDefinition(databaseType: StructureSqlFlavor, column: EditableStructureColumn): string {
-  const parts = [quoteIdent(databaseType, column.name), column.dataType.trim()];
-  if (!column.isNullable && !isOracleLike(databaseType)) parts.push("NOT NULL");
+  const dataType = databaseType === "clickhouse" ? clickHouseColumnType(column) : column.dataType.trim();
+  const parts = [quoteIdent(databaseType, column.name), dataType];
+  if (!column.isNullable && !isOracleLike(databaseType) && databaseType !== "clickhouse") parts.push("NOT NULL");
   const defaultValue = normalizeDefault(column.defaultValue);
   if (defaultValue) parts.push(`DEFAULT ${defaultValue}`);
   if (databaseType === "mysql" && clean(column.comment)) {
@@ -125,6 +139,11 @@ function buildAddColumnSql(databaseType: StructureSqlFlavor, table: string, colu
   if ((databaseType === "postgres" || isOracleLike(databaseType)) && clean(column.comment)) {
     statements.push(
       `COMMENT ON COLUMN ${table}.${quoteIdent(databaseType, column.name)} IS ${quoteString(clean(column.comment))};`,
+    );
+  }
+  if (databaseType === "clickhouse" && clean(column.comment)) {
+    statements.push(
+      `ALTER TABLE ${table} COMMENT COLUMN ${quoteIdent(databaseType, column.name)} ${quoteString(clean(column.comment))};`,
     );
   }
   return statements;
@@ -240,6 +259,48 @@ function buildH2ExistingColumnSql(table: string, column: EditableStructureColumn
   return statements;
 }
 
+function buildClickHouseExistingColumnSql(table: string, column: EditableStructureColumn): string[] {
+  const original = column.original;
+  if (!original) return [];
+
+  const statements: string[] = [];
+  let currentName = original.name;
+  if (column.name !== original.name) {
+    statements.push(
+      `ALTER TABLE ${table} RENAME COLUMN ${quoteIdent("clickhouse", original.name)} TO ${quoteIdent("clickhouse", column.name)};`,
+    );
+    currentName = column.name;
+  }
+  if (
+    clickHouseColumnType(column) !== original.data_type.trim() ||
+    normalizeDefault(column.defaultValue) !== originalDefault(column)
+  ) {
+    const defaultValue = normalizeDefault(column.defaultValue);
+    if (defaultValue) {
+      statements.push(
+        `ALTER TABLE ${table} MODIFY COLUMN ${quoteIdent("clickhouse", currentName)} ${clickHouseColumnType(column)} DEFAULT ${defaultValue};`,
+      );
+    } else if (originalDefault(column)) {
+      statements.push(`ALTER TABLE ${table} MODIFY COLUMN ${quoteIdent("clickhouse", currentName)} REMOVE DEFAULT;`);
+      if (clickHouseColumnType(column) !== original.data_type.trim()) {
+        statements.push(
+          `ALTER TABLE ${table} MODIFY COLUMN ${quoteIdent("clickhouse", currentName)} ${clickHouseColumnType(column)};`,
+        );
+      }
+    } else {
+      statements.push(
+        `ALTER TABLE ${table} MODIFY COLUMN ${quoteIdent("clickhouse", currentName)} ${clickHouseColumnType(column)};`,
+      );
+    }
+  }
+  if (clean(column.comment) !== originalComment(column)) {
+    statements.push(
+      `ALTER TABLE ${table} COMMENT COLUMN ${quoteIdent("clickhouse", currentName)} ${quoteString(clean(column.comment))};`,
+    );
+  }
+  return statements;
+}
+
 function buildSqliteExistingColumnSql(table: string, column: EditableStructureColumn, warnings: string[]): string[] {
   const original = column.original;
   if (!original) return [];
@@ -321,6 +382,8 @@ function buildColumnSql(options: BuildTableStructureChangeSqlOptions, warnings: 
       statements.push(...buildOracleLikeExistingColumnSql(dialect, table, column));
     } else if (dialect === "h2") {
       statements.push(...buildH2ExistingColumnSql(table, column));
+    } else if (dialect === "clickhouse") {
+      statements.push(...buildClickHouseExistingColumnSql(table, column));
     } else if (dialect === "sqlite") {
       statements.push(...buildSqliteExistingColumnSql(table, column, warnings));
     } else {
@@ -463,8 +526,9 @@ export function buildCreateTableSql(options: BuildTableStructureChangeSqlOptions
 
   const pkColumns = activeColumns.filter((c) => c.isPrimaryKey);
   const colDefs = activeColumns.map((col) => {
-    const parts = [quoteIdent(dialect, col.name), col.dataType.trim()];
-    if (!col.isNullable && !col.isPrimaryKey) parts.push("NOT NULL");
+    const dataType = dialect === "clickhouse" ? clickHouseColumnType(col) : col.dataType.trim();
+    const parts = [quoteIdent(dialect, col.name), dataType];
+    if (!col.isNullable && !col.isPrimaryKey && dialect !== "clickhouse") parts.push("NOT NULL");
     const defaultValue = normalizeDefault(col.defaultValue);
     if (defaultValue) parts.push(`DEFAULT ${defaultValue}`);
     if (dialect === "mysql" && capabilities.comment && clean(col.comment)) {
@@ -485,6 +549,15 @@ export function buildCreateTableSql(options: BuildTableStructureChangeSqlOptions
       if (clean(col.comment)) {
         statements.push(
           `COMMENT ON COLUMN ${table}.${quoteIdent(dialect, col.name)} IS ${quoteString(clean(col.comment))};`,
+        );
+      }
+    }
+  }
+  if (capabilities.comment && dialect === "clickhouse") {
+    for (const col of activeColumns) {
+      if (clean(col.comment)) {
+        statements.push(
+          `ALTER TABLE ${table} COMMENT COLUMN ${quoteIdent(dialect, col.name)} ${quoteString(clean(col.comment))};`,
         );
       }
     }

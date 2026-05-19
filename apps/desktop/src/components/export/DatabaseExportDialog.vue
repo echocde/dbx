@@ -292,21 +292,25 @@ watch(schema, (value) => {
   if (value) loadTables(preferredTable).catch((e) => toast(String(e), 5000));
 });
 
-watch(open, async (val) => {
-  if (val) {
-    resetState();
-    pendingPrefillTable.value = props.prefillTable ?? "";
-    if (props.prefillConnectionId) {
-      skipConnectionWatch.value = true;
-      connectionId.value = props.prefillConnectionId;
-      await loadDatabases(props.prefillConnectionId);
-      if (props.prefillDatabase) {
-        database.value = props.prefillDatabase;
-        await loadSchemas(props.prefillSchema);
+watch(
+  open,
+  async (val) => {
+    if (val) {
+      resetState();
+      pendingPrefillTable.value = props.prefillTable ?? "";
+      if (props.prefillConnectionId) {
+        skipConnectionWatch.value = true;
+        connectionId.value = props.prefillConnectionId;
+        await loadDatabases(props.prefillConnectionId);
+        if (props.prefillDatabase) {
+          database.value = props.prefillDatabase;
+          await loadSchemas(props.prefillSchema);
+        }
       }
     }
-  }
-});
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

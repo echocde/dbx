@@ -657,12 +657,12 @@ test("Redshift skips unsupported index operations while keeping column DDL", () 
   assert.deepEqual(result.warnings, ['Creating indexes is not supported for redshift from this editor.']);
 });
 
-test("builds ClickHouse limited column DDL and skips indexes", () => {
+test("builds ClickHouse column DDL and skips indexes", () => {
   const result = buildTableStructureChangeSql({
     databaseType: "clickhouse",
     tableName: "events",
     columns: [
-      column({ id: "new", name: "name", dataType: "String", isNullable: true }),
+      column({ id: "new", name: "name", dataType: "String", isNullable: false }),
       column({
         id: "legacy",
         name: "legacy",
@@ -679,12 +679,14 @@ test("builds ClickHouse limited column DDL and skips indexes", () => {
       column({
         id: "kind",
         name: "event_kind",
-        dataType: "String",
+        dataType: "LowCardinality(String)",
+        isNullable: false,
+        defaultValue: "'view'",
         original: {
           name: "kind",
           data_type: "String",
-          is_nullable: true,
-          column_default: null,
+          is_nullable: false,
+          column_default: "'click'",
           is_primary_key: false,
           extra: null,
         },
@@ -696,10 +698,52 @@ test("builds ClickHouse limited column DDL and skips indexes", () => {
   assert.deepEqual(result.statements, [
     'ALTER TABLE "events" ADD COLUMN "name" String;',
     'ALTER TABLE "events" DROP COLUMN "legacy";',
+    'ALTER TABLE "events" RENAME COLUMN "kind" TO "event_kind";',
+    'ALTER TABLE "events" MODIFY COLUMN "event_kind" LowCardinality(String) DEFAULT \'view\';',
   ]);
-  assert.deepEqual(result.warnings, [
-    'Renaming columns is not supported for clickhouse from this editor.',
-    'Creating indexes is not supported for clickhouse from this editor.',
+  assert.deepEqual(result.warnings, ['Creating indexes is not supported for clickhouse from this editor.']);
+});
+
+test("builds ClickHouse nullable and comment column changes", () => {
+  const result = buildTableStructureChangeSql({
+    databaseType: "clickhouse",
+    tableName: "events",
+    columns: [
+      column({
+        id: "new",
+        name: "source",
+        dataType: "String",
+        isNullable: true,
+        comment: "traffic source",
+      }),
+      column({
+        id: "status",
+        name: "status",
+        dataType: "Nullable(String)",
+        isNullable: false,
+        defaultValue: "",
+        comment: "current status",
+        original: {
+          name: "status",
+          data_type: "Nullable(String)",
+          is_nullable: true,
+          column_default: "'pending'",
+          is_primary_key: false,
+          extra: null,
+          comment: "old status",
+        },
+      }),
+    ],
+    indexes: [],
+  });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.statements, [
+    'ALTER TABLE "events" ADD COLUMN "source" Nullable(String);',
+    'ALTER TABLE "events" COMMENT COLUMN "source" \'traffic source\';',
+    'ALTER TABLE "events" MODIFY COLUMN "status" REMOVE DEFAULT;',
+    'ALTER TABLE "events" MODIFY COLUMN "status" String;',
+    'ALTER TABLE "events" COMMENT COLUMN "status" \'current status\';',
   ]);
 });
 

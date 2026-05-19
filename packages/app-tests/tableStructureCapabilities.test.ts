@@ -59,9 +59,12 @@ test("limited analytic engines can open the editor for supported operations only
   assert.equal(clickhouse.createTable, true);
   assert.equal(clickhouse.addColumn, true);
   assert.equal(clickhouse.dropColumn, true);
-  assert.equal(clickhouse.renameColumn, false);
-  assert.equal(clickhouse.alterExistingColumn, false);
-  assert.equal(clickhouse.comment, false);
+  assert.equal(clickhouse.renameColumn, true);
+  assert.equal(clickhouse.alterExistingColumn, true);
+  assert.equal(clickhouse.alterType, true);
+  assert.equal(clickhouse.alterNullability, true);
+  assert.equal(clickhouse.alterDefault, true);
+  assert.equal(clickhouse.comment, true);
   assert.equal(clickhouse.createIndex, false);
   assert.equal(canEditTableStructure("clickhouse"), true);
 });
