@@ -124,16 +124,19 @@ export function buildGroupedObjectTreeNodes({
       schema,
       objectCount: items.length,
       isExpanded: false,
-      children: items.map((obj) => ({
-        id: `${nodeId}:${def.key}:${obj.name}`,
-        label: obj.name,
-        type: def.childType,
-        connectionId,
-        database,
-        schema,
-        isExpanded: false,
-        children: isExpandable ? [] : undefined,
-      })),
+      children: items.map((obj) => {
+        const childSchema = obj.schema ? normalizeDatabaseObjectName(obj.schema) : schema;
+        return {
+          id: `${nodeId}:${def.key}:${childSchema ? `${childSchema}:` : ""}${obj.name}`,
+          label: obj.name,
+          type: def.childType,
+          connectionId,
+          database,
+          schema: childSchema,
+          isExpanded: false,
+          children: isExpandable ? [] : undefined,
+        };
+      }),
     });
   }
   return groups;

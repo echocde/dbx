@@ -108,6 +108,20 @@ test("object tree groups count unique objects when metadata returns duplicates",
   );
 });
 
+test("object tree table nodes keep the schema returned by metadata", () => {
+  const nodes = buildGroupedObjectTreeNodes({
+    nodeId: "conn:app",
+    connectionId: "conn",
+    database: "app",
+    schema: "app",
+    objects: [obj("orders", "TABLE", "sales")],
+  });
+
+  const tableNode = nodes.find((node) => node.type === "group-tables")?.children?.[0];
+
+  assert.equal(tableNode?.schema, "sales");
+});
+
 test("expands cached object-browser nodes back into regular table nodes", () => {
   const nodes = expandCachedObjectBrowserNodes([
     {
