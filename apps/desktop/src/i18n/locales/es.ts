@@ -97,6 +97,7 @@ export default {
     type: "Tipo",
     host: "Host",
     filePath: "Ruta del archivo",
+    createDuckDbFile: "Crear archivo DuckDB",
     user: "Usuario",
     password: "Contraseña",
     database: "Base de datos",

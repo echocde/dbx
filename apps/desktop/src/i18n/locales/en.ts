@@ -97,6 +97,7 @@ export default {
     type: "Type",
     host: "Host",
     filePath: "File Path",
+    createDuckDbFile: "Create DuckDB file",
     memoryDatabasePathHint: "Use :memory: to create an in-memory SQLite or DuckDB database.",
     user: "User",
     password: "Password",

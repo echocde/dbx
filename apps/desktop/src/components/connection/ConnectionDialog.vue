@@ -19,7 +19,18 @@ import { applyParsedConnectionUrl, parseConnectionUrl } from "@/lib/connectionUr
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connectionPresentation";
 import { mongodbAuthFailureHint, mongoUrlParam, setMongoUrlParam } from "@/lib/mongoConnectionOptions";
 import { showAgentDriverInstallHint, type AgentDriverInstallState } from "@/lib/agentDriverInstallHint";
-import { ArrowLeft, ChevronRight, Copy, ExternalLink, FolderOpen, Grid3X3, Link2, List, Search } from "lucide-vue-next";
+import {
+  ArrowLeft,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  FilePlus2,
+  FolderOpen,
+  Grid3X3,
+  Link2,
+  List,
+  Search,
+} from "lucide-vue-next";
 
 type DbOption = { value: string; label: string };
 type DbCategory = { key: string; title: string; options: DbOption[] };
@@ -770,6 +781,24 @@ async function browseDbFilePath() {
   }
 }
 
+function ensureDuckDbFileExtension(path: string): string {
+  return /\.(duckdb|db)$/i.test(path) ? path : `${path}.duckdb`;
+}
+
+async function createDuckDbFilePath() {
+  if (!isTauriRuntime()) return;
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  const selected = await save({
+    title: t("connection.createDuckDbFile"),
+    defaultPath: "database.duckdb",
+    filters: [{ name: "DuckDB", extensions: ["duckdb", "db"] }],
+  });
+  if (!selected) return;
+
+  const path = ensureDuckDbFileExtension(selected);
+  form.value.host = path;
+}
+
 async function browseJdbcDriverPaths() {
   if (!isTauriRuntime()) return;
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -1137,6 +1166,19 @@ function openExternalUrl(url: string) {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>{{ t("connection.sshKeyPathBrowse") }}</TooltipContent>
+                        </Tooltip>
+                        <Tooltip v-if="isDesktop && form.db_type === 'duckdb'">
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              class="h-9 w-9 shrink-0"
+                              @click="createDuckDbFilePath"
+                            >
+                              <FilePlus2 class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.createDuckDbFile") }}</TooltipContent>
                         </Tooltip>
                       </div>
                       <p v-if="supportsMemoryDatabasePath" class="text-xs text-muted-foreground">

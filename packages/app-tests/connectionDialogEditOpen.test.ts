@@ -28,3 +28,11 @@ test("connection dialog initializes edit form on first mount", () => {
 test("connection dialog maps legacy Dameng configs to the DM profile", () => {
   assert.match(connectionDialogSource, /if \(config\.db_type === "dameng"\) return "dm";/);
 });
+
+test("connection dialog offers DuckDB file creation from the new connection form", () => {
+  assert.match(connectionDialogSource, /async function createDuckDbFilePath\(\)/);
+  assert.match(connectionDialogSource, /const \{ save \} = await import\("@tauri-apps\/plugin-dialog"\);/);
+  assert.match(connectionDialogSource, /form\.value\.host = path;/);
+  assert.match(connectionDialogSource, /form\.db_type === 'duckdb'/);
+  assert.match(connectionDialogSource, /@click="createDuckDbFilePath"/);
+});
