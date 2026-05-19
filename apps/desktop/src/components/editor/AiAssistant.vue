@@ -66,6 +66,7 @@ import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
 import { formatAiTableMention, parseAiTableMentions, type AiTableMention } from "@/lib/aiTableMentions";
+import { isAiPromptImeCompositionEvent, shouldSubmitAiPromptOnKeydown } from "@/lib/aiPromptKeyboard";
 
 const { t } = useI18n();
 const settings = useSettingsStore();
@@ -104,6 +105,7 @@ const conversationId = ref("");
 const conversations = ref<AiConversation[]>([]);
 const showConversationList = ref(false);
 const promptTextareaRef = ref<HTMLTextAreaElement | null>(null);
+const promptCompositionActive = ref(false);
 
 interface AiMentionCandidate {
   schema?: string;
@@ -430,6 +432,8 @@ function insertMention(candidate: AiMentionCandidate) {
 }
 
 function onPromptKeydown(event: KeyboardEvent) {
+  if (isAiPromptImeCompositionEvent(event, promptCompositionActive.value)) return;
+
   if (mentionOpen.value) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -456,7 +460,7 @@ function onPromptKeydown(event: KeyboardEvent) {
     }
   }
 
-  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+  if (shouldSubmitAiPromptOnKeydown(event, promptCompositionActive.value)) {
     event.preventDefault();
     send();
   }
@@ -916,6 +920,8 @@ const messageRenderer = createAiMessageRenderer({ markdown: formatInlineText });
           @input="refreshMentionState"
           @click="refreshMentionState"
           @keyup="refreshMentionState"
+          @compositionstart="promptCompositionActive = true"
+          @compositionend="promptCompositionActive = false"
           @keydown="onPromptKeydown"
         />
         <div class="flex items-center gap-1.5">
