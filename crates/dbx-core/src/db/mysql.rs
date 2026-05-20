@@ -4,6 +4,7 @@ use rust_decimal::Decimal;
 use sqlx::mysql::{MySqlPool, MySqlPoolOptions, MySqlRow};
 use sqlx::{Column, Executor, Row, TypeInfo, ValueRef};
 use std::collections::HashSet;
+use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use crate::sql::starts_with_executable_sql_keyword;
@@ -158,12 +159,13 @@ fn mysql_value_to_json(row: &MySqlRow, idx: usize, type_name: &str) -> serde_jso
 }
 
 pub async fn connect(url: &str) -> Result<MySqlPool, String> {
+    let options = mysql_connect_options(url, true)?;
     let result = super::with_connection_timeout("MySQL", async {
         MySqlPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(super::connection_timeout())
             .idle_timeout(Duration::from_secs(300))
-            .connect(url)
+            .connect_with(options)
             .await
             .map_err(|e| format!("MySQL connection failed: {e}"))
     })
@@ -172,13 +174,14 @@ pub async fn connect(url: &str) -> Result<MySqlPool, String> {
     if let Err(ref e) = result {
         if mysql_error_should_retry_without_ssl(e) {
             if let Some(fallback_url) = ssl_fallback_url(url) {
+                let fallback_options = mysql_connect_options(&fallback_url, true)?;
                 log::info!("SSL handshake failed, retrying with ssl-mode=disabled");
                 return super::with_connection_timeout("MySQL", async {
                     MySqlPoolOptions::new()
                         .max_connections(5)
                         .acquire_timeout(super::connection_timeout())
                         .idle_timeout(Duration::from_secs(300))
-                        .connect(&fallback_url)
+                        .connect_with(fallback_options)
                         .await
                         .map_err(|e| format!("MySQL connection failed: {e}"))
                 })
@@ -210,9 +213,7 @@ fn ssl_fallback_url(url: &str) -> Option<String> {
 }
 
 pub async fn connect_bare(url: &str) -> Result<MySqlPool, String> {
-    let options: sqlx::mysql::MySqlConnectOptions =
-        url.parse().map_err(|e: sqlx::Error| format!("Invalid MySQL URL: {e}"))?;
-    let options = options.no_engine_substitution(false).set_names(false).pipes_as_concat(false).timezone(None);
+    let options = mysql_connect_options(url, true)?;
     super::with_connection_timeout("MySQL", async {
         MySqlPoolOptions::new()
             .max_connections(5)
@@ -223,6 +224,27 @@ pub async fn connect_bare(url: &str) -> Result<MySqlPool, String> {
             .map_err(|e| format!("MySQL connection failed: {e}"))
     })
     .await
+}
+
+fn mysql_connect_options(url: &str, preserve_server_timezone: bool) -> Result<sqlx::mysql::MySqlConnectOptions, String> {
+    let mut options =
+        sqlx::mysql::MySqlConnectOptions::from_str(url).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
+    options = options.no_engine_substitution(false).set_names(false).pipes_as_concat(false);
+    if preserve_server_timezone && !mysql_url_has_timezone_param(url) {
+        options = options.timezone(None);
+    }
+    Ok(options)
+}
+
+fn mysql_url_has_timezone_param(url: &str) -> bool {
+    let Some((_, query)) = url.split_once('?') else {
+        return false;
+    };
+
+    query.split('&').filter(|segment| !segment.is_empty()).any(|segment| {
+        let key = segment.split('=').next().unwrap_or("").trim().to_ascii_lowercase();
+        key == "timezone" || key == "time-zone"
+    })
 }
 
 pub async fn list_databases(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, String> {
@@ -608,5 +630,31 @@ mod tests {
             server closed session with no notification";
 
         assert!(mysql_error_should_retry_without_ssl(error));
+    }
+
+    #[test]
+    fn mysql_connect_options_preserve_server_timezone_by_default() {
+        let options = mysql_connect_options("mysql://root:secret@127.0.0.1:3306/app", true).expect("parse mysql url");
+        let debug = format!("{options:?}");
+
+        assert!(debug.contains("timezone: None"), "{debug}");
+        assert!(debug.contains("set_names: false"), "{debug}");
+        assert!(debug.contains("no_engine_substitution: false"), "{debug}");
+    }
+
+    #[test]
+    fn mysql_connect_options_keep_explicit_timezone_param() {
+        let options =
+            mysql_connect_options("mysql://root:secret@127.0.0.1:3306/app?timezone=%2B08:00", true).expect("parse mysql url");
+        let debug = format!("{options:?}");
+
+        assert!(debug.contains("timezone: Some(\"+08:00\")"), "{debug}");
+    }
+
+    #[test]
+    fn mysql_timezone_param_detection_matches_supported_aliases() {
+        assert!(mysql_url_has_timezone_param("mysql://root@localhost/app?timezone=%2B08:00"));
+        assert!(mysql_url_has_timezone_param("mysql://root@localhost/app?charset=utf8mb4&time-zone=%2B08:00"));
+        assert!(!mysql_url_has_timezone_param("mysql://root@localhost/app?charset=utf8mb4"));
     }
 }
