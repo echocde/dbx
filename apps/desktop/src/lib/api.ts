@@ -92,6 +92,7 @@ export const aiComplete = forward("aiComplete");
 export const aiStream = forward("aiStream");
 export const aiCancelStream = forward("aiCancelStream");
 export const aiTestConnection = forward("aiTestConnection");
+export const aiListModels = forward("aiListModels");
 export const saveAiConfig = forward("saveAiConfig");
 export const loadAiConfig = forward("loadAiConfig");
 export const saveAiConversation = forward("saveAiConversation");
@@ -172,6 +173,7 @@ export type {
   AiMessage,
   AiCompletionRequest,
   AiStreamChunk,
+  AiModelInfo,
   AiChatMessage,
   AiConversation,
   AgentDriverInfo,
