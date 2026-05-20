@@ -335,6 +335,7 @@ export interface QueryTab {
     | "primary-key-not-returned"
     | "aliased-columns"
     | "metadata-unavailable";
+  resultEvicted?: boolean;
   whereInput?: string;
 }
 

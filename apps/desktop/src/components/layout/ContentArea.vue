@@ -336,6 +336,7 @@ defineExpose({ focusSearch, refreshData });
               <DataGrid
                 v-if="activeTab.result"
                 :key="`${activeTab.id}-${activeTab.activeResultIndex ?? 0}`"
+                :cache-key="`${activeTab.id}-${activeTab.activeResultIndex ?? 0}`"
                 class="flex-1 min-h-0"
                 :result="activeTab.result"
                 :sql="activeTab.lastExecutedSql || activeTab.sql"
@@ -538,6 +539,7 @@ defineExpose({ focusSearch, refreshData });
           ref="dataGridRef"
           class="flex-1 min-h-0"
           :key="activeTab.id"
+          :cache-key="activeTab.id"
           :result="activeTab.result"
           :sql="activeTab.sql"
           :loading="activeTab.isExecuting"

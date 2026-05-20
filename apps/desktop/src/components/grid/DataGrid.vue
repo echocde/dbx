@@ -157,6 +157,7 @@ const props = defineProps<{
   pageLimit?: number;
   countSql?: string;
   loading?: boolean;
+  cacheKey?: string;
   onExecuteSql?: (sql: string) => Promise<void>;
   customSave?: (changes: {
     dirtyRows: Map<number, Map<number, string | number | boolean | null>>;
@@ -1054,9 +1055,6 @@ const visibleColumnIndexes = computed(() =>
   visibleColumnIndexesForFilter(displayableColumnIndexes.value, hiddenColumnIndexes.value),
 );
 const visibleColumns = computed(() => visibleColumnIndexes.value.map((index) => props.result.columns[index]));
-const visibleRows = computed(() =>
-  props.result.rows.map((row) => visibleColumnIndexes.value.map((index) => row[index])),
-);
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
 const displayableColumnCount = computed(() => displayableColumnIndexes.value.length);
 const hiddenColumnCount = computed(() => displayableColumnCount.value - visibleColumnCount.value);
@@ -1088,7 +1086,8 @@ function actualColumnIndex(visibleColumnIndex: number): number {
 // --- Column resize composable ---
 const { initColumnWidths, onResizeStart, autoFitColumn, columnVars, getIsResizing } = useDataGridColumnResize({
   columns: visibleColumns,
-  rows: visibleRows,
+  sourceRows: computed(() => props.result.rows),
+  columnIndexes: visibleColumnIndexes,
   gridRef,
 });
 const gridStyle = computed(() => ({
@@ -1321,6 +1320,7 @@ const editor = useDataGridEditor({
   getRowItem,
   pageSize,
   currentPage,
+  cacheKey: computed(() => props.cacheKey),
   emit,
 });
 
