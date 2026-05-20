@@ -1,4 +1,4 @@
-use percent_encoding::percent_decode_str;
+use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -509,6 +509,8 @@ pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, da
         config.connection_url_with_host(host, port)
     } else if config.db_type == DatabaseType::Oracle {
         oracle_jdbc_connection_string(config, host, port, database)
+    } else if config.db_type == DatabaseType::SapHana {
+        sap_hana_jdbc_connection_string(config, host, port, database)
     } else {
         config.connection_string.as_deref().unwrap_or("").to_string()
     };
@@ -579,6 +581,28 @@ fn oracle_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u1
         format!("jdbc:oracle:thin:@{host}:{port}:{database}")
     } else {
         format!("jdbc:oracle:thin:@//{host}:{port}/{database}")
+    }
+}
+
+fn sap_hana_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> String {
+    let database = database.trim();
+    let params = config.url_params.as_deref().unwrap_or("").trim().trim_start_matches('?');
+    let has_database_name = params
+        .split(['&', ';'])
+        .any(|part| part.split_once('=').map(|(key, _)| key.eq_ignore_ascii_case("databaseName")).unwrap_or(false));
+
+    let mut query_parts = Vec::new();
+    if !database.is_empty() && !has_database_name {
+        query_parts.push(format!("databaseName={}", utf8_percent_encode(database, NON_ALPHANUMERIC)));
+    }
+    if !params.is_empty() {
+        query_parts.push(params.to_string());
+    }
+
+    if query_parts.is_empty() {
+        format!("jdbc:sap://{host}:{port}")
+    } else {
+        format!("jdbc:sap://{host}:{port}/?{}", query_parts.join("&"))
     }
 }
 
@@ -771,6 +795,22 @@ mod tests {
         let params = agent_connect_params(&config, "127.0.0.1", 11521, "ORCL");
 
         assert_eq!(params["connection_string"], "jdbc:oracle:thin:@127.0.0.1:11521:ORCL");
+    }
+
+    #[test]
+    fn agent_connect_params_build_saphana_connection_string_from_database_and_url_params() {
+        let mut config = mysql_config(Some("TENANT1"));
+        config.db_type = DatabaseType::SapHana;
+        config.host = "hana.example.com".to_string();
+        config.port = 30013;
+        config.username = "SYSTEM".to_string();
+        config.password = "secret".to_string();
+        config.url_params = Some("encrypt=true".to_string());
+
+        let params = agent_connect_params(&config, "hana.example.com", 30013, "TENANT1");
+
+        assert_eq!(params["database"], "TENANT1");
+        assert_eq!(params["connection_string"], "jdbc:sap://hana.example.com:30013/?databaseName=TENANT1&encrypt=true");
     }
 
     async fn test_app_state() -> (AppState, std::path::PathBuf) {

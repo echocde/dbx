@@ -226,9 +226,11 @@ pub async fn connect_bare(url: &str) -> Result<MySqlPool, String> {
     .await
 }
 
-fn mysql_connect_options(url: &str, preserve_server_timezone: bool) -> Result<sqlx::mysql::MySqlConnectOptions, String> {
-    let mut options =
-        sqlx::mysql::MySqlConnectOptions::from_str(url).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
+fn mysql_connect_options(
+    url: &str,
+    preserve_server_timezone: bool,
+) -> Result<sqlx::mysql::MySqlConnectOptions, String> {
+    let mut options = sqlx::mysql::MySqlConnectOptions::from_str(url).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
     options = options.no_engine_substitution(false).set_names(false).pipes_as_concat(false);
     if preserve_server_timezone && !mysql_url_has_timezone_param(url) {
         options = options.timezone(None);
@@ -644,8 +646,8 @@ mod tests {
 
     #[test]
     fn mysql_connect_options_keep_explicit_timezone_param() {
-        let options =
-            mysql_connect_options("mysql://root:secret@127.0.0.1:3306/app?timezone=%2B08:00", true).expect("parse mysql url");
+        let options = mysql_connect_options("mysql://root:secret@127.0.0.1:3306/app?timezone=%2B08:00", true)
+            .expect("parse mysql url");
         let debug = format!("{options:?}");
 
         assert!(debug.contains("timezone: Some(\"+08:00\")"), "{debug}");

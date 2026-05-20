@@ -1479,7 +1479,8 @@ function openExternalUrl(url: string) {
                       form.db_type === 'highgo' ||
                       form.db_type === 'yashandb' ||
                       form.db_type === 'vastbase' ||
-                      form.db_type === 'goldendb'
+                      form.db_type === 'goldendb' ||
+                      form.db_type === 'saphana'
                     "
                     class="grid grid-cols-4 items-center gap-4"
                   >
@@ -1490,9 +1491,11 @@ function openExternalUrl(url: string) {
                       :placeholder="
                         form.db_type === 'mysql'
                           ? 'charset=utf8mb4'
-                          : form.db_type === 'informix'
-                            ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
-                            : 'sslmode=disable'
+                          : form.db_type === 'saphana'
+                            ? 'databaseName=TENANT_DB'
+                            : form.db_type === 'informix'
+                              ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
+                              : 'sslmode=disable'
                       "
                     />
                   </div>
