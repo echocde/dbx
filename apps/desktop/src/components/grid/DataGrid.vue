@@ -66,6 +66,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
@@ -98,6 +99,13 @@ import {
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
 import { cellImagePreviewUrl } from "@/lib/cellImageUrl";
+import {
+  cellDetailEditorText,
+  defaultCellDetailTab,
+  valueEditorActions,
+  visibleCellDetailTabs,
+  type CellDetailTab,
+} from "@/lib/cellDetailPresentation";
 import {
   applyColumnFormatter,
   buildColumnFormatterKey,
@@ -272,6 +280,7 @@ function typeColorClass(t: string): string {
 const contextCell = ref<{ rowId: number; rowIndex: number; col: number } | null>(null);
 const detailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const showCellDetail = ref(false);
+const activeCellDetailTab = ref<CellDetailTab>(defaultCellDetailTab());
 const detailWidth = ref(320);
 const isResizingDetail = ref(false);
 const imagePreviewOpen = ref(false);
@@ -1731,6 +1740,30 @@ const activeCellDetail = computed(() => {
   };
 });
 
+const activeCellDetailTabs = computed(() => {
+  const detail = activeCellDetail.value;
+  return visibleCellDetailTabs({ isEditable: !!detail?.isEditable });
+});
+
+watch(activeCellDetailTabs, (tabs) => {
+  if (!tabs.includes(activeCellDetailTab.value)) {
+    activeCellDetailTab.value = defaultCellDetailTab();
+  }
+});
+
+watch(activeCellDetailTab, (tab) => {
+  if (tab === "valueEditor") {
+    startDetailEdit();
+  } else {
+    resetDetailEdit();
+  }
+});
+
+const activeValueEditorActions = computed(() => {
+  const detail = activeCellDetail.value;
+  return valueEditorActions({ canSetNull: !!detail?.isEditable && detail.value !== null });
+});
+
 const detailEditValue = ref("");
 const isEditingDetail = ref(false);
 const detailTemporalEditorKind = computed(() => {
@@ -1752,8 +1785,7 @@ function closeCellDetails() {
 function startDetailEdit() {
   const detail = activeCellDetail.value;
   if (!detail || !detail.isEditable) return;
-  detailEditValue.value =
-    detail.value === null ? "" : typeof detail.value === "object" ? JSON.stringify(detail.value) : String(detail.value);
+  detailEditValue.value = cellDetailEditorText(detail.value);
   isEditingDetail.value = true;
 }
 
@@ -1792,6 +1824,51 @@ function commitDetailEdit() {
 
 function cancelDetailEdit() {
   resetDetailEdit();
+}
+
+function cancelValueEditorEdit() {
+  const detail = activeCellDetail.value;
+  if (!detail || !detail.isEditable) return;
+  detailEditValue.value = cellDetailEditorText(detail.value);
+  isEditingDetail.value = true;
+}
+
+function commitValueEditorEdit() {
+  commitDetailEdit();
+  if (activeCellDetailTab.value === "valueEditor") {
+    isEditingDetail.value = true;
+  }
+}
+
+function restoreDetailOriginalValue() {
+  const detail = activeCellDetail.value;
+  if (!detail || !detail.isEditable) return;
+
+  const item = getRowItem(detail.rowId);
+  if (!item || item.isDeleted) return;
+
+  let restoredValue: CellValue = null;
+
+  if (item.isNew && item.newIndex !== undefined) {
+    newRows.value[item.newIndex][detail.colIndex] = null;
+    newRows.value = [...newRows.value];
+  } else if (item.sourceIndex !== undefined) {
+    restoredValue = props.result.rows[item.sourceIndex]?.[detail.colIndex] ?? null;
+    const rowChanges = dirtyRows.value.get(item.sourceIndex);
+    rowChanges?.delete(detail.colIndex);
+    if (rowChanges?.size === 0) dirtyRows.value.delete(item.sourceIndex);
+    dirtyRows.value = new Map(dirtyRows.value);
+  }
+
+  detailEditValue.value = cellDetailEditorText(restoredValue);
+  isEditingDetail.value = activeCellDetailTab.value === "valueEditor";
+  detailCell.value = { ...detailCell.value! };
+}
+
+function setValueEditorNull() {
+  setDetailNull();
+  detailEditValue.value = cellDetailEditorText(null);
+  isEditingDetail.value = activeCellDetailTab.value === "valueEditor";
 }
 
 function setDetailNull() {
@@ -2036,6 +2113,7 @@ const {
 function showCellDetails(rowIndex: number, colIndex: number) {
   resetDetailEdit();
   detailCell.value = { rowIndex, col: colIndex };
+  activeCellDetailTab.value = defaultCellDetailTab();
   showCellDetail.value = true;
 }
 
@@ -3972,149 +4050,219 @@ defineExpose({
                 </Button>
               </div>
 
-              <div class="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-3">
-                <div class="space-y-1">
-                  <div class="text-muted-foreground">{{ t("grid.columnName") }}</div>
-                  <div class="font-medium break-all">{{ activeCellDetail.column }}</div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="space-y-1">
-                    <div class="text-muted-foreground">{{ t("grid.rowNumber") }}</div>
-                    <div>{{ activeCellDetail.rowNumber }}</div>
-                  </div>
-                  <div class="space-y-1">
-                    <div class="text-muted-foreground">{{ t("grid.columnType") }}</div>
-                    <div
-                      :class="activeCellDetail.type ? typeColorClass(activeCellDetail.type) : 'text-muted-foreground'"
+              <Tabs v-model="activeCellDetailTab" class="flex-1 min-h-0 gap-0">
+                <div class="shrink-0 border-b px-3 py-2">
+                  <TabsList
+                    class="grid h-7 w-full p-0.5"
+                    :class="activeCellDetailTabs.length > 1 ? 'grid-cols-2' : 'grid-cols-1'"
+                  >
+                    <TabsTrigger value="details" class="h-6 text-xs">{{ t("grid.cellDetails") }}</TabsTrigger>
+                    <TabsTrigger
+                      v-if="activeCellDetailTabs.includes('valueEditor')"
+                      value="valueEditor"
+                      class="h-6 text-xs"
                     >
-                      {{ activeCellDetail.type || "-" }}
+                      {{ t("grid.valueEditor") }}
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent value="details" class="m-0 min-h-0 flex-1 flex flex-col">
+                  <div class="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-3">
+                    <div class="space-y-1">
+                      <div class="text-muted-foreground">{{ t("grid.columnName") }}</div>
+                      <div class="font-medium break-all">{{ activeCellDetail.column }}</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                      <div class="space-y-1">
+                        <div class="text-muted-foreground">{{ t("grid.rowNumber") }}</div>
+                        <div>{{ activeCellDetail.rowNumber }}</div>
+                      </div>
+                      <div class="space-y-1">
+                        <div class="text-muted-foreground">{{ t("grid.columnType") }}</div>
+                        <div
+                          :class="
+                            activeCellDetail.type ? typeColorClass(activeCellDetail.type) : 'text-muted-foreground'
+                          "
+                        >
+                          {{ activeCellDetail.type || "-" }}
+                        </div>
+                      </div>
+                      <div class="space-y-1">
+                        <div class="text-muted-foreground">{{ t("grid.nullValue") }}</div>
+                        <div>{{ activeCellDetail.value === null ? "true" : "false" }}</div>
+                      </div>
+                      <div class="space-y-1">
+                        <div class="text-muted-foreground">{{ t("grid.valueLength") }}</div>
+                        <div>{{ activeCellDetail.length }}</div>
+                      </div>
+                    </div>
+                    <div class="space-y-1">
+                      <div class="text-muted-foreground">{{ t("grid.columnComment") }}</div>
+                      <div class="whitespace-pre-wrap break-words">
+                        {{ activeCellDetail.comment || t("grid.noComment") }}
+                      </div>
+                    </div>
+                    <div class="space-y-1">
+                      <div class="text-muted-foreground">{{ t("grid.cellValue") }}</div>
+                      <div v-if="activeCellDetail.imagePreviewUrl && !isEditingDetail" class="space-y-1.5">
+                        <div class="text-muted-foreground">{{ t("grid.imagePreview") }}</div>
+                        <a
+                          :href="activeCellDetail.imagePreviewUrl"
+                          role="button"
+                          class="block overflow-hidden rounded border bg-muted/20"
+                          @click.prevent="openImagePreview(activeCellDetail.imagePreviewUrl, activeCellDetail.column)"
+                        >
+                          <img
+                            :src="activeCellDetail.imagePreviewUrl"
+                            :alt="activeCellDetail.column"
+                            loading="lazy"
+                            decoding="async"
+                            referrerpolicy="no-referrer"
+                            class="max-h-72 w-full object-contain"
+                          />
+                        </a>
+                      </div>
+                      <template v-if="isEditingDetail">
+                        <TemporalCellEditor
+                          v-if="detailTemporalEditorKind"
+                          v-model="detailEditValue"
+                          :kind="detailTemporalEditorKind"
+                          variant="inline"
+                          :commit-on-close="false"
+                          @cancel="cancelDetailEdit"
+                          @commit="commitDetailEdit"
+                        />
+                        <textarea
+                          v-else
+                          v-model="detailEditValue"
+                          wrap="off"
+                          class="w-full h-40 overflow-auto rounded border bg-background p-2 font-mono text-xs outline-none resize-y focus:border-primary"
+                          @keydown.escape.stop="cancelDetailEdit"
+                        />
+                        <div class="flex gap-1 mt-1">
+                          <Button size="sm" class="h-6 text-xs" @click="commitDetailEdit">
+                            {{ t("dangerDialog.confirm") }}
+                          </Button>
+                          <Button variant="outline" size="sm" class="h-6 text-xs" @click="cancelDetailEdit">
+                            {{ t("dangerDialog.cancel") }}
+                          </Button>
+                        </div>
+                      </template>
+                      <pre
+                        v-else
+                        class="max-h-56 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre cursor-pointer hover:border-primary/50"
+                        :class="{ 'cursor-text': activeCellDetail.isEditable }"
+                        @dblclick="startDetailEdit"
+                        >{{ activeCellDetail.displayValue }}</pre
+                      >
+                    </div>
+                    <div v-if="activeCellDetail.displayValue !== activeCellDetail.rawValue" class="space-y-1">
+                      <div class="text-muted-foreground">{{ t("grid.rawValue") }}</div>
+                      <pre
+                        class="max-h-40 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre-wrap break-words"
+                        >{{ activeCellDetail.rawValue }}</pre
+                      >
+                    </div>
+                    <div v-if="activeCellDetail.formattedJson" class="mt-2 space-y-1">
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="text-muted-foreground">{{ t("grid.formattedJson") }}</div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="h-6 px-2 text-xs"
+                          :title="t('grid.copyValue')"
+                          @click="copyDetailFormattedJson"
+                        >
+                          <Copy class="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <pre
+                        class="max-h-72 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre-wrap break-words"
+                        >{{ activeCellDetail.formattedJson }}</pre
+                      >
                     </div>
                   </div>
-                  <div class="space-y-1">
-                    <div class="text-muted-foreground">{{ t("grid.nullValue") }}</div>
-                    <div>{{ activeCellDetail.value === null ? "true" : "false" }}</div>
-                  </div>
-                  <div class="space-y-1">
-                    <div class="text-muted-foreground">{{ t("grid.valueLength") }}</div>
-                    <div>{{ activeCellDetail.length }}</div>
-                  </div>
-                </div>
-                <div class="space-y-1">
-                  <div class="text-muted-foreground">{{ t("grid.columnComment") }}</div>
-                  <div class="whitespace-pre-wrap break-words">
-                    {{ activeCellDetail.comment || t("grid.noComment") }}
-                  </div>
-                </div>
-                <div class="space-y-1">
-                  <div class="text-muted-foreground">{{ t("grid.cellValue") }}</div>
-                  <div v-if="activeCellDetail.imagePreviewUrl && !isEditingDetail" class="space-y-1.5">
-                    <div class="text-muted-foreground">{{ t("grid.imagePreview") }}</div>
-                    <a
-                      :href="activeCellDetail.imagePreviewUrl"
-                      role="button"
-                      class="block overflow-hidden rounded border bg-muted/20"
-                      @click.prevent="openImagePreview(activeCellDetail.imagePreviewUrl, activeCellDetail.column)"
+
+                  <div class="border-t p-2 grid grid-cols-1 gap-1">
+                    <Button
+                      v-if="activeCellDetail.isEditable && !isEditingDetail"
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 justify-start text-xs"
+                      @click="startDetailEdit"
                     >
-                      <img
-                        :src="activeCellDetail.imagePreviewUrl"
-                        :alt="activeCellDetail.column"
-                        loading="lazy"
-                        decoding="async"
-                        referrerpolicy="no-referrer"
-                        class="max-h-72 w-full object-contain"
-                      />
-                    </a>
+                      <Pencil class="w-3 h-3 mr-2" /> {{ t("grid.editValue") }}
+                    </Button>
+                    <Button
+                      v-if="activeCellDetail.isEditable && activeCellDetail.value !== null"
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 justify-start text-xs"
+                      @click="setDetailNull"
+                    >
+                      <X class="w-3 h-3 mr-2" /> {{ t("grid.setNull") }}
+                    </Button>
+                    <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailValue">
+                      <Copy class="w-3 h-3 mr-2" /> {{ t("grid.copyValue") }}
+                    </Button>
+                    <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailColumnName">
+                      <Copy class="w-3 h-3 mr-2" /> {{ t("grid.copyColumnName") }}
+                    </Button>
+                    <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailSqlCondition">
+                      <Code2 class="w-3 h-3 mr-2" /> {{ t("grid.copySqlCondition") }}
+                    </Button>
                   </div>
-                  <template v-if="isEditingDetail">
+                </TabsContent>
+
+                <TabsContent
+                  v-if="activeCellDetailTabs.includes('valueEditor')"
+                  value="valueEditor"
+                  class="m-0 min-h-0 flex-1 flex flex-col p-3 text-xs"
+                >
+                  <div class="flex min-h-0 flex-1 flex-col">
                     <TemporalCellEditor
                       v-if="detailTemporalEditorKind"
                       v-model="detailEditValue"
                       :kind="detailTemporalEditorKind"
                       variant="inline"
                       :commit-on-close="false"
-                      @cancel="cancelDetailEdit"
-                      @commit="commitDetailEdit"
+                      @cancel="cancelValueEditorEdit"
+                      @commit="commitValueEditorEdit"
                     />
                     <textarea
                       v-else
                       v-model="detailEditValue"
                       wrap="off"
-                      class="w-full h-40 overflow-auto rounded border bg-background p-2 font-mono text-xs outline-none resize-y focus:border-primary"
-                      @keydown.escape.stop="cancelDetailEdit"
+                      class="min-h-0 flex-1 w-full overflow-auto rounded border bg-background p-2 font-mono text-xs outline-none resize-none focus:border-primary"
+                      @blur="commitValueEditorEdit"
+                      @keydown.escape.stop="restoreDetailOriginalValue"
                     />
-                    <div class="flex gap-1 mt-1">
-                      <Button size="sm" class="h-6 text-xs" @click="commitDetailEdit">
-                        {{ t("dangerDialog.confirm") }}
-                      </Button>
-                      <Button variant="outline" size="sm" class="h-6 text-xs" @click="cancelDetailEdit">
-                        {{ t("dangerDialog.cancel") }}
-                      </Button>
-                    </div>
-                  </template>
-                  <pre
-                    v-else
-                    class="max-h-56 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre cursor-pointer hover:border-primary/50"
-                    :class="{ 'cursor-text': activeCellDetail.isEditable }"
-                    @dblclick="startDetailEdit"
-                    >{{ activeCellDetail.displayValue }}</pre
-                  >
-                </div>
-                <div v-if="activeCellDetail.displayValue !== activeCellDetail.rawValue" class="space-y-1">
-                  <div class="text-muted-foreground">{{ t("grid.rawValue") }}</div>
-                  <pre
-                    class="max-h-40 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre-wrap break-words"
-                    >{{ activeCellDetail.rawValue }}</pre
-                  >
-                </div>
-                <div v-if="activeCellDetail.formattedJson" class="mt-2 space-y-1">
-                  <div class="flex items-center justify-between gap-2">
-                    <div class="text-muted-foreground">{{ t("grid.formattedJson") }}</div>
+                  </div>
+                  <div class="flex gap-1 mt-2 shrink-0">
                     <Button
-                      variant="ghost"
+                      v-if="activeValueEditorActions.includes('setNull')"
+                      variant="outline"
                       size="sm"
-                      class="h-6 px-2 text-xs"
-                      :title="t('grid.copyValue')"
-                      @click="copyDetailFormattedJson"
+                      class="h-6 text-xs"
+                      @mousedown.prevent
+                      @click="setValueEditorNull"
                     >
-                      <Copy class="h-3 w-3" />
+                      {{ t("grid.setNull") }}
+                    </Button>
+                    <Button
+                      v-if="activeValueEditorActions.includes('restoreOriginal')"
+                      variant="outline"
+                      size="sm"
+                      class="h-6 text-xs"
+                      @mousedown.prevent
+                      @click="restoreDetailOriginalValue"
+                    >
+                      {{ t("grid.restoreOriginalValue") }}
                     </Button>
                   </div>
-                  <pre
-                    class="max-h-72 overflow-auto rounded border bg-muted/20 p-2 font-mono text-xs whitespace-pre-wrap break-words"
-                    >{{ activeCellDetail.formattedJson }}</pre
-                  >
-                </div>
-              </div>
-
-              <div class="border-t p-2 grid grid-cols-1 gap-1">
-                <Button
-                  v-if="activeCellDetail.isEditable && !isEditingDetail"
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 justify-start text-xs"
-                  @click="startDetailEdit"
-                >
-                  <Pencil class="w-3 h-3 mr-2" /> {{ t("grid.editValue") }}
-                </Button>
-                <Button
-                  v-if="activeCellDetail.isEditable && activeCellDetail.value !== null"
-                  variant="ghost"
-                  size="sm"
-                  class="h-7 justify-start text-xs"
-                  @click="setDetailNull"
-                >
-                  <X class="w-3 h-3 mr-2" /> {{ t("grid.setNull") }}
-                </Button>
-                <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailValue">
-                  <Copy class="w-3 h-3 mr-2" /> {{ t("grid.copyValue") }}
-                </Button>
-                <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailColumnName">
-                  <Copy class="w-3 h-3 mr-2" /> {{ t("grid.copyColumnName") }}
-                </Button>
-                <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailSqlCondition">
-                  <Code2 class="w-3 h-3 mr-2" /> {{ t("grid.copySqlCondition") }}
-                </Button>
-              </div>
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
         </div>
