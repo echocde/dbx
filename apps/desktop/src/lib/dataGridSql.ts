@@ -1,5 +1,10 @@
 import type { DatabaseType } from "@/types/database";
-import { DBX_NEO4J_ELEMENT_ID_COLUMN, DBX_ROWID_COLUMN, DBX_TDENGINE_TBNAME_COLUMN } from "./tableEditing.ts";
+import {
+  DBX_NEO4J_ELEMENT_ID_COLUMN,
+  DBX_ROWID_COLUMN,
+  DBX_TDENGINE_TBNAME_COLUMN,
+  usesKeylessRowPredicate,
+} from "./tableEditing.ts";
 import { qualifiedTableName, quoteTableIdentifier } from "./tableSelectSql.ts";
 
 export type GridCellValue = string | number | boolean | null;
@@ -413,7 +418,7 @@ function buildPrimaryKeyWhere(
   columns: Array<string | undefined>,
   row: GridCellValue[],
 ): string {
-  if ((databaseType === "hive" || databaseType === "access") && primaryKeys.length === 0)
+  if (primaryKeys.length === 0 && usesKeylessRowPredicate(databaseType))
     return buildRowWhere(databaseType, columns, row);
   return primaryKeys
     .map((primaryKey) => {

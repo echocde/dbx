@@ -7,6 +7,7 @@ export interface TableDataCapability {
   insert: boolean;
   updateRequiresPrimaryKey: boolean;
   deleteRequiresPrimaryKey: boolean;
+  keylessRowPredicate?: boolean;
   requiresTransactionalTableForExistingRows: boolean;
   existingRowsReadonly?: boolean;
   transaction: boolean;
@@ -24,6 +25,7 @@ const DEFAULT_TABLE_DATA_CAPABILITY: TableDataCapability = {
   insert: false,
   updateRequiresPrimaryKey: true,
   deleteRequiresPrimaryKey: true,
+  keylessRowPredicate: false,
   requiresTransactionalTableForExistingRows: false,
   transaction: true,
 };
@@ -58,6 +60,7 @@ const DATABASE_CAPABILITY_OVERRIDES: Partial<Record<DatabaseType, Partial<Databa
       insert: true,
       updateRequiresPrimaryKey: false,
       deleteRequiresPrimaryKey: false,
+      keylessRowPredicate: true,
       requiresTransactionalTableForExistingRows: false,
       transaction: true,
     },
@@ -67,8 +70,19 @@ const DATABASE_CAPABILITY_OVERRIDES: Partial<Record<DatabaseType, Partial<Databa
       insert: true,
       updateRequiresPrimaryKey: false,
       deleteRequiresPrimaryKey: false,
+      keylessRowPredicate: true,
       requiresTransactionalTableForExistingRows: true,
       transaction: false,
+    },
+  },
+  dameng: {
+    tableData: {
+      insert: true,
+      updateRequiresPrimaryKey: false,
+      deleteRequiresPrimaryKey: false,
+      keylessRowPredicate: true,
+      requiresTransactionalTableForExistingRows: false,
+      transaction: true,
     },
   },
   informix: {

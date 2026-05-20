@@ -49,6 +49,7 @@ test("allows Hive table data editing even without declared primary keys", () => 
   assert.equal(isTableDataEditable("access", []), true);
   assert.equal(isTableDataEditable("sqlite", []), true);
   assert.equal(isTableDataEditable("duckdb", []), true);
+  assert.equal(isTableDataEditable("dameng", []), true);
   assert.equal(isTableDataEditable("hive", []), true);
   assert.equal(isTableDataEditable("trino", []), true);
   assert.equal(isTableDataEditable("informix", []), true);
@@ -68,6 +69,8 @@ test("does not use transactional grid saves for Hive", () => {
 test("allows existing row edits according to database-specific key requirements", () => {
   assert.equal(canEditExistingTableRows("access", undefined, []), true);
   assert.equal(canEditExistingTableRows("access", undefined, ["ID"]), true);
+  assert.equal(canEditExistingTableRows("dameng", undefined, []), true);
+  assert.equal(canEditExistingTableRows("dameng", undefined, ["ID"]), true);
   assert.equal(canEditExistingTableRows("hive", true), true);
   assert.equal(canEditExistingTableRows("hive", false), false);
   assert.equal(canEditExistingTableRows("hive", undefined), false);

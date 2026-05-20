@@ -75,14 +75,25 @@ test("describes table editing capabilities for special database engines", () => 
     insert: true,
     updateRequiresPrimaryKey: false,
     deleteRequiresPrimaryKey: false,
+    keylessRowPredicate: true,
     requiresTransactionalTableForExistingRows: true,
     transaction: false,
+  });
+
+  assert.deepEqual(getDatabaseCapability("dameng").tableData, {
+    insert: true,
+    updateRequiresPrimaryKey: false,
+    deleteRequiresPrimaryKey: false,
+    keylessRowPredicate: true,
+    requiresTransactionalTableForExistingRows: false,
+    transaction: true,
   });
 
   assert.deepEqual(getDatabaseCapability("trino").tableData, {
     insert: true,
     updateRequiresPrimaryKey: true,
     deleteRequiresPrimaryKey: true,
+    keylessRowPredicate: false,
     requiresTransactionalTableForExistingRows: false,
     transaction: false,
   });
@@ -91,6 +102,7 @@ test("describes table editing capabilities for special database engines", () => 
     insert: false,
     updateRequiresPrimaryKey: true,
     deleteRequiresPrimaryKey: true,
+    keylessRowPredicate: false,
     requiresTransactionalTableForExistingRows: false,
     transaction: false,
   });
@@ -99,6 +111,7 @@ test("describes table editing capabilities for special database engines", () => 
     insert: false,
     updateRequiresPrimaryKey: true,
     deleteRequiresPrimaryKey: true,
+    keylessRowPredicate: false,
     requiresTransactionalTableForExistingRows: false,
     transaction: false,
   });
@@ -112,6 +125,7 @@ test("uses conservative table editing defaults for unknown or keyless relational
     insert: false,
     updateRequiresPrimaryKey: true,
     deleteRequiresPrimaryKey: true,
+    keylessRowPredicate: false,
     requiresTransactionalTableForExistingRows: false,
     transaction: true,
   });
@@ -119,6 +133,7 @@ test("uses conservative table editing defaults for unknown or keyless relational
     insert: false,
     updateRequiresPrimaryKey: true,
     deleteRequiresPrimaryKey: true,
+    keylessRowPredicate: false,
     requiresTransactionalTableForExistingRows: false,
     transaction: true,
   });

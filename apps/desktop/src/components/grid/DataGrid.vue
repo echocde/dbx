@@ -85,6 +85,7 @@ import {
   hiveTablePropertiesIndicateTransactional,
   isHiddenGridColumn,
   isTdengineExistingRowReadonlyColumn,
+  usesKeylessRowPredicate,
   usesSyntheticRowIdKey,
 } from "@/lib/tableEditing";
 import { formatGridSqlLiteral } from "@/lib/dataGridSql";
@@ -1201,6 +1202,14 @@ const canEditExistingRows = computed(
   () =>
     !!props.customSave ||
     canEditExistingTableRows(props.databaseType, hiveTableTransactional.value, props.tableMeta?.primaryKeys ?? []),
+);
+const showKeylessEditWarning = computed(
+  () =>
+    props.context === "table-data" &&
+    !!props.editable &&
+    !!props.tableMeta &&
+    props.tableMeta.primaryKeys.length === 0 &&
+    usesKeylessRowPredicate(props.databaseType),
 );
 watch(
   () => [props.databaseType, props.connectionId, props.database, props.tableMeta?.schema, props.tableMeta?.tableName],
@@ -3039,6 +3048,19 @@ defineExpose({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" class="max-w-sm">
                   {{ queryEditabilityHint }}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip v-if="showKeylessEditWarning">
+                <TooltipTrigger as-child>
+                  <div
+                    class="flex h-5 items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+                  >
+                    <TriangleAlert class="h-3 w-3" />
+                    {{ t("grid.keylessEditWarning") }}
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" class="max-w-sm">
+                  {{ t("grid.keylessEditWarningHint") }}
                 </TooltipContent>
               </Tooltip>
               <Button
