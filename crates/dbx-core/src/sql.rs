@@ -182,8 +182,17 @@ impl SqlStatementSplitter {
 
             if !self.in_single_quote && !self.in_double_quote && !self.in_backtick && self.dollar_quote_tag.is_none() {
                 if ch == '\n' {
-                    if let Some(new_delim) = parse_delimiter_command(self.buffer.trim()) {
+                    let buf_end = self.buffer.len() - 1;
+                    let last_line_start = self.buffer[..buf_end].rfind('\n').map_or(0, |p| p + 1);
+                    let last_line = self.buffer[last_line_start..buf_end].trim();
+                    if let Some(new_delim) = parse_delimiter_command(last_line) {
                         self.custom_delimiter = if new_delim == ";" { None } else { Some(new_delim.to_string()) };
+                        if last_line_start > 0 {
+                            let before = self.buffer[..last_line_start].trim();
+                            if has_executable_sql(before) {
+                                statements.push(before.to_string());
+                            }
+                        }
                         self.buffer.clear();
                         self.previous = None;
                         i += 1;
@@ -207,7 +216,13 @@ impl SqlStatementSplitter {
 
     pub fn finish(mut self) -> Vec<String> {
         let mut statements = Vec::new();
-        if parse_delimiter_command(self.buffer.trim()).is_some() {
+        let trimmed = self.buffer.trim();
+        let last_line = trimmed.rsplit('\n').next().unwrap_or(trimmed).trim();
+        if parse_delimiter_command(last_line).is_some() {
+            let before = trimmed.rsplitn(2, '\n').nth(1).unwrap_or("").trim();
+            if has_executable_sql(before) {
+                statements.push(before.to_string());
+            }
             self.buffer.clear();
         } else if let Some(ref delim) = self.custom_delimiter {
             if self.buffer.ends_with(delim.as_str()) {
@@ -283,9 +298,10 @@ pub fn split_sql_batches(sql: &str) -> Vec<String> {
 }
 
 fn parse_delimiter_command(line: &str) -> Option<&str> {
-    let rest = if line.len() > 10 && line[..10].eq_ignore_ascii_case("delimiter ") {
+    let bytes = line.as_bytes();
+    let rest = if bytes.len() > 10 && bytes[..10].eq_ignore_ascii_case(b"delimiter ") {
         Some(&line[10..])
-    } else if line.len() > 10 && line[..10].eq_ignore_ascii_case("delimiter\t") {
+    } else if bytes.len() > 10 && bytes[..10].eq_ignore_ascii_case(b"delimiter\t") {
         Some(&line[10..])
     } else {
         None
@@ -915,5 +931,45 @@ DELIMITER ;";
             super::split_sql_statements(sql),
             vec!["CREATE PROCEDURE p1() BEGIN SELECT 1; END", "CREATE PROCEDURE p2() BEGIN SELECT 2; END",]
         );
+    }
+
+    #[test]
+    fn delimiter_after_comment_with_chinese() {
+        let sql = "\
+-- 判断字段是否存在
+DELIMITER $$
+DROP FUNCTION IF EXISTS isFieldExisting $$
+CREATE FUNCTION isFieldExisting(s VARCHAR(100), t VARCHAR(100), f VARCHAR(100))
+    RETURNS INT
+    RETURN (SELECT COUNT(COLUMN_NAME)
+            FROM INFORMATION_SCHEMA.columns
+            WHERE TABLE_SCHEMA = s
+              AND TABLE_NAME = t
+              AND COLUMN_NAME = f)$$
+DELIMITER ;";
+        let stmts = super::split_sql_statements(sql);
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].starts_with("DROP FUNCTION"));
+        assert!(stmts[1].starts_with("CREATE FUNCTION"));
+    }
+
+    #[test]
+    fn delimiter_after_ascii_comment() {
+        let sql = "\
+-- check field existence
+DELIMITER $$
+SELECT 1 $$
+DELIMITER ;";
+        assert_eq!(super::split_sql_statements(sql), vec!["SELECT 1"]);
+    }
+
+    #[test]
+    fn delimiter_after_statement() {
+        let sql = "\
+SELECT 1;
+DELIMITER $$
+SELECT 2 $$
+DELIMITER ;";
+        assert_eq!(super::split_sql_statements(sql), vec!["SELECT 1", "SELECT 2"]);
     }
 }
