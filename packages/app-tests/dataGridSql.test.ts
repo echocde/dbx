@@ -205,6 +205,28 @@ test("builds Hive grid save statements without primary keys using row predicates
   ]);
 });
 
+test("builds PostgreSQL grid save statements without primary keys using row predicates", () => {
+  const statements = buildDataGridSaveStatements({
+    databaseType: "postgres",
+    tableMeta: {
+      schema: "public",
+      tableName: "visits",
+      primaryKeys: [],
+    },
+    columns: ["id", "title", "published_at"],
+    rows: [[63, "old title", null]],
+    dirtyRows: [[0, [[1, "new title"]]]],
+    deletedRows: [0],
+    newRows: [[64, "fresh", "2026-05-20 12:00:00"]],
+  });
+
+  assert.deepEqual(statements, [
+    `UPDATE "public"."visits" SET "title" = 'new title' WHERE "id" = 63 AND "title" = 'old title' AND "published_at" IS NULL;`,
+    `DELETE FROM "public"."visits" WHERE "id" = 63 AND "title" = 'old title' AND "published_at" IS NULL;`,
+    `INSERT INTO "public"."visits" ("id", "title", "published_at") VALUES (64, 'fresh', '2026-05-20 12:00:00');`,
+  ]);
+});
+
 test("builds Dameng grid save statements without primary keys using row predicates", () => {
   const statements = buildDataGridSaveStatements({
     databaseType: "dameng",
