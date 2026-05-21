@@ -639,6 +639,7 @@ fn agent_java_args(jar_path: &str) -> Vec<String> {
         "-DsocksProxyHost=",
         "-Doracle.net.disableOob=true",
         "-Doracle.jdbc.javaNetNio=false",
+        "--add-opens=java.sql/java.sql=ALL-UNNAMED",
         "-XX:TieredStopAtLevel=1",
         "-XX:+UseSerialGC",
         "-jar",
@@ -766,6 +767,13 @@ mod tests {
 
         assert!(args.iter().any(|arg| arg == "-Doracle.net.disableOob=true"));
         assert!(args.iter().any(|arg| arg == "-Doracle.jdbc.javaNetNio=false"));
+    }
+
+    #[test]
+    fn agent_java_args_open_java_sql_for_legacy_timestamp_serializers() {
+        let args = agent_java_args("/tmp/dbx-agent-dameng.jar");
+
+        assert!(args.iter().any(|arg| arg == "--add-opens=java.sql/java.sql=ALL-UNNAMED"));
     }
 
     #[test]
