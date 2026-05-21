@@ -1176,6 +1176,7 @@ export default {
     redisScanPageSizeOption: "{count} 个 Key",
     shortcutExecuteSql: "执行 SQL",
     shortcutSaveSql: "保存 SQL",
+    shortcutNewQuery: "新建查询",
     shortcutCloseTab: "关闭标签页",
     shortcutFocusSearch: "聚焦搜索",
     shortcutRefreshData: "刷新数据",

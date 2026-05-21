@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import WindowControls from "@/components/layout/WindowControls.vue";
-import { useWindowControls } from "@/composables/useWindowControls";
+import { shouldReserveMacTrafficLightInset, useWindowControls } from "@/composables/useWindowControls";
 import { currentLocale, setLocale, type Locale } from "@/i18n";
 import type { AppThemeMode } from "@/lib/appTheme";
 
@@ -68,7 +68,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { isMac, isDesktop, showControls, isMaximized, minimize, toggleMaximize, close } = useWindowControls();
+const { isMac, isDesktop, showControls, isMaximized, isFullscreen, minimize, toggleMaximize, close } =
+  useWindowControls();
 
 function onToolbarDblClick(e: MouseEvent) {
   if (isDesktop) return;
@@ -81,7 +82,7 @@ function onToolbarDblClick(e: MouseEvent) {
 <template>
   <div
     class="h-10 flex items-center gap-1 px-2 border-b bg-muted/30 shrink-0"
-    :class="{ 'pl-17.5': isMac }"
+    :class="{ 'pl-17.5': shouldReserveMacTrafficLightInset(isMac, isFullscreen) }"
     data-tauri-drag-region
     @dblclick="onToolbarDblClick"
   >

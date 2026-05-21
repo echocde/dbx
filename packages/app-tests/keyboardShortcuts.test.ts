@@ -6,6 +6,7 @@ import {
   isCloseTabShortcut,
   isExecuteSqlShortcut,
   isFocusSearchShortcut,
+  isNewQueryShortcut,
   isObjectSourceSaveShortcutTarget,
   isRefreshDataShortcut,
   isSaveShortcut,
@@ -42,6 +43,18 @@ test("converts custom shortcuts to CodeMirror key names", () => {
 
 test("matches Ctrl+Enter for SQL execution", () => {
   assert.equal(isExecuteSqlShortcut({ key: "Enter", ctrlKey: true }), true);
+});
+
+test("matches Cmd+T for opening a new query", () => {
+  assert.equal(isNewQueryShortcut({ key: "t", metaKey: true }), true);
+});
+
+test("matches custom shortcut settings for opening a new query", () => {
+  assert.equal(isNewQueryShortcut({ key: "t", metaKey: true }, { newQuery: "Shift+Mod+N" } as any), false);
+  assert.equal(
+    isNewQueryShortcut({ key: "n", ctrlKey: true, shiftKey: true } as any, { newQuery: "Shift+Mod+N" } as any),
+    true,
+  );
 });
 
 test("ignores Enter without modifier", () => {

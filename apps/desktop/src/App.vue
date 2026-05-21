@@ -38,6 +38,7 @@ import {
   isCloseTabShortcut,
   isExecuteSqlShortcut,
   isFocusSearchShortcut,
+  isNewQueryShortcut,
   isObjectSourceSaveShortcutTarget,
   isRefreshDataShortcut,
   isSaveShortcut,
@@ -585,6 +586,12 @@ function handleKeydown(e: KeyboardEvent) {
     e.preventDefault();
     e.stopPropagation();
     contentAreaRef.value?.refreshData();
+    return;
+  }
+  if (isNewQueryShortcut(e, shortcuts)) {
+    e.preventDefault();
+    e.stopPropagation();
+    void newQuery();
     return;
   }
   if (isCloseTabShortcut(e, shortcuts)) {

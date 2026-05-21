@@ -1,4 +1,11 @@
-export type ShortcutActionId = "executeSql" | "saveSql" | "closeTab" | "focusSearch" | "refreshData" | "cancelSearch";
+export type ShortcutActionId =
+  | "executeSql"
+  | "saveSql"
+  | "newQuery"
+  | "closeTab"
+  | "focusSearch"
+  | "refreshData"
+  | "cancelSearch";
 
 export type ShortcutScope = "global" | "editor" | "search";
 
@@ -23,6 +30,12 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     labelKey: "settings.shortcutSaveSql",
     scope: "editor",
     defaultShortcut: "Mod+S",
+  },
+  {
+    id: "newQuery",
+    labelKey: "settings.shortcutNewQuery",
+    scope: "global",
+    defaultShortcut: "Mod+T",
   },
   {
     id: "closeTab",
