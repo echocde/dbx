@@ -223,6 +223,7 @@ export default {
     resultN: "结果 {n}",
     scrollLeft: "向左滚动标签页",
     scrollRight: "向右滚动标签页",
+    openDataTabs: "已打开的数据表",
   },
   chart: {
     title: "图表",

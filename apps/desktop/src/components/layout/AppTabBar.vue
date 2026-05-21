@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
-import { X, Pin, ChevronRight, Table2, Code2, TableProperties, Package, Check } from "lucide-vue-next";
+import { X, Pin, ChevronDown, Table2, Code2, TableProperties, Package, Check } from "lucide-vue-next";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -9,6 +9,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -42,7 +48,8 @@ function toggleCompactTabTitle() {
 }
 
 const tabsContainerRef = ref<HTMLElement | null>(null);
-const { canScrollLeft, canScrollRight, updateScrollButtons, scrollTabs } = useTabScroll(tabsContainerRef);
+const { canScrollLeft, canScrollRight, updateScrollButtons } = useTabScroll(tabsContainerRef);
+const tabScrollBehavior = ref<ScrollBehavior>("smooth");
 
 watch(
   () => queryStore.tabs.length,
@@ -59,9 +66,10 @@ watch(
       if (!container) return;
       const activeEl = container.querySelector('[data-active-tab="true"]');
       if (activeEl) {
-        activeEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        activeEl.scrollIntoView({ behavior: tabScrollBehavior.value, block: "nearest", inline: "center" });
       }
       updateScrollButtons();
+      tabScrollBehavior.value = "smooth";
     });
   },
 );
@@ -114,6 +122,30 @@ function tabIconClass(tab: QueryTab) {
   if (tab.mode === "data" || tab.mode === "objects") return "text-emerald-600 dark:text-emerald-400";
   return "text-blue-600 dark:text-blue-400";
 }
+
+const dataTabs = computed(() => queryStore.tabs.filter((tab) => tab.mode === "data"));
+const showPinnedDataTabsMenu = computed(
+  () => dataTabs.value.length > 0 && (canScrollLeft.value || canScrollRight.value),
+);
+
+function activateDataTab(tabId: string) {
+  tabScrollBehavior.value = "auto";
+  queryStore.activeTabId = tabId;
+  emit("close-driver-store");
+}
+
+const tabsContainerStyle = computed(() => ({
+  "-ms-overflow-style": "none",
+  "scrollbar-width": "none",
+  "-webkit-overflow-scrolling": "touch",
+  "padding-right": showPinnedDataTabsMenu.value ? "36px" : "0px",
+}));
+
+const dataTabsMenuContainerClass = computed(() =>
+  settingsStore.editorSettings.appLayout === "classic"
+    ? "absolute inset-y-0 right-0 z-30 flex items-stretch"
+    : "absolute inset-y-0 -right-2 z-30 flex items-stretch",
+);
 </script>
 
 <template>
@@ -126,19 +158,16 @@ function tabIconClass(tab: QueryTab) {
         : 'h-10 items-center bg-background px-2'
     "
   >
-    <button
+    <div
       v-if="canScrollLeft"
-      class="absolute left-0 z-10 h-full pl-1 pr-6 bg-linear-to-r from-background from-40% to-transparent text-muted-foreground hover:text-foreground"
-      :aria-label="t('tabs.scrollLeft')"
-      @click="scrollTabs('left')"
-    >
-      <ChevronRight class="h-4 w-4 rotate-180" />
-    </button>
+      class="pointer-events-none absolute left-0 z-10 h-full w-6 bg-linear-to-r from-background from-40% to-transparent"
+      aria-hidden="true"
+    />
     <div
       ref="tabsContainerRef"
       class="flex-1 flex items-center overflow-x-auto min-w-0"
       :class="settingsStore.editorSettings.appLayout === 'classic' ? '' : 'gap-1.5'"
-      style="-ms-overflow-style: none; scrollbar-width: none; -webkit-overflow-scrolling: touch"
+      :style="tabsContainerStyle"
       @scroll="updateScrollButtons"
     >
       <ContextMenu v-for="tab in queryStore.tabs" :key="tab.id">
@@ -262,13 +291,33 @@ function tabIconClass(tab: QueryTab) {
         </button>
       </div>
     </div>
-    <button
+    <div
       v-if="canScrollRight"
-      class="absolute right-0 z-10 h-full pr-1 pl-6 bg-linear-to-l from-background from-40% to-transparent text-muted-foreground hover:text-foreground"
-      :aria-label="t('tabs.scrollRight')"
-      @click="scrollTabs('right')"
-    >
-      <ChevronRight class="h-4 w-4" />
-    </button>
+      class="pointer-events-none absolute right-0 z-20 h-full w-6 bg-linear-to-l from-background from-40% to-transparent"
+      aria-hidden="true"
+    />
+    <div v-if="showPinnedDataTabsMenu" :class="dataTabsMenuContainerClass">
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <button
+            class="h-full w-7 rounded-none text-foreground/70 hover:text-foreground inline-flex items-center justify-center bg-background"
+            :aria-label="t('tabs.openDataTabs')"
+          >
+            <ChevronDown class="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" class="w-auto min-w-36 max-w-60">
+          <DropdownMenuItem
+            v-for="tab in dataTabs"
+            :key="tab.id"
+            class="text-xs max-w-full"
+            @click="activateDataTab(tab.id)"
+          >
+            <Table2 class="w-3.5 h-3.5 mr-2 shrink-0 text-emerald-600 dark:text-emerald-400" />
+            <span class="truncate flex-1">{{ tabDisplayTitle(tab) }}</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   </div>
 </template>

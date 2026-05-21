@@ -225,6 +225,7 @@ export default {
     resultN: "Result {n}",
     scrollLeft: "Scroll tabs left",
     scrollRight: "Scroll tabs right",
+    openDataTabs: "Open tables",
   },
   chart: {
     title: "Chart",

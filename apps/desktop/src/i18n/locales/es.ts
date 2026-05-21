@@ -220,6 +220,7 @@ export default {
     resultN: "Resultado {n}",
     scrollLeft: "Desplazar pestañas a la izquierda",
     scrollRight: "Desplazar pestañas a la derecha",
+    openDataTabs: "Tablas abiertas",
   },
   chart: {
     title: "Gráfico",
