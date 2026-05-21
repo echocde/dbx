@@ -6,7 +6,10 @@ test("tab bar exposes a data-table-only dropdown switcher", () => {
   const source = readFileSync("apps/desktop/src/components/layout/AppTabBar.vue", "utf8");
 
   assert.match(source, /tab\.mode === "data"/);
-  assert.match(source, /showPinnedDataTabsMenu = computed\(\(\) => dataTabs\.value\.length > 0 && \(canScrollLeft\.value \|\| canScrollRight\.value\)\)/);
+  assert.match(
+    source,
+    /showPinnedDataTabsMenu = computed\(\s*\(\) => dataTabs\.value\.length > 0 && \(canScrollLeft\.value \|\| canScrollRight\.value\),?\s*\)/,
+  );
   assert.match(source, /const dataTabsMenuContainerClass = computed\(\(\) =>/);
   assert.match(source, /<div v-if="showPinnedDataTabsMenu" :class="dataTabsMenuContainerClass">/);
   assert.match(source, /t\(['"]tabs\.openDataTabs['"]\)/);

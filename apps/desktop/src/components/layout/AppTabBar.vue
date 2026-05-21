@@ -175,16 +175,18 @@ const dataTabsMenuContainerClass = computed(() =>
           <Tooltip>
             <TooltipTrigger as-child>
               <div
-                class="group flex min-w-38 items-center gap-1 px-2 text-xs cursor-pointer transition-colors whitespace-nowrap"
+                class="group flex items-center gap-1 px-2 text-xs cursor-pointer transition-colors whitespace-nowrap"
                 :class="
                   settingsStore.editorSettings.appLayout === 'classic'
                     ? [
-                        'h-full border-r border-border/50',
+                        compactTabTitle ? 'min-w-24' : 'min-w-38',
+                        'h-full border-r border-border/80 dark:border-border/45',
                         tab.id === queryStore.activeTabId && !showDriverStore
                           ? 'bg-background text-foreground font-medium'
                           : 'text-foreground/70 hover:text-foreground/90',
                       ]
                     : [
+                        compactTabTitle ? 'min-w-24' : 'min-w-38',
                         'h-7 rounded-md border',
                         tab.id === queryStore.activeTabId && !showDriverStore
                           ? 'text-foreground font-medium'
@@ -267,7 +269,7 @@ const dataTabsMenuContainerClass = computed(() =>
         class="group flex min-w-38 items-center gap-1 px-2 text-xs cursor-pointer transition-colors whitespace-nowrap"
         :class="
           settingsStore.editorSettings.appLayout === 'classic'
-            ? ['h-full border-r border-border/50 bg-background text-foreground font-medium']
+            ? ['h-full border-r border-border/80 dark:border-border/45 bg-background text-foreground font-medium']
             : ['h-7 rounded-md border text-foreground font-medium', 'border-ring']
         "
         :style="
