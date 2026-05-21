@@ -2969,7 +2969,7 @@ defineExpose({
       <ContextMenuTrigger as-child>
         <div v-if="hasData || canUseWhereSearch" class="flex-1 flex flex-col overflow-hidden">
           <!-- Search bar -->
-          <div class="flex items-stretch border-b shrink-0 bg-muted/20 relative">
+          <div class="data-grid-topbar flex items-stretch border-b shrink-0 bg-muted/20 relative">
             <div
               v-if="useTransaction && editable && (tableMeta || customSave)"
               class="flex items-center px-2 py-0.5 border-r shrink-0"
@@ -4677,6 +4677,10 @@ defineExpose({
 </template>
 
 <style scoped>
+.data-grid-topbar {
+  min-width: 760px;
+}
+
 .data-grid-scroller {
   overflow-anchor: none;
   will-change: scroll-position;
