@@ -20,6 +20,14 @@ fn should_hide_window_on_close(target_os: &str) -> bool {
     matches!(target_os, "macos" | "windows")
 }
 
+fn should_setup_desktop_tray(target_os: &str) -> bool {
+    matches!(target_os, "macos" | "windows")
+}
+
+fn should_show_main_window_after_setup() -> bool {
+    true
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -39,8 +47,8 @@ fn open_connection_deep_links(app: &tauri::AppHandle, links: Vec<String>) {
     show_main_window(app);
 }
 
-#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
-fn setup_windows_tray(app: &mut tauri::App) -> tauri::Result<()> {
+#[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
+fn setup_desktop_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let menu = MenuBuilder::new(app).text("show", "Show DBX").separator().text("quit", "Quit DBX").build()?;
     let mut tray = TrayIconBuilder::with_id("main-tray").tooltip("DBX").menu(&menu).show_menu_on_left_click(false);
 
@@ -67,7 +75,7 @@ fn setup_windows_tray(app: &mut tauri::App) -> tauri::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::should_hide_window_on_close;
+    use super::{should_hide_window_on_close, should_setup_desktop_tray, should_show_main_window_after_setup};
 
     #[test]
     fn hides_window_on_close_for_windows_and_macos() {
@@ -78,6 +86,25 @@ mod tests {
     #[test]
     fn does_not_hide_window_on_close_for_other_platforms() {
         assert!(!should_hide_window_on_close("linux"));
+    }
+
+    #[test]
+    fn sets_up_desktop_tray_for_windows_and_macos() {
+        assert!(should_setup_desktop_tray("windows"));
+        assert!(should_setup_desktop_tray("macos"));
+        assert!(!should_setup_desktop_tray("linux"));
+        let source = include_str!("lib.rs");
+        assert!(source.contains(
+            "if should_setup_desktop_tray(std::env::consts::OS) {\n                setup_desktop_tray(app)?;"
+        ));
+    }
+
+    #[test]
+    fn shows_main_window_after_regular_startup_setup() {
+        assert!(should_show_main_window_after_setup());
+        let source = include_str!("lib.rs");
+        assert!(source
+            .contains("if should_show_main_window_after_setup() {\n                show_main_window(app.handle());"));
     }
 }
 
@@ -154,9 +181,13 @@ pub fn run() {
                     let _ = window.set_decorations(false);
                 }
             }
-            #[cfg(target_os = "windows")]
-            setup_windows_tray(app)?;
+            if should_setup_desktop_tray(std::env::consts::OS) {
+                setup_desktop_tray(app)?;
+            }
             window_state_guard::enforce_main_window_bounds(app.handle());
+            if should_show_main_window_after_setup() {
+                show_main_window(app.handle());
+            }
             #[cfg(any(windows, target_os = "linux"))]
             let _ = app.deep_link().register_all();
 
