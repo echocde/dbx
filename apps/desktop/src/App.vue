@@ -669,7 +669,7 @@ async function reconnectRestoredTabs() {
 function handleContextMenu(e: MouseEvent) {
   const target = e.target as HTMLElement;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-  if (target.closest("[data-radix-vue-collection-item], [data-context-menu]")) return;
+  if (target.closest("[data-reka-collection-item], [data-radix-vue-collection-item], [data-context-menu]")) return;
   e.preventDefault();
 }
 
