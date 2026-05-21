@@ -330,7 +330,7 @@ watch(
         proxy_username: config.proxy_username || "",
         proxy_password: config.proxy_password || "",
         ssl: config.ssl || false,
-        oracle_connection_type: config.oracle_connection_type || "service_name",
+        oracle_connection_type: config.oracle_connection_type || "sid",
         connection_string: config.connection_string,
         jdbc_driver_class: config.jdbc_driver_class,
         jdbc_driver_paths: config.jdbc_driver_paths || [],

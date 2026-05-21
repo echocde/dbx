@@ -595,14 +595,14 @@ fn oracle_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u1
         return config.connection_string.as_deref().unwrap_or("").to_string();
     }
 
-    if config.oracle_connection_type.as_deref() == Some("sid") {
-        format!("jdbc:oracle:thin:@{host}:{port}:{database}")
-    } else {
+    if config.oracle_connection_type.as_deref() == Some("service_name") {
         format!("jdbc:oracle:thin:@//{host}:{port}/{database}")
+    } else {
+        format!("jdbc:oracle:thin:@{host}:{port}:{database}")
     }
 }
 
-fn should_retry_oracle_with_10g_driver(config: &ConnectionConfig, err: &str) -> bool {
+pub fn should_retry_oracle_with_10g_driver(config: &ConnectionConfig, err: &str) -> bool {
     if config.db_type != DatabaseType::Oracle {
         return false;
     }
@@ -808,6 +808,7 @@ mod tests {
         config.port = 1521;
         config.username = "system".to_string();
         config.password = "oracle".to_string();
+        config.oracle_connection_type = Some("service_name".to_string());
 
         let params = agent_connect_params(&config, "oracle.example.com", 1521, "ORCLPDB1");
 
@@ -820,6 +821,17 @@ mod tests {
         let mut config = mysql_config(Some("ORCL"));
         config.db_type = DatabaseType::Oracle;
         config.oracle_connection_type = Some("sid".to_string());
+
+        let params = agent_connect_params(&config, "127.0.0.1", 11521, "ORCL");
+
+        assert_eq!(params["connection_string"], "jdbc:oracle:thin:@127.0.0.1:11521:ORCL");
+    }
+
+    #[test]
+    fn agent_connect_params_preserve_legacy_oracle_configs_as_sid() {
+        let mut config = mysql_config(Some("ORCL"));
+        config.db_type = DatabaseType::Oracle;
+        config.oracle_connection_type = None;
 
         let params = agent_connect_params(&config, "127.0.0.1", 11521, "ORCL");
 
