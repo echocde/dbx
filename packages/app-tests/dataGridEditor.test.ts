@@ -216,6 +216,56 @@ test("saving deleted rows reloads current table data", async () => {
   assert.deepEqual(emitted, [["reload", "SELECT id, name FROM people", "ada", "name ILIKE '%a%'", "id DESC", 50, 100]]);
 });
 
+test("saving inserted rows reloads current table data", async () => {
+  setActivePinia(createPinia());
+  installBrowserTestGlobals();
+
+  const result = computed(() => ({
+    columns: ["id", "name"],
+    rows: [[1, "Ada"] as CellValue[]],
+  }));
+  const rowStatusFilter = ref<"all" | "changed" | "edited" | "new" | "deleted">("all");
+  const emitted: unknown[][] = [];
+  const executedSql: string[] = [];
+
+  const editor = useDataGridEditor({
+    result,
+    editable: computed(() => true),
+    databaseType: computed(() => "postgres"),
+    connectionId: computed(() => undefined),
+    database: computed(() => undefined),
+    tableMeta: computed(() => ({
+      schema: "public",
+      tableName: "people",
+      columns: [column("id", true), column("name")],
+      primaryKeys: ["id"],
+    })),
+    onExecuteSql: computed(() => async (sql: string) => {
+      executedSql.push(sql);
+    }),
+    customSave: computed(() => undefined),
+    sql: computed(() => "SELECT id, name FROM people"),
+    searchText: ref("linus"),
+    whereFilterInput: ref("name ILIKE '%l%'"),
+    orderByInput: ref("id DESC"),
+    rowStatusFilter,
+    pageSize: ref(50),
+    currentPage: ref(2),
+    getRowItem: () => undefined,
+    emit: (...args) => {
+      emitted.push(args);
+    },
+  });
+
+  editor.newRows.value = [[2, "Linus"]];
+  await editor.saveChanges();
+
+  assert.deepEqual(executedSql, [`INSERT INTO "public"."people" ("id", "name") VALUES (2, 'Linus');`]);
+  assert.deepEqual(emitted, [
+    ["reload", "SELECT id, name FROM people", "linus", "name ILIKE '%l%'", "id DESC", 50, 50],
+  ]);
+});
+
 test("saving edited rows without deletes does not reload table data", async () => {
   setActivePinia(createPinia());
   installBrowserTestGlobals();

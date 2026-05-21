@@ -608,7 +608,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
   async function saveChanges() {
     saveError.value = "";
     isSaving.value = true;
-    const shouldReloadAfterSave = deletedRows.value.size > 0;
+    const shouldReloadAfterSave = newRows.value.length > 0 || deletedRows.value.size > 0;
 
     if (customSave?.value) {
       try {
