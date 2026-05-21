@@ -23,6 +23,14 @@ test("normalizes saved query result page size", () => {
   assert.equal(normalizeEditorSettings({ pageSize: 0 }).pageSize, 100);
 });
 
+test("normalizes editor theme settings", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.theme, "app");
+  assert.equal(normalizeEditorSettings({}).theme, "app");
+  assert.equal(normalizeEditorSettings({ theme: "app" }).theme, "app");
+  assert.equal(normalizeEditorSettings({ theme: "vscode-light" }).theme, "vscode-light");
+  assert.equal(normalizeEditorSettings({ theme: "invalid" as any }).theme, DEFAULT_EDITOR_SETTINGS.theme);
+});
+
 test("defaults shortcut settings", () => {
   const settings = normalizeEditorSettings({});
 

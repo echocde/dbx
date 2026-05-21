@@ -1,5 +1,6 @@
 import type { Extension } from "@codemirror/state";
 import type { EditorTheme } from "@/stores/settingsStore";
+import type { AppThemeAppearance } from "@/lib/appTheme";
 
 type CodeMirrorStyleSpec = Parameters<typeof import("@codemirror/view").EditorView.theme>[0];
 
@@ -7,8 +8,18 @@ export const EDITOR_FONT_SIZE_CSS_VAR = "--dbx-editor-font-size";
 export const EDITOR_FONT_FAMILY_CSS_VAR = "--dbx-editor-font-family";
 
 /** Load a CodeMirror theme extension by theme name. */
-export async function loadEditorTheme(theme: EditorTheme): Promise<Extension> {
-  switch (theme) {
+export function resolveEditorTheme(theme: EditorTheme, appAppearance: AppThemeAppearance): Exclude<EditorTheme, "app"> {
+  if (theme === "app") return appAppearance === "dark" ? "one-dark" : "vscode-light";
+  return theme;
+}
+
+/** Load a CodeMirror theme extension by theme name. */
+export async function loadEditorTheme(
+  theme: EditorTheme,
+  appAppearance: AppThemeAppearance = "dark",
+): Promise<Extension> {
+  const resolvedTheme = resolveEditorTheme(theme, appAppearance);
+  switch (resolvedTheme) {
     case "one-dark":
       return (await import("@codemirror/theme-one-dark")).oneDark;
     case "vscode-dark":

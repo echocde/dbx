@@ -16,6 +16,7 @@ import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { formatSqlText, type SqlFormatDialect } from "@/lib/sqlFormatter";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useTheme } from "@/composables/useTheme";
 import {
   buildSqlCompletionItemsFromContext,
   getSqlFunctionSignatureHelp,
@@ -68,6 +69,7 @@ const editorRef = ref<HTMLDivElement>();
 const view = shallowRef<EditorViewType | null>(null);
 const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
+const { isDark } = useTheme();
 const MAX_COMPLETION_TABLES = 200;
 const liveFontSize = ref(settingsStore.editorSettings.fontSize);
 const gestureStartFontSize = ref(settingsStore.editorSettings.fontSize);
@@ -97,6 +99,10 @@ let diagnosticComp: import("@codemirror/state").Compartment | null = null;
 let buildSqlDiagnosticExtension: (() => import("@codemirror/state").Extension) | null = null;
 let buildSqlSignatureExtension: (() => import("@codemirror/state").Extension) | null = null;
 let codeMirrorSnippetCompletion: typeof import("@codemirror/autocomplete").snippetCompletion;
+
+function editorThemeAppearance() {
+  return isDark.value ? "dark" : "light";
+}
 
 // Completion cache
 let cachedTables: Array<{ name: string; schema?: string; type?: "table" | "view" }> = [];
@@ -649,7 +655,7 @@ onMounted(async () => {
     keywords: (baseDialect.spec.keywords || "") + " " + extraKeywords,
   });
 
-  const theme = await loadEditorTheme(ss.theme);
+  const theme = await loadEditorTheme(ss.theme, editorThemeAppearance());
 
   const state = EditorState.create({
     doc: props.modelValue,
@@ -908,8 +914,8 @@ watch(
 
 // Reactively apply editor settings changes
 watch(
-  () => settingsStore.editorSettings,
-  async (ss) => {
+  [() => settingsStore.editorSettings, () => isDark.value],
+  async ([ss]) => {
     if (!view.value || !codeMirrorTheme || !fontThemeComp || !wordWrapComp || !runKeymapComp || !editorViewModule) {
       return;
     }
@@ -917,7 +923,7 @@ watch(
       liveFontSize.value = ss.fontSize;
     }
     syncEditorFontCssVars(liveFontSize.value, ss.fontFamily);
-    const themeExt = await loadEditorTheme(ss.theme);
+    const themeExt = await loadEditorTheme(ss.theme, editorThemeAppearance());
     view.value.dispatch({
       effects: [
         codeMirrorTheme.reconfigure(themeExt),

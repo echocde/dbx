@@ -38,6 +38,12 @@ test("settings dialog has a shortcuts category", () => {
   assert.match(shortcutSource, /settings\.shortcutToggleTranspose/);
 });
 
+test("settings editor theme preview can follow app appearance", () => {
+  assert.match(source, /useTheme/);
+  assert.match(source, /appAppearance: isDark\.value \? "dark" : "light"/);
+  assert.match(source, /loadEditorTheme\(ss\.theme, ss\.appAppearance\)/);
+});
+
 test("shortcut settings capture custom keydown input instead of fixed select options", () => {
   assert.match(source, /onShortcutKeydown/);
   assert.match(source, /@keydown="\(event: KeyboardEvent\) => onShortcutKeydown/);

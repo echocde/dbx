@@ -7,7 +7,7 @@ import {
   Globe,
   Moon,
   Sun,
-  Monitor,
+  SunMoon,
   Check,
   History,
   Bot,
@@ -223,7 +223,7 @@ function onToolbarDblClick(e: MouseEvent) {
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
               <Button variant="ghost" size="icon" class="h-8 w-8" :aria-label="t('toolbar.theme')">
-                <Monitor v-if="themeMode === 'system'" class="h-4 w-4" />
+                <SunMoon v-if="themeMode === 'system'" class="h-4 w-4" />
                 <Moon v-else-if="isDark" class="h-4 w-4" />
                 <Sun v-else class="h-4 w-4" />
               </Button>
@@ -252,7 +252,7 @@ function onToolbarDblClick(e: MouseEvent) {
                 :class="{ 'bg-accent': themeMode === 'system' }"
                 @select="emit('set-theme-mode', 'system')"
               >
-                <Monitor class="h-4 w-4" />
+                <SunMoon class="h-4 w-4" />
                 {{ t("toolbar.themeSystem") }}
                 <Check v-if="themeMode === 'system'" class="ml-auto h-4 w-4" />
               </DropdownMenuItem>

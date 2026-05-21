@@ -148,6 +148,7 @@ function inferAiProviderFromConfig(config: Partial<AiConfig> | null | undefined)
 }
 
 export type EditorTheme =
+  | "app"
   | "one-dark"
   | "vscode-dark"
   | "vscode-light"
@@ -178,6 +179,7 @@ export interface EditorSettings {
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
+  { value: "app", label: "Follow app theme", dark: false },
   { value: "one-dark", label: "One Dark", dark: true },
   { value: "vscode-dark", label: "VS Dark+", dark: true },
   { value: "vscode-light", label: "VS Light+", dark: false },
@@ -188,6 +190,8 @@ export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }
   { value: "duotone-dark", label: "Duotone Dark", dark: true },
   { value: "xcode", label: "Xcode", dark: false },
 ];
+
+const EDITOR_THEME_VALUES = new Set<EditorTheme>(EDITOR_THEMES.map((theme) => theme.value));
 
 export const FONT_FAMILIES: { value: string; label: string }[] = [
   { value: "'JetBrains Mono', 'Fira Code', monospace", label: "JetBrains Mono" },
@@ -202,7 +206,7 @@ export const FONT_FAMILIES: { value: string; label: string }[] = [
 export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
   fontSize: 13,
-  theme: "one-dark",
+  theme: "app",
   executeMode: "all",
   wordWrap: false,
   compactTabTitle: false,
@@ -245,7 +249,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
   return {
     fontFamily: settings.fontFamily ?? DEFAULT_EDITOR_SETTINGS.fontFamily,
     fontSize: settings.fontSize ?? DEFAULT_EDITOR_SETTINGS.fontSize,
-    theme: settings.theme ?? DEFAULT_EDITOR_SETTINGS.theme,
+    theme: settings.theme && EDITOR_THEME_VALUES.has(settings.theme) ? settings.theme : DEFAULT_EDITOR_SETTINGS.theme,
     executeMode: settings.executeMode ?? DEFAULT_EDITOR_SETTINGS.executeMode,
     wordWrap: settings.wordWrap ?? DEFAULT_EDITOR_SETTINGS.wordWrap,
     compactTabTitle: settings.compactTabTitle ?? DEFAULT_EDITOR_SETTINGS.compactTabTitle,

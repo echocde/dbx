@@ -20,9 +20,11 @@ import {
   DEFAULT_EDITOR_SETTINGS,
   type AiProvider,
   type AiApiStyle,
+  type EditorTheme,
 } from "@/stores/settingsStore";
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
+import { useTheme } from "@/composables/useTheme";
 import { aiListModels, aiTestConnection, listSystemFonts, type AiModelInfo } from "@/lib/api";
 import { eventToShortcut } from "@/lib/keyboardShortcuts";
 import {
@@ -34,9 +36,11 @@ import {
 } from "@/lib/shortcutRegistry";
 import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebarTableNameDisplay";
 import AiProviderLogo from "@/components/icons/AiProviderLogo.vue";
+import type { AppThemeAppearance } from "@/lib/appTheme";
 
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
+const { isDark } = useTheme();
 
 const props = defineProps<{
   open: boolean;
@@ -540,10 +544,16 @@ async function aiTestConn() {
 const previewRef = ref<HTMLDivElement>();
 const previewView = shallowRef<EditorViewType | null>(null);
 
-const previewSettings = computed(() => ({
+const previewSettings = computed<{
+  fontFamily: string;
+  fontSize: number;
+  theme: EditorTheme;
+  appAppearance: AppThemeAppearance;
+}>(() => ({
   fontFamily: editFontFamily.value,
   fontSize: editFontSize.value,
   theme: editTheme.value,
+  appAppearance: isDark.value ? "dark" : "light",
 }));
 
 const previewSql = `SELECT u.id, u.name
@@ -559,7 +569,7 @@ watch(
   async (ss) => {
     if (!previewView.value || !fontThemeComp || !themeComp || !editorViewModule) return;
 
-    const themeExt = await loadEditorTheme(ss.theme);
+    const themeExt = await loadEditorTheme(ss.theme, ss.appAppearance);
     previewView.value.dispatch({
       effects: [
         themeComp.reconfigure(themeExt),
@@ -600,7 +610,7 @@ watch(previewRef, async (el) => {
   themeComp = new Compartment();
 
   const ss = previewSettings.value;
-  const themeExt = await loadEditorTheme(ss.theme);
+  const themeExt = await loadEditorTheme(ss.theme, ss.appAppearance);
 
   const state = EditorState.create({
     doc: previewSql,
