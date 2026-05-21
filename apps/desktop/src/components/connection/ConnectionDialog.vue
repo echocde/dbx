@@ -592,6 +592,8 @@ watch(customDriverName, (value) => {
 });
 
 async function testConnection() {
+  if (!ensureConnectionHostResolvedFromUrl()) return;
+
   const runId = ++testRunId;
   isTesting.value = true;
   testResult.value = null;
@@ -608,6 +610,31 @@ async function testConnection() {
       isTesting.value = false;
     }
   }
+}
+
+function applyConnectionUrlToForm(input: string): boolean {
+  try {
+    const parsed = parseConnectionUrl(input, selectedType.value);
+    form.value = applyParsedConnectionUrl(form.value, parsed);
+    selectedType.value = parsed.driverProfile;
+    customDriverName.value = isCustomCompatibleProfile() ? parsed.driverLabel : "";
+    mongoUseUrl.value = !!parsed.useMongoUrl;
+    if (!form.value.name.trim()) {
+      form.value.name = parsed.database || parsed.host || parsed.driverLabel;
+    }
+    resetTestState();
+    return true;
+  } catch (e: any) {
+    toast(t("connection.parseConnectionUrlFailed", { message: e?.message || String(e) }), 5000);
+    return false;
+  }
+}
+
+function ensureConnectionHostResolvedFromUrl(): boolean {
+  if (form.value.host.trim()) return true;
+  const url = connectionUrlInput.value.trim();
+  if (!url) return true;
+  return applyConnectionUrlToForm(url);
 }
 
 function generateConnectionName(): string {
@@ -654,19 +681,8 @@ function resetTestState() {
 }
 
 function applyConnectionUrl() {
-  try {
-    const parsed = parseConnectionUrl(connectionUrlInput.value, selectedType.value);
-    form.value = applyParsedConnectionUrl(form.value, parsed);
-    selectedType.value = parsed.driverProfile;
-    customDriverName.value = isCustomCompatibleProfile() ? parsed.driverLabel : "";
-    mongoUseUrl.value = !!parsed.useMongoUrl;
-    if (!form.value.name.trim()) {
-      form.value.name = parsed.database || parsed.host || parsed.driverLabel;
-    }
-    resetTestState();
+  if (applyConnectionUrlToForm(connectionUrlInput.value)) {
     toast(t("connection.parseConnectionUrlApplied"), 2000);
-  } catch (e: any) {
-    toast(t("connection.parseConnectionUrlFailed", { message: e?.message || String(e) }), 5000);
   }
 }
 
@@ -794,6 +810,7 @@ watch(canUseProxy, (value) => {
 });
 
 async function save() {
+  if (!ensureConnectionHostResolvedFromUrl()) return;
   if (isSaving.value) return;
   isSaving.value = true;
   resetTestState();
@@ -1723,7 +1740,8 @@ function openExternalUrl(url: string) {
               isSaving ||
               (!form.host &&
                 !(mongoUseUrl && form.connection_string) &&
-                !(form.db_type === 'jdbc' && form.connection_string))
+                !(form.db_type === 'jdbc' && form.connection_string) &&
+                !connectionUrlInput.trim())
             "
           >
             {{
