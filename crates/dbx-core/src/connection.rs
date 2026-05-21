@@ -270,14 +270,32 @@ impl AppState {
             | DatabaseType::Tdengine
             | DatabaseType::Access
             | DatabaseType::Gaussdb => {
+                let connect_params =
+                    agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or(""));
                 let mut client =
                     self.agent_manager.spawn(&db_config.db_type, db_config.driver_profile.as_deref()).await?;
-                client
-                    .call_method::<serde_json::Value>(
-                        AgentMethod::Connect,
-                        agent_connect_params(&db_config, &host, port, db_config.effective_database().unwrap_or("")),
-                    )
-                    .await?;
+                let connect_result =
+                    client.call_method::<serde_json::Value>(AgentMethod::Connect, connect_params.clone()).await;
+                if let Err(err) = connect_result {
+                    if should_retry_oracle_with_10g_driver(&db_config, &err) {
+                        log::warn!(
+                            "Oracle connect failed with profile {:?}: {}. Retrying with oracle-10g profile.",
+                            db_config.driver_profile,
+                            err
+                        );
+                        let mut fallback_client =
+                            self.agent_manager.spawn(&db_config.db_type, Some("oracle-10g")).await?;
+                        fallback_client
+                            .call_method::<serde_json::Value>(AgentMethod::Connect, connect_params)
+                            .await
+                            .map_err(|fallback_err| {
+                                format!("{err}\n\nFallback with oracle-10g driver failed: {fallback_err}")
+                            })?;
+                        client = fallback_client;
+                    } else {
+                        return Err(err);
+                    }
+                }
                 PoolKind::Agent(Arc::new(tokio::sync::Mutex::new(client)))
             }
             DatabaseType::Jdbc => {
@@ -584,6 +602,17 @@ fn oracle_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u1
     }
 }
 
+fn should_retry_oracle_with_10g_driver(config: &ConnectionConfig, err: &str) -> bool {
+    if config.db_type != DatabaseType::Oracle {
+        return false;
+    }
+    if config.driver_profile.as_deref() == Some("oracle-10g") {
+        return false;
+    }
+    let normalized = err.to_lowercase();
+    normalized.contains("ora-12541") || normalized.contains("no listener") || err.contains("没有监听程序")
+}
+
 fn sap_hana_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> String {
     let database = database.trim();
     let params = config.url_params.as_deref().unwrap_or("").trim().trim_start_matches('?');
@@ -795,6 +824,31 @@ mod tests {
         let params = agent_connect_params(&config, "127.0.0.1", 11521, "ORCL");
 
         assert_eq!(params["connection_string"], "jdbc:oracle:thin:@127.0.0.1:11521:ORCL");
+    }
+
+    #[test]
+    fn oracle_retry_guard_only_triggers_for_non_10g_listener_errors() {
+        let mut config = mysql_config(Some("ORCL"));
+        config.db_type = DatabaseType::Oracle;
+        config.driver_profile = Some("oracle".to_string());
+
+        assert!(super::should_retry_oracle_with_10g_driver(
+            &config,
+            "Agent RPC error (-1): ORA-12541: TNS:no listener"
+        ));
+        assert!(super::should_retry_oracle_with_10g_driver(&config, "host xxx port 1521 中没有监听程序"));
+
+        config.driver_profile = Some("oracle-10g".to_string());
+        assert!(!super::should_retry_oracle_with_10g_driver(
+            &config,
+            "Agent RPC error (-1): ORA-12541: TNS:no listener"
+        ));
+
+        config.driver_profile = Some("oracle".to_string());
+        assert!(!super::should_retry_oracle_with_10g_driver(
+            &config,
+            "Agent RPC error (-1): ORA-01017: invalid username/password"
+        ));
     }
 
     #[test]
