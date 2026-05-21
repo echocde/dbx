@@ -129,6 +129,7 @@ const driverProfiles: Record<
     user: string;
     label: string;
     icon: string;
+    host?: string;
     urlParams?: string;
   }
 > = {
@@ -230,7 +231,14 @@ const driverProfiles: Record<
   informix: { type: "informix", port: 9088, user: "informix", label: "Informix", icon: "informix" },
   neo4j: { type: "neo4j", port: 7687, user: "neo4j", label: "Neo4j", icon: "neo4j" },
   cassandra: { type: "cassandra", port: 9042, user: "cassandra", label: "Cassandra", icon: "cassandra" },
-  bigquery: { type: "bigquery", port: 443, user: "", label: "BigQuery", icon: "bigquery" },
+  bigquery: {
+    type: "bigquery",
+    port: 443,
+    user: "",
+    label: "BigQuery",
+    icon: "bigquery",
+    host: "https://www.googleapis.com/bigquery/v2",
+  },
   kylin: { type: "kylin", port: 7070, user: "ADMIN", label: "Apache Kylin", icon: "kylin" },
   sundb: { type: "sundb", port: 22000, user: "root", label: "SunDB", icon: "sundb" },
   jdbc: { type: "jdbc", port: 0, user: "", label: "JDBC", icon: "jdbc" },
@@ -282,6 +290,9 @@ function applyProfile(val: string, preserveConnectionFields = false) {
     form.value.port = profile.port;
     form.value.username = profile.user;
     form.value.url_params = profile.urlParams || "";
+    if (profile.host) {
+      form.value.host = profile.host;
+    }
     if (profile.type === "sqlite" || profile.type === "duckdb" || profile.type === "access") {
       form.value.host = "";
     }
@@ -1480,7 +1491,8 @@ function openExternalUrl(url: string) {
                       form.db_type === 'yashandb' ||
                       form.db_type === 'vastbase' ||
                       form.db_type === 'goldendb' ||
-                      form.db_type === 'saphana'
+                      form.db_type === 'saphana' ||
+                      form.db_type === 'bigquery'
                     "
                     class="grid grid-cols-4 items-center gap-4"
                   >
@@ -1493,9 +1505,11 @@ function openExternalUrl(url: string) {
                           ? 'charset=utf8mb4'
                           : form.db_type === 'saphana'
                             ? 'databaseName=TENANT_DB'
-                            : form.db_type === 'informix'
-                              ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
-                              : 'sslmode=disable'
+                            : form.db_type === 'bigquery'
+                              ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
+                              : form.db_type === 'informix'
+                                ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
+                                : 'sslmode=disable'
                       "
                     />
                   </div>
