@@ -15,3 +15,10 @@ test("connection tree filter menu uses sidebar search scope i18n labels", () => 
   assert.match(source, /t\("sidebar\.searchScopeDatabase"\)/);
   assert.match(source, /t\("sidebar\.searchScopeTable"\)/);
 });
+
+test("connection tree can select visible sidebar nodes for the active tab when enabled", () => {
+  assert.match(source, /autoSelectActiveSidebarNode/);
+  assert.match(source, /findSidebarNodeForActiveTab\(activeTab\.value, flatNodes\.value\)/);
+  assert.match(source, /store\.selectedTreeNodeId = match\.id/);
+  assert.match(source, /scrollTopForSidebarNode/);
+});

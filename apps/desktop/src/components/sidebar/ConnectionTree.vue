@@ -3,9 +3,12 @@ import { ref, computed, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Search, X, ListFilter, Check, FolderPlus } from "lucide-vue-next";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useQueryStore } from "@/stores/queryStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import type { TreeNode, TreeNodeType } from "@/types/database";
 import { filterSidebarTree } from "@/lib/sidebarSearchTree";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
+import { findSidebarNodeForActiveTab, scrollTopForSidebarNode } from "@/lib/sidebarActiveTabTarget";
 import {
   SIDEBAR_TREE_ROW_HEIGHT,
   SIDEBAR_TREE_PRERENDER_COUNT,
@@ -29,10 +32,13 @@ import {
 
 const { t } = useI18n();
 const store = useConnectionStore();
+const queryStore = useQueryStore();
+const settingsStore = useSettingsStore();
 const searchQuery = ref("");
 const deferredSearchQuery = ref("");
 const searchInputRef = ref<HTMLInputElement>();
 const treeScrollerRef = ref<InstanceType<typeof RecycleScroller> | null>(null);
+const plainTreeScrollerRef = ref<HTMLElement | null>(null);
 type SearchScope = "connection" | "database" | "schema" | "table" | "view";
 const selectedSearchScopes = ref<SearchScope[]>([]);
 const searchCollapsedIds = ref<Set<string>>(new Set());
@@ -119,6 +125,7 @@ const filteredNodes = computed(() => {
 
 const flatNodes = computed<FlatTreeNode[]>(() => flattenTree(filteredNodes.value));
 const useVirtualTree = computed(() => shouldVirtualizeFlatTree(flatNodes.value.length));
+const activeTab = computed(() => queryStore.tabs.find((tab) => tab.id === queryStore.activeTabId));
 
 const pendingRenameGroupId = ref<string | null>(null);
 
@@ -156,6 +163,43 @@ async function onNodeToggled(node: TreeNode, wasExpanded: boolean) {
     scroller.scrollTop = nextScrollTop;
   }
 }
+
+function currentTreeScroller(): HTMLElement | null {
+  return (
+    ((useVirtualTree.value ? treeScrollerRef.value?.$el : plainTreeScrollerRef.value) as HTMLElement | undefined) ??
+    null
+  );
+}
+
+async function selectActiveTabSidebarNode() {
+  if (!settingsStore.editorSettings.autoSelectActiveSidebarNode) return;
+  const match = findSidebarNodeForActiveTab(activeTab.value, flatNodes.value);
+  if (!match) return;
+
+  store.selectedTreeNodeId = match.id;
+  await nextTick();
+
+  const index = flatNodes.value.findIndex((item) => item.id === match.id);
+  const scroller = currentTreeScroller();
+  if (!scroller || index < 0) return;
+
+  const nextScrollTop = scrollTopForSidebarNode({
+    index,
+    currentScrollTop: scroller.scrollTop,
+    viewportHeight: scroller.clientHeight,
+  });
+  if (nextScrollTop !== scroller.scrollTop) {
+    scroller.scrollTop = nextScrollTop;
+  }
+}
+
+watch(
+  [activeTab, flatNodes, () => settingsStore.editorSettings.autoSelectActiveSidebarNode],
+  () => {
+    void selectActiveTabSidebarNode();
+  },
+  { flush: "post" },
+);
 
 function focusSearch(): boolean {
   const input = searchInputRef.value;
@@ -264,7 +308,11 @@ defineExpose({ focusSearch });
         />
       </template>
     </RecycleScroller>
-    <div v-else-if="flatNodes.length > 0" class="sidebar-tree min-h-0 flex-1 overflow-y-auto overflow-x-auto">
+    <div
+      v-else-if="flatNodes.length > 0"
+      ref="plainTreeScrollerRef"
+      class="sidebar-tree min-h-0 flex-1 overflow-y-auto overflow-x-auto"
+    >
       <TreeItem
         v-for="item in flatNodes"
         :key="item.id"

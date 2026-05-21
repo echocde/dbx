@@ -171,6 +171,7 @@ export interface EditorSettings {
   mongoViewMode: "document" | "table";
   shortcuts: ShortcutSettings;
   sidebarActivation: SidebarActivation;
+  autoSelectActiveSidebarNode: boolean;
   sidebarHiddenTablePrefixes: string[];
   columnFormatters: Record<string, ColumnFormatterConfig>;
   customColumnFormatters: Record<string, CustomColumnFormatterConfig>;
@@ -211,6 +212,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   mongoViewMode: "document",
   shortcuts: normalizeShortcutSettings(),
   sidebarActivation: "single",
+  autoSelectActiveSidebarNode: false,
   sidebarHiddenTablePrefixes: [],
   columnFormatters: {},
   customColumnFormatters: {},
@@ -256,6 +258,8 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>): Edit
       settings.sidebarActivation === "single" || settings.sidebarActivation === "double"
         ? settings.sidebarActivation
         : DEFAULT_EDITOR_SETTINGS.sidebarActivation,
+    autoSelectActiveSidebarNode:
+      settings.autoSelectActiveSidebarNode ?? DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(settings.sidebarHiddenTablePrefixes),
     columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
     customColumnFormatters: normalizeCustomColumnFormatters(settings.customColumnFormatters),

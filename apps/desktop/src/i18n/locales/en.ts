@@ -1198,6 +1198,9 @@ export default {
     sidebarActivationSingleDescription: "Open actionable sidebar items with one click.",
     sidebarActivationDouble: "Double click",
     sidebarActivationDoubleDescription: "Single click selects rows; double click opens items.",
+    autoSelectActiveSidebarNode: "Always select opened item",
+    autoSelectActiveSidebarNodeDescription:
+      "When switching tabs, select the matching visible table, collection, or SQL file in the sidebar.",
     sidebarHiddenTablePrefixes: "Hidden table name prefixes",
     sidebarHiddenTablePrefixesDescription:
       "One prefix per line. Only sidebar table, view, and collection labels are shortened; tooltips and actions still use the full name.",

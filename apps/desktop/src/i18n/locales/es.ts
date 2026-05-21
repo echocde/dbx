@@ -1096,6 +1096,9 @@ export default {
     sidebarActivationSingleDescription: "Abrir elementos accionables de la barra lateral con un clic.",
     sidebarActivationDouble: "Doble clic",
     sidebarActivationDoubleDescription: "Un clic selecciona la fila; doble clic abre elementos.",
+    autoSelectActiveSidebarNode: "Seleccionar siempre el elemento abierto",
+    autoSelectActiveSidebarNodeDescription:
+      "Al cambiar de pestaña, selecciona la tabla, colección o archivo SQL visible correspondiente en la barra lateral.",
     sidebarHiddenTablePrefixes: "Prefijos ocultos de tablas",
     sidebarHiddenTablePrefixesDescription:
       "Un prefijo por linea. Solo acorta etiquetas de tablas, vistas y colecciones en la barra lateral; las acciones y ayudas usan el nombre completo.",

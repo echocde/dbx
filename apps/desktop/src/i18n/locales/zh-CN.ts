@@ -1176,6 +1176,8 @@ export default {
     sidebarActivationSingleDescription: "单击即可打开侧边栏中的可操作项目。",
     sidebarActivationDouble: "双击打开",
     sidebarActivationDoubleDescription: "单击只选中高亮，双击打开项目。",
+    autoSelectActiveSidebarNode: "始终选中已打开项目",
+    autoSelectActiveSidebarNodeDescription: "切换标签页时，在侧边栏选中匹配的可见表、集合或 SQL 文件。",
     sidebarHiddenTablePrefixes: "隐藏表名前缀",
     sidebarHiddenTablePrefixesDescription:
       "每行一个前缀，仅影响侧边栏表、视图和集合的显示名称，悬浮提示和实际操作仍使用完整名称。",

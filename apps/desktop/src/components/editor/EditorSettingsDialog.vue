@@ -58,6 +58,7 @@ const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
 const editSidebarActivation = ref(settingsStore.editorSettings.sidebarActivation);
+const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSelectActiveSidebarNode);
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
 const redisScanPageSizeOptions = [200, 1000, 5000, 10000];
 const systemFonts = ref<string[]>([]);
@@ -120,6 +121,7 @@ watch(
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
       editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
       editSidebarActivation.value = settingsStore.editorSettings.sidebarActivation;
+      editAutoSelectActiveSidebarNode.value = settingsStore.editorSettings.autoSelectActiveSidebarNode;
       editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
       void loadSystemFontOptions();
     }
@@ -133,6 +135,10 @@ const shortcutConflicts = computed(() =>
   }),
 );
 const hasShortcutConflicts = computed(() => shortcutConflicts.value.length > 0);
+const shortcutsChanged = computed(
+  () => JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts),
+);
+const hasBlockingShortcutConflicts = computed(() => shortcutsChanged.value && hasShortcutConflicts.value);
 
 function hasChanges(): boolean {
   return (
@@ -145,13 +151,14 @@ function hasChanges(): boolean {
     editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
     JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts) ||
     editSidebarActivation.value !== settingsStore.editorSettings.sidebarActivation ||
+    editAutoSelectActiveSidebarNode.value !== settingsStore.editorSettings.autoSelectActiveSidebarNode ||
     JSON.stringify(normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value)) !==
       JSON.stringify(settingsStore.editorSettings.sidebarHiddenTablePrefixes)
   );
 }
 
 function applySettings() {
-  if (hasShortcutConflicts.value) return;
+  if (hasBlockingShortcutConflicts.value) return;
   settingsStore.updateEditorSettings({
     fontFamily: editFontFamily.value,
     fontSize: editFontSize.value,
@@ -162,6 +169,7 @@ function applySettings() {
     redisScanPageSize: editRedisScanPageSize.value,
     shortcuts: editShortcuts.value,
     sidebarActivation: editSidebarActivation.value,
+    autoSelectActiveSidebarNode: editAutoSelectActiveSidebarNode.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
   });
   emit("update:open", false);
@@ -177,6 +185,7 @@ function resetDefaults() {
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
   editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
   editSidebarActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarActivation;
+  editAutoSelectActiveSidebarNode.value = DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
 }
 
@@ -754,7 +763,7 @@ watch(
                     <Label for="editor-word-wrap">{{ t("settings.wordWrap") }}</Label>
                     <p class="text-xs text-muted-foreground">{{ t("settings.wordWrapDescription") }}</p>
                   </div>
-                  <Switch id="editor-word-wrap" v-model:checked="editWordWrap" class="mt-0.5" />
+                  <Switch id="editor-word-wrap" v-model="editWordWrap" class="mt-0.5" />
                 </div>
               </div>
 
@@ -841,6 +850,15 @@ watch(
                     </div>
                   </Button>
                 </div>
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="space-y-1">
+                  <Label for="auto-select-active-sidebar-node">{{ t("settings.autoSelectActiveSidebarNode") }}</Label>
+                  <p class="text-xs text-muted-foreground">
+                    {{ t("settings.autoSelectActiveSidebarNodeDescription") }}
+                  </p>
+                </div>
+                <Switch id="auto-select-active-sidebar-node" v-model="editAutoSelectActiveSidebarNode" />
               </div>
               <div class="space-y-2">
                 <Label for="sidebar-hidden-table-prefixes">{{ t("settings.sidebarHiddenTablePrefixes") }}</Label>
@@ -1224,7 +1242,7 @@ watch(
             <Button variant="outline" @click="emit('update:open', false)">
               {{ t("common.close") }}
             </Button>
-            <Button :disabled="!hasChanges() || hasShortcutConflicts" @click="applySettings">
+            <Button :disabled="!hasChanges() || hasBlockingShortcutConflicts" @click="applySettings">
               {{ t("settings.apply") }}
             </Button>
           </DialogFooter>

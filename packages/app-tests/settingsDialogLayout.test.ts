@@ -44,10 +44,23 @@ test("shortcut settings capture custom keydown input instead of fixed select opt
   assert.doesNotMatch(source, /definition\.options/);
 });
 
+test("shortcut conflicts only block applying changed shortcut settings", () => {
+  assert.match(source, /const shortcutsChanged = computed/);
+  assert.match(source, /const hasBlockingShortcutConflicts = computed/);
+  assert.match(source, /shortcutsChanged\.value && hasShortcutConflicts\.value/);
+  assert.match(source, /if \(hasBlockingShortcutConflicts\.value\) return/);
+  assert.match(source, /:disabled="!hasChanges\(\) \|\| hasBlockingShortcutConflicts"/);
+});
+
 test("settings dialog exposes sidebar activation in navigation settings", () => {
   assert.match(source, /value: "navigation"/);
   assert.match(source, /activeSettingsTab === ['"]navigation['"]/);
   assert.match(source, /settings\.sidebarActivation/);
+  assert.match(source, /settings\.autoSelectActiveSidebarNode/);
+  assert.match(source, /editAutoSelectActiveSidebarNode/);
+  assert.match(source, /<Switch id="auto-select-active-sidebar-node" v-model="editAutoSelectActiveSidebarNode"/);
+  assert.match(source, /<Switch id="editor-word-wrap" v-model="editWordWrap"/);
+  assert.doesNotMatch(source, /v-model:checked/);
   assert.match(source, /settings\.sidebarHiddenTablePrefixes/);
   assert.match(source, /editSidebarHiddenTablePrefixes/);
   assert.match(source, /focus-visible:ring-inset/);

@@ -35,7 +35,9 @@ test("defaults shortcut settings", () => {
 });
 
 test("keeps saved shortcut overrides", () => {
-  const settings = normalizeEditorSettings({ shortcuts: { executeSql: "Shift+Mod+Enter", newQuery: "Shift+Mod+N" } as any });
+  const settings = normalizeEditorSettings({
+    shortcuts: { executeSql: "Shift+Mod+Enter", newQuery: "Shift+Mod+N" } as any,
+  });
 
   assert.equal(settings.shortcuts.executeSql, "Shift+Mod+Enter");
   assert.equal(settings.shortcuts.newQuery, "Shift+Mod+N");
@@ -45,6 +47,15 @@ test("keeps saved shortcut overrides", () => {
 test("defaults sidebar activation to single click", () => {
   assert.equal(DEFAULT_EDITOR_SETTINGS.sidebarActivation, "single");
   assert.equal(normalizeEditorSettings({}).sidebarActivation, "single");
+});
+
+test("defaults active tab sidebar selection to off", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode, false);
+  assert.equal(normalizeEditorSettings({}).autoSelectActiveSidebarNode, false);
+});
+
+test("keeps saved active tab sidebar selection", () => {
+  assert.equal(normalizeEditorSettings({ autoSelectActiveSidebarNode: true } as any).autoSelectActiveSidebarNode, true);
 });
 
 test("keeps saved sidebar activation", () => {
