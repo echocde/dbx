@@ -1451,7 +1451,7 @@ async function onToolbarRefresh() {
     props.sql,
     searchText.value,
     whereFilterInput.value.trim() || undefined,
-    orderByInput.value.trim() || undefined,
+    currentOrderBy(),
     pageSize.value,
     (currentPage.value - 1) * pageSize.value,
   );
@@ -1468,7 +1468,7 @@ function onToolbarRollback() {
     props.sql,
     searchText.value,
     whereFilterInput.value.trim() || undefined,
-    orderByInput.value.trim() || undefined,
+    currentOrderBy(),
     pageSize.value,
     (currentPage.value - 1) * pageSize.value,
   );
