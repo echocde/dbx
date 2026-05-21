@@ -70,6 +70,11 @@ export default {
     export: "Exportar conexiones",
     showMore: "Mostrar {count} más...",
     filterByType: "Filtrar por tipo",
+    searchScopeConnection: "Conexión",
+    searchScopeDatabase: "Base de datos",
+    searchScopeSchema: "Schema",
+    searchScopeTable: "Tabla",
+    searchScopeView: "Vista",
     clearFilter: "Limpiar filtro",
   },
   savedSql: {

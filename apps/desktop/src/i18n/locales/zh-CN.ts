@@ -69,6 +69,11 @@ export default {
     export: "导出连接",
     showMore: "加载更多 ({count})...",
     filterByType: "按类型筛选",
+    searchScopeConnection: "连接",
+    searchScopeDatabase: "数据库",
+    searchScopeSchema: "Schema",
+    searchScopeTable: "表",
+    searchScopeView: "视图",
     clearFilter: "清除筛选",
   },
   savedSql: {

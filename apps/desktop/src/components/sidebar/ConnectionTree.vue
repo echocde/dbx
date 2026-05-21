@@ -3,7 +3,7 @@ import { ref, computed, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Search, X, ListFilter, Check, FolderPlus } from "lucide-vue-next";
 import { useConnectionStore } from "@/stores/connectionStore";
-import type { TreeNode } from "@/types/database";
+import type { TreeNode, TreeNodeType } from "@/types/database";
 import { filterSidebarTree } from "@/lib/sidebarSearchTree";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 import {
@@ -16,7 +16,6 @@ import {
   type FlatTreeNode,
 } from "@/composables/useFlatTree";
 import TreeItem from "./TreeItem.vue";
-import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
 import {
@@ -34,7 +33,8 @@ const searchQuery = ref("");
 const deferredSearchQuery = ref("");
 const searchInputRef = ref<HTMLInputElement>();
 const treeScrollerRef = ref<InstanceType<typeof RecycleScroller> | null>(null);
-const selectedTypes = ref<string[]>([]);
+type SearchScope = "connection" | "database" | "schema" | "table" | "view";
+const selectedSearchScopes = ref<SearchScope[]>([]);
 const searchCollapsedIds = ref<Set<string>>(new Set());
 let searchTimer: number | undefined;
 
@@ -57,67 +57,61 @@ watch(
 );
 
 const isSearching = computed(() => !!deferredSearchQuery.value);
-const isFiltering = computed(() => !!searchQuery.value.trim() || hasTypeFilter.value);
+const isFiltering = computed(() => !!searchQuery.value.trim() || hasSearchScopeFilter.value);
 
-const typeStats = computed(() => {
-  const map = new Map<string, { profile: string; label: string; count: number }>();
-  for (const c of store.connections) {
-    const profile = c.driver_profile || c.db_type;
-    const existing = map.get(profile);
-    if (existing) {
-      existing.count++;
-    } else {
-      map.set(profile, { profile, label: c.driver_label || profile, count: 1 });
-    }
-  }
-  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+const SEARCH_SCOPE_TO_NODE_TYPES: Record<SearchScope, TreeNodeType[]> = {
+  connection: ["connection"],
+  database: ["database", "redis-db", "mongo-db"],
+  schema: ["schema"],
+  table: ["table", "mongo-collection"],
+  view: ["view"],
+};
+
+const searchScopeOptions = computed(() => {
+  return [
+    { scope: "connection", label: t("sidebar.searchScopeConnection") },
+    { scope: "database", label: t("sidebar.searchScopeDatabase") },
+    { scope: "schema", label: t("sidebar.searchScopeSchema") },
+    { scope: "table", label: t("sidebar.searchScopeTable") },
+    { scope: "view", label: t("sidebar.searchScopeView") },
+  ] as const satisfies ReadonlyArray<{ scope: SearchScope; label: string }>;
 });
 
-const hasTypeFilter = computed(() => selectedTypes.value.length > 0);
+const hasSearchScopeFilter = computed(() => selectedSearchScopes.value.length > 0);
+const searchableNodeTypes = computed<Set<TreeNodeType> | undefined>(() => {
+  if (!hasSearchScopeFilter.value) return undefined;
+  const types = new Set<TreeNodeType>();
+  for (const scope of selectedSearchScopes.value) {
+    for (const nodeType of SEARCH_SCOPE_TO_NODE_TYPES[scope]) {
+      types.add(nodeType);
+    }
+  }
+  return types;
+});
 
-function isTypeSelected(profile: string) {
-  return selectedTypes.value.includes(profile);
+function isSearchScopeSelected(scope: SearchScope) {
+  return selectedSearchScopes.value.includes(scope);
 }
 
-function toggleType(profile: string) {
-  const idx = selectedTypes.value.indexOf(profile);
+function toggleSearchScope(scope: SearchScope) {
+  const idx = selectedSearchScopes.value.indexOf(scope);
   if (idx >= 0) {
-    selectedTypes.value.splice(idx, 1);
+    selectedSearchScopes.value.splice(idx, 1);
   } else {
-    selectedTypes.value.push(profile);
+    selectedSearchScopes.value.push(scope);
   }
 }
 
-function clearTypeFilter() {
-  selectedTypes.value = [];
-}
-
-function matchesType(node: TreeNode): boolean {
-  if (node.type === "connection-group") {
-    return node.children?.some(matchesType) ?? false;
-  }
-  if (node.type !== "connection" || !node.connectionId) return true;
-  const config = store.getConfig(node.connectionId);
-  if (!config) return true;
-  const profile = config.driver_profile || config.db_type;
-  return selectedTypes.value.includes(profile);
+function clearSearchScopeFilter() {
+  selectedSearchScopes.value = [];
 }
 
 const filteredNodes = computed(() => {
   let nodes = store.treeNodes;
 
-  if (hasTypeFilter.value) {
-    nodes = nodes.filter(matchesType).map((node) => {
-      if (node.type === "connection-group" && node.children) {
-        return { ...node, children: node.children.filter(matchesType) };
-      }
-      return node;
-    });
-  }
-
   const q = deferredSearchQuery.value;
   if (q) {
-    nodes = filterSidebarTree(nodes, q, searchCollapsedIds.value);
+    nodes = filterSidebarTree(nodes, q, searchCollapsedIds.value, searchableNodeTypes.value);
   }
 
   return nodes;
@@ -211,11 +205,11 @@ defineExpose({ focusSearch });
         >
           <FolderPlus class="h-3.5 w-3.5" />
         </button>
-        <DropdownMenu v-if="typeStats.length > 1">
+        <DropdownMenu v-if="searchScopeOptions.length > 0">
           <DropdownMenuTrigger as-child>
             <button
               class="shrink-0 h-6 w-6 flex items-center justify-center rounded border border-border hover:bg-accent"
-              :class="hasTypeFilter ? 'text-primary bg-primary/10 border-primary/30' : 'text-muted-foreground'"
+              :class="hasSearchScopeFilter ? 'text-primary bg-primary/10 border-primary/30' : 'text-muted-foreground'"
               :title="t('sidebar.filterByType')"
             >
               <ListFilter class="h-3.5 w-3.5" />
@@ -225,21 +219,19 @@ defineExpose({ focusSearch });
             <DropdownMenuLabel class="text-xs">{{ t("sidebar.filterByType") }}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              v-for="item in typeStats"
-              :key="item.profile"
+              v-for="item in searchScopeOptions"
+              :key="item.scope"
               class="gap-2"
-              :class="isTypeSelected(item.profile) ? 'bg-primary/10 text-primary' : ''"
-              @select.prevent="toggleType(item.profile)"
+              :class="isSearchScopeSelected(item.scope) ? 'bg-primary/10 text-primary' : ''"
+              @select.prevent="toggleSearchScope(item.scope)"
             >
-              <Check v-if="isTypeSelected(item.profile)" class="h-3.5 w-3.5 shrink-0 text-primary" />
+              <Check v-if="isSearchScopeSelected(item.scope)" class="h-3.5 w-3.5 shrink-0 text-primary" />
               <span v-else class="h-3.5 w-3.5 shrink-0" />
-              <DatabaseIcon :db-type="item.profile" class="h-4 w-4 shrink-0" />
               <span class="flex-1 truncate">{{ item.label }}</span>
-              <span class="text-muted-foreground text-xs">{{ item.count }}</span>
             </DropdownMenuItem>
-            <template v-if="hasTypeFilter">
+            <template v-if="hasSearchScopeFilter">
               <DropdownMenuSeparator />
-              <DropdownMenuItem @select.prevent="clearTypeFilter">
+              <DropdownMenuItem @select.prevent="clearSearchScopeFilter">
                 <span class="text-xs text-muted-foreground">{{ t("sidebar.clearFilter") }}</span>
               </DropdownMenuItem>
             </template>
