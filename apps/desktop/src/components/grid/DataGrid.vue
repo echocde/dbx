@@ -1147,8 +1147,21 @@ function onScrollerScroll(e: Event) {
 
 initColumnWidths();
 watch(() => visibleColumns.value.length, initColumnWidths);
+const localFilterScopeKey = computed(() =>
+  [
+    props.connectionId ?? "",
+    props.database ?? "",
+    props.schema ?? "",
+    props.context ?? "",
+    props.tableMeta?.schema ?? "",
+    props.tableMeta?.tableName ?? "",
+    props.tableMeta ? "" : (props.sql ?? ""),
+    props.result.columns.join("\0"),
+    (props.sourceColumns ?? []).map((column) => column ?? "").join("\0"),
+  ].join("\u0001"),
+);
 watch(
-  () => props.result,
+  () => localFilterScopeKey.value,
   () => {
     localColumnFilters.value = {};
     hiddenColumnIndexes.value = new Set();

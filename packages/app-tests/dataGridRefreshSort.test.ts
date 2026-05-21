@@ -17,3 +17,8 @@ test("rollback refresh preserves header sort order", () => {
   assert.match(match[1], /currentOrderBy\(\)/);
   assert.doesNotMatch(match[1], /orderByInput\.value\.trim\(\) \|\| undefined/);
 });
+
+test("data result refresh preserves local column filters", () => {
+  assert.doesNotMatch(source, /watch\(\s*\(\)\s*=>\s*props\.result,[\s\S]*?localColumnFilters\.value\s*=\s*\{\}/);
+  assert.match(source, /localFilterScopeKey/);
+});
