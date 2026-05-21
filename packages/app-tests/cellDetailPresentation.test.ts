@@ -33,7 +33,20 @@ test("cell detail value editor restores the original value text on cancel", () =
   assert.equal(cellDetailEditorText("already text"), "already text");
 });
 
+test("cell detail value editor formats json typed string values", () => {
+  assert.equal(
+    cellDetailEditorText('{"nested":true,"items":[1,2]}', "jsonb"),
+    '{\n  "nested": true,\n  "items": [\n    1,\n    2\n  ]\n}',
+  );
+  assert.equal(cellDetailEditorText('{"nested":true}', "varchar"), '{"nested":true}');
+  assert.equal(cellDetailEditorText("{invalid", "json"), "{invalid");
+});
+
 test("cell detail value editor uses cell actions instead of confirm and cancel", () => {
-  assert.deepEqual(valueEditorActions({ canSetNull: true }), ["setNull", "restoreOriginal"]);
+  assert.deepEqual(valueEditorActions({ canSetNull: true, canFormatJson: true }), [
+    "formatJson",
+    "setNull",
+    "restoreOriginal",
+  ]);
   assert.deepEqual(valueEditorActions({ canSetNull: false }), ["restoreOriginal"]);
 });

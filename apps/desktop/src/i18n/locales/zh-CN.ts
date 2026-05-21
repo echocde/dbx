@@ -371,6 +371,7 @@ export default {
     rawValue: "原始值",
     copyValue: "复制值",
     editValue: "编辑值",
+    formatJson: "格式化 JSON",
     setNull: "设为 NULL",
     restoreOriginalValue: "恢复原值",
     copyColumnName: "复制列名",

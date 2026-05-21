@@ -342,6 +342,7 @@ export default {
     rawValue: "Valor sin procesar",
     copyValue: "Copiar valor",
     editValue: "Editar valor",
+    formatJson: "Formatear JSON",
     setNull: "Establecer NULL",
     restoreOriginalValue: "Restaurar original",
     copyColumnName: "Copiar nombre de columna",

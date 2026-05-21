@@ -1,5 +1,5 @@
 export type CellDetailTab = "details" | "valueEditor";
-export type ValueEditorAction = "setNull" | "restoreOriginal";
+export type ValueEditorAction = "formatJson" | "setNull" | "restoreOriginal";
 
 export interface CellDetailPresentationOptions {
   isEditable: boolean;
@@ -17,12 +17,38 @@ export function visibleCellDetailTabs(options: CellDetailPresentationOptions): C
   return tabs;
 }
 
-export function cellDetailEditorText(value: unknown): string {
+export function cellDetailEditorText(value: unknown, columnType?: string): string {
   if (value === null) return "";
+  if (isJsonColumnType(columnType)) {
+    const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+    return formatJsonText(text) ?? text;
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
 
-export function valueEditorActions(options: { canSetNull: boolean }): ValueEditorAction[] {
-  return options.canSetNull ? ["setNull", "restoreOriginal"] : ["restoreOriginal"];
+export function valueEditorActions(options: { canSetNull: boolean; canFormatJson?: boolean }): ValueEditorAction[] {
+  const actions: ValueEditorAction[] = [];
+  if (options.canFormatJson) actions.push("formatJson");
+  if (options.canSetNull) actions.push("setNull");
+  actions.push("restoreOriginal");
+  return actions;
+}
+
+export function isJsonColumnType(columnType: string | undefined): boolean {
+  const base = (columnType ?? "")
+    .trim()
+    .toLowerCase()
+    .split(/[(:\s]/)[0];
+  return base === "json" || base === "jsonb";
+}
+
+export function formatJsonText(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return undefined;
+  }
 }

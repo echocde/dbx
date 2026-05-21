@@ -103,6 +103,8 @@ import { cellImagePreviewUrl } from "@/lib/cellImageUrl";
 import {
   cellDetailEditorText,
   defaultCellDetailTab,
+  formatJsonText,
+  isJsonColumnType,
   valueEditorActions,
   visibleCellDetailTabs,
   type CellDetailTab,
@@ -1774,7 +1776,10 @@ watch(activeCellDetailTab, (tab) => {
 
 const activeValueEditorActions = computed(() => {
   const detail = activeCellDetail.value;
-  return valueEditorActions({ canSetNull: !!detail?.isEditable && detail.value !== null });
+  return valueEditorActions({
+    canSetNull: !!detail?.isEditable && detail.value !== null,
+    canFormatJson: !!detail?.isEditable && isJsonColumnType(detail?.type),
+  });
 });
 
 const detailEditValue = ref("");
@@ -1798,7 +1803,7 @@ function closeCellDetails() {
 function startDetailEdit() {
   const detail = activeCellDetail.value;
   if (!detail || !detail.isEditable) return;
-  detailEditValue.value = cellDetailEditorText(detail.value);
+  detailEditValue.value = cellDetailEditorText(detail.value, detail.type);
   isEditingDetail.value = true;
 }
 
@@ -1842,7 +1847,7 @@ function cancelDetailEdit() {
 function cancelValueEditorEdit() {
   const detail = activeCellDetail.value;
   if (!detail || !detail.isEditable) return;
-  detailEditValue.value = cellDetailEditorText(detail.value);
+  detailEditValue.value = cellDetailEditorText(detail.value, detail.type);
   isEditingDetail.value = true;
 }
 
@@ -1873,7 +1878,7 @@ function restoreDetailOriginalValue() {
     dirtyRows.value = new Map(dirtyRows.value);
   }
 
-  detailEditValue.value = cellDetailEditorText(restoredValue);
+  detailEditValue.value = cellDetailEditorText(restoredValue, detail.type);
   isEditingDetail.value = activeCellDetailTab.value === "valueEditor";
   detailCell.value = { ...detailCell.value! };
 }
@@ -1882,6 +1887,12 @@ function setValueEditorNull() {
   setDetailNull();
   detailEditValue.value = cellDetailEditorText(null);
   isEditingDetail.value = activeCellDetailTab.value === "valueEditor";
+}
+
+function formatValueEditorJson() {
+  const detail = activeCellDetail.value;
+  if (!detail || !isJsonColumnType(detail.type)) return;
+  detailEditValue.value = formatJsonText(detailEditValue.value) ?? detailEditValue.value;
 }
 
 function setDetailNull() {
@@ -4267,6 +4278,16 @@ defineExpose({
                     />
                   </div>
                   <div class="flex gap-1 mt-2 shrink-0">
+                    <Button
+                      v-if="activeValueEditorActions.includes('formatJson')"
+                      variant="outline"
+                      size="sm"
+                      class="h-6 text-xs"
+                      @mousedown.prevent
+                      @click="formatValueEditorJson"
+                    >
+                      {{ t("grid.formatJson") }}
+                    </Button>
                     <Button
                       v-if="activeValueEditorActions.includes('setNull')"
                       variant="outline"
