@@ -1070,6 +1070,8 @@ const gridRef = ref<HTMLDivElement>();
 const headerRef = ref<HTMLDivElement>();
 const gridScrollbarGutter = ref(0);
 const hiddenColumnIndexes = ref<Set<number>>(new Set());
+const highlightedColumnIndex = ref<number | null>(null);
+let highlightedColumnTimer = 0;
 const displayableColumnIndexes = computed(() =>
   props.result.columns
     .map((column, index) => ({ column, index }))
@@ -1110,6 +1112,40 @@ function invertColumnVisibility() {
 const firstVisibleColumnIndex = computed(() => visibleColumnIndexes.value[0] ?? 0);
 function actualColumnIndex(visibleColumnIndex: number): number {
   return visibleColumnIndexes.value[visibleColumnIndex] ?? visibleColumnIndex;
+}
+function matchesTableInfoColumn(resultColumn: string, sourceColumn: string | undefined, columnName: string): boolean {
+  const target = columnName.toLocaleLowerCase();
+  return resultColumn.toLocaleLowerCase() === target || sourceColumn?.toLocaleLowerCase() === target;
+}
+function scrollToTableInfoColumn(columnName: string) {
+  const columnIndex = props.result.columns.findIndex((column, index) =>
+    matchesTableInfoColumn(column, props.sourceColumns?.[index], columnName),
+  );
+  if (columnIndex < 0 || !displayableColumnIndexes.value.includes(columnIndex)) return;
+
+  if (hiddenColumnIndexes.value.has(columnIndex)) {
+    hiddenColumnIndexes.value.delete(columnIndex);
+    hiddenColumnIndexes.value = new Set(hiddenColumnIndexes.value);
+  }
+
+  highlightedColumnIndex.value = columnIndex;
+  clearTimeout(highlightedColumnTimer);
+  highlightedColumnTimer = window.setTimeout(() => {
+    highlightedColumnIndex.value = null;
+  }, 1400);
+
+  nextTick(() => {
+    const visibleColIdx = visibleColumnIndexes.value.indexOf(columnIndex);
+    const scroller = gridRef.value?.querySelector<HTMLElement>(".data-grid-scroller");
+    const headerCell = headerRef.value?.querySelector<HTMLElement>(`[data-grid-column-index="${columnIndex}"]`);
+    if (visibleColIdx < 0 || !scroller || !headerCell) return;
+
+    const targetLeft = Math.max(0, headerCell.offsetLeft - scroller.clientWidth / 2 + headerCell.offsetWidth / 2);
+    scroller.scrollLeft = targetLeft;
+    if (headerRef.value) {
+      headerRef.value.scrollLeft = scroller.scrollLeft;
+    }
+  });
 }
 
 // --- Column resize composable ---
@@ -2817,6 +2853,7 @@ onUnmounted(() => {
   onDdlResizeEnd();
   onDetailResizeEnd();
   finishCellSelection();
+  clearTimeout(highlightedColumnTimer);
   clearTimeout(_searchTimer);
   clearInterval(_loadingTimer);
 });
@@ -3342,7 +3379,12 @@ defineExpose({
                       <TooltipTrigger as-child>
                         <div
                           class="shrink-0 px-2 py-1.5 border-r border-border whitespace-nowrap hover:bg-accent/60 select-none relative overflow-hidden"
+                          :class="{
+                            'bg-primary/15 ring-1 ring-inset ring-primary/40':
+                              highlightedColumnIndex === actualColumnIndex(colIdx),
+                          }"
                           :style="{ width: `var(--col-w-${colIdx})` }"
+                          :data-grid-column-index="actualColumnIndex(colIdx)"
                         >
                           <span class="flex min-w-0 items-center gap-1 overflow-hidden">
                             <span
@@ -3992,7 +4034,17 @@ defineExpose({
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="column in tableMeta?.columns" :key="column.name" class="border-b hover:bg-muted/30">
+                    <tr
+                      v-for="column in tableMeta?.columns"
+                      :key="column.name"
+                      class="border-b cursor-pointer hover:bg-muted/30"
+                      role="button"
+                      tabindex="0"
+                      :title="column.name"
+                      @click="scrollToTableInfoColumn(column.name)"
+                      @keydown.enter.prevent="scrollToTableInfoColumn(column.name)"
+                      @keydown.space.prevent="scrollToTableInfoColumn(column.name)"
+                    >
                       <td class="px-3 py-2 font-medium">
                         <span class="inline-flex items-center gap-1.5">
                           <KeyRound v-if="column.is_primary_key" class="h-3 w-3 text-amber-500" />
