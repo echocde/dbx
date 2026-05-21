@@ -1097,6 +1097,7 @@ export default {
     redisScanPageSizeOption: "{count} claves",
     shortcutExecuteSql: "Ejecutar SQL",
     shortcutSaveSql: "Guardar SQL",
+    shortcutNewQuery: "Nueva consulta",
     shortcutCloseTab: "Cerrar pestaña",
     shortcutFocusSearch: "Enfocar búsqueda",
     shortcutRefreshData: "Actualizar datos",

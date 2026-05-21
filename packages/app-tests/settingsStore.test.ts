@@ -28,14 +28,16 @@ test("defaults shortcut settings", () => {
 
   assert.equal(settings.shortcuts.executeSql, "Mod+Enter");
   assert.equal(settings.shortcuts.saveSql, "Mod+S");
+  assert.equal(settings.shortcuts.newQuery, "Mod+T");
   assert.equal(settings.shortcuts.focusSearch, "Mod+F");
   assert.equal(settings.shortcuts.refreshData, "F5");
 });
 
 test("keeps saved shortcut overrides", () => {
-  const settings = normalizeEditorSettings({ shortcuts: { executeSql: "Shift+Mod+Enter" } as any });
+  const settings = normalizeEditorSettings({ shortcuts: { executeSql: "Shift+Mod+Enter", newQuery: "Shift+Mod+N" } as any });
 
   assert.equal(settings.shortcuts.executeSql, "Shift+Mod+Enter");
+  assert.equal(settings.shortcuts.newQuery, "Shift+Mod+N");
   assert.equal(settings.shortcuts.saveSql, "Mod+S");
 });
 

@@ -76,6 +76,10 @@ export function isCloseTabShortcut(event: ShortcutLikeEvent, shortcuts?: Partial
   return matchesShortcut(event, actionShortcut("closeTab", shortcuts));
 }
 
+export function isNewQueryShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<ShortcutSettings>): boolean {
+  return matchesShortcut(event, actionShortcut("newQuery", shortcuts));
+}
+
 export function isFocusSearchShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<ShortcutSettings>): boolean {
   return matchesShortcut(event, actionShortcut("focusSearch", shortcuts));
 }
