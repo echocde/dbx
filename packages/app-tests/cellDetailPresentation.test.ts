@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
+  canFormatCellDetailJson,
   cellDetailEditorText,
   defaultCellDetailTab,
   visibleCellDetailTabs,
@@ -33,13 +34,16 @@ test("cell detail value editor restores the original value text on cancel", () =
   assert.equal(cellDetailEditorText("already text"), "already text");
 });
 
-test("cell detail value editor formats json typed string values", () => {
-  assert.equal(
-    cellDetailEditorText('{"nested":true,"items":[1,2]}', "jsonb"),
-    '{\n  "nested": true,\n  "items": [\n    1,\n    2\n  ]\n}',
-  );
+test("cell detail value editor keeps json text unchanged until formatting is requested", () => {
+  assert.equal(cellDetailEditorText('{"nested":true,"items":[1,2]}', "jsonb"), '{"nested":true,"items":[1,2]}');
   assert.equal(cellDetailEditorText('{"nested":true}', "varchar"), '{"nested":true}');
   assert.equal(cellDetailEditorText("{invalid", "json"), "{invalid");
+});
+
+test("cell detail value editor allows json-like string values to be manually formatted", () => {
+  assert.equal(cellDetailEditorText('{"name":"示例","value":123}'), '{"name":"示例","value":123}');
+  assert.equal(canFormatCellDetailJson('{"name":"示例","value":123}'), true);
+  assert.equal(canFormatCellDetailJson("plain text"), false);
 });
 
 test("cell detail value editor uses cell actions instead of confirm and cancel", () => {

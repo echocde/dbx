@@ -101,10 +101,10 @@ import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
 import { cellImagePreviewUrl } from "@/lib/cellImageUrl";
 import {
+  canFormatCellDetailJson,
   cellDetailEditorText,
   defaultCellDetailTab,
   formatJsonText,
-  isJsonColumnType,
   valueEditorActions,
   visibleCellDetailTabs,
   type CellDetailTab,
@@ -1791,7 +1791,7 @@ const activeValueEditorActions = computed(() => {
   const detail = activeCellDetail.value;
   return valueEditorActions({
     canSetNull: !!detail?.isEditable && detail.value !== null,
-    canFormatJson: !!detail?.isEditable && isJsonColumnType(detail?.type),
+    canFormatJson: !!detail?.isEditable && canFormatCellDetailJson(detail.value, detail.type),
   });
 });
 
@@ -1904,7 +1904,7 @@ function setValueEditorNull() {
 
 function formatValueEditorJson() {
   const detail = activeCellDetail.value;
-  if (!detail || !isJsonColumnType(detail.type)) return;
+  if (!detail || !canFormatCellDetailJson(detailEditValue.value, detail.type)) return;
   detailEditValue.value = formatJsonText(detailEditValue.value) ?? detailEditValue.value;
 }
 

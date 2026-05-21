@@ -17,12 +17,12 @@ export function visibleCellDetailTabs(options: CellDetailPresentationOptions): C
   return tabs;
 }
 
-export function cellDetailEditorText(value: unknown, columnType?: string): string {
+export function cellDetailEditorText(value: unknown, _columnType?: string): string {
   if (value === null) return "";
-  if (isJsonColumnType(columnType)) {
-    const text = typeof value === "object" ? JSON.stringify(value) : String(value);
-    return formatJsonText(text) ?? text;
-  }
+  return cellDetailRawEditorText(value);
+}
+
+function cellDetailRawEditorText(value: unknown): string {
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -43,6 +43,13 @@ export function isJsonColumnType(columnType: string | undefined): boolean {
   return base === "json" || base === "jsonb";
 }
 
+export function canFormatCellDetailJson(value: unknown, columnType?: string): boolean {
+  if (value === null || value === undefined) return false;
+  const text = cellDetailRawEditorText(value);
+  if (isJsonColumnType(columnType)) return !!formatJsonText(text);
+  return typeof value === "string" && looksLikeJsonContainer(text) && !!formatJsonText(text);
+}
+
 export function formatJsonText(text: string): string | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
@@ -51,4 +58,9 @@ export function formatJsonText(text: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function looksLikeJsonContainer(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
 }
