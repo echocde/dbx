@@ -12,6 +12,7 @@ const tables: SqlCompletionTable[] = [
   { name: "users", schema: "public", type: "table" },
   { name: "user_profiles", schema: "public", type: "table" },
   { name: "orders", schema: "public", type: "table" },
+  { name: "ticket_summary", schema: "public", type: "view" },
 ];
 
 const columnsByTable = new Map<string, SqlCompletionColumn[]>([
@@ -84,6 +85,33 @@ test("suggests columns for an explicit alias qualifier", () => {
   );
 });
 
+test("suggests only matching columns for an explicit alias qualifier prefix", () => {
+  const sql = "select u.na from public.users u join public.orders o on u.id = o.user_id";
+  const cursor = "select u.na".length;
+  const items = buildSqlCompletionItems(sql, cursor, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type, item.detail]),
+    [["name", "column", "public.users"]],
+  );
+});
+
+test("keeps explicit alias column suggestions scoped to the alias table", () => {
+  const sql = "select * from public.users u join public.orders o on u.id = o.user_id where o.st";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type, item.detail]),
+    [["status", "column", "public.orders"]],
+  );
+});
+
 test("suggests columns from referenced tables in select list", () => {
   const sql = "select na from public.users u join public.orders o on u.id = o.user_id";
   const cursor = "select na".length;
@@ -127,15 +155,62 @@ test("suggests keywords when typing without context", () => {
   assert.ok(items.some((item) => item.type === "keyword" && item.label === "USING"));
 });
 
-test("always includes keywords alongside table suggestions", () => {
+test("suggests only matching table names after FROM object input", () => {
   const sql = "select * from us";
   const items = buildSqlCompletionItems(sql, sql.length, {
     tables,
     columnsByTable,
   });
 
-  assert.ok(items.some((item) => item.type === "table"));
-  assert.ok(items.some((item) => item.type === "keyword" && item.label === "USING"));
+  assert.ok(items.length > 0);
+  assert.deepEqual([...new Set(items.map((item) => item.type))], ["table"]);
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ["users", "user_profiles"],
+  );
+});
+
+test("keeps schema-qualified FROM object input in table suggestion mode", () => {
+  const sql = "select * from public.us";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.ok(items.length > 0);
+  assert.deepEqual([...new Set(items.map((item) => item.type))], ["table"]);
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ["users", "user_profiles"],
+  );
+});
+
+test("includes views in exclusive FROM object suggestions", () => {
+  const sql = "select * from tick";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type, item.detail]),
+    [["ticket_summary", "table", "public.ticket_summary"]],
+  );
+});
+
+test("suggests only table names after JOIN object input", () => {
+  const sql = "select * from users join us";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.ok(items.length > 0);
+  assert.deepEqual([...new Set(items.map((item) => item.type))], ["table"]);
+  assert.deepEqual(
+    items.map((item) => item.label),
+    ["users", "user_profiles"],
+  );
 });
 
 test("suggests SQL Server IF keyword for conditional DDL", () => {

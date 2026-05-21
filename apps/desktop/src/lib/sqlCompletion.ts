@@ -258,6 +258,7 @@ const SQL_KEYWORDS = [
 ];
 
 const TABLE_TRIGGER_KEYWORDS = new Set(["from", "join", "update", "into", "table", "describe", "explain", "apply"]);
+const EXCLUSIVE_TABLE_TRIGGER_KEYWORDS = new Set(["from", "join", "update", "into", "apply"]);
 const JOIN_MODIFIERS = new Set(["left", "right", "inner", "outer", "cross", "full", "natural"]);
 const MAX_TABLE_COMPLETION_ITEMS = 200;
 
@@ -349,6 +350,8 @@ export interface SqlCompletionContext {
   suggestColumns: boolean;
   suggestKeywords: boolean;
   suggestJoinConditions: boolean;
+  exclusiveTableSuggestions: boolean;
+  exclusiveColumnSuggestions: boolean;
   prioritizeSelectAliases: boolean;
   selectAliases: string[];
   referencedTables: SqlCompletionReferencedTable[];
@@ -382,14 +385,16 @@ export function buildSqlCompletionItemsFromContext(
 ): SqlCompletionItem[] {
   const items: SqlCompletionItem[] = [];
 
-  items.push(...buildSnippetItems(context.prefix));
-  items.push(...buildFunctionSnippetItems(context.prefix));
+  if (!context.exclusiveTableSuggestions && !context.exclusiveColumnSuggestions) {
+    items.push(...buildSnippetItems(context.prefix));
+    items.push(...buildFunctionSnippetItems(context.prefix));
+  }
 
-  if (context.prioritizeSelectAliases) {
+  if (!context.exclusiveTableSuggestions && !context.exclusiveColumnSuggestions && context.prioritizeSelectAliases) {
     items.push(...buildSelectAliasItems(context));
   }
 
-  if (context.suggestJoinConditions) {
+  if (!context.exclusiveTableSuggestions && !context.exclusiveColumnSuggestions && context.suggestJoinConditions) {
     items.push(...buildJoinConditionItems(context, input.columnsByTable));
   }
 
@@ -398,11 +403,11 @@ export function buildSqlCompletionItemsFromContext(
     items.push(...buildKeywordItems(context.prefix));
   }
 
-  if (context.suggestColumns) {
+  if (!context.exclusiveTableSuggestions && context.suggestColumns) {
     items.push(...buildColumnItems(context, input.columnsByTable));
   }
 
-  if (context.suggestTables) {
+  if (!context.exclusiveColumnSuggestions && context.suggestTables) {
     items.push(...buildTableItems(context.prefix, input.tables));
   }
 
@@ -492,8 +497,8 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
   const plainMatch = /([A-Za-z_][\w$]*)$/.exec(beforeCursor);
   const prefix = dottedMatch?.[2] ?? plainMatch?.[1] ?? "";
   const qualifier = dottedMatch?.[1];
-  const bareStart = qualifier
-    ? beforeCursor.length - prefix.length
+  const bareStart = dottedMatch
+    ? beforeCursor.length - dottedMatch[0].length
     : beforeCursor.length - (plainMatch?.[1]?.length ?? 0);
   const beforeToken = beforeCursor.slice(0, Math.max(0, bareStart)).trimEnd();
   const lastWord = /([A-Za-z_][\w$]*)$/.exec(beforeToken)?.[1]?.toLowerCase() ?? "";
@@ -504,6 +509,11 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
     TABLE_TRIGGER_KEYWORDS.has(lastWord) ||
     (JOIN_MODIFIERS.has(lastWord) && isFollowedByJoin(beforeToken)) ||
     isInTableListContext(beforeToken);
+  const exclusiveTableSuggestions =
+    EXCLUSIVE_TABLE_TRIGGER_KEYWORDS.has(lastWord) ||
+    (JOIN_MODIFIERS.has(lastWord) && isFollowedByJoin(beforeToken)) ||
+    isInTableListContext(beforeToken);
+  const exclusiveColumnSuggestions = !!qualifier && !exclusiveTableSuggestions;
 
   // Check if we're in a context where columns are expected
   const inColumnContext = isInColumnContext(beforeCursor);
@@ -520,8 +530,10 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
     // 2. We're in a column context (WHERE, ON, SELECT, etc.) AND there are referenced tables
     suggestColumns: !!qualifier || (inColumnContext && referencedTables.length > 0),
     // Always suggest keywords
-    suggestKeywords: true,
+    suggestKeywords: !exclusiveTableSuggestions && !exclusiveColumnSuggestions,
     suggestJoinConditions: inJoinConditionContext && referencedTables.length >= 2,
+    exclusiveTableSuggestions,
+    exclusiveColumnSuggestions,
     prioritizeSelectAliases,
     selectAliases: prioritizeSelectAliases ? extractSelectAliases(fullStatement) : [],
     referencedTables,
