@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildSqlCompletionItems,
   getSqlFunctionSignatureHelp,
+  getSqlCompletionResultValidFor,
   shouldAutoOpenSqlCompletion,
   type SqlCompletionColumn,
   type SqlCompletionTable,
@@ -259,6 +260,47 @@ test("auto-opens completion after word characters and explicit dot qualifiers", 
   for (const sql of ["sel", "select * from us", "select u."]) {
     assert.equal(shouldAutoOpenSqlCompletion(sql, sql.length), true, sql);
   }
+});
+
+test("auto-opens table completion immediately after FROM context whitespace", () => {
+  for (const sql of ["select * from ", "select * from users join ", "select * from users, "]) {
+    assert.equal(shouldAutoOpenSqlCompletion(sql, sql.length), true, sql);
+  }
+});
+
+test("suggests table names for empty FROM context prefix", () => {
+  const items = buildSqlCompletionItems("select * from ", "select * from ".length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.slice(0, 4).map((item) => [item.label, item.type]),
+    [
+      ["users", "table"],
+      ["user_profiles", "table"],
+      ["orders", "table"],
+      ["ticket_summary", "table"],
+    ],
+  );
+});
+
+test("suggests matching table names for partial table input", () => {
+  const items = buildSqlCompletionItems("select * from ihli", "select * from ihli".length, {
+    tables: [{ name: "ihli_data", schema: "public", type: "table" }],
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type, item.detail]),
+    [["ihli_data", "table", "public.ihli_data"]],
+  );
+});
+
+test("does not reuse table completion results across typed prefixes", () => {
+  const validFor = getSqlCompletionResultValidFor("select * from ", "select * from ".length);
+
+  assert.equal(validFor, undefined);
 });
 
 test("auto-opens completion after ON whitespace for join conditions", () => {

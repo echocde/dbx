@@ -21,6 +21,7 @@ import {
   buildSqlCompletionItemsFromContext,
   getSqlFunctionSignatureHelp,
   getSqlCompletionContext,
+  getSqlCompletionResultValidFor,
   shouldAutoOpenSqlCompletion,
 } from "@/lib/sqlCompletion";
 import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigation";
@@ -39,7 +40,16 @@ import {
   fontSizeFromWheelDelta,
 } from "@/lib/editorZoom";
 import { shortcutToCodeMirrorKey } from "@/lib/shortcutRegistry";
+import * as api from "@/lib/api";
+import {
+  areSqlSemanticDiagnosticsEqual,
+  buildSqlParserErrorDiagnostic,
+  buildSqlSemanticDiagnostics,
+  shouldRunSqlSemanticDiagnostics,
+  type SqlSemanticDiagnostic,
+} from "@/lib/sqlSemanticDiagnostics";
 import type { SqlCompletionColumn } from "@/lib/sqlCompletion";
+import type { SqlReferenceAnalysis, SqlTableReference, SqlTextSpan } from "@/types/database";
 
 const props = defineProps<{
   modelValue: string;
@@ -99,6 +109,11 @@ let diagnosticComp: import("@codemirror/state").Compartment | null = null;
 let buildSqlDiagnosticExtension: (() => import("@codemirror/state").Extension) | null = null;
 let buildSqlSignatureExtension: (() => import("@codemirror/state").Extension) | null = null;
 let codeMirrorSnippetCompletion: typeof import("@codemirror/autocomplete").snippetCompletion;
+let codeMirrorCompletionStatus: typeof import("@codemirror/autocomplete").completionStatus | null = null;
+let setSqlDiagnosticsEffect: import("@codemirror/state").StateEffectType<SqlSemanticDiagnostic[]> | null = null;
+let semanticDiagnostics: SqlSemanticDiagnostic[] = [];
+let semanticDiagnosticTimer: ReturnType<typeof setTimeout> | null = null;
+let semanticDiagnosticRunId = 0;
 
 function editorThemeAppearance() {
   return isDark.value ? "dark" : "light";
@@ -245,18 +260,18 @@ function identifierRangeAt(sql: string, pos: number): { from: number; to: number
   return { from, to, text };
 }
 
-function completionCacheKey(table: { name: string; schema?: string }) {
+function completionCacheKey(table: { name: string; schema?: string | null }) {
   return table.schema ? `${table.schema}.${table.name}` : table.name;
 }
 
-async function ensureColumnsForTable(table: { name: string; schema?: string }) {
+async function ensureColumnsForTable(table: { name: string; schema?: string | null }) {
   const cacheKey = completionCacheKey(table);
   if (cachedColumnsByTable.has(cacheKey) || !props.connectionId || !props.database) return;
   const columns = await connectionStore.listCompletionColumns(
     props.connectionId,
     props.database,
     table.name,
-    table.schema,
+    table.schema ?? undefined,
   );
   cachedColumnsByTable.set(cacheKey, columns);
 }
@@ -407,6 +422,131 @@ function sqlErrorDecorationRange(currentState: import("@codemirror/state").Edito
       message: props.executionError,
     },
   ];
+}
+
+function sqlTextSpanToRange(sql: string, span: SqlTextSpan): { from: number; to: number } | null {
+  if (!span.start_line || !span.start_column) return null;
+  const from = lineColumnToOffset(sql, { line: span.start_line - 1, column: span.start_column - 1 });
+  const to = lineColumnToOffset(sql, {
+    line: Math.max(span.end_line - 1, span.start_line - 1),
+    column: Math.max(span.end_column, span.start_column),
+  });
+  if (from == null || to == null || to <= from) return null;
+  return { from, to };
+}
+
+function sqlSemanticDecorationRanges(currentState: import("@codemirror/state").EditorState) {
+  const sql = currentState.doc.toString();
+  return semanticDiagnostics
+    .map((diagnostic) => {
+      const range = sqlTextSpanToRange(sql, diagnostic.span);
+      return range ? { ...range, message: diagnostic.message, severity: diagnostic.severity } : null;
+    })
+    .filter((range): range is { from: number; to: number; message: string; severity: "error" | "warning" } => !!range);
+}
+
+function reconfigureDiagnostics() {
+  if (!view.value) return;
+  if (setSqlDiagnosticsEffect) {
+    view.value.dispatch({
+      effects: setSqlDiagnosticsEffect.of(semanticDiagnostics),
+    });
+    return;
+  }
+  if (!diagnosticComp || !buildSqlDiagnosticExtension) return;
+  view.value.dispatch({
+    effects: diagnosticComp.reconfigure(buildSqlDiagnosticExtension()),
+  });
+}
+
+function setSemanticDiagnostics(next: SqlSemanticDiagnostic[]) {
+  if (areSqlSemanticDiagnosticsEqual(semanticDiagnostics, next)) return;
+  semanticDiagnostics = next;
+  reconfigureDiagnostics();
+}
+
+async function enrichSemanticDiagnosticTables(tables: SqlTableReference[]) {
+  if (!props.connectionId || !props.database) return tables;
+
+  const enriched: SqlTableReference[] = [];
+  for (const table of tables) {
+    if (table.schema) {
+      enriched.push(table);
+      continue;
+    }
+    const cached = cachedTables.find((item) => item.name.toLowerCase() === table.name.toLowerCase());
+    if (cached?.schema) {
+      enriched.push({ ...table, schema: cached.schema });
+      continue;
+    }
+    try {
+      const matches = await connectionStore.listCompletionTables(
+        props.connectionId,
+        props.database,
+        table.name,
+        MAX_COMPLETION_TABLES,
+      );
+      cachedTables = [...cachedTables, ...matches];
+      const match = matches.find((item) => item.name.toLowerCase() === table.name.toLowerCase());
+      enriched.push(match?.schema ? { ...table, schema: match.schema } : table);
+    } catch {
+      enriched.push(table);
+    }
+  }
+  return enriched;
+}
+
+async function refreshSemanticDiagnostics() {
+  const currentView = view.value;
+  const runId = ++semanticDiagnosticRunId;
+  if (!currentView || !props.connectionId || !props.database) {
+    setSemanticDiagnostics([]);
+    return;
+  }
+
+  const sql = currentView.state.doc.toString();
+  if (!sql.trim()) {
+    setSemanticDiagnostics([]);
+    return;
+  }
+  if (!shouldRunSqlSemanticDiagnostics(sql, currentView.state.selection.main.head)) {
+    scheduleSemanticDiagnostics(1200);
+    return;
+  }
+  if (codeMirrorCompletionStatus?.(currentView.state)) {
+    scheduleSemanticDiagnostics(900);
+    return;
+  }
+
+  try {
+    const analysis = await api.analyzeSqlReferences(sql, props.formatDialect ?? props.dialect ?? "generic");
+    if (runId !== semanticDiagnosticRunId) return;
+
+    const tables = await enrichSemanticDiagnosticTables(analysis.tables);
+    await Promise.all(tables.map((table) => ensureColumnsForTable(table)));
+    if (runId !== semanticDiagnosticRunId) return;
+
+    const enrichedAnalysis: SqlReferenceAnalysis = { ...analysis, tables };
+    setSemanticDiagnostics(
+      buildSqlSemanticDiagnostics(enrichedAnalysis, {
+        tables: cachedTables,
+        columnsByTable: cachedColumnsByTable,
+      }),
+    );
+  } catch (error) {
+    if (runId === semanticDiagnosticRunId) {
+      const diagnostic = buildSqlParserErrorDiagnostic(error, sql);
+      setSemanticDiagnostics(diagnostic ? [diagnostic] : []);
+    }
+  }
+}
+
+function scheduleSemanticDiagnostics(delay = 500) {
+  if (semanticDiagnosticTimer) clearTimeout(semanticDiagnosticTimer);
+  semanticDiagnosticTimer = setTimeout(() => {
+    semanticDiagnosticTimer = null;
+    void refreshSemanticDiagnostics();
+  }, delay);
 }
 
 async function formatCurrentSql() {
@@ -563,7 +703,7 @@ async function provideSqlCompletions(
               boost: item.boost,
             },
       ),
-      validFor: /^[\w$]*$/,
+      validFor: getSqlCompletionResultValidFor(fullDoc, position),
     };
   } catch {
     return null;
@@ -580,10 +720,10 @@ onMounted(async () => {
 
   const [
     { EditorView, keymap, rectangularSelection, hoverTooltip, showTooltip, Decoration },
-    { EditorState, Compartment, Prec, StateField },
+    { EditorState, Compartment, Prec, StateEffect, StateField },
     { sql, MSSQL, MySQL, PostgreSQL, SQLDialect },
     { basicSetup },
-    { autocompletion, startCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion },
+    { autocompletion, startCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, completionStatus },
     { indentWithTab },
     { bracketMatching },
   ] = await Promise.all([
@@ -603,29 +743,44 @@ onMounted(async () => {
   readOnlyComp = new Compartment();
   runKeymapComp = new Compartment();
   diagnosticComp = new Compartment();
+  setSqlDiagnosticsEffect = StateEffect.define<SqlSemanticDiagnostic[]>();
+  codeMirrorCompletionStatus = completionStatus;
 
   const diagnosticTheme = EditorView.baseTheme({
     ".cm-sql-error": {
       textDecoration: "underline wavy var(--destructive)",
       textUnderlineOffset: "3px",
     },
+    ".cm-sql-semantic-warning": {
+      textDecoration: "underline wavy hsl(var(--warning, 38 92% 50%))",
+      textUnderlineOffset: "3px",
+    },
   });
 
   buildSqlDiagnosticExtension = () => {
-    const buildDecorations = (state: import("@codemirror/state").EditorState) =>
-      Decoration.set(
-        sqlErrorDecorationRange(state).map((range) =>
-          Decoration.mark({
-            class: "cm-sql-error",
-            attributes: { title: range.message },
-          }).range(range.from, range.to),
-        ),
+    const diagnosticEffect = setSqlDiagnosticsEffect;
+    const buildDecorations = (state: import("@codemirror/state").EditorState) => {
+      const errorDecorations = sqlErrorDecorationRange(state).map((range) =>
+        Decoration.mark({
+          class: "cm-sql-error",
+          attributes: { title: range.message },
+        }).range(range.from, range.to),
       );
+      const semanticDecorations = sqlSemanticDecorationRanges(state).map((range) =>
+        Decoration.mark({
+          class: range.severity === "error" ? "cm-sql-error" : "cm-sql-semantic-warning",
+          attributes: { title: range.message },
+        }).range(range.from, range.to),
+      );
+      return Decoration.set([...errorDecorations, ...semanticDecorations], true);
+    };
 
     const field = StateField.define({
       create: buildDecorations,
       update(value, transaction) {
-        return transaction.docChanged ? buildDecorations(transaction.state) : value;
+        const diagnosticsChanged =
+          !!diagnosticEffect && transaction.effects.some((effect) => effect.is(diagnosticEffect));
+        return transaction.docChanged || diagnosticsChanged ? buildDecorations(transaction.state) : value;
       },
       provide: (field) => EditorView.decorations.from(field),
     });
@@ -691,6 +846,7 @@ onMounted(async () => {
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           emit("update:modelValue", update.state.doc.toString());
+          scheduleSemanticDiagnostics();
           let insertedText = "";
           update.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
             insertedText += inserted.toString();
@@ -858,6 +1014,7 @@ onMounted(async () => {
   syncEditorFontCssVars(liveFontSize.value, ss.fontFamily);
 
   cachedTables = [];
+  scheduleSemanticDiagnostics();
 });
 
 watch(
@@ -881,10 +1038,7 @@ watch(
 watch(
   () => props.executionError,
   () => {
-    if (!view.value || !diagnosticComp || !buildSqlDiagnosticExtension) return;
-    view.value.dispatch({
-      effects: diagnosticComp.reconfigure(buildSqlDiagnosticExtension()),
-    });
+    reconfigureDiagnostics();
   },
 );
 
@@ -892,6 +1046,8 @@ watch(
   () => props.connectionId,
   () => {
     refreshCompletionCache();
+    setSemanticDiagnostics([]);
+    scheduleSemanticDiagnostics();
   },
 );
 
@@ -899,6 +1055,8 @@ watch(
   () => props.database,
   () => {
     refreshCompletionCache();
+    setSemanticDiagnostics([]);
+    scheduleSemanticDiagnostics();
   },
 );
 
@@ -937,6 +1095,7 @@ watch(
 
 onBeforeUnmount(() => {
   zoomCommitScheduler.dispose();
+  if (semanticDiagnosticTimer) clearTimeout(semanticDiagnosticTimer);
   view.value?.destroy();
 });
 

@@ -418,7 +418,15 @@ export function shouldAutoOpenSqlCompletion(sql: string, cursor: number): boolea
   const previousChar = sql[cursor - 1];
   if (!previousChar) return false;
   if (/\bon\s+$/i.test(sql.slice(0, cursor))) return true;
+  if (/[,;()[\]]/.test(previousChar)) return false;
+  const context = getSqlCompletionContext(sql, cursor);
+  if (context.exclusiveTableSuggestions || context.exclusiveColumnSuggestions || context.suggestTables) return true;
   return /[\w$.]/.test(previousChar);
+}
+
+export function getSqlCompletionResultValidFor(sql: string, cursor: number): RegExp | undefined {
+  const context = getSqlCompletionContext(sql, cursor);
+  return context.suggestTables ? undefined : /^[\w$]*$/;
 }
 
 export function getSqlFunctionSignatureHelp(sql: string, cursor: number): SqlFunctionSignatureHelp | null {

@@ -44,6 +44,13 @@ pub struct ExecuteBatchRequest {
     pub schema: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnalyzeSqlReferencesRequest {
+    pub sql: String,
+    pub dialect: Option<String>,
+}
+
 pub async fn execute_query(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ExecuteQueryRequest>,
@@ -173,4 +180,10 @@ pub async fn execute_in_transaction(
     .map_err(AppError)?;
 
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError(e.to_string()))?))
+}
+
+pub async fn analyze_sql_references(
+    Json(req): Json<AnalyzeSqlReferencesRequest>,
+) -> Result<Json<dbx_core::sql_analysis::SqlReferenceAnalysis>, AppError> {
+    dbx_core::sql_analysis::analyze_sql_references(&req.sql, req.dialect.as_deref()).map(Json).map_err(AppError)
 }

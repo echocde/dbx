@@ -203,6 +203,31 @@ export interface QueryResult {
   has_more?: boolean;
 }
 
+export interface SqlTextSpan {
+  start_line: number;
+  start_column: number;
+  end_line: number;
+  end_column: number;
+}
+
+export interface SqlTableReference {
+  name: string;
+  schema?: string | null;
+  alias?: string | null;
+  span: SqlTextSpan;
+}
+
+export interface SqlColumnReference {
+  name: string;
+  qualifier?: string | null;
+  span: SqlTextSpan;
+}
+
+export interface SqlReferenceAnalysis {
+  tables: SqlTableReference[];
+  columns: SqlColumnReference[];
+}
+
 export type TreeNodeType =
   | "connection"
   | "connection-group"

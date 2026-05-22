@@ -146,3 +146,11 @@ pub async fn execute_in_transaction(
     )
     .await
 }
+
+#[tauri::command]
+pub async fn analyze_sql_references(
+    sql: String,
+    dialect: Option<String>,
+) -> Result<dbx_core::sql_analysis::SqlReferenceAnalysis, String> {
+    dbx_core::sql_analysis::analyze_sql_references(&sql, dialect.as_deref())
+}

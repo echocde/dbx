@@ -10,6 +10,7 @@ import type {
   ForeignKeyInfo,
   TriggerInfo,
   QueryResult,
+  SqlReferenceAnalysis,
   InstalledPlugin,
   JdbcDriverInfo,
   JdbcPluginStatus,
@@ -396,6 +397,10 @@ export async function executeInTransaction(
 
 export async function cancelQuery(executionId: string): Promise<boolean> {
   return post("/api/query/cancel", { executionId });
+}
+
+export async function analyzeSqlReferences(sql: string, dialect?: string): Promise<SqlReferenceAnalysis> {
+  return post("/api/query/analyze-sql-references", { sql, dialect });
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ import type {
   ForeignKeyInfo,
   TriggerInfo,
   QueryResult,
+  SqlReferenceAnalysis,
   InstalledPlugin,
   JdbcDriverInfo,
   JdbcPluginStatus,
@@ -295,6 +296,10 @@ export async function executeInTransaction(
   schema?: string,
 ): Promise<QueryResult> {
   return invoke("execute_in_transaction", { connectionId, database, statements, schema });
+}
+
+export async function analyzeSqlReferences(sql: string, dialect?: string): Promise<SqlReferenceAnalysis> {
+  return invoke("analyze_sql_references", { sql, dialect });
 }
 
 export async function listIndexes(

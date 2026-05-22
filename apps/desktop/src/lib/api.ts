@@ -86,6 +86,7 @@ export const executeScript = forward("executeScript");
 export const executeInTransaction = forward("executeInTransaction");
 export const cancelQuery = forward("cancelQuery");
 export const closeQuerySession = forward("closeQuerySession");
+export const analyzeSqlReferences = forward("analyzeSqlReferences");
 
 // AI
 export const aiComplete = forward("aiComplete");
