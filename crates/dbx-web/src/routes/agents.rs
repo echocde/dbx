@@ -4,8 +4,8 @@ use axum::extract::{Multipart, Path, State};
 use axum::response::sse::{Event, Sse};
 use axum::Json;
 use dbx_core::agent_manager::{
-    AgentDriverInfo, AgentManager, AgentRegistry, AgentState, InstalledDriver, JavaRuntimeConfig, JavaRuntimeMode,
-    DEFAULT_JRE_KEY,
+    AgentDriverInfo, AgentManager, AgentRegistry, AgentState, DriverStoreUsage, InstalledDriver, JavaRuntimeConfig,
+    JavaRuntimeMode, DEFAULT_JRE_KEY,
 };
 use dbx_core::agent_service::{
     build_agent_list, download_temp_path, fetch_registry, find_local_agent_jar, github_url_to_r2_path,
@@ -46,6 +46,10 @@ pub async fn list_installed_agents_local(
 pub async fn list_installed_agents(State(state): State<Arc<WebState>>) -> Result<Json<Vec<AgentDriverInfo>>, AppError> {
     let registry = fetch_registry().await.ok();
     Ok(Json(build_agent_list(&state.app.agent_manager, registry.as_ref())))
+}
+
+pub async fn get_driver_store_usage(State(state): State<Arc<WebState>>) -> Result<Json<DriverStoreUsage>, AppError> {
+    Ok(Json(state.app.agent_manager.collect_driver_store_usage(state.app.plugins.root_dir())))
 }
 
 pub async fn install_agent(

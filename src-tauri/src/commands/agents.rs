@@ -3,7 +3,8 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 
 use dbx_core::agent_manager::{
-    AgentDriverInfo, AgentManager, InstalledDriver, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY,
+    AgentDriverInfo, AgentManager, DriverStoreUsage, InstalledDriver, JavaRuntimeConfig, JavaRuntimeMode,
+    DEFAULT_JRE_KEY,
 };
 use dbx_core::agent_service::{
     build_agent_list, download_temp_path, fetch_registry, find_local_agent_jar, github_url_to_r2_path,
@@ -21,6 +22,11 @@ pub async fn list_installed_agents_local(state: State<'_, Arc<AppState>>) -> Res
 pub async fn list_installed_agents(state: State<'_, Arc<AppState>>) -> Result<Vec<AgentDriverInfo>, String> {
     let registry = fetch_registry().await.ok();
     Ok(build_agent_list(&state.agent_manager, registry.as_ref()))
+}
+
+#[tauri::command]
+pub async fn get_driver_store_usage(state: State<'_, Arc<AppState>>) -> Result<DriverStoreUsage, String> {
+    Ok(state.agent_manager.collect_driver_store_usage(state.plugins.root_dir()))
 }
 
 #[tauri::command]

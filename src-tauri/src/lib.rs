@@ -349,6 +349,7 @@ pub fn run() {
             commands::text_export::export_query_result_markdown,
             commands::agents::list_installed_agents,
             commands::agents::list_installed_agents_local,
+            commands::agents::get_driver_store_usage,
             commands::agents::install_agent,
             commands::agents::upgrade_all_agents,
             commands::agents::uninstall_agent,

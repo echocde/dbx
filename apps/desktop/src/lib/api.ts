@@ -46,6 +46,7 @@ export const installJdbcPluginLocal = forward("installJdbcPluginLocal");
 export const uninstallJdbcPlugin = forward("uninstallJdbcPlugin");
 export const listInstalledAgentsLocal = forward("listInstalledAgentsLocal");
 export const listInstalledAgents = forward("listInstalledAgents");
+export const getDriverStoreUsage = forward("getDriverStoreUsage");
 export const installAgent = forward("installAgent");
 export const upgradeAllAgents = forward("upgradeAllAgents");
 export const uninstallAgent = forward("uninstallAgent");
@@ -195,6 +196,8 @@ export type {
   AiChatMessage,
   AiConversation,
   AgentDriverInfo,
+  DriverStoreUsage,
+  DriverStoreUsageItem,
   JavaRuntimeMode,
   JavaRuntimeConfig,
   DriverInstallProgress,

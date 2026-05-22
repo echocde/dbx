@@ -51,6 +51,21 @@ export interface JavaRuntimeConfig {
   custom_java_path: string | null;
 }
 
+export interface DriverStoreUsageItem {
+  id: string;
+  bytes: number;
+}
+
+export interface DriverStoreUsage {
+  total_bytes: number;
+  jre_bytes: number;
+  agent_driver_bytes: number;
+  jdbc_plugin_bytes: number;
+  jdbc_driver_bytes: number;
+  jres: DriverStoreUsageItem[];
+  agent_drivers: DriverStoreUsageItem[];
+}
+
 export interface DesktopSettings {
   show_tray_icon: boolean;
 }
@@ -441,6 +456,10 @@ export async function listInstalledAgentsLocal(): Promise<AgentDriverInfo[]> {
 
 export async function listInstalledAgents(): Promise<AgentDriverInfo[]> {
   return invoke("list_installed_agents");
+}
+
+export async function getDriverStoreUsage(): Promise<DriverStoreUsage> {
+  return invoke("get_driver_store_usage");
 }
 
 export async function installAgent(dbType: string): Promise<void> {

@@ -27,6 +27,7 @@ import type {
   AiStreamChunk,
   AiConversation,
   AiModelInfo,
+  DriverStoreUsage,
   DesktopSettings,
   DriverInstallProgress,
   JavaRuntimeConfig,
@@ -170,6 +171,10 @@ export async function listInstalledAgentsLocal(): Promise<AgentDriverInfo[]> {
 
 export async function listInstalledAgents(): Promise<AgentDriverInfo[]> {
   return get("/api/agents/installed");
+}
+
+export async function getDriverStoreUsage(): Promise<DriverStoreUsage> {
+  return get("/api/agents/storage-usage");
 }
 
 export async function installAgent(dbType: string): Promise<void> {

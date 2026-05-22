@@ -14,7 +14,7 @@ import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { countAvailableDriverUpdates } from "@/lib/agentDriverUpdateBadge";
 import type { JdbcDriverInfo, JdbcPluginStatus } from "@/types/database";
 import * as api from "@/lib/api";
-import type { AgentDriverInfo, JavaRuntimeConfig } from "@/lib/api";
+import type { AgentDriverInfo, DriverStoreUsage, JavaRuntimeConfig } from "@/lib/api";
 import {
   addDriverInstallQueue,
   driverInstallProgressPercent,
@@ -47,6 +47,7 @@ const progress = ref<DriverInstallProgress | null>(null);
 const javaRuntimeConfig = ref<JavaRuntimeConfig>({ mode: "managed", custom_java_path: null });
 const customJavaPath = ref("");
 const savingJavaRuntime = ref(false);
+const driverStoreUsage = ref<DriverStoreUsage | null>(null);
 
 let unlisten: (() => void) | null = null;
 
@@ -81,6 +82,24 @@ const progressText = computed(() => {
 const progressNumber = computed(() => driverInstallProgressPercent(progress.value));
 
 const updatableCount = computed(() => drivers.value.filter((d) => d.update_available).length);
+const usageSummary = computed(() => {
+  const usage = driverStoreUsage.value;
+  if (!usage) return [];
+  return [
+    { key: "total", label: "总计", bytes: usage.total_bytes },
+    { key: "jre", label: "托管 JRE", bytes: usage.jre_bytes },
+    { key: "agent", label: "内置驱动 Agent", bytes: usage.agent_driver_bytes },
+    { key: "jdbc-plugin", label: "JDBC 插件", bytes: usage.jdbc_plugin_bytes },
+    { key: "jdbc-driver", label: "JDBC 驱动 JAR", bytes: usage.jdbc_driver_bytes },
+  ];
+});
+const jreUsageByKey = computed(() => {
+  const map = new Map<string, number>();
+  for (const item of driverStoreUsage.value?.jres || []) {
+    map.set(String(item.id), Number(item.bytes || 0));
+  }
+  return map;
+});
 
 function updateAgentDrivers(nextDrivers: AgentDriverInfo[]) {
   drivers.value = nextDrivers;
@@ -122,6 +141,7 @@ function removeQueuedDriverInstall(dbType: string) {
 
 async function refreshAgents() {
   updateAgentDrivers(await api.listInstalledAgents());
+  void loadDriverStoreUsage();
 }
 
 async function forceRefresh() {
@@ -347,6 +367,11 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function jreUsageLabel(key: string) {
+  const bytes = jreUsageByKey.value.get(String(key)) || 0;
+  return bytes > 0 ? formatBytes(bytes) : "";
+}
+
 async function loadJdbcDrivers() {
   if (isWeb) return;
   isLoadingJdbcDrivers.value = true;
@@ -356,6 +381,15 @@ async function loadJdbcDrivers() {
     toast(String(e?.message || e), 5000);
   } finally {
     isLoadingJdbcDrivers.value = false;
+    void loadDriverStoreUsage();
+  }
+}
+
+async function loadDriverStoreUsage() {
+  try {
+    driverStoreUsage.value = await api.getDriverStoreUsage();
+  } catch {
+    driverStoreUsage.value = null;
   }
 }
 
@@ -426,6 +460,7 @@ async function importJdbcDriverPaths(paths: string[]) {
   try {
     jdbcDrivers.value = await api.importJdbcDrivers(paths);
     jdbcDriverPathInput.value = "";
+    void loadDriverStoreUsage();
     toast(t("settings.jdbcImportSuccess", { count: paths.length }));
   } catch (e: any) {
     toast(String(e?.message || e), 5000);
@@ -459,6 +494,7 @@ async function importJdbcDriverPathInput() {
 async function deleteJdbcDriver(path: string) {
   try {
     jdbcDrivers.value = await api.deleteJdbcDriver(path);
+    void loadDriverStoreUsage();
     toast(t("settings.jdbcDeleteSuccess"));
   } catch (e: any) {
     toast(String(e?.message || e), 5000);
@@ -470,6 +506,7 @@ async function deleteJdbcDriver(path: string) {
 onMounted(async () => {
   updateAgentDrivers(await api.listInstalledAgentsLocal());
   void loadJavaRuntimeConfig();
+  void loadDriverStoreUsage();
 
   api.listInstalledAgents().then((result) => {
     updateAgentDrivers(result);
@@ -501,31 +538,52 @@ onUnmounted(() => {
     <div class="flex-1 min-h-0 overflow-y-auto">
       <div class="max-w-4xl mx-auto px-6 py-6">
         <Tabs default-value="agent">
+          <div class="mb-5 rounded-xl border bg-muted/20 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-medium">空间占用明细</div>
+              <div class="text-xs text-muted-foreground">
+                {{ usageSummary.length ? `总计 ${formatBytes(usageSummary[0].bytes)}` : "统计中..." }}
+              </div>
+            </div>
+            <div v-if="usageSummary.length" class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div
+                v-for="item in usageSummary"
+                :key="item.key"
+                class="rounded-lg border bg-background/50 px-2.5 py-2 text-center"
+              >
+                <div class="text-[11px] text-muted-foreground">{{ item.label }}</div>
+                <div class="mt-0.5 text-xs font-medium">{{ formatBytes(item.bytes) }}</div>
+              </div>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between">
             <TabsList class="w-fit">
               <TabsTrigger value="agent">内置驱动</TabsTrigger>
               <TabsTrigger value="jdbc">JDBC 驱动</TabsTrigger>
             </TabsList>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-7 rounded-full text-xs gap-1 text-muted-foreground"
-              :disabled="importingZip"
-              @click="importOfflineZip"
-            >
-              <FileUp class="h-3.5 w-3.5" />
-              {{ importingZip ? "导入中..." : "导入离线包" }}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-7 rounded-full text-xs gap-1 text-muted-foreground"
-              :disabled="refreshing"
-              @click="forceRefresh"
-            >
-              <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
-              刷新
-            </Button>
+            <div class="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 rounded-full text-xs gap-1 text-muted-foreground"
+                :disabled="importingZip"
+                @click="importOfflineZip"
+              >
+                <FileUp class="h-3.5 w-3.5" />
+                {{ importingZip ? "导入中..." : "导入离线包" }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-7 rounded-full text-xs gap-1 text-muted-foreground"
+                :disabled="refreshing"
+                @click="forceRefresh"
+              >
+                <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
+                刷新
+              </Button>
+            </div>
           </div>
 
           <!-- Agent Tab -->
@@ -578,6 +636,12 @@ onUnmounted(() => {
                   <div class="text-sm font-medium">JRE {{ jre.key }} 运行时</div>
                 </div>
                 <div class="flex shrink-0 items-center gap-3">
+                  <span
+                    v-if="jreUsageLabel(jre.key)"
+                    class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {{ jreUsageLabel(jre.key) }}
+                  </span>
                   <Check v-if="jre.installed" class="h-4 w-4 text-green-600" />
                   <span v-else class="text-xs text-muted-foreground">未安装</span>
                   <DriverInstallProgressCircle
@@ -726,7 +790,10 @@ onUnmounted(() => {
                     <FileUp class="h-3.5 w-3.5" />
                   </Button>
                   <template v-else>
-                    <Check class="h-4 w-4 text-green-600" />
+                    <Check
+                      v-if="!(driver.update_available && isDriverProgressActive(driver.db_type))"
+                      class="h-4 w-4 text-green-600"
+                    />
                     <Button
                       v-if="driver.update_available && isDriverQueued(driver.db_type)"
                       size="sm"
