@@ -335,7 +335,7 @@ pub async fn list_objects(pool: &MySqlPool, database: &str) -> Result<Vec<Object
 fn columns_sql(database: &str, table: &str) -> String {
     format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, \
-         c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH \
+         c.COLUMN_KEY, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH \
          FROM information_schema.COLUMNS c \
          WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} \
          ORDER BY c.ORDINAL_POSITION",
@@ -355,6 +355,10 @@ fn primary_key_columns_sql(database: &str, table: &str) -> String {
     )
 }
 
+fn is_primary_key_column(primary_key_columns: &HashSet<String>, name: &str, column_key: &str) -> bool {
+    primary_key_columns.contains(name) || column_key.eq_ignore_ascii_case("PRI")
+}
+
 pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
     let pk_sql = primary_key_columns_sql(database, table);
     let pk_rows: Vec<MySqlRow> = sqlx::raw_sql(&pk_sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
@@ -367,8 +371,9 @@ pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Resul
         .iter()
         .map(|row| {
             let name = get_str_by_name(row, "COLUMN_NAME");
+            let column_key = get_str_by_name(row, "COLUMN_KEY");
             ColumnInfo {
-                is_primary_key: primary_key_columns.contains(&name),
+                is_primary_key: is_primary_key_column(&primary_key_columns, &name, &column_key),
                 name,
                 data_type: get_str_by_name(row, "COLUMN_TYPE"),
                 is_nullable: get_str_by_name(row, "IS_NULLABLE") == "YES",
@@ -664,6 +669,20 @@ mod tests {
         assert!(!sql.contains("COLLATE"));
         assert!(sql.contains("information_schema.KEY_COLUMN_USAGE"));
         assert!(sql.contains("CONSTRAINT_NAME = 'PRIMARY'"));
+    }
+
+    #[test]
+    fn mysql_columns_sql_selects_column_key_for_starrocks_primary_fallback() {
+        let sql = columns_sql("app", "users");
+
+        assert!(sql.contains("c.COLUMN_KEY"));
+    }
+
+    #[test]
+    fn mysql_column_key_marks_primary_when_key_column_usage_is_unavailable() {
+        let primary_key_columns = HashSet::new();
+
+        assert!(is_primary_key_column(&primary_key_columns, "id", "PRI"));
     }
 
     #[test]
