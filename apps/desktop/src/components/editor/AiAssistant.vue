@@ -954,7 +954,7 @@ const messageRenderer = computed(() => {
                 class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
                 :title="activeModeHint"
               >
-                <Bot class="h-3 w-3" />
+                <component :is="assistantMode === 'agent' ? Bot : MessageSquarePlus" class="h-3 w-3" />
                 <span>{{ t(`ai.modes.${assistantMode}`) }}</span>
                 <svg
                   class="h-3 w-3 opacity-50"
@@ -972,7 +972,8 @@ const messageRenderer = computed(() => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" class="w-40">
               <DropdownMenuItem class="text-xs gap-1.5" :title="t('ai.modeHints.ask')" @click="assistantMode = 'ask'">
-                <Check class="h-3 w-3" :class="{ 'opacity-0': assistantMode !== 'ask' }" />
+                <Check class="h-3 w-3 shrink-0" :class="{ 'opacity-0': assistantMode !== 'ask' }" />
+                <MessageSquarePlus class="h-3 w-3 shrink-0 text-muted-foreground" />
                 <span>{{ t("ai.modes.ask") }}</span>
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -980,7 +981,8 @@ const messageRenderer = computed(() => {
                 :title="t('ai.modeHints.agent')"
                 @click="assistantMode = 'agent'"
               >
-                <Check class="h-3 w-3" :class="{ 'opacity-0': assistantMode !== 'agent' }" />
+                <Check class="h-3 w-3 shrink-0" :class="{ 'opacity-0': assistantMode !== 'agent' }" />
+                <Bot class="h-3 w-3 shrink-0 text-muted-foreground" />
                 <span>{{ t("ai.modes.agent") }}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
