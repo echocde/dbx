@@ -73,7 +73,10 @@ pub fn metadata_connection_config(config: &ConnectionConfig) -> ConnectionConfig
 pub fn database_connection_config(config: &ConnectionConfig, database: Option<&str>) -> ConnectionConfig {
     let mut db_config = if database.is_some() { config.clone() } else { metadata_connection_config(config) };
     if let Some(db) = database {
-        if !matches!(db_config.db_type, DatabaseType::Oracle | DatabaseType::Dameng | DatabaseType::OceanbaseOracle) {
+        if !matches!(
+            db_config.db_type,
+            DatabaseType::Oracle | DatabaseType::Dameng | DatabaseType::MongoDb | DatabaseType::OceanbaseOracle
+        ) {
             db_config.database = Some(db.to_string());
         }
     }
@@ -913,6 +916,16 @@ mod tests {
         let scoped = database_connection_config(&config, Some("analytics"));
 
         assert_eq!(scoped.database.as_deref(), Some("analytics"));
+    }
+
+    #[test]
+    fn mongodb_database_connection_keeps_saved_database_for_auth() {
+        let mut config = mysql_config(Some("admin"));
+        config.db_type = DatabaseType::MongoDb;
+
+        let scoped = database_connection_config(&config, Some("shop"));
+
+        assert_eq!(scoped.database.as_deref(), Some("admin"));
     }
 
     #[test]

@@ -13,7 +13,12 @@ import {
   sourceColumnsForResult,
 } from "@/lib/sqlAnalysis";
 import { restoreOpenTabsState, serializeOpenTabs } from "@/lib/openTabsPersistence";
-import { mongoDocumentsToQueryResult, parseMongoFindCommand } from "@/lib/mongoShellCommand";
+import {
+  mongoCountToQueryResult,
+  mongoDocumentsToQueryResult,
+  parseMongoCountDocumentsCommand,
+  parseMongoFindCommand,
+} from "@/lib/mongoShellCommand";
 import { buildQueryPaginationExecutionPlan } from "@/lib/queryResultPagination";
 import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
 import { editablePrimaryKeys } from "@/lib/tableEditing";
@@ -523,6 +528,36 @@ export const useQueryStore = defineStore("query", () => {
           current.results = undefined;
           current.activeResultIndex = undefined;
           current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          current.queryAnalysis = undefined;
+          current.querySourceColumns = undefined;
+          current.queryEditabilityReason = undefined;
+          current.tableMeta = undefined;
+          current.resultBaseSql = options?.resultBaseSql ?? sql;
+          current.resultSortedSql = options?.resultSortedSql;
+        }
+        return;
+      }
+      const mongoCount = conn?.db_type === "mongodb" ? parseMongoCountDocumentsCommand(sql) : null;
+      if (mongoCount) {
+        console.info("[DBX][executeTabSql:mongo-count:start]", { traceId, collection: mongoCount.collection });
+        const result = await api.mongoFindDocuments(
+          tab.connectionId,
+          tab.database,
+          mongoCount.collection,
+          0,
+          1,
+          mongoCount.filter,
+        );
+        console.info("[DBX][executeTabSql:mongo-count:done]", {
+          traceId,
+          total: result.total,
+          elapsed: elapsed(),
+        });
+        const current = tabs.value.find((t) => t.id === id);
+        if (current?.executionId === executionId) {
+          current.results = undefined;
+          current.activeResultIndex = undefined;
+          current.result = mongoCountToQueryResult(result.total, performance.now() - startedAt);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
           current.queryEditabilityReason = undefined;
