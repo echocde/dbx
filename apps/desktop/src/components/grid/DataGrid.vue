@@ -2234,6 +2234,12 @@ function showCellDetails(rowIndex: number, colIndex: number) {
   showCellDetail.value = true;
 }
 
+function showCellDetailsForVisibleCell(rowIndex: number, visibleColIdx: number, actualColIdx: number) {
+  clearRowSelection();
+  selectSingleCell(rowIndex, visibleColIdx);
+  showCellDetails(rowIndex, actualColIdx);
+}
+
 watch([selectedRange, showCellDetail, isEditingDetail], () => {
   const selectedCell = currentSelectedCellPosition();
   const target = linkedCellDetailTarget({
@@ -4105,7 +4111,7 @@ defineExpose({
                             class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground"
                             :title="t('grid.cellDetails')"
                             @mousedown.stop
-                            @click.stop="showCellDetails(index, actualColIdx)"
+                            @click.stop="showCellDetailsForVisibleCell(index, visibleColIdx, actualColIdx)"
                           >
                             <Info class="h-3 w-3" />
                           </button>

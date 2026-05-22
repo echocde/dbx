@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
@@ -75,4 +76,16 @@ test("cell detail does not follow selection while closed or editing", () => {
   assert.equal(linkedCellDetailTarget({ isOpen: false, isEditing: false, selectedCell, actualColumnIndex }), null);
   assert.equal(linkedCellDetailTarget({ isOpen: true, isEditing: true, selectedCell, actualColumnIndex }), null);
   assert.equal(linkedCellDetailTarget({ isOpen: true, isEditing: false, selectedCell: null, actualColumnIndex }), null);
+});
+
+test("cell detail action focuses the hovered cell before opening details", () => {
+  const source = readFileSync("apps/desktop/src/components/grid/DataGrid.vue", "utf8");
+
+  assert.match(
+    source,
+    /function showCellDetailsForVisibleCell\(rowIndex: number, visibleColIdx: number, actualColIdx: number\)/,
+  );
+  assert.match(source, /selectSingleCell\(rowIndex, visibleColIdx\)/);
+  assert.match(source, /@click\.stop="showCellDetailsForVisibleCell\(index, visibleColIdx, actualColIdx\)"/);
+  assert.doesNotMatch(source, /@click\.stop="showCellDetails\(index, actualColIdx\)"/);
 });
