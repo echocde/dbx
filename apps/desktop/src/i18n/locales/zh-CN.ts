@@ -922,6 +922,9 @@ export default {
     copyMember: "复制成员",
     copied: "已复制",
     editMember: "编辑",
+    jsonView: "JSON 视图",
+    rawContent: "原始内容",
+    wordWrap: "自动换行",
   },
   mongo: {
     documents: "{count} 个文档",

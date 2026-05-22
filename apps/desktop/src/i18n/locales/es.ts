@@ -840,6 +840,9 @@ export default {
     copyMember: "Copiar miembro",
     copied: "Copiado",
     editMember: "Editar",
+    jsonView: "Vista JSON",
+    rawContent: "Contenido original",
+    wordWrap: "Ajuste de línea",
   },
   mongo: {
     documents: "{count} documentos",

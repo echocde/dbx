@@ -1,26 +1,29 @@
 <script setup lang="ts">
 import { computed, ref, onBeforeUnmount, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-import { Copy, Eye, Trash2, Save, RefreshCw, Plus, Loader2, Pencil } from "lucide-vue-next";
+import { Braces, Copy, Eye, FileText, Trash2, Save, RefreshCw, Plus, Loader2, Pencil, WrapText } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import RedisJsonTree from "./RedisJsonTree.vue";
 import * as api from "@/lib/api";
 import type { RedisKeyInfo, RedisValue } from "@/lib/api";
 import { useToast } from "@/composables/useToast";
+import { useTheme } from "@/composables/useTheme";
+import { createRedisShikiJsonHighlighter, type RedisJsonHighlighter } from "@/lib/redisJsonHighlighter";
 import {
   canEditRedisMemberDetail,
   clampRedisMemberDetailSheetWidth,
   formatRedisMemberDetail,
-  formatRedisStringValue,
   getRedisMemberSelectionKey,
-  highlightRedisJsonDetail,
 } from "@/lib/redisValuePresentation";
 
 const { t } = useI18n();
 const { toast } = useToast();
+const { isDark } = useTheme();
 
 const props = defineProps<{
   connectionId: string;
@@ -58,9 +61,21 @@ const isResizingMemberSheet = ref(false);
 const hashTableRef = ref<HTMLElement | null>(null);
 const hashFieldWidth = ref(280);
 const isResizingHashColumns = ref(false);
+type RedisValueView = "json" | "raw";
+const REDIS_JSON_WRAP_STORAGE_KEY = "dbx-redis-json-word-wrap";
+const stringValueView = ref<RedisValueView>("raw");
+const memberValueView = ref<RedisValueView>("raw");
+const redisJsonWordWrap = ref(readRedisJsonWordWrap());
+const redisJsonHighlighter = ref<RedisJsonHighlighter>();
 const selectedMemberDetail = computed(() => formatRedisMemberDetail(selectedMemberRaw.value));
-const selectedMemberJsonHtml = computed(() =>
-  selectedMemberDetail.value.format === "json" ? highlightRedisJsonDetail(selectedMemberDetail.value.text) : "",
+const selectedMemberJsonDetail = computed(() => selectedMemberDetail.value.json ?? null);
+const stringValueDetail = computed(() =>
+  data.value?.key_type === "string" ? formatRedisMemberDetail(data.value.value) : null,
+);
+const stringJsonDetail = computed(() => stringValueDetail.value?.json ?? null);
+const redisJsonAppearance = computed(() => (isDark.value ? "dark" : "light"));
+const memberRawJsonHtml = computed(() =>
+  selectedMemberJsonDetail.value ? highlightRedisJson(selectedMemberJsonDetail.value.rawText) : "",
 );
 const hashGridStyle = computed(() => ({
   gridTemplateColumns: `${hashFieldWidth.value}px minmax(12rem, 1fr) 84px`,
@@ -89,6 +104,36 @@ type RedisMemberContext =
   | { kind: "hash"; field: string }
   | { kind: "zset"; member: string; score: number }
   | { kind: "stream"; field: string };
+
+function readRedisJsonWordWrap(): boolean {
+  try {
+    return localStorage.getItem(REDIS_JSON_WRAP_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function setRedisJsonWordWrap(value: boolean) {
+  redisJsonWordWrap.value = value;
+  try {
+    localStorage.setItem(REDIS_JSON_WRAP_STORAGE_KEY, value ? "true" : "false");
+  } catch {
+    // Ignore storage failures; the toggle still works for the current session.
+  }
+}
+
+function rawRedisValueText(value: unknown): string {
+  if (typeof value === "string") return value;
+  return String(value ?? "");
+}
+
+function highlightRedisJson(json: string): string {
+  return redisJsonHighlighter.value?.(json, redisJsonAppearance.value) ?? escapeHtml(json);
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 const deleteDetails = computed(() => {
   const pending = pendingDelete.value;
@@ -127,7 +172,9 @@ async function load(options: { selectDefaultMember?: boolean } = {}) {
     data.value = await api.redisGetValue(props.connectionId, props.db, props.keyRaw);
     scanCursor.value = data.value.scan_cursor ?? undefined;
     if (data.value.key_type === "string") {
-      editValue.value = formatRedisStringValue(data.value.value);
+      const detail = formatRedisMemberDetail(data.value.value);
+      editValue.value = detail.rawText;
+      stringValueView.value = detail.format === "json" ? "json" : "raw";
       clearSelectedMember();
     } else if (["list", "set", "zset", "hash"].includes(data.value.key_type)) {
       collectionItems.value = Array.isArray(data.value.value) ? [...data.value.value] : [];
@@ -202,12 +249,14 @@ function copyMember(value: unknown) {
 }
 
 function selectMember(title: string, value: unknown, context: RedisMemberContext) {
+  const detail = formatRedisMemberDetail(value);
   selectedMemberTitle.value = title;
   selectedMemberRaw.value = value;
   selectedMemberKey.value = getRedisMemberSelectionKey(title, value);
   selectedMemberContext.value = context;
   isEditingMember.value = false;
-  memberEditValue.value = formatRedisMemberDetail(value).text;
+  memberEditValue.value = detail.rawText;
+  memberValueView.value = detail.format === "json" ? "json" : "raw";
 }
 
 function clearSelectedMember() {
@@ -479,11 +528,22 @@ async function confirmDelete() {
 }
 
 function formatValue(val: any): string {
-  if (typeof val === "string") return formatRedisStringValue(val);
+  if (typeof val === "string") return formatRedisMemberDetail(val).text;
   return JSON.stringify(val, null, 2);
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  void createRedisShikiJsonHighlighter({
+    appearance: () => redisJsonAppearance.value,
+  })
+    .then((highlight) => {
+      redisJsonHighlighter.value = highlight;
+    })
+    .catch(() => {
+      redisJsonHighlighter.value = undefined;
+    });
+});
 onBeforeUnmount(() => {
   stopResizeMemberSheet();
   stopResizeHashColumns();
@@ -549,9 +609,55 @@ onBeforeUnmount(() => {
 
       <!-- String -->
       <div v-if="data.key_type === 'string'" class="flex-1 flex flex-col overflow-hidden">
+        <div v-if="stringJsonDetail" class="flex h-9 items-center gap-2 border-b px-4 text-xs shrink-0">
+          <div class="flex overflow-hidden rounded-md border bg-muted/20 p-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 rounded-[5px] px-2 text-xs"
+              :class="{ 'bg-background shadow-sm': stringValueView === 'json' }"
+              @click="stringValueView = 'json'"
+            >
+              <Braces class="h-3.5 w-3.5" />
+              {{ t("redis.jsonView") }}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 rounded-[5px] px-2 text-xs"
+              :class="{ 'bg-background shadow-sm': stringValueView === 'raw' }"
+              @click="stringValueView = 'raw'"
+            >
+              <FileText class="h-3.5 w-3.5" />
+              {{ t("redis.rawContent") }}
+            </Button>
+          </div>
+          <span class="flex-1" />
+          <label class="flex items-center gap-1.5 text-muted-foreground">
+            <WrapText class="h-3.5 w-3.5" />
+            {{ t("redis.wordWrap") }}
+            <Switch
+              size="sm"
+              :model-value="redisJsonWordWrap"
+              @update:model-value="setRedisJsonWordWrap(Boolean($event))"
+            />
+          </label>
+        </div>
+        <div
+          v-if="stringJsonDetail && stringValueView === 'json'"
+          class="min-h-0 flex-1 overflow-auto bg-background p-4 font-mono text-sm leading-6"
+        >
+          <RedisJsonTree
+            :value="stringJsonDetail.value"
+            :word-wrap="redisJsonWordWrap"
+            :highlight-json="highlightRedisJson"
+          />
+        </div>
         <textarea
+          v-else
           v-model="editValue"
           class="flex-1 p-4 font-mono text-sm bg-background resize-none outline-none"
+          :class="{ 'whitespace-pre': stringJsonDetail && !redisJsonWordWrap }"
           :readonly="isBinaryStringValue"
           @input="handleStringInput"
         />
@@ -564,7 +670,7 @@ onBeforeUnmount(() => {
             size="sm"
             @click="
               isEditing = false;
-              editValue = formatRedisStringValue(data.value);
+              editValue = rawRedisValueText(data.value);
             "
             >{{ t("grid.discard") }}</Button
           >
@@ -921,11 +1027,58 @@ onBeforeUnmount(() => {
           class="min-h-0 flex-1 resize-none bg-background p-5 font-mono text-[13px] leading-6 outline-none"
           spellcheck="false"
         />
-        <pre
-          v-else-if="selectedMemberDetail.format === 'json'"
-          class="json-viewer min-h-0 flex-1 overflow-auto bg-background p-5 font-mono text-[13px] leading-6"
-          v-html="selectedMemberJsonHtml"
-        />
+        <template v-else-if="selectedMemberJsonDetail">
+          <div class="flex h-9 items-center gap-2 border-b px-5 text-xs">
+            <div class="flex overflow-hidden rounded-md border bg-muted/20 p-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 rounded-[5px] px-2 text-xs"
+                :class="{ 'bg-background shadow-sm': memberValueView === 'json' }"
+                @click="memberValueView = 'json'"
+              >
+                <Braces class="h-3.5 w-3.5" />
+                {{ t("redis.jsonView") }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 rounded-[5px] px-2 text-xs"
+                :class="{ 'bg-background shadow-sm': memberValueView === 'raw' }"
+                @click="memberValueView = 'raw'"
+              >
+                <FileText class="h-3.5 w-3.5" />
+                {{ t("redis.rawContent") }}
+              </Button>
+            </div>
+            <span class="flex-1" />
+            <label class="flex items-center gap-1.5 text-muted-foreground">
+              <WrapText class="h-3.5 w-3.5" />
+              {{ t("redis.wordWrap") }}
+              <Switch
+                size="sm"
+                :model-value="redisJsonWordWrap"
+                @update:model-value="setRedisJsonWordWrap(Boolean($event))"
+              />
+            </label>
+          </div>
+          <div
+            v-if="memberValueView === 'json'"
+            class="min-h-0 flex-1 overflow-auto bg-background p-5 font-mono text-[13px] leading-6"
+          >
+            <RedisJsonTree
+              :value="selectedMemberJsonDetail.value"
+              :word-wrap="redisJsonWordWrap"
+              :highlight-json="highlightRedisJson"
+            />
+          </div>
+          <pre
+            v-else
+            class="min-h-0 flex-1 overflow-auto bg-background p-5 font-mono text-[13px] leading-6"
+            :class="redisJsonWordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
+            v-html="memberRawJsonHtml"
+          ></pre>
+        </template>
         <pre
           v-else
           class="min-h-0 flex-1 overflow-auto bg-background p-5 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words"
@@ -955,54 +1108,3 @@ onBeforeUnmount(() => {
     </Sheet>
   </div>
 </template>
-
-<style scoped>
-.json-viewer {
-  tab-size: 2;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-:deep(.json-key) {
-  color: #7c3aed;
-  font-weight: 600;
-}
-
-:deep(.json-string) {
-  color: #15803d;
-}
-
-:deep(.json-number) {
-  color: #b45309;
-}
-
-:deep(.json-boolean) {
-  color: #2563eb;
-  font-weight: 600;
-}
-
-:deep(.json-null) {
-  color: #64748b;
-  font-style: italic;
-}
-
-:global(.dark) :deep(.json-key) {
-  color: #c4b5fd;
-}
-
-:global(.dark) :deep(.json-string) {
-  color: #86efac;
-}
-
-:global(.dark) :deep(.json-number) {
-  color: #fbbf24;
-}
-
-:global(.dark) :deep(.json-boolean) {
-  color: #93c5fd;
-}
-
-:global(.dark) :deep(.json-null) {
-  color: #94a3b8;
-}
-</style>

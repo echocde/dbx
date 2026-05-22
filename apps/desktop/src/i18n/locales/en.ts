@@ -942,6 +942,9 @@ export default {
     copyMember: "Copy member",
     copied: "Copied",
     editMember: "Edit",
+    jsonView: "JSON view",
+    rawContent: "Raw content",
+    wordWrap: "Word wrap",
   },
   mongo: {
     documents: "{count} documents",
