@@ -23,6 +23,7 @@ pub mod sql_analysis;
 pub mod sql_editability;
 pub mod storage;
 pub mod table_import;
+pub mod text_export;
 pub mod transfer;
 pub mod types;
 pub mod update;

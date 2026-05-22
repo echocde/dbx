@@ -709,6 +709,17 @@ export async function exportQueryResultCsv(
   URL.revokeObjectURL(url);
 }
 
+function downloadTextFile(filePath: string, fallbackFileName: string, content: string, mimeType: string): void {
+  const fileName = filePath.split(/[\\/]/).pop() || fallbackFileName;
+  const blob = new Blob(["\uFEFF", content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function exportQueryResultXlsx(
   filePath: string,
   sheetName: string | undefined,
@@ -731,6 +742,24 @@ export async function exportQueryResultXlsx(
   a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export async function exportQueryResultJson(
+  filePath: string,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  const result = await post<{ content: string }>("/api/export/query-result-json", { columns, rows });
+  downloadTextFile(filePath, "export.json", result.content, "application/json;charset=utf-8");
+}
+
+export async function exportQueryResultMarkdown(
+  filePath: string,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  const result = await post<{ content: string }>("/api/export/query-result-markdown", { columns, rows });
+  downloadTextFile(filePath, "export.md", result.content, "text/markdown;charset=utf-8");
 }
 
 // ---------------------------------------------------------------------------

@@ -128,6 +128,8 @@ async fn main() {
         .route("/query/prepare-data-grid-save", post(routes::query::prepare_data_grid_save))
         .route("/query/cancel", post(routes::query::cancel_query))
         .route("/query/close-session", post(routes::query::close_query_session))
+        .route("/export/query-result-json", post(routes::text_export::export_query_result_json))
+        .route("/export/query-result-markdown", post(routes::text_export::export_query_result_markdown))
         // Redis
         .route("/redis/list-databases", post(routes::redis::list_databases))
         .route("/redis/scan-keys", post(routes::redis::scan_keys))

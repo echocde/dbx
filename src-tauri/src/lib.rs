@@ -341,6 +341,8 @@ pub fn run() {
             commands::database_export::cancel_database_export,
             commands::csv_export::export_query_result_csv,
             commands::xlsx_export::export_query_result_xlsx,
+            commands::text_export::export_query_result_json,
+            commands::text_export::export_query_result_markdown,
             commands::agents::list_installed_agents,
             commands::agents::list_installed_agents_local,
             commands::agents::install_agent,

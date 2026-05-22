@@ -92,7 +92,7 @@ import {
   treeNodeRowAction,
   treeNodeRowDoubleClickAction,
 } from "@/lib/treeNodeClick";
-import { formatJson, formatSqlInsert } from "@/lib/exportFormats";
+import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
 import {
   buildCreateDatabaseSql,
@@ -1199,33 +1199,6 @@ async function saveFileContent(content: string, defaultFileName: string, filterN
   }
 }
 
-async function saveBinaryFileContent(
-  content: Uint8Array,
-  defaultFileName: string,
-  filterName: string,
-  filterExt: string,
-) {
-  if (isTauriRuntime()) {
-    const { save } = await import("@tauri-apps/plugin-dialog");
-    const { writeFile } = await import("@tauri-apps/plugin-fs");
-    const path = await save({
-      defaultPath: defaultFileName,
-      filters: [{ name: filterName, extensions: [filterExt] }],
-    });
-    if (path) await writeFile(path, content);
-  } else {
-    const blob = new Blob([content], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = defaultFileName;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-}
-
 async function exportStructure() {
   const node = props.node;
   if (!node.connectionId || !node.database) return;
@@ -1282,18 +1255,24 @@ async function exportData(format: "csv" | "json" | "sql") {
       return;
     }
 
-    let content: string;
-    let ext: string;
-
     if (format === "json") {
-      ext = "json";
-      content = formatJson(result.columns, result.rows);
-    } else {
-      ext = "sql";
-      content = formatSqlInsert(qualifiedName, result.columns, result.rows, quoteIdent);
+      let outputPath = `${node.label}.json`;
+      if (isTauriRuntime()) {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const path = await save({
+          defaultPath: outputPath,
+          filters: [{ name: "JSON", extensions: ["json"] }],
+        });
+        if (!path) return;
+        outputPath = path as string;
+      }
+      await api.exportQueryResultJson(outputPath, result.columns, result.rows);
+      toast(t("grid.exported"));
+      return;
     }
 
-    await saveFileContent(content, `${node.label}.${ext}`, ext.toUpperCase(), ext);
+    const content = formatSqlInsert(qualifiedName, result.columns, result.rows, quoteIdent);
+    await saveFileContent(content, `${node.label}.sql`, "SQL", "sql");
     toast(t("grid.exported"));
   } catch (e: any) {
     toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);

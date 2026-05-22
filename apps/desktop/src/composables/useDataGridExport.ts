@@ -1,7 +1,6 @@
 import { computed, type ComputedRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
-import { formatJson } from "@/lib/exportFormats";
 import * as api from "@/lib/api";
 import {
   formatSelectionAsCsv,
@@ -238,35 +237,6 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     await copyText(`${header}\n${body}`);
   }
 
-  // --- File save helpers ---
-  async function saveFileContent(
-    content: string,
-    defaultFileName: string,
-    filterName: string,
-    filterExt: string,
-  ): Promise<boolean> {
-    if (isTauriRuntime()) {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
-      const path = await save({
-        defaultPath: defaultFileName,
-        filters: [{ name: filterName, extensions: [filterExt] }],
-      });
-      if (!path) return false;
-      await writeTextFile(path, "﻿" + content);
-      return true;
-    } else {
-      const blob = new Blob(["﻿", content], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = defaultFileName;
-      a.click();
-      URL.revokeObjectURL(url);
-      return true;
-    }
-  }
-
   // --- Export functions ---
   async function runExclusiveExport(action: () => Promise<void>) {
     const finish = tryStartExclusiveActivation(exportGuard);
@@ -303,10 +273,22 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportJson(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
-        const rows = rowsToExport(rowIds).map((item) => item.data);
-        if (await saveFileContent(formatJson(columns.value, rows), "export.json", "JSON", "json")) {
-          toast(t("grid.exported"));
+        let outputPath = "export.json";
+        if (isTauriRuntime()) {
+          const { save } = await import("@tauri-apps/plugin-dialog");
+          const path = await save({
+            defaultPath: outputPath,
+            filters: [{ name: "JSON", extensions: ["json"] }],
+          });
+          if (!path) return;
+          outputPath = path as string;
         }
+        await api.exportQueryResultJson(
+          outputPath,
+          columns.value,
+          rowsToExport(rowIds).map((item) => item.data),
+        );
+        toast(t("grid.exported"));
       } catch (e: any) {
         toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
       }
@@ -316,13 +298,22 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportMarkdown(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
-        const cols = columns.value;
-        const visibleRows = rowsToExport(rowIds).map((item) => item.data);
-        const { formatMarkdownTable } = await import("@/lib/markdownTable");
-        const md = formatMarkdownTable({ columns: cols, rows: visibleRows });
-        if (await saveFileContent(md, "export.md", "Markdown", "md")) {
-          toast(t("grid.exported"));
+        let outputPath = "export.md";
+        if (isTauriRuntime()) {
+          const { save } = await import("@tauri-apps/plugin-dialog");
+          const path = await save({
+            defaultPath: outputPath,
+            filters: [{ name: "Markdown", extensions: ["md"] }],
+          });
+          if (!path) return;
+          outputPath = path as string;
         }
+        await api.exportQueryResultMarkdown(
+          outputPath,
+          columns.value,
+          rowsToExport(rowIds).map((item) => item.data),
+        );
+        toast(t("grid.exported"));
       } catch (e: any) {
         toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
       }

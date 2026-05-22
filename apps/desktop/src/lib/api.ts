@@ -132,6 +132,8 @@ export const exportDatabaseSql = forward("exportDatabaseSql");
 export const cancelDatabaseExport = forward("cancelDatabaseExport");
 export const exportQueryResultCsv = forward("exportQueryResultCsv");
 export const exportQueryResultXlsx = forward("exportQueryResultXlsx");
+export const exportQueryResultJson = forward("exportQueryResultJson");
+export const exportQueryResultMarkdown = forward("exportQueryResultMarkdown");
 
 // Redis
 export const redisListDatabases = forward("redisListDatabases");

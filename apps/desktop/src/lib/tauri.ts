@@ -1023,3 +1023,31 @@ export async function exportQueryResultXlsx(
     },
   });
 }
+
+export async function exportQueryResultJson(
+  filePath: string,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  return invoke("export_query_result_json", {
+    request: {
+      filePath,
+      columns,
+      rows,
+    },
+  });
+}
+
+export async function exportQueryResultMarkdown(
+  filePath: string,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  return invoke("export_query_result_markdown", {
+    request: {
+      filePath,
+      columns,
+      rows,
+    },
+  });
+}

@@ -7,17 +7,6 @@ export function formatCsv(columns: string[], rows: ExportCellValue[][]): string 
   return `${header}\n${body}`;
 }
 
-export function formatJson(columns: string[], rows: ExportCellValue[][]): string {
-  const data = rows.map((row) => {
-    const obj: Record<string, unknown> = {};
-    columns.forEach((col, i) => {
-      obj[col] = row[i];
-    });
-    return obj;
-  });
-  return JSON.stringify(data, null, 2);
-}
-
 export function formatSqlInsert(
   qualifiedName: string,
   columns: string[],
