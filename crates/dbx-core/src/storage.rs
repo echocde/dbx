@@ -340,6 +340,24 @@ impl Storage {
                 .unwrap_or_else(|| DesktopSettings::default().show_tray_icon),
         })
     }
+
+    pub async fn save_pinned_tree_node_ids(&self, ids: &[String]) -> Result<(), String> {
+        let mut settings = self.load_app_settings_json().await?;
+        let values = ids.iter().map(|id| serde_json::Value::String(id.clone())).collect::<Vec<serde_json::Value>>();
+        settings.insert("pinned_tree_node_ids".to_string(), serde_json::Value::Array(values));
+        self.save_app_settings_json(&settings).await
+    }
+
+    pub async fn load_pinned_tree_node_ids(&self) -> Result<Vec<String>, String> {
+        let settings = self.load_app_settings_json().await?;
+        let Some(value) = settings.get("pinned_tree_node_ids") else {
+            return Ok(Vec::new());
+        };
+        let Some(array) = value.as_array() else {
+            return Ok(Vec::new());
+        };
+        Ok(array.iter().filter_map(|item| item.as_str().map(|value| value.to_string())).collect())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1040,5 +1058,28 @@ mod tests {
 
         assert_eq!(storage.load_password_hash().await.unwrap(), Some("hash-2".to_string()));
         assert_eq!(storage.load_desktop_settings().await.unwrap(), DesktopSettings { show_tray_icon: false });
+    }
+
+    #[tokio::test]
+    async fn pinned_tree_node_ids_default_to_empty() {
+        let path = temp_db_path("pinned-tree-default");
+        let storage = Storage::open(&path).await.unwrap();
+
+        assert_eq!(storage.load_pinned_tree_node_ids().await.unwrap(), Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn pinned_tree_node_ids_roundtrip_and_preserve_password_hash() {
+        let path = temp_db_path("pinned-tree-roundtrip");
+        let storage = Storage::open(&path).await.unwrap();
+
+        storage.save_password_hash("hash-3").await.unwrap();
+        storage.save_pinned_tree_node_ids(&["conn-1".to_string(), "conn-1:db:main".to_string()]).await.unwrap();
+
+        assert_eq!(
+            storage.load_pinned_tree_node_ids().await.unwrap(),
+            vec!["conn-1".to_string(), "conn-1:db:main".to_string()]
+        );
+        assert_eq!(storage.load_password_hash().await.unwrap(), Some("hash-3".to_string()));
     }
 }

@@ -130,6 +130,14 @@ export async function saveDesktopSettings(settings: DesktopSettings): Promise<vo
   return invoke("save_desktop_settings", { settings });
 }
 
+export async function loadPinnedTreeNodeIds(): Promise<string[]> {
+  return invoke("load_pinned_tree_node_ids");
+}
+
+export async function savePinnedTreeNodeIds(ids: string[]): Promise<void> {
+  return invoke("save_pinned_tree_node_ids", { ids });
+}
+
 export async function listSystemFonts(): Promise<string[]> {
   return invoke("list_system_fonts");
 }

@@ -38,6 +38,7 @@ import {
   treeNodeSchemaCachePrefix,
 } from "@/lib/treeNodeContext";
 import { decodeSchemaTreeCache, encodeSchemaTreeCache } from "@/lib/schemaTreeCache";
+import { prunePinnedTreeNodeIdsForConnection } from "@/lib/pinnedTreeNodeIds";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
@@ -71,7 +72,7 @@ export const useConnectionStore = defineStore("connection", () => {
     else localStorage.removeItem("dbx-active-connection");
   });
   const treeNodes = ref<TreeNode[]>([]);
-  const pinnedTreeNodeIds = ref<Set<string>>(loadPinnedTreeNodeIds());
+  const pinnedTreeNodeIds = ref<Set<string>>(new Set());
   const connectedIds = ref<Set<string>>(new Set());
   const loadedTreeNodeChildrenIds = ref<Set<string>>(new Set());
   const connectionErrors = ref<Record<string, string>>({});
@@ -247,7 +248,7 @@ export const useConnectionStore = defineStore("connection", () => {
     };
   }
 
-  function loadPinnedTreeNodeIds(): Set<string> {
+  function loadPinnedTreeNodeIdsFromLocalStorage(): Set<string> {
     try {
       if (typeof localStorage === "undefined") return new Set();
       const saved = localStorage.getItem(PINNED_TREE_NODES_STORAGE_KEY);
@@ -258,7 +259,28 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
+  async function loadPinnedTreeNodeIds(): Promise<Set<string>> {
+    if (!isDesktop) return loadPinnedTreeNodeIdsFromLocalStorage();
+    const ids = await api.loadPinnedTreeNodeIds().catch(() => []);
+    const valid = ids.filter((id) => typeof id === "string");
+    if (valid.length > 0) return new Set(valid);
+
+    // Migrate legacy localStorage values for existing desktop users.
+    const legacy = loadPinnedTreeNodeIdsFromLocalStorage();
+    if (legacy.size > 0) {
+      await api.savePinnedTreeNodeIds([...legacy]).catch(() => undefined);
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem(PINNED_TREE_NODES_STORAGE_KEY);
+      }
+    }
+    return legacy;
+  }
+
   function persistPinnedTreeNodeIds() {
+    if (isDesktop) {
+      void api.savePinnedTreeNodeIds([...pinnedTreeNodeIds.value]).catch(() => undefined);
+      return;
+    }
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(PINNED_TREE_NODES_STORAGE_KEY, JSON.stringify([...pinnedTreeNodeIds.value]));
   }
@@ -477,6 +499,8 @@ export const useConnectionStore = defineStore("connection", () => {
     const nextConnections = connections.value.filter((c) => c.id !== id);
     await persistConnections(nextConnections);
     connections.value = nextConnections;
+    pinnedTreeNodeIds.value = prunePinnedTreeNodeIdsForConnection(pinnedTreeNodeIds.value, id);
+    persistPinnedTreeNodeIds();
     clearConnectionError(id);
     sidebarLayout.value = removeConnectionFromSidebarLayout(sidebarLayout.value, id);
     rebuildTreeNodes();
@@ -1666,6 +1690,7 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function initFromDisk() {
+    pinnedTreeNodeIds.value = await loadPinnedTreeNodeIds();
     const saved = await api.loadConnections();
     connections.value = saved.map(normalizeConnection);
     const savedLayout = await api.loadSidebarLayout();

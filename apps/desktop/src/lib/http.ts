@@ -480,6 +480,14 @@ export async function saveDesktopSettings(_settings: DesktopSettings): Promise<v
   return;
 }
 
+export async function loadPinnedTreeNodeIds(): Promise<string[]> {
+  return get("/api/app-settings/pinned-tree-node-ids");
+}
+
+export async function savePinnedTreeNodeIds(_ids: string[]): Promise<void> {
+  return post("/api/app-settings/pinned-tree-node-ids", { ids: _ids });
+}
+
 // --- AI Conversations ---
 
 export async function saveAiConversation(conversation: AiConversation): Promise<void> {

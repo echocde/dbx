@@ -23,3 +23,13 @@ pub async fn save_desktop_settings(
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn load_pinned_tree_node_ids(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    state.storage.load_pinned_tree_node_ids().await
+}
+
+#[tauri::command]
+pub async fn save_pinned_tree_node_ids(state: State<'_, Arc<AppState>>, ids: Vec<String>) -> Result<(), String> {
+    state.storage.save_pinned_tree_node_ids(&ids).await
+}

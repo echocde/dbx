@@ -195,6 +195,11 @@ async fn main() {
         .route("/update/check", get(routes::update::check_for_updates))
         // Layout
         .route("/layout/sidebar", post(routes::layout::save_sidebar_layout).get(routes::layout::load_sidebar_layout))
+        // App settings
+        .route(
+            "/app-settings/pinned-tree-node-ids",
+            get(routes::app_settings::load_pinned_tree_node_ids).post(routes::app_settings::save_pinned_tree_node_ids),
+        )
         .layer(middleware::from_fn_with_state(web_state.clone(), auth::auth_middleware))
         .with_state(web_state.clone());
 
