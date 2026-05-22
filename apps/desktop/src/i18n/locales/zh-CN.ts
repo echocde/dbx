@@ -204,6 +204,8 @@ export default {
   editor: {
     pressToExecute: "按 {mod}+Enter 执行查询",
     pressToSaveSql: "按 {mod}+S 保存 SQL",
+    showResultsPane: "显示结果",
+    hideResultsPane: "收起结果",
     noDatabase: "未选择数据库",
     selectConnection: "选择连接",
     searchConnection: "搜索连接...",

@@ -201,6 +201,8 @@ export default {
   editor: {
     pressToExecute: "Presiona {mod}+Enter para ejecutar",
     pressToSaveSql: "Presiona {mod}+S para guardar el SQL",
+    showResultsPane: "Mostrar resultados",
+    hideResultsPane: "Ocultar resultados",
     noDatabase: "Sin base de datos seleccionada",
     selectConnection: "Seleccionar conexión",
     searchConnection: "Buscar conexiones...",

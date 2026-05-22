@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, defineAsyncComponent } from "vue";
+import { computed, ref, defineAsyncComponent, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Check,
@@ -12,6 +12,8 @@ import {
   GitBranch,
   BarChart3,
   TableProperties,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-vue-next";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
@@ -133,6 +135,37 @@ const activeQueryError = computed(() => {
   if (!result?.columns.includes("Error")) return "";
   return String(result.rows[0]?.[0] ?? "");
 });
+const hasQueryOutput = computed(
+  () =>
+    !!props.activeTab.result ||
+    !!props.activeTab.explainPlan ||
+    !!props.activeTab.explainError ||
+    props.activeTab.isExecuting === true ||
+    props.activeTab.isExplaining === true,
+);
+const resultsPaneOpen = ref(false);
+
+watch(
+  hasQueryOutput,
+  (hasOutput) => {
+    resultsPaneOpen.value = hasOutput ? true : false;
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.activeTab.id,
+  () => {
+    resultsPaneOpen.value = hasQueryOutput.value;
+  },
+);
+
+watch(
+  () => [props.activeTab.isExecuting, props.activeTab.isExplaining],
+  ([isExecuting, isExplaining]) => {
+    if (isExecuting || isExplaining) resultsPaneOpen.value = true;
+  },
+);
 
 // Column info panel handlers
 async function onHandleClickColumn(
@@ -228,7 +261,7 @@ defineExpose({ focusSearch, refreshData });
     <!-- Query mode: editor + results -->
     <template v-if="activeTab.mode === 'query'">
       <Splitpanes horizontal class="flex-1">
-        <Pane :size="40" :min-size="15">
+        <Pane :size="resultsPaneOpen ? 40 : 100" :min-size="resultsPaneOpen ? 15 : 100">
           <div class="h-full flex flex-col relative">
             <QueryEditor
               ref="queryEditorRef"
@@ -257,18 +290,22 @@ defineExpose({ focusSearch, refreshData });
               :error="columnInfoError"
               @close="closeColumnInfo"
             />
+            <Button
+              v-if="hasQueryOutput && !resultsPaneOpen"
+              variant="secondary"
+              size="sm"
+              class="absolute bottom-3 right-3 z-20 h-7 gap-1.5 rounded-full border bg-background/95 px-3 text-xs shadow-lg backdrop-blur hover:bg-accent"
+              @click="resultsPaneOpen = true"
+            >
+              <ChevronUp class="h-3.5 w-3.5" />
+              {{ t("editor.showResultsPane") }}
+            </Button>
           </div>
         </Pane>
-        <Pane :size="60" :min-size="20">
+        <Pane v-if="resultsPaneOpen" :size="60" :min-size="20">
           <div class="h-full flex flex-col">
             <div
-              v-if="
-                activeTab.result ||
-                activeTab.explainPlan ||
-                activeTab.explainError ||
-                activeTab.isExecuting ||
-                activeTab.isExplaining
-              "
+              v-if="hasQueryOutput"
               class="h-8 shrink-0 border-b bg-muted/20 px-2 flex items-center gap-1 overflow-x-auto"
               style="scrollbar-width: none; -ms-overflow-style: none; -webkit-overflow-scrolling: touch"
             >
@@ -313,6 +350,15 @@ defineExpose({ focusSearch, refreshData });
               >
                 <BarChart3 class="h-3.5 w-3.5" />
                 {{ t("chart.title") }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="ml-auto h-6 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                @click="resultsPaneOpen = false"
+              >
+                <ChevronDown class="h-3.5 w-3.5" />
+                {{ t("editor.hideResultsPane") }}
               </Button>
             </div>
 
