@@ -413,7 +413,7 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
 
 function onKeydown(event: KeyboardEvent) {
   if (!isSelected.value || isEditableShortcutTarget(event.target)) return;
-  const action = sidebarSelectionCopyAction(event, settingsStore.editorSettings.sidebarActivation);
+  const action = sidebarSelectionCopyAction(event);
   if (action !== "copy-name") return;
   event.preventDefault();
   event.stopPropagation();
