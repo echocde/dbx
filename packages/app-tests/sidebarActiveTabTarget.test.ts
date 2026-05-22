@@ -4,6 +4,7 @@ import {
   activeTabSidebarTarget,
   findSidebarNodeForActiveTab,
   scrollTopForSidebarNode,
+  shouldScrollActiveSidebarSelection,
 } from "../../apps/desktop/src/lib/sidebarActiveTabTarget.ts";
 import type { FlatTreeNode } from "../../apps/desktop/src/composables/useFlatTree.ts";
 import type { QueryTab, TreeNode } from "../../apps/desktop/src/types/database.ts";
@@ -121,4 +122,34 @@ test("sidebar node scrolling keeps visible rows in place and reveals hidden rows
   assert.equal(scrollTopForSidebarNode({ index: 2, currentScrollTop: 0, viewportHeight: 140 }), 0);
   assert.equal(scrollTopForSidebarNode({ index: 20, currentScrollTop: 0, viewportHeight: 140 }), 448);
   assert.equal(scrollTopForSidebarNode({ index: 1, currentScrollTop: 280, viewportHeight: 140 }), 28);
+});
+
+test("active sidebar selection only scrolls on tab or setting changes", () => {
+  assert.equal(
+    shouldScrollActiveSidebarSelection({
+      activeTabId: "tab-1",
+      previousActiveTabId: "tab-1",
+      autoSelectEnabled: true,
+      previousAutoSelectEnabled: true,
+    }),
+    false,
+  );
+  assert.equal(
+    shouldScrollActiveSidebarSelection({
+      activeTabId: "tab-2",
+      previousActiveTabId: "tab-1",
+      autoSelectEnabled: true,
+      previousAutoSelectEnabled: true,
+    }),
+    true,
+  );
+  assert.equal(
+    shouldScrollActiveSidebarSelection({
+      activeTabId: "tab-1",
+      previousActiveTabId: "tab-1",
+      autoSelectEnabled: true,
+      previousAutoSelectEnabled: false,
+    }),
+    true,
+  );
 });

@@ -8,7 +8,11 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import type { TreeNode, TreeNodeType } from "@/types/database";
 import { filterSidebarTree } from "@/lib/sidebarSearchTree";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
-import { findSidebarNodeForActiveTab, scrollTopForSidebarNode } from "@/lib/sidebarActiveTabTarget";
+import {
+  findSidebarNodeForActiveTab,
+  scrollTopForSidebarNode,
+  shouldScrollActiveSidebarSelection,
+} from "@/lib/sidebarActiveTabTarget";
 import {
   SIDEBAR_TREE_ROW_HEIGHT,
   SIDEBAR_TREE_PRERENDER_COUNT,
@@ -173,12 +177,14 @@ function currentTreeScroller(): HTMLElement | null {
   );
 }
 
-async function selectActiveTabSidebarNode() {
+async function selectActiveTabSidebarNode(options: { scroll: boolean }) {
   if (!settingsStore.editorSettings.autoSelectActiveSidebarNode) return;
   const match = findSidebarNodeForActiveTab(activeTab.value, flatNodes.value);
   if (!match) return;
 
   store.selectedTreeNodeId = match.id;
+  if (!options.scroll) return;
+
   await nextTick();
 
   const index = flatNodes.value.findIndex((item) => item.id === match.id);
@@ -196,9 +202,16 @@ async function selectActiveTabSidebarNode() {
 }
 
 watch(
-  [activeTab, flatNodes, () => settingsStore.editorSettings.autoSelectActiveSidebarNode],
-  () => {
-    void selectActiveTabSidebarNode();
+  [() => activeTab.value?.id ?? null, flatNodes, () => settingsStore.editorSettings.autoSelectActiveSidebarNode],
+  ([activeTabId, _nodes, autoSelectEnabled], [previousActiveTabId, _previousNodes, previousAutoSelectEnabled]) => {
+    void selectActiveTabSidebarNode({
+      scroll: shouldScrollActiveSidebarSelection({
+        activeTabId,
+        previousActiveTabId,
+        autoSelectEnabled,
+        previousAutoSelectEnabled,
+      }),
+    });
   },
   { flush: "post" },
 );

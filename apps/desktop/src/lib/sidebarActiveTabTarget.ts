@@ -90,6 +90,19 @@ export function findSidebarNodeForActiveTab(
   return flatNodes.find((item) => matchesTarget(item.node, target)) ?? null;
 }
 
+export function shouldScrollActiveSidebarSelection(options: {
+  activeTabId: string | null | undefined;
+  previousActiveTabId: string | null | undefined;
+  autoSelectEnabled: boolean;
+  previousAutoSelectEnabled: boolean | undefined;
+}): boolean {
+  if (!options.autoSelectEnabled) return false;
+  return (
+    options.activeTabId !== options.previousActiveTabId ||
+    (options.autoSelectEnabled && options.previousAutoSelectEnabled === false)
+  );
+}
+
 export function scrollTopForSidebarNode(options: {
   index: number;
   currentScrollTop: number;
