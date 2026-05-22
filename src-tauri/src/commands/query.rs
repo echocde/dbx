@@ -159,3 +159,10 @@ pub async fn analyze_sql_references(
 pub fn analyze_editable_query_editability(sql: String) -> Result<dbx_core::sql_editability::QueryEditability, String> {
     Ok(dbx_core::sql_editability::analyze_editable_query_editability(&sql))
 }
+
+#[tauri::command]
+pub fn prepare_data_grid_save(
+    options: dbx_core::data_grid_sql::DataGridSaveStatementOptions,
+) -> Result<dbx_core::data_grid_sql::DataGridSavePreparation, String> {
+    Ok(dbx_core::data_grid_sql::prepare_data_grid_save(options))
+}

@@ -88,6 +88,7 @@ export const cancelQuery = forward("cancelQuery");
 export const closeQuerySession = forward("closeQuerySession");
 export const analyzeSqlReferences = forward("analyzeSqlReferences");
 export const analyzeEditableQueryEditability = forward("analyzeEditableQueryEditability");
+export const prepareDataGridSave = forward("prepareDataGridSave");
 
 // AI
 export const aiComplete = forward("aiComplete");

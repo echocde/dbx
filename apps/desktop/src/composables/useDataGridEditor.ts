@@ -1,12 +1,6 @@
 import { ref, computed, nextTick, watch, onBeforeUnmount, type ComputedRef, type Ref } from "vue";
 import * as api from "@/lib/api";
-import {
-  buildDataGridRollbackStatements,
-  buildDataGridSaveStatements,
-  dataGridSaveExecutionSchema,
-  normalizeDataGridSaveError,
-  validateDataGridSave,
-} from "@/lib/dataGridSql";
+import { normalizeDataGridSaveError } from "@/lib/dataGridSql";
 import { rowStatusFilterAfterAddingRow, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { supportsDataGridTransaction } from "@/lib/tableEditing";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -636,30 +630,28 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     }
 
     const stmtOptions = saveStatementOptions();
-    const validationError = stmtOptions
-      ? validateDataGridSave({
-          databaseType: databaseType.value,
-          tableMeta: tableMeta.value,
-          columns: stmtOptions.columns,
-          sourceColumns: stmtOptions.sourceColumns,
-          rows: stmtOptions.rows,
-          columnInfo: tableMeta.value?.columns,
-          dirtyRows: stmtOptions.dirtyRows,
-          newRows: stmtOptions.newRows,
-        })
-      : undefined;
-    if (validationError) {
-      saveError.value = validationError;
+    let preparedSave: Awaited<ReturnType<typeof api.prepareDataGridSave>> | undefined;
+    if (stmtOptions) {
+      try {
+        preparedSave = await api.prepareDataGridSave(stmtOptions);
+      } catch (e: any) {
+        saveError.value = normalizeDataGridSaveError(databaseType.value, e);
+        isSaving.value = false;
+        return;
+      }
+    }
+    if (preparedSave?.validationError) {
+      saveError.value = preparedSave.validationError;
       isSaving.value = false;
       return;
     }
 
-    const stmts = stmtOptions ? buildDataGridSaveStatements(stmtOptions) : [];
+    const stmts = preparedSave?.statements ?? [];
     if (stmts.length === 0) {
       isSaving.value = false;
       return;
     }
-    const rollbackStmts = stmtOptions ? buildDataGridRollbackStatements(stmtOptions) : [];
+    const rollbackStmts = preparedSave?.rollbackStatements ?? [];
     const start = Date.now();
     let apiResult: { affected_rows?: number } | undefined;
     console.info("[DBX][dataGrid:save-statements]", {
@@ -677,7 +669,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
           connectionId.value,
           database.value,
           stmts,
-          dataGridSaveExecutionSchema(databaseType.value, tableMeta.value),
+          preparedSave?.executionSchema,
         );
       } catch (e: any) {
         saveError.value = normalizeDataGridSaveError(databaseType.value, e);

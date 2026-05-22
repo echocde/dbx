@@ -57,6 +57,12 @@ pub struct AnalyzeEditableQueryRequest {
     pub sql: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareDataGridSaveRequest {
+    pub options: dbx_core::data_grid_sql::DataGridSaveStatementOptions,
+}
+
 pub async fn execute_query(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ExecuteQueryRequest>,
@@ -198,4 +204,10 @@ pub async fn analyze_editable_query_editability(
     Json(req): Json<AnalyzeEditableQueryRequest>,
 ) -> Json<dbx_core::sql_editability::QueryEditability> {
     Json(dbx_core::sql_editability::analyze_editable_query_editability(&req.sql))
+}
+
+pub async fn prepare_data_grid_save(
+    Json(req): Json<PrepareDataGridSaveRequest>,
+) -> Json<dbx_core::data_grid_sql::DataGridSavePreparation> {
+    Json(dbx_core::data_grid_sql::prepare_data_grid_save(req.options))
 }

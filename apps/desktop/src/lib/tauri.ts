@@ -22,6 +22,7 @@ import type {
 } from "@/types/database";
 import type { AiConfig } from "@/stores/settingsStore";
 import type { QueryEditability } from "@/lib/sqlAnalysis";
+import type { DataGridSaveStatementOptions } from "@/lib/dataGridSql";
 
 export interface AgentDriverInfo {
   db_type: string;
@@ -315,6 +316,17 @@ export async function analyzeSqlReferences(sql: string, dialect?: string): Promi
 
 export async function analyzeEditableQueryEditability(sql: string): Promise<QueryEditability> {
   return invoke("analyze_editable_query_editability", { sql });
+}
+
+export interface DataGridSavePreparation {
+  validationError?: string;
+  statements: string[];
+  rollbackStatements: string[];
+  executionSchema?: string;
+}
+
+export async function prepareDataGridSave(options: DataGridSaveStatementOptions): Promise<DataGridSavePreparation> {
+  return invoke("prepare_data_grid_save", { options });
 }
 
 export async function listIndexes(

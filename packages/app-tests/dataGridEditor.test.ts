@@ -3,6 +3,7 @@ import test from "node:test";
 import { computed, nextTick, ref } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { useDataGridEditor } from "../../apps/desktop/src/composables/useDataGridEditor.ts";
+import { formatGridSqlLiteral, type DataGridSaveStatementOptions } from "../../apps/desktop/src/lib/dataGridSql.ts";
 import type { ColumnInfo } from "../../apps/desktop/src/types/database.ts";
 
 type CellValue = string | number | boolean | null;
@@ -17,6 +18,64 @@ function installBrowserTestGlobals() {
     key: () => null,
     length: 0,
   };
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) !== "/api/query/prepare-data-grid-save") {
+      return new Response("unexpected request", { status: 500 });
+    }
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    const options = body.options as DataGridSaveStatementOptions;
+    return new Response(
+      JSON.stringify({
+        statements: mockPreparedSaveStatements(options),
+        rollbackStatements: [],
+        executionSchema:
+          options.databaseType === "oracle" || options.databaseType === "neo4j" ? undefined : options.tableMeta.schema,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+
+function mockPreparedSaveStatements(options: DataGridSaveStatementOptions): string[] {
+  const table = options.tableMeta.schema
+    ? `${quotePgIdentifier(options.tableMeta.schema)}.${quotePgIdentifier(options.tableMeta.tableName)}`
+    : quotePgIdentifier(options.tableMeta.tableName);
+  const statements: string[] = [];
+  for (const rowIndex of options.deletedRows) {
+    const row = options.rows[rowIndex];
+    if (!row) continue;
+    statements.push(`DELETE FROM ${table} WHERE ${primaryKeyWhere(options, row)};`);
+  }
+  for (const [rowIndex, changes] of options.dirtyRows) {
+    const row = options.rows[rowIndex];
+    if (!row) continue;
+    const sets = changes
+      .map(
+        ([columnIndex, value]) =>
+          `${quotePgIdentifier(options.columns[columnIndex])} = ${formatGridSqlLiteral(value, options.databaseType)}`,
+      )
+      .join(", ");
+    statements.push(`UPDATE ${table} SET ${sets} WHERE ${primaryKeyWhere(options, row)};`);
+  }
+  for (const row of options.newRows) {
+    const columns = options.columns.map(quotePgIdentifier).join(", ");
+    const values = row.map((value) => formatGridSqlLiteral(value, options.databaseType)).join(", ");
+    statements.push(`INSERT INTO ${table} (${columns}) VALUES (${values});`);
+  }
+  return statements;
+}
+
+function primaryKeyWhere(options: DataGridSaveStatementOptions, row: CellValue[]): string {
+  return options.tableMeta.primaryKeys
+    .map((key) => {
+      const index = options.columns.indexOf(key);
+      return `${quotePgIdentifier(key)} = ${formatGridSqlLiteral(row[index], options.databaseType)}`;
+    })
+    .join(" AND ");
+}
+
+function quotePgIdentifier(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
 }
 
 function column(name: string, isPrimaryKey = false, extra: string | null = null): ColumnInfo {

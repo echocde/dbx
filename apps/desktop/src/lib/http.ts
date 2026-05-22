@@ -50,6 +50,8 @@ import type {
   XlsxCellValue,
 } from "./tauri";
 import type { QueryEditability } from "@/lib/sqlAnalysis";
+import type { DataGridSaveStatementOptions } from "@/lib/dataGridSql";
+import type { DataGridSavePreparation } from "./tauri";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -407,6 +409,10 @@ export async function analyzeSqlReferences(sql: string, dialect?: string): Promi
 
 export async function analyzeEditableQueryEditability(sql: string): Promise<QueryEditability> {
   return post("/api/query/analyze-editability", { sql });
+}
+
+export async function prepareDataGridSave(options: DataGridSaveStatementOptions): Promise<DataGridSavePreparation> {
+  return post("/api/query/prepare-data-grid-save", { options });
 }
 
 // ---------------------------------------------------------------------------

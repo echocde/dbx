@@ -289,6 +289,7 @@ pub fn run() {
             commands::query::execute_in_transaction,
             commands::query::analyze_sql_references,
             commands::query::analyze_editable_query_editability,
+            commands::query::prepare_data_grid_save,
             commands::sql_file::preview_sql_file,
             commands::sql_file::execute_sql_file,
             commands::sql_file::cancel_sql_file_execution,
