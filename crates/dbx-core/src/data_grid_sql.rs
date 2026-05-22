@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::connection::DatabaseType;
+use crate::sql_dialect::quote_table_identifier;
 
 const DBX_ROWID_COLUMN: &str = "__DBX_ROWID";
 const DBX_NEO4J_ELEMENT_ID_COLUMN: &str = "__DBX_ELEMENT_ID";
@@ -976,55 +977,11 @@ fn predicate_ident(database_type: Option<DatabaseType>, name: &str) -> String {
 }
 
 fn quote_ident(database_type: Option<DatabaseType>, name: &str) -> String {
-    match database_type {
-        Some(DatabaseType::Mysql | DatabaseType::Hive | DatabaseType::Tdengine | DatabaseType::Access) => {
-            format!("`{}`", name.replace('`', "``"))
-        }
-        Some(DatabaseType::Informix) if is_plain_identifier(name) => name.to_string(),
-        Some(DatabaseType::Neo4j) => format!("`{}`", name.replace('`', "``")),
-        Some(DatabaseType::SqlServer) => format!("[{}]", name.replace(']', "]]")),
-        _ => format!("\"{}\"", name.replace('"', "\"\"")),
-    }
+    quote_table_identifier(database_type, name)
 }
 
 fn qualified_table_name(database_type: Option<DatabaseType>, schema: Option<&str>, table_name: &str) -> String {
-    if is_schema_aware(database_type) && schema.is_some_and(|schema| !schema.is_empty()) {
-        format!("{}.{}", quote_ident(database_type, schema.unwrap()), quote_ident(database_type, table_name))
-    } else {
-        quote_ident(database_type, table_name)
-    }
-}
-
-fn is_schema_aware(database_type: Option<DatabaseType>) -> bool {
-    matches!(
-        database_type,
-        Some(
-            DatabaseType::Postgres
-                | DatabaseType::SqlServer
-                | DatabaseType::Oracle
-                | DatabaseType::Redshift
-                | DatabaseType::Dameng
-                | DatabaseType::Gaussdb
-                | DatabaseType::Kingbase
-                | DatabaseType::Highgo
-                | DatabaseType::Vastbase
-                | DatabaseType::Yashandb
-                | DatabaseType::Databricks
-                | DatabaseType::SapHana
-                | DatabaseType::Teradata
-                | DatabaseType::Vertica
-                | DatabaseType::Exasol
-                | DatabaseType::OpenGauss
-                | DatabaseType::OceanbaseOracle
-                | DatabaseType::Gbase
-                | DatabaseType::Jdbc
-                | DatabaseType::H2
-                | DatabaseType::Snowflake
-                | DatabaseType::Trino
-                | DatabaseType::Db2
-                | DatabaseType::Tdengine
-        )
-    )
+    crate::sql_dialect::qualified_table_name(database_type, schema, table_name)
 }
 
 fn uses_keyless_row_predicate(database_type: Option<DatabaseType>) -> bool {
@@ -1066,15 +1023,6 @@ fn uses_keyless_row_predicate(database_type: Option<DatabaseType>) -> bool {
                 | DatabaseType::Hive
         )
     )
-}
-
-fn is_plain_identifier(name: &str) -> bool {
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '$')
 }
 
 fn column_info_for<'a>(columns: &'a [DataGridColumnInfo], name: &str) -> Option<&'a DataGridColumnInfo> {

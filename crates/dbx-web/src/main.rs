@@ -112,6 +112,8 @@ async fn main() {
         .route("/schema/foreign-keys", get(routes::schema::list_foreign_keys))
         .route("/schema/triggers", get(routes::schema::list_triggers))
         .route("/schema/ddl", get(routes::schema::get_ddl))
+        .route("/schema-diff/prepare", post(routes::schema_diff::prepare_schema_diff))
+        .route("/schema-diff/generate-sync-sql", post(routes::schema_diff::generate_schema_sync_sql))
         .route(
             "/schema/cache",
             post(routes::schema_cache::save_schema_cache).get(routes::schema_cache::load_schema_cache),
@@ -126,6 +128,8 @@ async fn main() {
         .route("/query/analyze-sql-references", post(routes::query::analyze_sql_references))
         .route("/query/analyze-editability", post(routes::query::analyze_editable_query_editability))
         .route("/query/prepare-data-grid-save", post(routes::query::prepare_data_grid_save))
+        .route("/data-compare/prepare", post(routes::data_compare::prepare_data_compare))
+        .route("/data-compare/prepare-from-tables", post(routes::data_compare::prepare_data_compare_from_tables))
         .route("/query/cancel", post(routes::query::cancel_query))
         .route("/query/close-session", post(routes::query::close_query_session))
         .route("/export/query-result-json", post(routes::text_export::export_query_result_json))

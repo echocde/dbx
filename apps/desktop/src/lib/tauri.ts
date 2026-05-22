@@ -13,6 +13,7 @@ import type {
   TriggerInfo,
   QueryResult,
   SqlReferenceAnalysis,
+  DatabaseType,
   InstalledPlugin,
   JdbcDriverInfo,
   JdbcPluginStatus,
@@ -23,6 +24,13 @@ import type {
 import type { AiConfig } from "@/stores/settingsStore";
 import type { QueryEditability } from "@/lib/sqlAnalysis";
 import type { DataGridSaveStatementOptions } from "@/lib/dataGridSql";
+import type {
+  DataCompareFromTablesOptions,
+  DataCompareFromTablesPreparation,
+  DataComparePreparation,
+  DataComparePreparationOptions,
+} from "@/lib/dataCompare";
+import type { SchemaDiffPreparation, SchemaDiffPreparationOptions, TableDiff } from "@/lib/schemaDiff";
 
 export interface AgentDriverInfo {
   db_type: string;
@@ -329,6 +337,16 @@ export async function prepareDataGridSave(options: DataGridSaveStatementOptions)
   return invoke("prepare_data_grid_save", { options });
 }
 
+export async function prepareDataCompare(options: DataComparePreparationOptions): Promise<DataComparePreparation> {
+  return invoke("prepare_data_compare", { options });
+}
+
+export async function prepareDataCompareFromTables(
+  options: DataCompareFromTablesOptions,
+): Promise<DataCompareFromTablesPreparation> {
+  return invoke("prepare_data_compare_from_tables", { options });
+}
+
 export async function listIndexes(
   connectionId: string,
   database: string,
@@ -363,6 +381,18 @@ export async function getTableDdl(
   table: string,
 ): Promise<string> {
   return invoke("get_table_ddl", { connectionId, database, schema, table });
+}
+
+export async function prepareSchemaDiff(options: SchemaDiffPreparationOptions): Promise<SchemaDiffPreparation> {
+  return invoke("prepare_schema_diff", { options });
+}
+
+export async function generateSchemaSyncSql(
+  diffs: TableDiff[],
+  databaseType: DatabaseType,
+  targetSchema?: string,
+): Promise<string> {
+  return invoke("generate_schema_sync_sql", { diffs, databaseType, targetSchema });
 }
 
 export async function saveConnections(configs: ConnectionConfig[]): Promise<void> {

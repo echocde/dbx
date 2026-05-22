@@ -77,6 +77,8 @@ export const listIndexes = forward("listIndexes");
 export const listForeignKeys = forward("listForeignKeys");
 export const listTriggers = forward("listTriggers");
 export const getTableDdl = forward("getTableDdl");
+export const prepareSchemaDiff = forward("prepareSchemaDiff");
+export const generateSchemaSyncSql = forward("generateSchemaSyncSql");
 
 // Query
 export const executeQuery = forward("executeQuery");
@@ -89,6 +91,8 @@ export const closeQuerySession = forward("closeQuerySession");
 export const analyzeSqlReferences = forward("analyzeSqlReferences");
 export const analyzeEditableQueryEditability = forward("analyzeEditableQueryEditability");
 export const prepareDataGridSave = forward("prepareDataGridSave");
+export const prepareDataCompare = forward("prepareDataCompare");
+export const prepareDataCompareFromTables = forward("prepareDataCompareFromTables");
 
 // AI
 export const aiComplete = forward("aiComplete");

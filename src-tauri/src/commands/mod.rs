@@ -5,6 +5,7 @@ pub mod connection;
 #[allow(dead_code, unused_imports)]
 mod connection_secrets;
 pub mod csv_export;
+pub mod data_compare;
 pub mod database_export;
 pub mod deep_link;
 pub mod external_sql;
@@ -18,6 +19,7 @@ pub mod redis_cmd;
 pub mod saved_sql;
 pub mod schema;
 pub mod schema_cache;
+pub mod schema_diff;
 pub mod sql_file;
 pub mod system_fonts;
 pub mod table_import;

@@ -8,13 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
-import { buildTableSelectSql, qualifiedTableName } from "@/lib/tableSelectSql";
-import {
-  compareDataRows,
-  generateDataSyncSql,
-  generateDataSyncStatements,
-  type DataCompareResult,
-} from "@/lib/dataCompare";
+import type { DataCompareResult } from "@/lib/dataCompare";
 import * as api from "@/lib/api";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { Copy, GitCompareArrows, Loader2, Play, ArrowLeftRight } from "lucide-vue-next";
@@ -221,13 +215,6 @@ function clearResult() {
   targetRowCount.value = null;
 }
 
-async function countTableRows(connectionId: string, database: string, schema: string, tableName: string) {
-  const config = store.getConfig(connectionId);
-  const table = qualifiedTableName({ databaseType: config?.db_type, schema, tableName });
-  const result = await api.executeQuery(connectionId, database, `SELECT COUNT(*) AS row_count FROM ${table}`, schema);
-  return Number(result.rows[0]?.[0] ?? 0);
-}
-
 async function inferKeyColumns() {
   if (!sourceConnectionId.value || !sourceDatabase.value || !sourceTable.value) return;
   const columns = await api.getColumns(
@@ -254,8 +241,6 @@ async function startCompare() {
     if (keyColumns.value.length === 0) await inferKeyColumns();
     if (keyColumns.value.length === 0) throw new Error(t("dataCompare.noKeyColumns"));
 
-    const sourceConfig = store.getConfig(sourceConnectionId.value);
-    const targetConfig = store.getConfig(targetConnectionId.value);
     const sourceColumns = await api.getColumns(
       sourceConnectionId.value,
       sourceDatabase.value,
@@ -276,48 +261,25 @@ async function startCompare() {
       throw new Error(t("dataCompare.missingKeyColumns", { columns: missingKeys.join(", ") }));
     }
     if (columns.length === 0) throw new Error(t("dataCompare.noCommonColumns"));
-    const [srcCount, tgtCount] = await Promise.all([
-      countTableRows(sourceConnectionId.value, sourceDatabase.value, sourceSchema.value, sourceTable.value),
-      countTableRows(targetConnectionId.value, targetDatabase.value, targetSchema.value, targetTable.value),
-    ]);
-    sourceRowCount.value = srcCount;
-    targetRowCount.value = tgtCount;
 
-    const sourceSql = buildTableSelectSql({
-      databaseType: sourceConfig?.db_type,
-      schema: sourceSchema.value,
-      tableName: sourceTable.value,
-      primaryKeys: keyColumns.value,
-      limit: rowLimitNumber.value,
-    });
-    const targetSql = buildTableSelectSql({
-      databaseType: targetConfig?.db_type,
-      schema: targetSchema.value,
-      tableName: targetTable.value,
-      primaryKeys: keyColumns.value,
-      limit: rowLimitNumber.value,
-    });
-    const [sourceResult, targetResult] = await Promise.all([
-      api.executeQuery(sourceConnectionId.value, sourceDatabase.value, sourceSql, sourceSchema.value),
-      api.executeQuery(targetConnectionId.value, targetDatabase.value, targetSql, targetSchema.value),
-    ]);
-    const diff = compareDataRows({
+    const preparation = await api.prepareDataCompareFromTables({
+      sourceConnectionId: sourceConnectionId.value,
+      sourceDatabase: sourceDatabase.value,
+      sourceSchema: sourceSchema.value,
+      sourceTable: sourceTable.value,
+      targetConnectionId: targetConnectionId.value,
+      targetDatabase: targetDatabase.value,
+      targetSchema: targetSchema.value,
+      targetTable: targetTable.value,
       columns,
       keyColumns: keyColumns.value,
-      sourceRows: sourceResult.rows,
-      targetRows: targetResult.rows,
+      rowLimit: rowLimitNumber.value,
     });
-    result.value = diff;
-    const syncOptions = {
-      tableName: targetTable.value,
-      schema: targetSchema.value,
-      columns,
-      keyColumns: keyColumns.value,
-      diff,
-      databaseType: targetConfig?.db_type,
-    };
-    syncStatements.value = generateDataSyncStatements(syncOptions);
-    syncSql.value = generateDataSyncSql(syncOptions);
+    sourceRowCount.value = preparation.sourceRowCount;
+    targetRowCount.value = preparation.targetRowCount;
+    result.value = preparation.result;
+    syncStatements.value = preparation.syncStatements;
+    syncSql.value = preparation.syncSql;
   } catch (e: any) {
     toast(e?.message || String(e), 5000);
   } finally {

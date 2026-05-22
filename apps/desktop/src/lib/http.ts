@@ -11,6 +11,7 @@ import type {
   TriggerInfo,
   QueryResult,
   SqlReferenceAnalysis,
+  DatabaseType,
   InstalledPlugin,
   JdbcDriverInfo,
   JdbcPluginStatus,
@@ -51,6 +52,13 @@ import type {
 } from "./tauri";
 import type { QueryEditability } from "@/lib/sqlAnalysis";
 import type { DataGridSaveStatementOptions } from "@/lib/dataGridSql";
+import type {
+  DataCompareFromTablesOptions,
+  DataCompareFromTablesPreparation,
+  DataComparePreparation,
+  DataComparePreparationOptions,
+} from "@/lib/dataCompare";
+import type { SchemaDiffPreparation, SchemaDiffPreparationOptions, TableDiff } from "@/lib/schemaDiff";
 import type { DataGridSavePreparation } from "./tauri";
 
 // ---------------------------------------------------------------------------
@@ -342,6 +350,18 @@ export async function getTableDdl(
   return get(`/api/schema/ddl?${qs({ connection_id: connectionId, database, schema, table })}`);
 }
 
+export async function prepareSchemaDiff(options: SchemaDiffPreparationOptions): Promise<SchemaDiffPreparation> {
+  return post("/api/schema-diff/prepare", options);
+}
+
+export async function generateSchemaSyncSql(
+  diffs: TableDiff[],
+  databaseType: DatabaseType,
+  targetSchema?: string,
+): Promise<string> {
+  return post("/api/schema-diff/generate-sync-sql", { diffs, databaseType, targetSchema });
+}
+
 // ---------------------------------------------------------------------------
 // Query
 // ---------------------------------------------------------------------------
@@ -413,6 +433,16 @@ export async function analyzeEditableQueryEditability(sql: string): Promise<Quer
 
 export async function prepareDataGridSave(options: DataGridSaveStatementOptions): Promise<DataGridSavePreparation> {
   return post("/api/query/prepare-data-grid-save", { options });
+}
+
+export async function prepareDataCompare(options: DataComparePreparationOptions): Promise<DataComparePreparation> {
+  return post("/api/data-compare/prepare", options);
+}
+
+export async function prepareDataCompareFromTables(
+  options: DataCompareFromTablesOptions,
+): Promise<DataCompareFromTablesPreparation> {
+  return post("/api/data-compare/prepare-from-tables", options);
 }
 
 // ---------------------------------------------------------------------------
