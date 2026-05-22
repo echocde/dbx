@@ -22,3 +22,4 @@ pub mod system_fonts;
 pub mod table_import;
 pub mod transfer;
 pub mod update;
+pub mod xlsx_export;

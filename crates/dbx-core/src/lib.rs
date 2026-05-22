@@ -23,6 +23,7 @@ pub mod table_import;
 pub mod transfer;
 pub mod types;
 pub mod update;
+pub mod xlsx_export;
 
 pub const R2_CDN_BASE: &str = "https://dl.dbxio.com/";
 
