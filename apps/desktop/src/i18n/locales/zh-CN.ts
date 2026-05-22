@@ -777,6 +777,8 @@ export default {
     function: "函数",
     name: "名称",
     type: "类型",
+    createdAt: "创建时间",
+    updatedAt: "更新时间",
     source: "源代码",
     saveSource: "保存",
     cancelEdit: "取消",

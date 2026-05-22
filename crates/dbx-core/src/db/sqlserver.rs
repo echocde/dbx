@@ -114,7 +114,7 @@ struct SqlServerResultSet {
 
 fn push_sqlserver_result_set(results: &mut Vec<QueryResult>, result: Option<SqlServerResultSet>, start: Instant) {
     if let Some(result) = result {
-        if result.rows.is_empty() {
+        if result.rows.is_empty() && result.columns.is_empty() {
             return;
         }
         results.push(QueryResult {
@@ -304,7 +304,24 @@ fn escape_like_literal(value: &str) -> String {
 }
 
 pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<Vec<crate::types::ObjectInfo>, String> {
-    let sql = format!(
+    let sql = sqlserver_list_objects_sql(schema);
+    let stream = client.query(&*sql, &[]).await.map_err(|e| e.to_string())?;
+    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .map(|row| crate::types::ObjectInfo {
+            name: row.get::<&str, _>(0).unwrap_or("").to_string(),
+            object_type: row.get::<&str, _>(1).unwrap_or("TABLE").to_string(),
+            schema: Some(schema.to_string()),
+            comment: None,
+            created_at: row.get::<chrono::NaiveDateTime, _>(2).map(|value| value.to_string()),
+            updated_at: row.get::<chrono::NaiveDateTime, _>(3).map(|value| value.to_string()),
+        })
+        .collect())
+}
+
+fn sqlserver_list_objects_sql(schema: &str) -> String {
+    format!(
         "SELECT o.name, \
          CASE o.type \
            WHEN 'U' THEN 'TABLE' \
@@ -316,7 +333,9 @@ pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<
            WHEN 'FS' THEN 'FUNCTION' \
            WHEN 'FT' THEN 'FUNCTION' \
            ELSE o.type_desc \
-         END AS object_type \
+         END AS object_type, \
+         o.create_date, \
+         o.modify_date \
          FROM sys.objects o \
          JOIN sys.schemas s ON s.schema_id = o.schema_id \
          WHERE s.name = '{}' \
@@ -329,18 +348,7 @@ pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<
            ELSE 3 \
          END, o.name",
         schema.replace('\'', "''")
-    );
-    let stream = client.query(&*sql, &[]).await.map_err(|e| e.to_string())?;
-    let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
-    Ok(rows
-        .iter()
-        .map(|row| crate::types::ObjectInfo {
-            name: row.get::<&str, _>(0).unwrap_or("").to_string(),
-            object_type: row.get::<&str, _>(1).unwrap_or("TABLE").to_string(),
-            schema: Some(schema.to_string()),
-            comment: None,
-        })
-        .collect())
+    )
 }
 
 pub async fn get_columns(client: &mut SqlServerClient, schema: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
@@ -686,8 +694,12 @@ fn first_sql_tokens(sql: &str, limit: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{requires_simple_query_batch, sqlserver_cell_to_json, sqlserver_columns_sql, sqlserver_indexes_sql};
+    use super::{
+        requires_simple_query_batch, sqlserver_cell_to_json, sqlserver_columns_sql, sqlserver_indexes_sql,
+        sqlserver_list_objects_sql, SqlServerResultSet,
+    };
     use chrono::NaiveDate;
+    use std::time::Instant;
     use tiberius::{ColumnData, IntoSql};
 
     #[test]
@@ -739,6 +751,14 @@ mod tests {
     }
 
     #[test]
+    fn sqlserver_list_objects_sql_includes_timestamps() {
+        let sql = sqlserver_list_objects_sql("dbo");
+
+        assert!(sql.contains("create_date"));
+        assert!(sql.contains("modify_date"));
+    }
+
+    #[test]
     fn sqlserver_tinyint_cells_are_json_numbers() {
         assert_eq!(sqlserver_cell_to_json(&ColumnData::U8(Some(7))), serde_json::json!(7));
     }
@@ -749,5 +769,35 @@ mod tests {
         let cell: ColumnData<'static> = datetime.into_sql();
 
         assert_eq!(sqlserver_cell_to_json(&cell), serde_json::json!("2026-05-13 09:08:07.123"));
+    }
+
+    #[test]
+    fn sqlserver_keeps_empty_result_sets_when_metadata_exists() {
+        let mut results = Vec::new();
+        super::push_sqlserver_result_set(
+            &mut results,
+            Some(SqlServerResultSet {
+                columns: vec!["id".to_string(), "name".to_string()],
+                rows: vec![],
+                truncated: false,
+            }),
+            Instant::now(),
+        );
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].columns, vec!["id".to_string(), "name".to_string()]);
+        assert!(results[0].rows.is_empty());
+    }
+
+    #[test]
+    fn sqlserver_drops_truly_empty_result_sets_without_metadata() {
+        let mut results = Vec::new();
+        super::push_sqlserver_result_set(
+            &mut results,
+            Some(SqlServerResultSet { columns: vec![], rows: vec![], truncated: false }),
+            Instant::now(),
+        );
+
+        assert!(results.is_empty());
     }
 }

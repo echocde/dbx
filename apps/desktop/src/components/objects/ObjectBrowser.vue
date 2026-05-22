@@ -2,6 +2,8 @@
 import { computed, ref, watch } from "vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import {
+  ArrowDown,
+  ArrowUp,
   Braces,
   Code2,
   Copy,
@@ -48,7 +50,16 @@ import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { buildObjectBrowserRows, filterObjectBrowserRows, type ObjectBrowserRow } from "@/lib/objectBrowserRows";
+import {
+  buildObjectBrowserRows,
+  filterObjectBrowserRows,
+  formatObjectBrowserTimestamp,
+  initialObjectBrowserSortDirection,
+  sortObjectBrowserRows,
+  type ObjectBrowserRow,
+  type ObjectBrowserSortDirection,
+  type ObjectBrowserSortKey,
+} from "@/lib/objectBrowserRows";
 
 type ObjectFilter = "all" | "tables" | "views" | "procedures" | "functions";
 
@@ -74,6 +85,8 @@ const rows = ref<ObjectBrowserRow[]>([]);
 const rootRef = ref<HTMLElement>();
 const search = ref("");
 const objectFilter = ref<ObjectFilter>("all");
+const sortKey = ref<ObjectBrowserSortKey>("name");
+const sortDirection = ref<ObjectBrowserSortDirection>("asc");
 const loadingSchemas = ref(false);
 const loadingObjects = ref(false);
 const sourceLoading = ref(false);
@@ -129,18 +142,25 @@ const objectFilters = computed<ObjectFilter[]>(() =>
 );
 const showObjectFilter = computed(() => objectFilters.value.length > 2);
 const hasComments = computed(() => rows.value.some((row) => row.comment?.trim()));
-const gridTemplateColumns = computed(() =>
-  hasComments.value ? "minmax(0,1fr) 120px minmax(160px,0.7fr)" : "minmax(0,1fr) 120px",
-);
+const hasCreatedAt = computed(() => rows.value.some((row) => row.created_at?.trim()));
+const hasUpdatedAt = computed(() => rows.value.some((row) => row.updated_at?.trim()));
+const gridTemplateColumns = computed(() => {
+  const columns = ["minmax(0,1fr)", "120px"];
+  if (hasCreatedAt.value) columns.push("150px");
+  if (hasUpdatedAt.value) columns.push("150px");
+  if (hasComments.value) columns.push("minmax(160px,0.7fr)");
+  return columns.join(" ");
+});
 const searchedRows = computed(() => {
   return filterObjectBrowserRows(rows.value, search.value);
 });
 const filteredRows = computed(() => {
-  if (objectFilter.value === "tables") return searchedRows.value.filter((row) => row.type === "TABLE");
-  if (objectFilter.value === "views") return searchedRows.value.filter((row) => row.type === "VIEW");
-  if (objectFilter.value === "procedures") return searchedRows.value.filter((row) => row.type === "PROCEDURE");
-  if (objectFilter.value === "functions") return searchedRows.value.filter((row) => row.type === "FUNCTION");
-  return searchedRows.value;
+  let rows = searchedRows.value;
+  if (objectFilter.value === "tables") rows = rows.filter((row) => row.type === "TABLE");
+  if (objectFilter.value === "views") rows = rows.filter((row) => row.type === "VIEW");
+  if (objectFilter.value === "procedures") rows = rows.filter((row) => row.type === "PROCEDURE");
+  if (objectFilter.value === "functions") rows = rows.filter((row) => row.type === "FUNCTION");
+  return sortObjectBrowserRows(rows, sortKey.value, sortDirection.value);
 });
 
 function iconFor(row: ObjectBrowserRow) {
@@ -155,6 +175,20 @@ function typeLabel(type: ObjectBrowserRow["type"]) {
   if (type === "PROCEDURE") return t("objects.procedure");
   if (type === "FUNCTION") return t("objects.function");
   return t("objects.table");
+}
+
+function sortIconFor(key: ObjectBrowserSortKey) {
+  if (sortKey.value !== key) return null;
+  return sortDirection.value === "asc" ? ArrowUp : ArrowDown;
+}
+
+function toggleSort(key: ObjectBrowserSortKey) {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+    return;
+  }
+  sortKey.value = key;
+  sortDirection.value = initialObjectBrowserSortDirection(key);
 }
 
 function iconClass(type: ObjectBrowserRow["type"]) {
@@ -630,9 +664,41 @@ watch(
         class="grid h-8 shrink-0 items-center gap-3 border-b bg-muted/40 px-3 text-xs font-medium text-muted-foreground"
         :style="{ gridTemplateColumns }"
       >
-        <div class="truncate">{{ t("objects.name") }}</div>
-        <div class="truncate">{{ t("objects.type") }}</div>
-        <div v-if="hasComments" class="truncate">{{ t("objects.comment") }}</div>
+        <button class="flex min-w-0 items-center gap-1 truncate text-left" type="button" @click="toggleSort('name')">
+          <span class="truncate">{{ t("objects.name") }}</span>
+          <component :is="sortIconFor('name')" v-if="sortIconFor('name')" class="h-3 w-3 shrink-0" />
+        </button>
+        <button class="flex min-w-0 items-center gap-1 truncate text-left" type="button" @click="toggleSort('type')">
+          <span class="truncate">{{ t("objects.type") }}</span>
+          <component :is="sortIconFor('type')" v-if="sortIconFor('type')" class="h-3 w-3 shrink-0" />
+        </button>
+        <button
+          v-if="hasCreatedAt"
+          class="flex min-w-0 items-center gap-1 truncate text-left"
+          type="button"
+          @click="toggleSort('created_at')"
+        >
+          <span class="truncate">{{ t("objects.createdAt") }}</span>
+          <component :is="sortIconFor('created_at')" v-if="sortIconFor('created_at')" class="h-3 w-3 shrink-0" />
+        </button>
+        <button
+          v-if="hasUpdatedAt"
+          class="flex min-w-0 items-center gap-1 truncate text-left"
+          type="button"
+          @click="toggleSort('updated_at')"
+        >
+          <span class="truncate">{{ t("objects.updatedAt") }}</span>
+          <component :is="sortIconFor('updated_at')" v-if="sortIconFor('updated_at')" class="h-3 w-3 shrink-0" />
+        </button>
+        <button
+          v-if="hasComments"
+          class="flex min-w-0 items-center gap-1 truncate text-left"
+          type="button"
+          @click="toggleSort('comment')"
+        >
+          <span class="truncate">{{ t("objects.comment") }}</span>
+          <component :is="sortIconFor('comment')" v-if="sortIconFor('comment')" class="h-3 w-3 shrink-0" />
+        </button>
       </div>
       <RecycleScroller
         class="object-browser-scroller min-h-0 flex-1"
@@ -656,6 +722,20 @@ watch(
                   <span class="truncate text-[13px] font-medium text-foreground">{{ item.name }}</span>
                 </div>
                 <div class="truncate text-xs text-muted-foreground">{{ typeLabel(item.type) }}</div>
+                <div
+                  v-if="hasCreatedAt"
+                  class="truncate text-xs tabular-nums text-muted-foreground"
+                  :title="formatObjectBrowserTimestamp(item.created_at)"
+                >
+                  {{ formatObjectBrowserTimestamp(item.created_at) }}
+                </div>
+                <div
+                  v-if="hasUpdatedAt"
+                  class="truncate text-xs tabular-nums text-muted-foreground"
+                  :title="formatObjectBrowserTimestamp(item.updated_at)"
+                >
+                  {{ formatObjectBrowserTimestamp(item.updated_at) }}
+                </div>
                 <div v-if="hasComments" class="truncate text-xs text-muted-foreground" :title="item.comment || ''">
                   {{ item.comment || "" }}
                 </div>

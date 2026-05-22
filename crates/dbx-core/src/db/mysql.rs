@@ -29,9 +29,13 @@ fn get_str_by_name(row: &MySqlRow, name: &str) -> String {
 }
 
 fn get_opt_str(row: &MySqlRow, name: &str) -> Option<String> {
-    row.try_get::<Option<String>, _>(name).ok().flatten().or_else(|| {
-        row.try_get::<Option<Vec<u8>>, _>(name).ok().flatten().map(|b| String::from_utf8_lossy(&b).to_string())
-    })
+    row.try_get::<Option<String>, _>(name)
+        .ok()
+        .flatten()
+        .or_else(|| row.try_get::<Option<NaiveDateTime>, _>(name).ok().flatten().map(|d| d.to_string()))
+        .or_else(|| {
+            row.try_get::<Option<Vec<u8>>, _>(name).ok().flatten().map(|b| String::from_utf8_lossy(&b).to_string())
+        })
 }
 
 fn numeric_metadata_u64_to_i32(value: Option<u64>) -> Option<i32> {
@@ -288,11 +292,14 @@ fn list_objects_sql(database: &str) -> String {
         "SELECT TABLE_NAME AS object_name, \
            CASE WHEN TABLE_TYPE = 'VIEW' THEN 'VIEW' ELSE 'TABLE' END AS object_type, \
            TABLE_COMMENT AS object_comment, \
+           CREATE_TIME AS created_at, \
+           UPDATE_TIME AS updated_at, \
            CASE WHEN TABLE_TYPE = 'VIEW' THEN 1 ELSE 0 END AS sort_order \
          FROM information_schema.TABLES \
          WHERE TABLE_SCHEMA = {db} \
          UNION ALL \
          SELECT ROUTINE_NAME AS object_name, ROUTINE_TYPE AS object_type, NULL AS object_comment, \
+           CREATED AS created_at, LAST_ALTERED AS updated_at, \
            CASE WHEN ROUTINE_TYPE = 'PROCEDURE' THEN 2 ELSE 3 END AS sort_order \
          FROM information_schema.ROUTINES \
          WHERE ROUTINE_SCHEMA = {db} AND ROUTINE_TYPE IN ('PROCEDURE', 'FUNCTION') \
@@ -312,6 +319,8 @@ pub async fn list_objects(pool: &MySqlPool, database: &str) -> Result<Vec<Object
             object_type: get_str_by_name(row, "object_type"),
             schema: Some(database.to_string()),
             comment: get_opt_str(row, "object_comment").filter(|s| !s.is_empty()),
+            created_at: get_opt_str(row, "created_at"),
+            updated_at: get_opt_str(row, "updated_at"),
         })
         .collect())
 }
@@ -600,6 +609,8 @@ mod tests {
 
         assert!(sql.contains("information_schema.TABLES"));
         assert!(sql.contains("information_schema.ROUTINES"));
+        assert!(sql.contains("CREATE_TIME"));
+        assert!(sql.contains("UPDATE_TIME"));
         assert!(sql.contains("'PROCEDURE'"));
         assert!(sql.contains("'FUNCTION'"));
     }

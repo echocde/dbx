@@ -143,6 +143,8 @@ export interface ObjectInfo {
   object_type: DatabaseObjectType | string;
   schema?: string | null;
   comment?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export type ObjectSourceKind = "VIEW" | "PROCEDURE" | "FUNCTION";

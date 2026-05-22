@@ -693,6 +693,8 @@ export default {
     function: "Función",
     name: "Nombre",
     type: "Tipo",
+    createdAt: "Creado",
+    updatedAt: "Actualizado",
     source: "Código fuente",
     saveSource: "Guardar",
     cancelEdit: "Cancelar",

@@ -796,6 +796,8 @@ export default {
     function: "Function",
     name: "Name",
     type: "Type",
+    createdAt: "Created",
+    updatedAt: "Updated",
     source: "Source",
     saveSource: "Save",
     cancelEdit: "Cancel",
