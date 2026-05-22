@@ -817,7 +817,7 @@ onUnmounted(() => {
           <div
             :class="
               isClassicLayout
-                ? 'flex-1 min-w-0'
+                ? 'flex-1 min-w-0 overflow-hidden'
                 : 'flex-1 min-w-0 overflow-hidden rounded-md border border-border/80 bg-background'
             "
           >
@@ -925,8 +925,8 @@ onUnmounted(() => {
             v-if="showAiPanel"
             :class="
               isClassicLayout
-                ? 'h-full shrink-0 relative bg-background'
-                : 'h-full shrink-0 relative rounded-md border border-border/80 bg-background'
+                ? 'h-full shrink-0 relative z-30 isolate bg-background'
+                : 'h-full shrink-0 relative z-30 isolate rounded-md border border-border/80 bg-background'
             "
             :style="{ width: aiPanelWidth + 'px' }"
           >
@@ -949,8 +949,8 @@ onUnmounted(() => {
             v-if="showHistory"
             :class="
               isClassicLayout
-                ? 'h-full shrink-0 relative bg-background'
-                : 'h-full shrink-0 relative rounded-md border border-border/80 bg-background'
+                ? 'h-full shrink-0 relative z-30 isolate bg-background'
+                : 'h-full shrink-0 relative z-30 isolate rounded-md border border-border/80 bg-background'
             "
             :style="{ width: historyWidth + 'px' }"
           >

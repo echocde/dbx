@@ -319,12 +319,14 @@ const whereSuggestionIndex = ref(-1);
 const whereFilterInputRef = ref<HTMLInputElement>();
 const whereMeasureRef = ref<HTMLSpanElement>();
 const whereSuggestionLeft = ref(0);
+const whereSuggestionPosition = ref({ left: 0, top: 0 });
 
 const orderBySuggestions = ref<string[]>([]);
 const orderBySuggestionIndex = ref(-1);
 const orderByInputRef = ref<HTMLInputElement>();
 const orderByMeasureRef = ref<HTMLSpanElement>();
 const orderBySuggestionLeft = ref(0);
+const orderBySuggestionPosition = ref({ left: 0, top: 0 });
 
 const orderByInput = ref("");
 const hasOrderByInput = computed(() => orderByInput.value.trim().length > 0);
@@ -342,6 +344,16 @@ const whereSearchPaneStyle = computed(() => {
     flex: `0 0 ${searchSplitWhereWidth.value}px`,
   };
 });
+
+const whereSuggestionStyle = computed(() => ({
+  left: `${whereSuggestionPosition.value.left}px`,
+  top: `${whereSuggestionPosition.value.top}px`,
+}));
+
+const orderBySuggestionStyle = computed(() => ({
+  left: `${orderBySuggestionPosition.value.left}px`,
+  top: `${orderBySuggestionPosition.value.top}px`,
+}));
 
 type LocalColumnFilterDraft = {
   columnIndex: number;
@@ -868,6 +880,11 @@ function updateWhereSuggestionPosition() {
     const cursorPos = input.selectionStart ?? 0;
     measure.textContent = whereFilterInput.value.slice(0, cursorPos);
     whereSuggestionLeft.value = measure.getBoundingClientRect().width;
+    const inputRect = input.getBoundingClientRect();
+    whereSuggestionPosition.value = {
+      left: Math.max(0, Math.min(inputRect.left + whereSuggestionLeft.value, window.innerWidth - 180)),
+      top: inputRect.bottom + 2,
+    };
   });
 }
 
@@ -988,6 +1005,11 @@ function updateOrderBySuggestionPosition() {
     const cursorPos = input.selectionStart ?? 0;
     measure.textContent = orderByInput.value.slice(0, cursorPos);
     orderBySuggestionLeft.value = measure.getBoundingClientRect().width;
+    const inputRect = input.getBoundingClientRect();
+    orderBySuggestionPosition.value = {
+      left: Math.max(0, Math.min(inputRect.left + orderBySuggestionLeft.value, window.innerWidth - 180)),
+      top: inputRect.bottom + 2,
+    };
   });
 }
 
@@ -3012,252 +3034,266 @@ defineExpose({
       <ContextMenuTrigger as-child>
         <div v-if="hasData || canUseWhereSearch" class="flex-1 flex flex-col overflow-hidden">
           <!-- Search bar -->
-          <div class="data-grid-topbar flex items-stretch border-b shrink-0 bg-muted/20 relative">
-            <div
-              v-if="useTransaction && editable && (tableMeta || customSave)"
-              class="flex items-center px-2 py-0.5 border-r shrink-0"
-            >
-              <Select
-                :model-value="rowStatusFilter"
-                @update:model-value="(value: any) => setRowStatusFilter(String(value))"
+          <div
+            class="data-grid-topbar-scroll shrink-0 overflow-x-auto border-b bg-muted/20"
+            @scroll="
+              updateWhereSuggestionPosition();
+              updateOrderBySuggestionPosition();
+            "
+          >
+            <div class="data-grid-topbar flex items-stretch relative">
+              <div
+                v-if="useTransaction && editable && (tableMeta || customSave)"
+                class="flex items-center px-2 py-0.5 border-r shrink-0"
               >
-                <SelectTrigger
-                  class="h-5 max-w-28 border-0 bg-transparent px-0 py-0 text-xs font-medium text-foreground/70 shadow-none focus-visible:ring-0 data-[state=open]:text-foreground [&_svg]:size-3"
+                <Select
+                  :model-value="rowStatusFilter"
+                  @update:model-value="(value: any) => setRowStatusFilter(String(value))"
                 >
-                  <SelectValue :placeholder="t('grid.filterRows')" />
-                </SelectTrigger>
-                <SelectContent position="popper">
-                  <SelectItem value="all">{{ t("grid.filterAllRows") }}</SelectItem>
-                  <SelectItem value="changed">{{ t("grid.filterChangedRows") }}</SelectItem>
-                  <SelectItem value="edited">{{ t("grid.statusEdited") }}</SelectItem>
-                  <SelectItem value="new">{{ t("grid.statusNew") }}</SelectItem>
-                  <SelectItem value="deleted">{{ t("grid.statusDeleted") }}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <template v-if="hasLocalColumnFilters">
-              <div class="flex items-center gap-1 px-2 py-0.5 min-w-0">
-                <button
-                  type="button"
-                  class="flex shrink-0 items-center gap-1 rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
-                  :title="t('grid.clearLocalFilters')"
-                  @click="clearLocalFilter()"
-                >
-                  <Filter class="h-3 w-3" />
-                  {{ localFilterCount }}
-                  <X class="h-3 w-3" />
-                </button>
+                  <SelectTrigger
+                    class="h-5 max-w-28 border-0 bg-transparent px-0 py-0 text-xs font-medium text-foreground/70 shadow-none focus-visible:ring-0 data-[state=open]:text-foreground [&_svg]:size-3"
+                  >
+                    <SelectValue :placeholder="t('grid.filterRows')" />
+                  </SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="all">{{ t("grid.filterAllRows") }}</SelectItem>
+                    <SelectItem value="changed">{{ t("grid.filterChangedRows") }}</SelectItem>
+                    <SelectItem value="edited">{{ t("grid.statusEdited") }}</SelectItem>
+                    <SelectItem value="new">{{ t("grid.statusNew") }}</SelectItem>
+                    <SelectItem value="deleted">{{ t("grid.statusDeleted") }}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </template>
-
-            <template v-if="canUseWhereSearch">
-              <div ref="searchSplitContainerRef" class="flex flex-1 min-w-0">
-                <div
-                  class="flex flex-1 items-center gap-1 px-2 py-0.5 border-l min-w-0 relative"
-                  :style="whereSearchPaneStyle"
-                >
-                  <span class="text-blue-600 dark:text-blue-400 text-xs font-medium select-none shrink-0">WHERE</span>
-                  <input
-                    ref="whereFilterInputRef"
-                    v-model="whereFilterInput"
-                    autocapitalize="off"
-                    autocorrect="off"
-                    spellcheck="false"
-                    class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60"
-                    placeholder=""
-                    @keydown="onWhereFilterKeydown"
-                    @click="updateWhereSuggestionPosition"
-                    @blur="dismissWhereSuggestions"
-                  />
-                  <span
-                    ref="whereMeasureRef"
-                    class="invisible absolute left-0 top-0 text-xs whitespace-pre pointer-events-none"
-                    aria-hidden="true"
-                  />
-                  <!-- WHERE suggestion dropdown -->
-                  <div
-                    v-if="whereSuggestions.length > 0"
-                    class="absolute top-full mt-0.5 z-50 min-w-[180px] rounded-md border bg-popover text-popover-foreground shadow-md"
-                    :style="{ left: whereSuggestionLeft + 24 + 'px' }"
-                  >
-                    <div
-                      v-for="(sug, idx) in whereSuggestions"
-                      :key="sug"
-                      class="flex items-center px-3 py-1.5 text-xs cursor-pointer"
-                      :class="idx === whereSuggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'"
-                      @mousedown.prevent="
-                        whereSuggestionIndex = idx;
-                        acceptWhereSuggestion();
-                      "
-                      @mouseenter="whereSuggestionIndex = idx"
-                    >
-                      <Search class="w-3 h-3 mr-2 text-muted-foreground shrink-0" />
-                      <span>{{ sug }}</span>
-                    </div>
-                  </div>
+              <template v-if="hasLocalColumnFilters">
+                <div class="flex items-center gap-1 px-2 py-0.5 min-w-0">
                   <button
-                    v-if="hasWhereFilterInput"
-                    class="text-muted-foreground hover:text-foreground shrink-0"
-                    @click="
-                      whereFilterInput = '';
-                      applyWhereFilter();
-                    "
+                    type="button"
+                    class="flex shrink-0 items-center gap-1 rounded border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/15"
+                    :title="t('grid.clearLocalFilters')"
+                    @click="clearLocalFilter()"
                   >
-                    <X class="w-3 h-3" />
+                    <Filter class="h-3 w-3" />
+                    {{ localFilterCount }}
+                    <X class="h-3 w-3" />
                   </button>
                 </div>
-                <button
-                  type="button"
-                  class="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center border-l border-r border-border/80 bg-muted/15 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
-                  aria-label="Resize WHERE and ORDER BY"
-                  @mousedown="onSearchSplitResizeStart"
-                  @dblclick.stop="resetSearchSplitWidth"
-                >
-                  <span class="h-5 w-px bg-border group-hover:bg-primary/60" />
-                </button>
-                <div class="flex flex-1 items-center gap-1 px-2 py-0.5 border-r min-w-0 relative">
-                  <span class="text-orange-600 dark:text-orange-400 text-xs font-medium select-none shrink-0"
-                    >ORDER BY</span
-                  >
-                  <input
-                    ref="orderByInputRef"
-                    v-model="orderByInput"
-                    autocapitalize="off"
-                    autocorrect="off"
-                    spellcheck="false"
-                    class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60"
-                    placeholder=""
-                    @keydown="onOrderByKeydown"
-                    @click="updateOrderBySuggestionPosition"
-                    @blur="dismissOrderBySuggestions"
-                  />
-                  <span
-                    ref="orderByMeasureRef"
-                    class="invisible absolute left-0 top-0 text-xs whitespace-pre pointer-events-none"
-                    aria-hidden="true"
-                  />
-                  <!-- ORDER BY suggestion dropdown -->
+              </template>
+
+              <template v-if="canUseWhereSearch">
+                <div ref="searchSplitContainerRef" class="flex flex-1 min-w-0">
                   <div
-                    v-if="orderBySuggestions.length > 0"
-                    class="absolute top-full mt-0.5 z-50 min-w-[180px] rounded-md border bg-popover text-popover-foreground shadow-md"
-                    :style="{ left: orderBySuggestionLeft + 24 + 'px' }"
+                    class="flex flex-1 items-center gap-1 px-2 py-0.5 border-l min-w-0 relative"
+                    :style="whereSearchPaneStyle"
                   >
-                    <div
-                      v-for="(sug, idx) in orderBySuggestions"
-                      :key="sug"
-                      class="flex items-center px-3 py-1.5 text-xs cursor-pointer"
-                      :class="
-                        idx === orderBySuggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                    <span class="text-blue-600 dark:text-blue-400 text-xs font-medium select-none shrink-0">WHERE</span>
+                    <input
+                      ref="whereFilterInputRef"
+                      v-model="whereFilterInput"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      spellcheck="false"
+                      class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60"
+                      placeholder=""
+                      @keydown="onWhereFilterKeydown"
+                      @click="updateWhereSuggestionPosition"
+                      @blur="dismissWhereSuggestions"
+                    />
+                    <span
+                      ref="whereMeasureRef"
+                      class="invisible absolute left-0 top-0 text-xs whitespace-pre pointer-events-none"
+                      aria-hidden="true"
+                    />
+                    <!-- WHERE suggestion dropdown -->
+                    <Teleport to="body">
+                      <div
+                        v-if="whereSuggestions.length > 0"
+                        class="fixed z-50 min-w-[180px] rounded-md border bg-popover text-popover-foreground shadow-md"
+                        :style="whereSuggestionStyle"
+                      >
+                        <div
+                          v-for="(sug, idx) in whereSuggestions"
+                          :key="sug"
+                          class="flex items-center px-3 py-1.5 text-xs cursor-pointer"
+                          :class="
+                            idx === whereSuggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                          "
+                          @mousedown.prevent="
+                            whereSuggestionIndex = idx;
+                            acceptWhereSuggestion();
+                          "
+                          @mouseenter="whereSuggestionIndex = idx"
+                        >
+                          <Search class="w-3 h-3 mr-2 text-muted-foreground shrink-0" />
+                          <span>{{ sug }}</span>
+                        </div>
+                      </div>
+                    </Teleport>
+                    <button
+                      v-if="hasWhereFilterInput"
+                      class="text-muted-foreground hover:text-foreground shrink-0"
+                      @click="
+                        whereFilterInput = '';
+                        applyWhereFilter();
                       "
-                      @mousedown.prevent="
-                        orderBySuggestionIndex = idx;
-                        acceptOrderBySuggestion();
-                      "
-                      @mouseenter="orderBySuggestionIndex = idx"
                     >
-                      <Search class="w-3 h-3 mr-2 text-muted-foreground shrink-0" />
-                      <span>{{ sug }}</span>
-                    </div>
+                      <X class="w-3 h-3" />
+                    </button>
                   </div>
                   <button
-                    v-if="hasOrderByInput"
-                    class="text-muted-foreground hover:text-foreground shrink-0"
-                    @click="
-                      orderByInput = '';
-                      applyOrderBySearch();
-                    "
+                    type="button"
+                    class="group relative flex w-2 shrink-0 cursor-col-resize items-center justify-center border-l border-r border-border/80 bg-muted/15 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                    aria-label="Resize WHERE and ORDER BY"
+                    @mousedown="onSearchSplitResizeStart"
+                    @dblclick.stop="resetSearchSplitWidth"
                   >
-                    <X class="w-3 h-3" />
+                    <span class="h-5 w-px bg-border group-hover:bg-primary/60" />
                   </button>
+                  <div class="flex flex-1 items-center gap-1 px-2 py-0.5 border-r min-w-0 relative">
+                    <span class="text-orange-600 dark:text-orange-400 text-xs font-medium select-none shrink-0"
+                      >ORDER BY</span
+                    >
+                    <input
+                      ref="orderByInputRef"
+                      v-model="orderByInput"
+                      autocapitalize="off"
+                      autocorrect="off"
+                      spellcheck="false"
+                      class="flex-1 h-5 min-w-0 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60"
+                      placeholder=""
+                      @keydown="onOrderByKeydown"
+                      @click="updateOrderBySuggestionPosition"
+                      @blur="dismissOrderBySuggestions"
+                    />
+                    <span
+                      ref="orderByMeasureRef"
+                      class="invisible absolute left-0 top-0 text-xs whitespace-pre pointer-events-none"
+                      aria-hidden="true"
+                    />
+                    <!-- ORDER BY suggestion dropdown -->
+                    <Teleport to="body">
+                      <div
+                        v-if="orderBySuggestions.length > 0"
+                        class="fixed z-50 min-w-[180px] rounded-md border bg-popover text-popover-foreground shadow-md"
+                        :style="orderBySuggestionStyle"
+                      >
+                        <div
+                          v-for="(sug, idx) in orderBySuggestions"
+                          :key="sug"
+                          class="flex items-center px-3 py-1.5 text-xs cursor-pointer"
+                          :class="
+                            idx === orderBySuggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
+                          "
+                          @mousedown.prevent="
+                            orderBySuggestionIndex = idx;
+                            acceptOrderBySuggestion();
+                          "
+                          @mouseenter="orderBySuggestionIndex = idx"
+                        >
+                          <Search class="w-3 h-3 mr-2 text-muted-foreground shrink-0" />
+                          <span>{{ sug }}</span>
+                        </div>
+                      </div>
+                    </Teleport>
+                    <button
+                      v-if="hasOrderByInput"
+                      class="text-muted-foreground hover:text-foreground shrink-0"
+                      @click="
+                        orderByInput = '';
+                        applyOrderBySearch();
+                      "
+                    >
+                      <X class="w-3 h-3" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </template>
+              </template>
 
-            <slot name="search-bar" />
+              <slot name="search-bar" />
 
-            <div class="flex shrink-0 items-center gap-1 px-1 ml-auto">
-              <Tooltip v-if="resultEditStatus === 'editable'">
-                <TooltipTrigger as-child>
-                  <div
-                    class="flex h-5 items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
-                  >
-                    {{ t("grid.queryEditReady") }}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" class="max-w-sm">
-                  {{ t("grid.queryEditReadyHint", { table: tableMeta?.tableName }) }}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip v-else-if="resultEditStatus === 'readonly' && queryEditabilityHint">
-                <TooltipTrigger as-child>
-                  <div
-                    class="flex h-5 items-center gap-1 rounded border border-border bg-background px-1.5 text-xs font-medium text-muted-foreground"
-                  >
-                    <LockKeyhole class="h-3 w-3" />
-                    {{ t("grid.queryEditReadOnly") }}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" class="max-w-sm">
-                  {{ queryEditabilityHint }}
-                </TooltipContent>
-              </Tooltip>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-5 text-xs px-1.5 shrink-0"
-                :disabled="isSaving"
-                @click="onToolbarRefresh"
-              >
-                <Loader2 v-if="loading" class="w-3 h-3 mr-1 animate-spin" />
-                <RefreshCcw v-else class="w-3 h-3 mr-1" />
-                {{ t("grid.refresh") }}
-              </Button>
-              <Button
-                v-if="editable && (tableMeta || customSave)"
-                variant="ghost"
-                size="sm"
-                class="h-5 text-xs px-1.5 shrink-0"
-                @click="addRow"
-              >
-                <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }}
-              </Button>
-              <span
-                v-if="transactionActive"
-                class="flex shrink-0 items-center gap-1 px-1 text-xs text-emerald-600 dark:text-emerald-400"
-              >
-                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                {{ t("grid.transactionActive") }}
-              </span>
-              <template v-if="saveToolbarState.showActions">
-                <Tooltip>
+              <div class="flex shrink-0 items-center gap-1 px-1 ml-auto">
+                <Tooltip v-if="resultEditStatus === 'editable'">
                   <TooltipTrigger as-child>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      class="h-5 text-xs px-1.5 shrink-0"
-                      :disabled="saveToolbarState.actionsDisabled"
-                      @click="onToolbarCommit"
+                    <div
+                      class="flex h-5 items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
                     >
-                      <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
-                      <Save v-else class="w-3 h-3 mr-1" />
-                      {{ t(saveActionMode.labelKey, { count: pendingChangeCount }) }}
-                    </Button>
+                      {{ t("grid.queryEditReady") }}
+                    </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" class="max-w-sm">
-                    {{ t(saveActionMode.tooltipKey, { count: pendingChangeCount }) }}
+                    {{ t("grid.queryEditReadyHint", { table: tableMeta?.tableName }) }}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip v-else-if="resultEditStatus === 'readonly' && queryEditabilityHint">
+                  <TooltipTrigger as-child>
+                    <div
+                      class="flex h-5 items-center gap-1 rounded border border-border bg-background px-1.5 text-xs font-medium text-muted-foreground"
+                    >
+                      <LockKeyhole class="h-3 w-3" />
+                      {{ t("grid.queryEditReadOnly") }}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" class="max-w-sm">
+                    {{ queryEditabilityHint }}
                   </TooltipContent>
                 </Tooltip>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   class="h-5 text-xs px-1.5 shrink-0"
-                  :disabled="saveToolbarState.actionsDisabled"
-                  @click="useTransaction ? onToolbarRollback() : discardChanges()"
+                  :disabled="isSaving"
+                  @click="onToolbarRefresh"
                 >
-                  <RotateCcw class="w-3 h-3 mr-1" />
-                  {{ t(saveActionMode.secondaryActionKey) }}
+                  <Loader2 v-if="loading" class="w-3 h-3 mr-1 animate-spin" />
+                  <RefreshCcw v-else class="w-3 h-3 mr-1" />
+                  {{ t("grid.refresh") }}
                 </Button>
-              </template>
+                <Button
+                  v-if="editable && (tableMeta || customSave)"
+                  variant="ghost"
+                  size="sm"
+                  class="h-5 text-xs px-1.5 shrink-0"
+                  @click="addRow"
+                >
+                  <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }}
+                </Button>
+                <span
+                  v-if="transactionActive"
+                  class="flex shrink-0 items-center gap-1 px-1 text-xs text-emerald-600 dark:text-emerald-400"
+                >
+                  <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {{ t("grid.transactionActive") }}
+                </span>
+                <template v-if="saveToolbarState.showActions">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        class="h-5 text-xs px-1.5 shrink-0"
+                        :disabled="saveToolbarState.actionsDisabled"
+                        @click="onToolbarCommit"
+                      >
+                        <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
+                        <Save v-else class="w-3 h-3 mr-1" />
+                        {{ t(saveActionMode.labelKey, { count: pendingChangeCount }) }}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" class="max-w-sm">
+                      {{ t(saveActionMode.tooltipKey, { count: pendingChangeCount }) }}
+                    </TooltipContent>
+                  </Tooltip>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="h-5 text-xs px-1.5 shrink-0"
+                    :disabled="saveToolbarState.actionsDisabled"
+                    @click="useTransaction ? onToolbarRollback() : discardChanges()"
+                  >
+                    <RotateCcw class="w-3 h-3 mr-1" />
+                    {{ t(saveActionMode.secondaryActionKey) }}
+                  </Button>
+                </template>
+              </div>
             </div>
           </div>
           <!-- Truncation warning banner -->
@@ -4754,6 +4790,10 @@ defineExpose({
 <style scoped>
 .data-grid-topbar {
   min-width: 760px;
+}
+
+.data-grid-topbar-scroll {
+  scrollbar-width: thin;
 }
 
 .data-grid-scroller {
