@@ -42,14 +42,23 @@ export function buildSortedQuerySql(
   }
 
   const aliases = buildDerivedColumnAliases(resultColumns);
-  const sortAlias = aliases[columnIndex] ?? aliases[resultColumns.indexOf(column)] ?? fallbackAlias(columnIndex);
+  const useDerivedColumnAliases = supportsDerivedColumnAliasList(databaseType);
+  const sortAlias = useDerivedColumnAliases
+    ? (aliases[columnIndex] ?? aliases[resultColumns.indexOf(column)] ?? fallbackAlias(columnIndex))
+    : (resultColumns[columnIndex] ?? column);
   const quotedColumn = quoteTableIdentifier(databaseType, sortAlias);
   const aliasList = aliases.map((alias) => quoteTableIdentifier(databaseType, alias)).join(", ");
   const wrappedStatement = databaseType === "sqlserver" ? sqlServerStatementForDerivedTable(statement) : statement;
   return {
     ok: true,
-    sql: `SELECT * FROM (${wrappedStatement}) t(${aliasList}) ORDER BY ${quotedColumn} ${direction.toUpperCase()};`,
+    sql: useDerivedColumnAliases
+      ? `SELECT * FROM (${wrappedStatement}) t(${aliasList}) ORDER BY ${quotedColumn} ${direction.toUpperCase()};`
+      : `SELECT * FROM (${wrappedStatement}) t ORDER BY ${quotedColumn} ${direction.toUpperCase()};`,
   };
+}
+
+function supportsDerivedColumnAliasList(databaseType: DatabaseType | undefined): boolean {
+  return databaseType !== "mysql";
 }
 
 function buildDerivedColumnAliases(resultColumns: string[]): string[] {

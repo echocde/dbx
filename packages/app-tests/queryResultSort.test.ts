@@ -14,14 +14,29 @@ test("preserves complex select body when wrapping sort sql", () => {
   const result = buildSortedQuerySql("SELECT id FROM users WHERE status = 'A'", "mysql", ["id"], 0, "id", "desc");
   assert.deepEqual(result, {
     ok: true,
-    sql: "SELECT * FROM (SELECT id FROM users WHERE status = 'A') t(`id`) ORDER BY `id` DESC;",
+    sql: "SELECT * FROM (SELECT id FROM users WHERE status = 'A') t ORDER BY `id` DESC;",
+  });
+});
+
+test("sorts MySQL wildcard query results without derived column alias list", () => {
+  const result = buildSortedQuerySql(
+    "SELECT * FROM admin LIMIT 100;",
+    "mysql",
+    ["id", "guid", "role_guid", "login_name", "password"],
+    3,
+    "login_name",
+    "asc",
+  );
+  assert.deepEqual(result, {
+    ok: true,
+    sql: "SELECT * FROM (SELECT * FROM admin LIMIT 100) t ORDER BY `login_name` ASC;",
   });
 });
 
 test("assigns unique aliases for duplicate result column names", () => {
   const result = buildSortedQuerySql(
     "SELECT c.id, m.id FROM t_campaign c LEFT JOIN t_campaign_mdf m ON m.campaign_id = c.id",
-    "mysql",
+    "postgres",
     ["id", "id"],
     1,
     "id",
@@ -29,7 +44,7 @@ test("assigns unique aliases for duplicate result column names", () => {
   );
   assert.deepEqual(result, {
     ok: true,
-    sql: "SELECT * FROM (SELECT c.id, m.id FROM t_campaign c LEFT JOIN t_campaign_mdf m ON m.campaign_id = c.id) t(`id`, `id_2`) ORDER BY `id_2` ASC;",
+    sql: 'SELECT * FROM (SELECT c.id, m.id FROM t_campaign c LEFT JOIN t_campaign_mdf m ON m.campaign_id = c.id) t("id", "id_2") ORDER BY "id_2" ASC;',
   });
 });
 
