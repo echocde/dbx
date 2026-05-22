@@ -3,6 +3,7 @@ pub mod agent_service;
 pub mod ai;
 pub mod connection;
 pub mod connection_secrets;
+pub mod csv_export;
 pub mod database_capabilities;
 pub mod database_export;
 pub mod db;

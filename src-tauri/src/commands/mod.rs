@@ -4,6 +4,7 @@ pub mod app_settings;
 pub mod connection;
 #[allow(dead_code, unused_imports)]
 mod connection_secrets;
+pub mod csv_export;
 pub mod database_export;
 pub mod deep_link;
 pub mod external_sql;

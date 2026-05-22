@@ -92,7 +92,7 @@ import {
   treeNodeRowAction,
   treeNodeRowDoubleClickAction,
 } from "@/lib/treeNodeClick";
-import { formatCsv, formatJson, formatSqlInsert } from "@/lib/exportFormats";
+import { formatJson, formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
 import {
   buildCreateDatabaseSql,
@@ -1266,13 +1266,26 @@ async function exportData(format: "csv" | "json" | "sql") {
       executePage: (sql) => api.executeQuery(connectionId, database, sql),
     });
 
+    if (format === "csv") {
+      let outputPath = `${node.label}.csv`;
+      if (isTauriRuntime()) {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        const path = await save({
+          defaultPath: outputPath,
+          filters: [{ name: "CSV", extensions: ["csv"] }],
+        });
+        if (!path) return;
+        outputPath = path as string;
+      }
+      await api.exportQueryResultCsv(outputPath, result.columns, result.rows);
+      toast(t("grid.exported"));
+      return;
+    }
+
     let content: string;
     let ext: string;
 
-    if (format === "csv") {
-      ext = "csv";
-      content = formatCsv(result.columns, result.rows);
-    } else if (format === "json") {
+    if (format === "json") {
       ext = "json";
       content = formatJson(result.columns, result.rows);
     } else {
@@ -1311,13 +1324,17 @@ async function exportDataXlsx() {
       executePage: (sql) => api.executeQuery(connectionId, database, sql),
     });
 
-    const { buildXlsxWorkbook } = await import("@/lib/xlsxExport");
-    const workbook = buildXlsxWorkbook({
-      sheetName: node.label,
-      columns: result.columns,
-      rows: result.rows,
-    });
-    await saveBinaryFileContent(workbook, `${node.label}.xlsx`, "Excel", "xlsx");
+    let outputPath = `${node.label}.xlsx`;
+    if (isTauriRuntime()) {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        defaultPath: outputPath,
+        filters: [{ name: "Excel", extensions: ["xlsx"] }],
+      });
+      if (!path) return;
+      outputPath = path as string;
+    }
+    await api.exportQueryResultXlsx(outputPath, node.label, result.columns, result.rows);
     toast(t("grid.exported"));
   } catch (e: any) {
     toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);

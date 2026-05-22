@@ -45,6 +45,8 @@ export interface DesktopSettings {
   show_tray_icon: boolean;
 }
 
+export type XlsxCellValue = string | number | boolean | null;
+
 export interface DriverInstallProgress {
   step: string;
   downloaded?: number;
@@ -973,4 +975,34 @@ export async function exportDatabaseSql(
 
 export async function cancelDatabaseExport(exportId: string): Promise<void> {
   await invoke("cancel_database_export", { exportId });
+}
+
+export async function exportQueryResultCsv(
+  filePath: string,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  return invoke("export_query_result_csv", {
+    request: {
+      filePath,
+      columns,
+      rows,
+    },
+  });
+}
+
+export async function exportQueryResultXlsx(
+  filePath: string,
+  sheetName: string | undefined,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  return invoke("export_query_result_xlsx", {
+    request: {
+      filePath,
+      sheetName,
+      columns,
+      rows,
+    },
+  });
 }

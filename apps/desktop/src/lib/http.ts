@@ -47,6 +47,7 @@ import type {
   TableImportProgress,
   DatabaseExportRequest,
   ExportProgress,
+  XlsxCellValue,
 } from "./tauri";
 
 // ---------------------------------------------------------------------------
@@ -678,6 +679,47 @@ export async function exportDatabaseSql(
 
 export async function cancelDatabaseExport(exportId: string): Promise<void> {
   await post("/api/export/database/cancel", { exportId });
+}
+
+export async function exportQueryResultCsv(
+  filePath: string,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  const { formatCsv } = await import("./exportFormats");
+  const content = formatCsv(columns, rows as (string | number | boolean | null)[][]);
+  const fileName = filePath.split(/[\\/]/).pop() || "export.csv";
+  const blob = new Blob(["\uFEFF", content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function exportQueryResultXlsx(
+  filePath: string,
+  sheetName: string | undefined,
+  columns: string[],
+  rows: readonly (readonly XlsxCellValue[])[],
+): Promise<void> {
+  const { buildXlsxWorkbook } = await import("./xlsxExport");
+  const workbook = buildXlsxWorkbook({
+    sheetName: sheetName || "Export",
+    columns,
+    rows,
+  });
+  const fileName = filePath.split(/[\\/]/).pop() || "export.xlsx";
+  const blob = new Blob([workbook], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------------------------------------------------------------------------

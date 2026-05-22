@@ -128,6 +128,8 @@ export const cancelTableImport = forward("cancelTableImport");
 // Database Export
 export const exportDatabaseSql = forward("exportDatabaseSql");
 export const cancelDatabaseExport = forward("cancelDatabaseExport");
+export const exportQueryResultCsv = forward("exportQueryResultCsv");
+export const exportQueryResultXlsx = forward("exportQueryResultXlsx");
 
 // Redis
 export const redisListDatabases = forward("redisListDatabases");
