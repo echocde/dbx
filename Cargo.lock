@@ -8021,6 +8021,7 @@ dependencies = [
  "rustls-native-certs 0.6.3",
  "rustls-pemfile",
  "thiserror 1.0.69",
+ "tokio",
  "tokio-rustls 0.24.1",
  "tokio-util",
  "tracing",

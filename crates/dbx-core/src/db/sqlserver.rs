@@ -1,7 +1,7 @@
 use futures::TryStreamExt;
 use rust_decimal::Decimal;
 use std::time::Instant;
-use tiberius::{AuthMethod, Client, ColumnData, Config, FromSql, QueryItem, QueryStream};
+use tiberius::{AuthMethod, Client, ColumnData, Config, FromSql, QueryItem, QueryStream, SqlBrowser};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
@@ -12,6 +12,22 @@ use crate::types::{ColumnInfo, DatabaseInfo, ForeignKeyInfo, IndexInfo, QueryRes
 
 pub type SqlServerClient = Client<Compat<TcpStream>>;
 const SIMPLE_QUERY_MODULE_KEYWORDS: &[&str] = &["FUNCTION", "PROC", "PROCEDURE", "TRIGGER", "VIEW"];
+
+#[derive(Debug, PartialEq, Eq)]
+struct SqlServerEndpoint<'a> {
+    host: &'a str,
+    instance_name: Option<&'a str>,
+}
+
+fn sqlserver_endpoint(host: &str) -> SqlServerEndpoint<'_> {
+    if let Some((server, instance)) = host.split_once('\\') {
+        if !server.trim().is_empty() && !instance.trim().is_empty() {
+            return SqlServerEndpoint { host: server.trim(), instance_name: Some(instance.trim()) };
+        }
+    }
+
+    SqlServerEndpoint { host: host.trim(), instance_name: None }
+}
 
 fn query_result_row_limit(max_rows: Option<usize>) -> usize {
     max_rows.unwrap_or(MAX_ROWS).max(1)
@@ -39,8 +55,13 @@ async fn try_connect(
     use_encryption: bool,
 ) -> Result<SqlServerClient, String> {
     let mut config = Config::new();
-    config.host(host);
-    config.port(port);
+    let endpoint = sqlserver_endpoint(host);
+    config.host(endpoint.host);
+    if let Some(instance_name) = endpoint.instance_name {
+        config.instance_name(instance_name);
+    } else {
+        config.port(port);
+    }
     config.authentication(AuthMethod::sql_server(user, pass));
     if let Some(db) = database {
         config.database(db);
@@ -50,10 +71,17 @@ async fn try_connect(
         config.encryption(tiberius::EncryptionLevel::NotSupported);
     }
 
-    let tcp = tokio::time::timeout(connection_timeout(), TcpStream::connect(config.get_addr()))
-        .await
-        .map_err(|_| format!("SQL Server connection timed out ({CONNECTION_TIMEOUT_SECS}s)"))?
-        .map_err(|e| format!("SQL Server connection failed: {e}"))?;
+    let tcp = if endpoint.instance_name.is_some() {
+        tokio::time::timeout(connection_timeout(), TcpStream::connect_named(&config))
+            .await
+            .map_err(|_| format!("SQL Server connection timed out ({CONNECTION_TIMEOUT_SECS}s)"))?
+            .map_err(|e| format!("SQL Server connection failed: {e}"))?
+    } else {
+        tokio::time::timeout(connection_timeout(), TcpStream::connect(config.get_addr()))
+            .await
+            .map_err(|_| format!("SQL Server connection timed out ({CONNECTION_TIMEOUT_SECS}s)"))?
+            .map_err(|e| format!("SQL Server connection failed: {e}"))?
+    };
     tokio::time::timeout(connection_timeout(), Client::connect(config, tcp.compat_write()))
         .await
         .map_err(|_| format!("SQL Server handshake timed out ({CONNECTION_TIMEOUT_SECS}s)"))?
@@ -701,6 +729,38 @@ mod tests {
     use chrono::NaiveDate;
     use std::time::Instant;
     use tiberius::{ColumnData, IntoSql};
+
+    #[test]
+    fn sqlserver_endpoint_splits_named_instance_hosts() {
+        assert_eq!(
+            super::sqlserver_endpoint(r"192.168.1.10\SQL2022"),
+            super::SqlServerEndpoint { host: "192.168.1.10", instance_name: Some("SQL2022") }
+        );
+        assert_eq!(
+            super::sqlserver_endpoint(r" db.example.com\SQLEXPRESS "),
+            super::SqlServerEndpoint { host: "db.example.com", instance_name: Some("SQLEXPRESS") }
+        );
+    }
+
+    #[test]
+    fn sqlserver_endpoint_keeps_regular_hosts() {
+        assert_eq!(
+            super::sqlserver_endpoint("db.example.com"),
+            super::SqlServerEndpoint { host: "db.example.com", instance_name: None }
+        );
+        assert_eq!(
+            super::sqlserver_endpoint(r"db.example.com\"),
+            super::SqlServerEndpoint { host: r"db.example.com\", instance_name: None }
+        );
+    }
+
+    #[test]
+    fn sqlserver_connect_uses_named_instance_resolution() {
+        let source = include_str!("sqlserver.rs");
+        let try_connect = source.split("async fn try_connect").nth(1).unwrap();
+        let try_connect = try_connect.split("fn row_to_json").next().unwrap();
+        assert!(try_connect.contains("connect_named(&config)"));
+    }
 
     #[test]
     fn sqlserver_module_definitions_require_simple_query_batch() {
