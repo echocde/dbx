@@ -382,6 +382,24 @@ const savedCustomFormatters = computed(() => {
   );
 });
 
+const columnFormatterMemoKey = computed(() =>
+  JSON.stringify({
+    columns: props.result.columns,
+    columnFormatters: settingsStore.editorSettings.columnFormatters,
+    customColumnFormatters: settingsStore.editorSettings.customColumnFormatters,
+  }),
+);
+
+const cellEditabilityMemoKey = computed(() =>
+  JSON.stringify({
+    editable: props.editable,
+    canEditExistingRows: canEditExistingRows.value,
+    databaseType: props.databaseType,
+    sourceColumns: props.sourceColumns,
+    tableColumns: props.tableMeta?.columns.map((column) => [column.name, column.data_type]),
+  }),
+);
+
 function localFilterKey(value: CellValue): string {
   if (value === null) return "__dbx_null__";
   if (typeof value === "boolean") return `bool:${value}`;
@@ -1629,6 +1647,24 @@ const searchMatchSet = computed(() => {
   return set;
 });
 
+const searchRowMemoKeys = computed(() => {
+  const rows = new Map<number, string[]>();
+  for (const match of searchMatches.value) {
+    const row = rows.get(match.displayRow) ?? [];
+    row.push(String(match.col));
+    rows.set(match.displayRow, row);
+  }
+
+  const current = searchMatches.value[currentMatchIndex.value];
+  if (current) {
+    const row = rows.get(current.displayRow) ?? [];
+    row.push(`current:${current.col}`);
+    rows.set(current.displayRow, row);
+  }
+
+  return new Map([...rows].map(([row, parts]) => [row, parts.join("|")]));
+});
+
 watch(searchMatches, (matches) => {
   currentMatchIndex.value = matches.length > 0 ? 0 : -1;
 });
@@ -1642,6 +1678,10 @@ function cellIsCurrentMatch(displayRow: number, col: number): boolean {
   if (idx < 0 || idx >= searchMatches.value.length) return false;
   const m = searchMatches.value[idx];
   return m.displayRow === displayRow && m.col === col;
+}
+
+function rowSearchMemoKey(index: number): string {
+  return searchRowMemoKeys.value.get(index) ?? "";
 }
 
 function navigateMatch(delta: number) {
@@ -1799,6 +1839,36 @@ function isRowActive(index: number): boolean {
   const range = selectedRange.value;
   if (!range) return false;
   return index >= range.startRow && index <= range.endRow;
+}
+
+function rowSelectionMemoKey(item: RowItem, index: number): string {
+  const rowSelected = selectedRowIds.value.has(item.id) ? "row" : "";
+  const range = selectedRange.value;
+  if (!range || index < range.startRow || index > range.endRow) return rowSelected;
+  return `${rowSelected}|cells:${range.startCol}:${range.endCol}`;
+}
+
+function rowHoverMemoKey(index: number): string {
+  return hoveredDetailCell.value?.rowIndex === index ? String(hoveredDetailCell.value.col) : "";
+}
+
+function rowEditMemoKey(item: RowItem): string {
+  return editingCell.value?.rowId === item.id ? `${editingCell.value.col}:${editValue.value}` : "";
+}
+
+function rowRenderMemoDeps(item: RowItem, index: number) {
+  return [
+    item.data,
+    item.status,
+    item.isDirtyCol,
+    rowSelectionMemoKey(item, index),
+    rowSearchMemoKey(index),
+    rowHoverMemoKey(index),
+    rowEditMemoKey(item),
+    visibleColumnIndexes.value,
+    columnFormatterMemoKey.value,
+    cellEditabilityMemoKey.value,
+  ];
 }
 
 const contextRowItem = computed(() => (contextCell.value ? getRowItem(contextCell.value.rowId) : undefined));
@@ -4032,6 +4102,7 @@ defineExpose({
                   <template #default="{ item, index }">
                     <div
                       class="flex text-xs border-b border-border"
+                      v-memo="rowRenderMemoDeps(item, index)"
                       :class="{
                         'bg-destructive/5 opacity-70': item.isDeleted,
                         'bg-primary/5': item.isNew && !isRowActive(index),
