@@ -73,12 +73,7 @@ import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
 import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database";
 import * as api from "@/lib/api";
-import {
-  buildTableSelectSql,
-  qualifiedTableName,
-  normalizeWhereInput,
-  quoteTableIdentifier,
-} from "@/lib/tableSelectSql";
+import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { uuid } from "@/lib/utils";
 import {
   canEditExistingTableRows,
@@ -87,7 +82,12 @@ import {
   isTdengineExistingRowReadonlyColumn,
   usesSyntheticRowIdKey,
 } from "@/lib/tableEditing";
-import { formatGridSqlLiteral } from "@/lib/dataGridSql";
+import {
+  buildDataGridContextFilterCondition,
+  buildDataGridCountSql,
+  buildHiveTablePropertiesSql,
+  type DataGridContextFilterMode,
+} from "@/lib/dataGridSql";
 import {
   buildVisibleTransposeRows,
   nextAppendedTransposeState,
@@ -718,7 +718,7 @@ async function applyTypedLocalFilterValue() {
   if (!draft) return;
   const columnName = props.result.columns[draft.columnIndex];
   if (!columnName) return;
-  const condition = buildColumnValueFilterCondition({
+  const condition = await buildColumnValueFilterCondition({
     databaseType: props.databaseType,
     columnName,
     columnInfo: props.tableMeta?.columns.find((column) => column.name === columnName),
@@ -1306,18 +1306,13 @@ watch(
       hiveTableTransactional.value = undefined;
       return;
     }
-    const table = qualifiedTableName({
-      databaseType: "hive",
-      schema: props.tableMeta.schema,
-      tableName: props.tableMeta.tableName,
-    });
     try {
-      const result = await api.executeQuery(
-        props.connectionId,
-        props.database,
-        `SHOW TBLPROPERTIES ${table} ('transactional')`,
-        props.tableMeta.schema,
-      );
+      const sql = await buildHiveTablePropertiesSql({
+        schema: props.tableMeta.schema,
+        tableName: props.tableMeta.tableName,
+        propertyName: "transactional",
+      });
+      const result = await api.executeQuery(props.connectionId, props.database, sql, props.tableMeta.schema);
       hiveTableTransactional.value = hiveTablePropertiesIndicateTransactional(result);
     } catch {
       hiveTableTransactional.value = false;
@@ -1385,14 +1380,12 @@ async function lastPage() {
   let sql = props.countSql;
   let schema = props.schema;
   if (props.tableMeta) {
-    const table = qualifiedTableName({
+    sql = await buildDataGridCountSql({
       databaseType: props.databaseType,
       schema: props.tableMeta.schema,
       tableName: props.tableMeta.tableName,
+      whereInput: currentWhereInput(),
     });
-    const predicate = normalizeWhereInput(currentWhereInput());
-    const where = predicate ? ` WHERE (${predicate})` : "";
-    sql = `SELECT COUNT(*) AS cnt FROM ${table}${where}`;
     schema = props.tableMeta.schema;
   }
   if (!sql) return;
@@ -2122,34 +2115,24 @@ function applyContextSort(direction: "asc" | "desc" | null) {
   emit("sort", column, columnIndex, direction, currentWhereInput());
 }
 
-type FilterMode =
-  | "equals"
-  | "not-equals"
-  | "is-null"
-  | "is-not-null"
-  | "like"
-  | "not-like"
-  | "less-than"
-  | "greater-than";
+type FilterMode = DataGridContextFilterMode;
 
-function contextFilterCondition(mode: FilterMode): string | null {
+async function contextFilterCondition(mode: FilterMode): Promise<string | null> {
   if (!contextColumn.value) return null;
-  const column = queryColumnRef(contextColumn.value);
-  const value = contextCellValue.value;
-
-  if (mode === "is-null") return `${column} IS NULL`;
-  if (mode === "is-not-null") return `${column} IS NOT NULL`;
-  if (value === null) return mode === "equals" ? `${column} IS NULL` : `${column} IS NOT NULL`;
-  if (mode === "like") return `${column} LIKE ${escapeVal(`%${value}%`)}`;
-  if (mode === "not-like") return `${column} NOT LIKE ${escapeVal(`%${value}%`)}`;
-  if (mode === "less-than") return `${column} < ${escapeVal(value)}`;
-  if (mode === "greater-than") return `${column} > ${escapeVal(value)}`;
-  return mode === "equals" ? `${column} = ${escapeVal(value)}` : `${column} <> ${escapeVal(value)}`;
+  return (
+    (await buildDataGridContextFilterCondition({
+      databaseType: props.databaseType,
+      columnName: contextColumn.value,
+      columnInfo: props.tableMeta?.columns.find((column) => column.name === contextColumn.value),
+      mode,
+      value: contextCellValue.value,
+    })) ?? null
+  );
 }
 
 async function applyContextFilter(mode: FilterMode) {
   if (!canUseWhereSearch.value) return;
-  const condition = contextFilterCondition(mode);
+  const condition = await contextFilterCondition(mode);
   if (!condition) return;
   const existing = whereFilterInput.value.trim();
   whereFilterInput.value = existing ? `(${existing}) AND (${condition})` : condition;
@@ -2172,7 +2155,7 @@ async function applyOrderBySearch() {
   sortColIndex.value = null;
   sortDir.value = "asc";
   try {
-    const sql = buildTableSelectSql({
+    const sql = await buildTableSelectSql({
       databaseType: props.databaseType,
       schema: props.tableMeta.schema,
       tableName: props.tableMeta.tableName,
@@ -2197,7 +2180,7 @@ async function applyWhereFilter() {
   saveError.value = "";
   currentPage.value = 1;
   try {
-    const sql = buildTableSelectSql({
+    const sql = await buildTableSelectSql({
       databaseType: props.databaseType,
       schema: props.tableMeta.schema,
       tableName: props.tableMeta.tableName,
@@ -2233,10 +2216,6 @@ function quoteIdent(name: string): string {
 function queryColumnRef(name: string): string {
   const quoted = quoteIdent(name);
   return props.databaseType === "neo4j" ? `n.${quoted}` : quoted;
-}
-
-function escapeVal(value: CellValue): string {
-  return formatGridSqlLiteral(value);
 }
 
 function isNull(value: unknown): boolean {
@@ -2520,12 +2499,17 @@ function copyDetailColumnName() {
   copyText(activeCellDetail.value.column);
 }
 
-function copyDetailSqlCondition() {
+async function copyDetailSqlCondition() {
   const detail = activeCellDetail.value;
   if (!detail) return;
-  const column = quoteIdent(detail.column);
-  const condition = detail.value === null ? `${column} IS NULL` : `${column} = ${escapeVal(detail.value)}`;
-  copyText(condition);
+  const condition = await buildDataGridContextFilterCondition({
+    databaseType: props.databaseType,
+    columnName: detail.column,
+    columnInfo: props.tableMeta?.columns.find((column) => column.name === detail.column),
+    mode: "equals",
+    value: detail.value,
+  });
+  if (condition) copyText(condition);
 }
 
 const TRANSPOSE_RECORD_DEFAULT_WIDTH = 168;

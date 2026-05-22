@@ -169,7 +169,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   }
 
   async function copyRowAsInsertStatement(excludePrimaryKeys: boolean) {
-    const statement = buildDataGridCopyInsertStatement({
+    const statement = await buildDataGridCopyInsertStatement({
       databaseType: databaseType.value,
       tableMeta: tableMeta.value,
       columns: columns.value,
@@ -191,7 +191,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
 
   async function copyRowAsUpdate() {
     if (!tableMeta.value?.primaryKeys.length) return;
-    const statements = buildDataGridCopyUpdateStatements({
+    const statements = await buildDataGridCopyUpdateStatements({
       databaseType: databaseType.value,
       tableMeta: tableMeta.value,
       columns: columns.value,
@@ -206,29 +206,25 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     if (!tableMeta.value?.primaryKeys.length) return false;
     const rows = updateEligibleRows();
     if (!rows.length) return false;
-    return (
-      buildDataGridCopyUpdateStatements({
-        databaseType: databaseType.value,
-        tableMeta: tableMeta.value,
-        columns: columns.value,
-        sourceColumns: sourceColumns.value,
-        rows: [rows[0].data],
-      }).length > 0
-    );
+    if (databaseType.value === "neo4j" || databaseType.value === "tdengine") return false;
+    const saveColumns = effectiveColumns(sourceColumns.value, columns.value);
+    const primaryKeys = tableMeta.value.primaryKeys;
+    if (primaryKeys.some((primaryKey) => findColumnIndex(saveColumns, primaryKey) === -1)) return false;
+    const primaryKeySet = new Set(primaryKeys.map(normalizeColumnName));
+    return saveColumns.some((column) => column && !primaryKeySet.has(normalizeColumnName(column)));
   });
 
   const canCopyRowAsInsertWithoutPrimaryKeys = computed(() => {
     if (!tableMeta.value?.primaryKeys.length) return false;
     const rows = insertEligibleRows();
     if (!rows.length) return false;
-    return !!buildDataGridCopyInsertStatement({
-      databaseType: databaseType.value,
-      tableMeta: tableMeta.value,
-      columns: columns.value,
-      sourceColumns: sourceColumns.value,
-      rows: [rows[0].data],
-      excludePrimaryKeys: true,
-    });
+    const saveColumns = effectiveColumns(sourceColumns.value, columns.value);
+    const primaryKeySet = new Set(tableMeta.value.primaryKeys.map(normalizeColumnName));
+    const insertableCount = saveColumns.filter(Boolean).length;
+    const insertColumnsCount = saveColumns.filter(
+      (column) => column && !primaryKeySet.has(normalizeColumnName(column)),
+    ).length;
+    return insertColumnsCount > 0 && insertColumnsCount < insertableCount;
   });
 
   async function copyAll() {
@@ -371,4 +367,21 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     exportXlsx,
     copySql,
   };
+}
+
+function effectiveColumns(
+  sourceColumns: Array<string | undefined> | undefined,
+  columns: string[],
+): Array<string | undefined> {
+  if (!sourceColumns || sourceColumns.length !== columns.length) return columns;
+  return sourceColumns;
+}
+
+function findColumnIndex(columns: Array<string | undefined>, target: string): number {
+  const normalizedTarget = normalizeColumnName(target);
+  return columns.findIndex((column) => (column ? normalizeColumnName(column) : "") === normalizedTarget);
+}
+
+function normalizeColumnName(name: string): string {
+  return name.toUpperCase();
 }

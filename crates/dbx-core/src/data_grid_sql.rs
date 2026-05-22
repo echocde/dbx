@@ -55,6 +55,92 @@ pub struct DataGridSaveStatementOptions {
     pub new_rows: Vec<Vec<Value>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataGridCopyUpdateStatementOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    pub table_meta: DataGridTableMeta,
+    pub columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_columns: Option<Vec<Option<String>>>,
+    #[serde(default)]
+    pub rows: Vec<Vec<Value>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataGridCopyInsertStatementOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table_meta: Option<DataGridTableMeta>,
+    pub columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_columns: Option<Vec<Option<String>>>,
+    #[serde(default)]
+    pub rows: Vec<Vec<Value>>,
+    #[serde(default)]
+    pub exclude_primary_keys: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DataGridContextFilterMode {
+    Equals,
+    NotEquals,
+    IsNull,
+    IsNotNull,
+    Like,
+    NotLike,
+    LessThan,
+    GreaterThan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataGridContextFilterConditionOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    pub column_name: String,
+    pub mode: DataGridContextFilterMode,
+    pub value: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_info: Option<DataGridColumnInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataGridColumnValueFilterConditionOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    pub column_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_info: Option<DataGridColumnInfo>,
+    pub raw_value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataGridCountSqlOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    pub table_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub where_input: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiveTablePropertiesSqlOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    pub table_name: String,
+    pub property_name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DataGridSavePreparation {
@@ -83,6 +169,219 @@ pub fn prepare_data_grid_save(options: DataGridSaveStatementOptions) -> DataGrid
         rollback_statements: build_data_grid_rollback_statements(&options),
         execution_schema: data_grid_save_execution_schema(options.database_type, &options.table_meta),
     }
+}
+
+pub fn build_data_grid_copy_update_statements(options: DataGridCopyUpdateStatementOptions) -> Vec<String> {
+    if matches!(options.database_type, Some(DatabaseType::Neo4j | DatabaseType::Tdengine)) {
+        return Vec::new();
+    }
+    let primary_keys = &options.table_meta.primary_keys;
+    if primary_keys.is_empty() {
+        return Vec::new();
+    }
+
+    let save_columns = effective_copy_columns(options.source_columns.as_deref(), &options.columns);
+    let column_info = options.table_meta.columns.as_deref().unwrap_or(&[]);
+    let primary_key_indexes: Vec<Option<usize>> =
+        primary_keys.iter().map(|primary_key| find_column_index(&save_columns, primary_key)).collect();
+    if primary_key_indexes.iter().any(Option::is_none) {
+        return Vec::new();
+    }
+    let primary_key_indexes: Vec<usize> = primary_key_indexes.into_iter().flatten().collect();
+    let primary_key_set: Vec<String> =
+        primary_keys.iter().map(|primary_key| normalize_column_name(primary_key)).collect();
+    let writable_indexes: Vec<(&str, usize)> = save_columns
+        .iter()
+        .enumerate()
+        .filter_map(|(index, column)| Some((column.as_deref()?, index)))
+        .filter(|(column, _)| !primary_key_set.contains(&normalize_column_name(column)))
+        .filter(|(column, _)| !is_oracle_row_id(options.database_type, Some(column)))
+        .collect();
+
+    if writable_indexes.is_empty() {
+        return Vec::new();
+    }
+
+    let table = qualified_table_name(
+        options.database_type,
+        options.table_meta.schema.as_deref(),
+        &options.table_meta.table_name,
+    );
+    let mut statements = Vec::new();
+    for row in &options.rows {
+        if primary_key_indexes.iter().any(|index| row.get(*index).unwrap_or(&Value::Null).is_null()) {
+            continue;
+        }
+        let sets = writable_indexes
+            .iter()
+            .map(|(column, index)| {
+                format!(
+                    "{} = {}",
+                    quote_ident(options.database_type, column),
+                    format_grid_sql_literal(
+                        row.get(*index).unwrap_or(&Value::Null),
+                        options.database_type,
+                        column_info_for(column_info, column)
+                    )
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        if sets.is_empty() {
+            continue;
+        }
+        let where_clause = primary_keys
+            .iter()
+            .enumerate()
+            .map(|(index, primary_key)| {
+                build_column_predicate(
+                    options.database_type,
+                    primary_key,
+                    row.get(primary_key_indexes[index]).unwrap_or(&Value::Null),
+                    column_info_for(column_info, primary_key),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" AND ");
+        statements.push(format!("UPDATE {table} SET {sets} WHERE {where_clause};"));
+    }
+    statements
+}
+
+pub fn build_data_grid_copy_insert_statement(options: DataGridCopyInsertStatementOptions) -> Option<String> {
+    let save_columns = effective_copy_columns(options.source_columns.as_deref(), &options.columns);
+    let column_info = options.table_meta.as_ref().and_then(|meta| meta.columns.as_deref()).unwrap_or(&[]);
+    let primary_key_set: Vec<String> = options
+        .table_meta
+        .as_ref()
+        .map(|meta| meta.primary_keys.iter().map(|primary_key| normalize_column_name(primary_key)).collect())
+        .unwrap_or_default();
+    let insertable_columns: Vec<(&str, usize)> = save_columns
+        .iter()
+        .enumerate()
+        .filter_map(|(index, column)| Some((column.as_deref()?, index)))
+        .filter(|(column, _)| !is_oracle_row_id(options.database_type, Some(column)))
+        .collect();
+    let insert_columns: Vec<(&str, usize)> = insertable_columns
+        .iter()
+        .copied()
+        .filter(|(column, _)| {
+            !options.exclude_primary_keys || !primary_key_set.contains(&normalize_column_name(column))
+        })
+        .collect();
+
+    if options.exclude_primary_keys && insert_columns.len() == insertable_columns.len() {
+        return None;
+    }
+    if insert_columns.is_empty() || options.rows.is_empty() {
+        return None;
+    }
+
+    let table = options.table_meta.as_ref().map_or_else(
+        || "table_name".to_string(),
+        |meta| qualified_table_name(options.database_type, meta.schema.as_deref(), &meta.table_name),
+    );
+    let columns = insert_columns
+        .iter()
+        .map(|(column, _)| quote_ident(options.database_type, column))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let value_rows = options
+        .rows
+        .iter()
+        .map(|row| {
+            format!(
+                "({})",
+                insert_columns
+                    .iter()
+                    .map(|(column, index)| {
+                        format_grid_sql_literal(
+                            row.get(*index).unwrap_or(&Value::Null),
+                            options.database_type,
+                            column_info_for(column_info, column),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .collect::<Vec<_>>();
+    Some(format!(
+        "INSERT INTO {table} ({columns}) VALUES{}{};",
+        if value_rows.len() == 1 { " " } else { "\n" },
+        value_rows.join(",\n")
+    ))
+}
+
+pub fn build_data_grid_context_filter_condition(options: DataGridContextFilterConditionOptions) -> Option<String> {
+    let column = column_filter_ref(options.database_type, &options.column_name);
+    let value = &options.value;
+    match options.mode {
+        DataGridContextFilterMode::IsNull => Some(format!("{column} IS NULL")),
+        DataGridContextFilterMode::IsNotNull => Some(format!("{column} IS NOT NULL")),
+        DataGridContextFilterMode::Equals if value.is_null() => Some(format!("{column} IS NULL")),
+        DataGridContextFilterMode::NotEquals if value.is_null() => Some(format!("{column} IS NOT NULL")),
+        DataGridContextFilterMode::Like => Some(format!(
+            "{column} LIKE {}",
+            format_grid_sql_literal(
+                &Value::String(format!("%{}%", value_to_filter_text(value))),
+                options.database_type,
+                None
+            )
+        )),
+        DataGridContextFilterMode::NotLike => Some(format!(
+            "{column} NOT LIKE {}",
+            format_grid_sql_literal(
+                &Value::String(format!("%{}%", value_to_filter_text(value))),
+                options.database_type,
+                None
+            )
+        )),
+        DataGridContextFilterMode::LessThan => Some(format!(
+            "{column} < {}",
+            format_grid_sql_literal(value, options.database_type, options.column_info.as_ref())
+        )),
+        DataGridContextFilterMode::GreaterThan => Some(format!(
+            "{column} > {}",
+            format_grid_sql_literal(value, options.database_type, options.column_info.as_ref())
+        )),
+        DataGridContextFilterMode::Equals => Some(format!(
+            "{column} = {}",
+            format_grid_sql_literal(value, options.database_type, options.column_info.as_ref())
+        )),
+        DataGridContextFilterMode::NotEquals => Some(format!(
+            "{column} <> {}",
+            format_grid_sql_literal(value, options.database_type, options.column_info.as_ref())
+        )),
+    }
+}
+
+pub fn build_data_grid_column_value_filter_condition(
+    options: DataGridColumnValueFilterConditionOptions,
+) -> Option<String> {
+    let text = options.raw_value.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let column = column_filter_ref(options.database_type, &options.column_name);
+    if text.eq_ignore_ascii_case("null") {
+        return Some(format!("{column} IS NULL"));
+    }
+    let value = parse_typed_filter_value(text, options.column_info.as_ref());
+    Some(format!("{column} = {}", format_grid_sql_literal(&value, options.database_type, options.column_info.as_ref())))
+}
+
+pub fn build_data_grid_count_sql(options: DataGridCountSqlOptions) -> String {
+    let table = qualified_table_name(options.database_type, options.schema.as_deref(), &options.table_name);
+    let predicate = crate::sql_dialect::normalize_where_input(options.where_input.as_deref());
+    let where_clause = if predicate.is_empty() { String::new() } else { format!(" WHERE ({predicate})") };
+    format!("SELECT COUNT(*) AS cnt FROM {table}{where_clause}")
+}
+
+pub fn build_hive_table_properties_sql(options: HiveTablePropertiesSqlOptions) -> String {
+    let table = qualified_table_name(Some(DatabaseType::Hive), options.schema.as_deref(), &options.table_name);
+    let property = options.property_name.replace('\'', "''");
+    format!("SHOW TBLPROPERTIES {table} ('{property}')")
 }
 
 fn validate_data_grid_save(options: &DataGridSaveStatementOptions) -> Option<String> {
@@ -590,6 +889,13 @@ fn effective_columns(options: &DataGridSaveStatementOptions) -> Vec<Option<Strin
     }
 }
 
+fn effective_copy_columns(source_columns: Option<&[Option<String>]>, columns: &[String]) -> Vec<Option<String>> {
+    match source_columns {
+        Some(source_columns) if source_columns.len() == columns.len() => source_columns.to_vec(),
+        _ => columns.iter().map(|column| Some(column.clone())).collect(),
+    }
+}
+
 fn effective_column(options: &DataGridSaveStatementOptions, index: usize) -> Option<&str> {
     match &options.source_columns {
         Some(source_columns) if source_columns.len() == options.columns.len() => source_columns.get(index)?.as_deref(),
@@ -984,6 +1290,93 @@ fn qualified_table_name(database_type: Option<DatabaseType>, schema: Option<&str
     crate::sql_dialect::qualified_table_name(database_type, schema, table_name)
 }
 
+fn column_filter_ref(database_type: Option<DatabaseType>, column_name: &str) -> String {
+    let quoted = quote_ident(database_type, column_name);
+    if database_type == Some(DatabaseType::Neo4j) {
+        format!("n.{quoted}")
+    } else {
+        quoted
+    }
+}
+
+fn value_to_filter_text(value: &Value) -> String {
+    if let Some(value) = value.as_str() {
+        value.to_string()
+    } else if value.is_null() {
+        String::new()
+    } else {
+        value.to_string()
+    }
+}
+
+fn parse_typed_filter_value(text: &str, column_info: Option<&DataGridColumnInfo>) -> Value {
+    let unquoted = unwrap_matching_quotes(text);
+    let data_type = column_info.map(|column| column.data_type.to_ascii_lowercase()).unwrap_or_default();
+    if is_boolean_type(&data_type) && unquoted.eq_ignore_ascii_case("true") {
+        return Value::Bool(true);
+    }
+    if is_boolean_type(&data_type) && unquoted.eq_ignore_ascii_case("false") {
+        return Value::Bool(false);
+    }
+    if (is_numeric_type(&data_type) || data_type.is_empty()) && is_numeric_literal(&unquoted) {
+        if let Ok(number) = unquoted.parse::<serde_json::Number>() {
+            return Value::Number(number);
+        }
+    }
+    Value::String(unquoted)
+}
+
+fn unwrap_matching_quotes(text: &str) -> String {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let Some(last) = text.chars().last() else {
+        return String::new();
+    };
+    if text.len() >= 2 && ((first == '\'' && last == '\'') || (first == '"' && last == '"')) {
+        text[1..text.len() - 1].to_string()
+    } else {
+        text.to_string()
+    }
+}
+
+fn is_numeric_type(data_type: &str) -> bool {
+    let lower = data_type.to_ascii_lowercase();
+    [
+        "int",
+        "integer",
+        "bigint",
+        "smallint",
+        "tinyint",
+        "mediumint",
+        "serial",
+        "number",
+        "numeric",
+        "decimal",
+        "float",
+        "double",
+        "real",
+        "money",
+    ]
+    .iter()
+    .any(|part| lower.split(|ch: char| !ch.is_ascii_alphanumeric()).any(|token| token == *part))
+}
+
+fn is_boolean_type(data_type: &str) -> bool {
+    let lower = data_type.to_ascii_lowercase();
+    lower.split(|ch: char| !ch.is_ascii_alphanumeric()).any(|token| matches!(token, "bool" | "boolean" | "bit"))
+}
+
+fn is_numeric_literal(text: &str) -> bool {
+    if text.trim() != text || text.is_empty() {
+        return false;
+    }
+    text.parse::<f64>().is_ok_and(f64::is_finite)
+        && text.chars().all(|ch| ch.is_ascii_digit() || matches!(ch, '+' | '-' | '.' | 'e' | 'E'))
+        && text.chars().any(|ch| ch.is_ascii_digit())
+}
+
 fn uses_keyless_row_predicate(database_type: Option<DatabaseType>) -> bool {
     matches!(
         database_type,
@@ -1108,6 +1501,109 @@ mod tests {
             column_default: None,
             extra: extra.map(ToString::to_string),
         }
+    }
+
+    #[test]
+    fn builds_copy_update_statements() {
+        let statements = build_data_grid_copy_update_statements(DataGridCopyUpdateStatementOptions {
+            database_type: Some(DatabaseType::Postgres),
+            table_meta: DataGridTableMeta {
+                schema: Some("public".to_string()),
+                table_name: "users".to_string(),
+                primary_keys: vec!["id".to_string()],
+                columns: None,
+            },
+            columns: vec!["id".to_string(), "name".to_string(), "status".to_string()],
+            source_columns: None,
+            rows: vec![vec![json!(1), json!("Ada"), json!("active")]],
+        });
+        assert_eq!(
+            statements,
+            vec!["UPDATE \"public\".\"users\" SET \"name\" = 'Ada', \"status\" = 'active' WHERE \"id\" = 1;"]
+        );
+    }
+
+    #[test]
+    fn builds_copy_insert_statement_without_primary_keys() {
+        let statement = build_data_grid_copy_insert_statement(DataGridCopyInsertStatementOptions {
+            database_type: Some(DatabaseType::Mysql),
+            table_meta: Some(DataGridTableMeta {
+                schema: None,
+                table_name: "users".to_string(),
+                primary_keys: vec!["id".to_string()],
+                columns: None,
+            }),
+            columns: vec!["id".to_string(), "login_name".to_string(), "display_name".to_string()],
+            source_columns: None,
+            rows: vec![vec![json!(1), json!("ada"), json!("Ada")], vec![json!(2), json!("linus"), json!("Linus")]],
+            exclude_primary_keys: true,
+        });
+        assert_eq!(
+            statement.as_deref(),
+            Some("INSERT INTO `users` (`login_name`, `display_name`) VALUES\n('ada', 'Ada'),\n('linus', 'Linus');")
+        );
+    }
+
+    #[test]
+    fn builds_filter_conditions() {
+        assert_eq!(
+            build_data_grid_column_value_filter_condition(DataGridColumnValueFilterConditionOptions {
+                database_type: Some(DatabaseType::Mysql),
+                column_name: "id".to_string(),
+                column_info: Some(column("id", "int", false, None)),
+                raw_value: "49436".to_string(),
+            })
+            .as_deref(),
+            Some("`id` = 49436")
+        );
+        assert_eq!(
+            build_data_grid_context_filter_condition(DataGridContextFilterConditionOptions {
+                database_type: Some(DatabaseType::Postgres),
+                column_name: "status".to_string(),
+                mode: DataGridContextFilterMode::Like,
+                value: json!("active"),
+                column_info: Some(column("status", "varchar", true, None)),
+            })
+            .as_deref(),
+            Some("\"status\" LIKE '%active%'")
+        );
+    }
+
+    #[test]
+    fn builds_grid_count_sql() {
+        assert_eq!(
+            build_data_grid_count_sql(DataGridCountSqlOptions {
+                database_type: Some(DatabaseType::Postgres),
+                schema: Some("public".to_string()),
+                table_name: "users".to_string(),
+                where_input: Some("WHERE active = true;".to_string()),
+            }),
+            "SELECT COUNT(*) AS cnt FROM \"public\".\"users\" WHERE (active = true)"
+        );
+    }
+
+    #[test]
+    fn builds_hive_table_properties_sql() {
+        assert_eq!(
+            build_hive_table_properties_sql(HiveTablePropertiesSqlOptions {
+                schema: Some("default".to_string()),
+                table_name: "events".to_string(),
+                property_name: "transactional".to_string(),
+            }),
+            "SHOW TBLPROPERTIES `events` ('transactional')"
+        );
+    }
+
+    #[test]
+    fn formats_temporal_copy_literals() {
+        assert_eq!(
+            format_grid_sql_literal(&json!("2026-05-12T00:00:00+00:00"), Some(DatabaseType::Mysql), None),
+            "'2026-05-12 00:00:00'"
+        );
+        assert_eq!(
+            format_grid_sql_literal(&json!("2026-05-12T00:00:00.123456Z"), Some(DatabaseType::Mysql), None),
+            "'2026-05-12 00:00:00.123456'"
+        );
     }
 
     #[test]

@@ -1,138 +1,42 @@
+import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import test from "node:test";
-import {
-  buildDataGridCopyInsertStatement,
-  buildDataGridCopyUpdateStatements,
-  normalizeDataGridSaveError,
-  formatGridSqlLiteral,
-} from "../../apps/desktop/src/lib/dataGridSql.ts";
+import { normalizeDataGridSaveError } from "../../apps/desktop/src/lib/dataGridSql.ts";
 
-test("builds copy-as-update statements using primary keys and non-primary-key columns", () => {
-  const statements = buildDataGridCopyUpdateStatements({
-    databaseType: "postgres",
-    tableMeta: {
-      schema: "public",
-      tableName: "users",
-      primaryKeys: ["id"],
-    },
-    columns: ["id", "name", "status"],
-    rows: [[1, "Ada", "active"]],
-  });
+const dataGridSqlSource = readFileSync("apps/desktop/src/lib/dataGridSql.ts", "utf8");
+const dataGridExportSource = readFileSync("apps/desktop/src/composables/useDataGridExport.ts", "utf8");
+const columnFilterSource = readFileSync("apps/desktop/src/lib/dataGridColumnFilter.ts", "utf8");
+const gridSource = readFileSync("apps/desktop/src/components/grid/DataGrid.vue", "utf8");
+const rustSource = readFileSync("crates/dbx-core/src/data_grid_sql.rs", "utf8");
 
-  assert.deepEqual(statements, [`UPDATE "public"."users" SET "name" = 'Ada', "status" = 'active' WHERE "id" = 1;`]);
+test("frontend data grid SQL helpers delegate executable SQL generation to backend APIs", () => {
+  assert.match(dataGridSqlSource, /return api\.buildDataGridCopyUpdateStatements\(options\)/);
+  assert.match(dataGridSqlSource, /return api\.buildDataGridCopyInsertStatement\(options\)/);
+  assert.match(dataGridSqlSource, /return api\.buildDataGridContextFilterCondition\(options\)/);
+  assert.match(dataGridSqlSource, /return api\.buildDataGridColumnValueFilterCondition\(options\)/);
+  assert.match(dataGridSqlSource, /return api\.buildDataGridCountSql\(options\)/);
+  assert.match(dataGridSqlSource, /return api\.buildHiveTablePropertiesSql\(options\)/);
+  assert.doesNotMatch(dataGridSqlSource, /INSERT INTO|UPDATE .* SET|DELETE FROM|formatGridSqlLiteral|quoteTableIdentifier/);
 });
 
-test("builds copy-as-insert statement excluding primary key columns", () => {
-  const statement = buildDataGridCopyInsertStatement({
-    databaseType: "mysql",
-    tableMeta: {
-      tableName: "users",
-      primaryKeys: ["id"],
-    },
-    columns: ["id", "login_name", "display_name"],
-    rows: [
-      [1, "ada", "Ada"],
-      [2, "linus", "Linus"],
-    ],
-    excludePrimaryKeys: true,
-  });
-
-  assert.equal(
-    statement,
-    "INSERT INTO `users` (`login_name`, `display_name`) VALUES\n('ada', 'Ada'),\n('linus', 'Linus');",
-  );
+test("data grid copy and filter callers await backend SQL helpers", () => {
+  assert.match(dataGridExportSource, /await buildDataGridCopyInsertStatement\(/);
+  assert.match(dataGridExportSource, /await buildDataGridCopyUpdateStatements\(/);
+  assert.match(columnFilterSource, /return buildDataGridColumnValueFilterCondition\(/);
+  assert.match(gridSource, /await buildDataGridContextFilterCondition\(/);
+  assert.match(gridSource, /await buildHiveTablePropertiesSql\(/);
+  assert.match(gridSource, /await buildDataGridCountSql\(/);
+  assert.doesNotMatch(gridSource, /formatGridSqlLiteral|SHOW TBLPROPERTIES|SELECT COUNT\(\*\) AS cnt/);
 });
 
-test("copy-as-insert excludes primary keys using source column names", () => {
-  const statement = buildDataGridCopyInsertStatement({
-    databaseType: "mysql",
-    tableMeta: {
-      tableName: "users",
-      primaryKeys: ["user_id"],
-    },
-    columns: ["id", "name"],
-    sourceColumns: ["user_id", "name"],
-    rows: [[7, "Ada"]],
-    excludePrimaryKeys: true,
-  });
-
-  assert.equal(statement, "INSERT INTO `users` (`name`) VALUES ('Ada');");
+test("Rust data grid SQL exposes copy and filter builders", () => {
+  assert.match(rustSource, /pub fn build_data_grid_copy_update_statements/);
+  assert.match(rustSource, /pub fn build_data_grid_copy_insert_statement/);
+  assert.match(rustSource, /pub fn build_data_grid_context_filter_condition/);
+  assert.match(rustSource, /pub fn build_data_grid_column_value_filter_condition/);
+  assert.match(rustSource, /pub fn build_data_grid_count_sql/);
+  assert.match(rustSource, /pub fn build_hive_table_properties_sql/);
 });
-
-test("copy-as-insert without primary keys is unavailable when no primary key columns are visible", () => {
-  const statement = buildDataGridCopyInsertStatement({
-    databaseType: "postgres",
-    tableMeta: {
-      tableName: "users",
-      primaryKeys: ["id"],
-    },
-    columns: ["name"],
-    rows: [["Ada"]],
-    excludePrimaryKeys: true,
-  });
-
-  assert.equal(statement, undefined);
-});
-
-test("skips copy-as-update statements when primary keys are unavailable", () => {
-  const statements = buildDataGridCopyUpdateStatements({
-    databaseType: "postgres",
-    tableMeta: {
-      tableName: "users",
-      primaryKeys: [],
-    },
-    columns: ["id", "name"],
-    rows: [[1, "Ada"]],
-  });
-
-  assert.deepEqual(statements, []);
-});
-
-test("formats TDengine timestamp literals with the local timezone offset", () => {
-  assert.equal(
-    formatGridSqlLiteral("2026-05-16 09:35:57.975", "tdengine"),
-    tdengineTimestampLiteral("2026-05-16 09:35:57.975"),
-  );
-});
-
-test("formats MySQL RFC3339 datetime strings as DATETIME-compatible literals", () => {
-  assert.equal(formatGridSqlLiteral("2026-05-12T00:00:00+00:00", "mysql"), "'2026-05-12 00:00:00'");
-  assert.equal(formatGridSqlLiteral("2026-05-12T00:00:00.123456Z", "mysql"), "'2026-05-12 00:00:00.123456'");
-});
-
-test("formats MySQL copy-as-update statements using target column temporal types", () => {
-  const statements = buildDataGridCopyUpdateStatements({
-    databaseType: "mysql",
-    tableMeta: {
-      tableName: "policies",
-      primaryKeys: ["id"],
-      columns: [
-        { name: "id", data_type: "int", is_nullable: false, is_primary_key: true },
-        { name: "insurance_start_time", data_type: "timestamp", is_nullable: true, is_primary_key: false },
-        { name: "raw_text", data_type: "varchar(64)", is_nullable: true, is_primary_key: false },
-      ],
-    },
-    columns: ["id", "insurance_start_time", "raw_text"],
-    rows: [[1, "2026-05-12T00:00:00+00:00", "2026-05-12T00:00:00+00:00"]],
-  });
-
-  assert.deepEqual(statements, [
-    "UPDATE `policies` SET `insurance_start_time` = '2026-05-12 00:00:00', `raw_text` = '2026-05-12T00:00:00+00:00' WHERE `id` = 1;",
-  ]);
-});
-
-function tdengineTimestampLiteral(text: string): string {
-  const [datePart, timePart] = text.split(" ");
-  const [time, rawFraction = ""] = timePart.split(".");
-  const fraction = `.${rawFraction.padEnd(3, "0").slice(0, 3)}`;
-  const date = new Date(`${datePart}T${time}${fraction}`);
-  const offsetMinutes = date.getTimezoneOffset();
-  const sign = offsetMinutes <= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMinutes);
-  const hours = String(Math.floor(abs / 60)).padStart(2, "0");
-  const minutes = String(abs % 60).padStart(2, "0");
-  return `'${datePart}T${time}${fraction}${sign}${hours}:${minutes}'`;
-}
 
 test("normalizes Hive ACID update and delete errors", () => {
   const error = normalizeDataGridSaveError(

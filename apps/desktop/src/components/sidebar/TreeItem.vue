@@ -65,14 +65,9 @@ import * as api from "@/lib/api";
 import { uuid } from "@/lib/utils";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { canTreeNodeShowExpander, treeItemPaddingLeft } from "@/lib/sidebarTreeItemLayout";
-import {
-  buildTableSelectSql,
-  qualifiedTableName as buildQualifiedTableName,
-  quoteTableIdentifier,
-} from "@/lib/tableSelectSql";
+import { buildTableSelectSql } from "@/lib/tableSelectSql";
 import { editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import {
-  isSchemaAware,
   supportsDatabaseCreation,
   supportsDatabaseSearch,
   supportsFieldLineage,
@@ -82,9 +77,7 @@ import {
   supportsTableImport,
   supportsTableTruncate,
   supportsTableStructureEditing,
-  usesPostgresLikeStructureCopy,
   usesTreeSchemaMode,
-  usesFetchFirst,
 } from "@/lib/databaseCapabilities";
 import {
   objectSourceKindForTreeNode,
@@ -101,6 +94,18 @@ import {
   supportsCreateDatabaseCharset,
   uniqueDuckDbAttachedDatabaseName,
 } from "@/lib/createDatabaseSql";
+import {
+  buildCreateSchemaSql,
+  buildDropDatabaseSql,
+  buildDropObjectSql,
+  buildDropSchemaSql,
+  buildDropTableSql,
+  buildDuplicateTableStructureSql,
+  buildEmptyTableSql,
+  buildTruncateTableSql,
+  type DropObjectSqlOptions,
+  type TableAdminSqlOptions,
+} from "@/lib/dbAdminSql";
 import { buildRenameObjectSql, supportsObjectRename, type RenameableObjectType } from "@/lib/objectRenameSql";
 import { buildRoutineRenameObjectSourceStatements, supportsSourceBackedRoutineRename } from "@/lib/objectSourceEditor";
 import { buildViewDdl } from "@/lib/viewDdl";
@@ -149,18 +154,6 @@ const emit = defineEmits<{
 
 function currentDatabaseType(): DatabaseType | undefined {
   return props.node.connectionId ? connectionStore.getConfig(props.node.connectionId)?.db_type : undefined;
-}
-
-function quoteIdent(name: string): string {
-  return quoteTableIdentifier(currentDatabaseType(), name);
-}
-
-function qualifiedTableName(tableName: string, schema?: string): string {
-  return buildQualifiedTableName({
-    databaseType: currentDatabaseType(),
-    schema,
-    tableName,
-  });
 }
 
 function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
@@ -527,7 +520,7 @@ async function openData() {
     });
     const pks = editablePrimaryKeys(config.db_type, columns);
     const limit = settingsStore.editorSettings.pageSize;
-    const sql = buildTableSelectSql({
+    const sql = await buildTableSelectSql({
       databaseType: config.db_type,
       schema: node.schema,
       tableName: node.label,
@@ -660,6 +653,13 @@ const showTruncateTableConfirm = ref(false);
 const showRenameObjectDialog = ref(false);
 const renameObjectName = ref("");
 const renameObjectError = ref("");
+const renameObjectPreviewSql = ref("");
+const dropTablePreviewSql = ref("");
+const emptyTablePreviewSql = ref("");
+const truncateTablePreviewSql = ref("");
+const dropObjectPreviewSql = ref("");
+const dropDatabasePreviewSql = ref("");
+const dropSchemaPreviewSql = ref("");
 const showDuplicateDialog = ref(false);
 const duplicateTableName = ref("");
 
@@ -676,11 +676,21 @@ const showDropSchemaConfirm = ref(false);
 // --- Procedure / Function Management ---
 const showDropObjectConfirm = ref(false);
 
-function buildDropObjectSql(): string {
+function dropObjectSqlOptions(): DropObjectSqlOptions | null {
   const node = props.node;
-  const keyword = node.type === "procedure" ? "PROCEDURE" : "FUNCTION";
-  const name = qualifiedTableName(node.label, node.schema);
-  return `DROP ${keyword} ${name};`;
+  if (node.type !== "procedure" && node.type !== "function") return null;
+  return {
+    databaseType: currentDatabaseType(),
+    objectType: node.type === "procedure" ? "PROCEDURE" : "FUNCTION",
+    schema: node.schema,
+    name: node.label,
+  };
+}
+
+async function refreshDropObjectPreviewSql() {
+  const options = dropObjectSqlOptions();
+  dropObjectPreviewSql.value = "";
+  dropObjectPreviewSql.value = options ? await buildDropObjectSql(options).catch(() => "") : "";
 }
 
 function viewObjectSource() {
@@ -695,7 +705,7 @@ function viewObjectSource() {
       connectionStore.activeConnectionId = node.connectionId!;
       return api.getObjectSource(node.connectionId!, node.database!, schema, node.label, objectType as any);
     })
-    .then((result) => {
+    .then(async (result) => {
       const tabId = queryStore.createTab(node.connectionId!, node.database!, node.label);
       queryStore.updateSql(tabId, result.source);
       queryStore.setObjectSource(tabId, {
@@ -719,9 +729,9 @@ function viewObjectDdl() {
       connectionStore.activeConnectionId = node.connectionId!;
       return api.getObjectSource(node.connectionId!, node.database!, schema, node.label, "VIEW");
     })
-    .then((result) => {
+    .then(async (result) => {
       const connection = connectionStore.getConfig(node.connectionId!);
-      const ddl = buildViewDdl({
+      const ddl = await buildViewDdl({
         databaseType: connection?.db_type,
         schema,
         name: node.label,
@@ -736,6 +746,7 @@ function viewObjectDdl() {
 }
 
 function requestDropObject() {
+  void refreshDropObjectPreviewSql();
   showDropObjectConfirm.value = true;
 }
 
@@ -759,28 +770,51 @@ const canRenameObject = computed(() => {
 function openRenameObjectDialog() {
   renameObjectName.value = props.node.label;
   renameObjectError.value = "";
+  renameObjectPreviewSql.value = "";
   showRenameObjectDialog.value = true;
 }
 
-function buildRenameObjectPreviewSql(): string {
+let renameObjectPreviewRequestId = 0;
+
+async function refreshRenameObjectPreviewSql() {
+  const requestId = ++renameObjectPreviewRequestId;
   const objectType = nodeRenameObjectType();
   const newName = renameObjectName.value.trim();
-  if (!objectType || !newName || newName === props.node.label) return "";
+  if (!showRenameObjectDialog.value || !objectType || !newName || newName === props.node.label) {
+    renameObjectPreviewSql.value = "";
+    return;
+  }
   if (supportsSourceBackedRoutineRename(currentDatabaseType(), objectType as any)) {
-    return `-- Recreate ${objectType} from source, then drop the original object.`;
+    renameObjectPreviewSql.value = `-- Recreate ${objectType} from source, then drop the original object.`;
+    return;
   }
   try {
-    return buildRenameObjectSql({
+    const sql = await buildRenameObjectSql({
       databaseType: currentDatabaseType(),
       objectType,
       schema: props.node.schema,
       oldName: props.node.label,
       newName,
     });
+    if (requestId === renameObjectPreviewRequestId) renameObjectPreviewSql.value = sql;
   } catch {
-    return "";
+    if (requestId === renameObjectPreviewRequestId) renameObjectPreviewSql.value = "";
   }
 }
+
+watch(
+  [
+    showRenameObjectDialog,
+    renameObjectName,
+    () => props.node.label,
+    () => props.node.schema,
+    () => props.node.type,
+    () => currentDatabaseType(),
+  ],
+  () => {
+    void refreshRenameObjectPreviewSql();
+  },
+);
 
 async function confirmRenameObject() {
   const node = props.node;
@@ -794,7 +828,7 @@ async function confirmRenameObject() {
     if (supportsSourceBackedRoutineRename(dbType, objectType as any)) {
       const schema = node.schema || node.database;
       const source = await api.getObjectSource(node.connectionId, node.database, schema, node.label, objectType as any);
-      const statements = buildRoutineRenameObjectSourceStatements({
+      const statements = await buildRoutineRenameObjectSourceStatements({
         databaseType: dbType!,
         objectType: objectType as any,
         schema,
@@ -806,7 +840,7 @@ async function confirmRenameObject() {
         await api.executeQuery(node.connectionId, node.database, sql, schema);
       }
     } else {
-      const sql = buildRenameObjectSql({
+      const sql = await buildRenameObjectSql({
         databaseType: dbType,
         objectType,
         schema: node.schema,
@@ -826,9 +860,12 @@ async function confirmRenameObject() {
 async function confirmDropObject() {
   const node = props.node;
   if (!node.connectionId || !node.database) return;
+  const options = dropObjectSqlOptions();
+  if (!options) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, node.database, buildDropObjectSql(), node.schema);
+    const sql = dropObjectPreviewSql.value || (await buildDropObjectSql(options));
+    await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     const msgKey = node.type === "procedure" ? "contextMenu.dropProcedureSuccess" : "contextMenu.dropFunctionSuccess";
     toast(t(msgKey, { name: node.label }), 3000);
     await refreshTableList(node);
@@ -884,22 +921,31 @@ const canDropSchema = computed(() => {
   return props.node.type === "schema" && usesTreeSchemaMode(config?.db_type);
 });
 
-function buildDropTableSql(): string {
-  return `DROP TABLE ${qualifiedTableName(props.node.label, props.node.schema)};`;
+function tableAdminSqlOptions(): TableAdminSqlOptions {
+  return {
+    databaseType: currentDatabaseType(),
+    schema: props.node.schema,
+    tableName: props.node.label,
+  };
 }
 
-function buildEmptyTableSql(): string {
-  return `DELETE FROM ${qualifiedTableName(props.node.label, props.node.schema)};`;
+async function refreshDropTablePreviewSql() {
+  dropTablePreviewSql.value = "";
+  dropTablePreviewSql.value = await buildDropTableSql(tableAdminSqlOptions()).catch(() => "");
 }
 
-function buildTruncateTableSql(): string {
-  const dbType = currentDatabaseType();
-  const name = qualifiedTableName(props.node.label, props.node.schema);
-  if (dbType === "sqlite" || dbType === "duckdb") return `DELETE FROM ${name};`;
-  return `TRUNCATE TABLE ${name};`;
+async function refreshEmptyTablePreviewSql() {
+  emptyTablePreviewSql.value = "";
+  emptyTablePreviewSql.value = await buildEmptyTableSql(tableAdminSqlOptions()).catch(() => "");
+}
+
+async function refreshTruncateTablePreviewSql() {
+  truncateTablePreviewSql.value = "";
+  truncateTablePreviewSql.value = await buildTruncateTableSql(tableAdminSqlOptions()).catch(() => "");
 }
 
 function dropTable() {
+  void refreshDropTablePreviewSql();
   showDropTableConfirm.value = true;
 }
 
@@ -913,7 +959,8 @@ async function confirmDropTable() {
   if (!node.connectionId || !node.database) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, node.database, buildDropTableSql(), node.schema);
+    const sql = dropTablePreviewSql.value || (await buildDropTableSql(tableAdminSqlOptions()));
+    await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     toast(t("contextMenu.dropTableSuccess", { name: node.label }), 3000);
     connectionStore.removeTreeNode(node.id);
   } catch (e: any) {
@@ -922,6 +969,7 @@ async function confirmDropTable() {
 }
 
 function emptyTable() {
+  void refreshEmptyTablePreviewSql();
   showEmptyTableConfirm.value = true;
 }
 
@@ -930,7 +978,8 @@ async function confirmEmptyTable() {
   if (!node.connectionId || !node.database) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, node.database, buildEmptyTableSql(), node.schema);
+    const sql = emptyTablePreviewSql.value || (await buildEmptyTableSql(tableAdminSqlOptions()));
+    await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     toast(t("contextMenu.emptyTableSuccess", { name: node.label }), 3000);
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
@@ -938,6 +987,7 @@ async function confirmEmptyTable() {
 }
 
 function truncateTable() {
+  void refreshTruncateTablePreviewSql();
   showTruncateTableConfirm.value = true;
 }
 
@@ -946,22 +996,28 @@ async function confirmTruncateTable() {
   if (!node.connectionId || !node.database) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, node.database, buildTruncateTableSql(), node.schema);
+    const sql = truncateTablePreviewSql.value || (await buildTruncateTableSql(tableAdminSqlOptions()));
+    await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     toast(t("contextMenu.truncateTableSuccess", { name: node.label }), 3000);
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
   }
 }
 
-function buildDropDatabaseSql(): string {
-  return `DROP DATABASE ${quoteIdent(props.node.label)};`;
+async function refreshDropDatabasePreviewSql() {
+  dropDatabasePreviewSql.value = "";
+  dropDatabasePreviewSql.value = await buildDropDatabaseSql({
+    databaseType: currentDatabaseType(),
+    name: props.node.label,
+  }).catch(() => "");
 }
 
-function buildDropSchemaSql(): string {
-  const dbType = currentDatabaseType();
-  const name = quoteIdent(props.node.label);
-  if (dbType === "postgres" || dbType === "gaussdb") return `DROP SCHEMA ${name} CASCADE;`;
-  return `DROP SCHEMA ${name};`;
+async function refreshDropSchemaPreviewSql() {
+  dropSchemaPreviewSql.value = "";
+  dropSchemaPreviewSql.value = await buildDropSchemaSql({
+    databaseType: currentDatabaseType(),
+    name: props.node.label,
+  }).catch(() => "");
 }
 
 async function openCreateDatabase() {
@@ -1006,7 +1062,7 @@ async function createDuckDbAttachedDatabaseFile() {
       duckDbAttachedDatabaseNameFromPath(path),
       existingDatabases.map((database) => database.name),
     );
-    await api.executeQuery(node.connectionId, "", buildDuckDbAttachDatabaseSql(path, name));
+    await api.executeQuery(node.connectionId, "", await buildDuckDbAttachDatabaseSql(path, name));
 
     const config = connectionStore.getConfig(node.connectionId);
     if (config) {
@@ -1031,7 +1087,7 @@ async function confirmCreateDatabase() {
   try {
     await connectionStore.ensureConnected(node.connectionId);
     const config = connectionStore.getConfig(node.connectionId);
-    const sql = buildCreateDatabaseSql({
+    const sql = await buildCreateDatabaseSql({
       databaseType: config?.db_type,
       driverProfile: config?.driver_profile,
       name,
@@ -1047,6 +1103,7 @@ async function confirmCreateDatabase() {
 }
 
 function dropDatabase() {
+  void refreshDropDatabasePreviewSql();
   showDropDatabaseConfirm.value = true;
 }
 
@@ -1077,7 +1134,13 @@ async function confirmDropDatabase() {
   if (!node.connectionId) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, "", buildDropDatabaseSql());
+    const sql =
+      dropDatabasePreviewSql.value ||
+      (await buildDropDatabaseSql({
+        databaseType: currentDatabaseType(),
+        name: node.label,
+      }));
+    await api.executeQuery(node.connectionId, "", sql);
     toast(t("contextMenu.dropDatabaseSuccess", { name: node.label }), 3000);
     await connectionStore.loadDatabases(node.connectionId, { force: true });
   } catch (e: any) {
@@ -1097,7 +1160,10 @@ async function confirmCreateSchema() {
   showCreateSchemaDialog.value = false;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    const sql = `CREATE SCHEMA ${quoteIdent(name)};`;
+    const sql = await buildCreateSchemaSql({
+      databaseType: currentDatabaseType(),
+      name,
+    });
     await api.executeQuery(node.connectionId, node.database, sql);
     toast(t("contextMenu.createSchemaSuccess", { name }), 3000);
     const config = connectionStore.getConfig(node.connectionId);
@@ -1112,6 +1178,7 @@ async function confirmCreateSchema() {
 }
 
 function dropSchema() {
+  void refreshDropSchemaPreviewSql();
   showDropSchemaConfirm.value = true;
 }
 
@@ -1120,7 +1187,13 @@ async function confirmDropSchema() {
   if (!node.connectionId || !node.database) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    await api.executeQuery(node.connectionId, node.database, buildDropSchemaSql());
+    const sql =
+      dropSchemaPreviewSql.value ||
+      (await buildDropSchemaSql({
+        databaseType: currentDatabaseType(),
+        name: node.label,
+      }));
+    await api.executeQuery(node.connectionId, node.database, sql);
     toast(t("contextMenu.dropSchemaSuccess", { name: node.label }), 3000);
     const config = connectionStore.getConfig(node.connectionId);
     if (config?.db_type === "sqlserver") {
@@ -1145,21 +1218,12 @@ async function confirmDuplicateStructure() {
   showDuplicateDialog.value = false;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    const dbType = currentDatabaseType();
-    const source = qualifiedTableName(node.label, node.schema);
-    const target = qualifiedTableName(newName, node.schema);
-    let sql: string;
-    if (dbType === "mysql") {
-      sql = `CREATE TABLE ${target} LIKE ${source};`;
-    } else if (usesPostgresLikeStructureCopy(dbType)) {
-      sql = `CREATE TABLE ${target} (LIKE ${source} INCLUDING ALL);`;
-    } else if (dbType === "sqlserver") {
-      sql = `SELECT TOP 0 * INTO ${target} FROM ${source};`;
-    } else if (usesFetchFirst(dbType)) {
-      sql = `CREATE TABLE ${target} AS SELECT * FROM ${source} WHERE 1=0`;
-    } else {
-      sql = `CREATE TABLE ${target} AS SELECT * FROM ${source} WHERE 0;`;
-    }
+    const sql = await buildDuplicateTableStructureSql({
+      databaseType: currentDatabaseType(),
+      schema: node.schema,
+      sourceName: node.label,
+      targetName: newName,
+    });
     await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     toast(t("contextMenu.duplicateStructureSuccess", { name: newName }), 3000);
     await refreshTableList(node);
@@ -1221,10 +1285,6 @@ async function exportData(format: "csv" | "json" | "sql") {
 
   try {
     await connectionStore.ensureConnected(connectionId);
-    const qualifiedName =
-      isSchemaAware(config.db_type) && node.schema
-        ? `${quoteIdent(node.schema)}.${quoteIdent(node.label)}`
-        : quoteIdent(node.label);
     const queryColumns =
       config.db_type === "neo4j"
         ? (await api.getColumns(connectionId, database, node.schema || database, node.label)).map(
@@ -1271,7 +1331,13 @@ async function exportData(format: "csv" | "json" | "sql") {
       return;
     }
 
-    const content = formatSqlInsert(qualifiedName, result.columns, result.rows, quoteIdent);
+    const content = await formatSqlInsert({
+      databaseType: config.db_type,
+      schema: node.schema,
+      tableName: node.label,
+      columns: result.columns,
+      rows: result.rows,
+    });
     await saveFileContent(content, `${node.label}.sql`, "SQL", "sql");
     toast(t("grid.exported"));
   } catch (e: any) {
@@ -2236,9 +2302,9 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
           @keydown.enter.prevent="confirmRenameObject"
         />
         <pre
-          v-if="buildRenameObjectPreviewSql()"
+          v-if="renameObjectPreviewSql"
           class="max-h-32 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap"
-          >{{ buildRenameObjectPreviewSql() }}</pre
+          >{{ renameObjectPreviewSql }}</pre
         >
         <p v-if="renameObjectError" class="text-sm text-destructive">{{ renameObjectError }}</p>
       </div>
@@ -2290,7 +2356,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     v-model:open="showDropTableConfirm"
     :title="t('contextMenu.confirmDropTableTitle')"
     :message="t('contextMenu.confirmDropTableMessage', { name: node.label })"
-    :sql="buildDropTableSql()"
+    :sql="dropTablePreviewSql"
     :confirm-label="t('contextMenu.dropTable')"
     @confirm="confirmDropTable"
   />
@@ -2299,7 +2365,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     v-model:open="showEmptyTableConfirm"
     :title="t('contextMenu.confirmEmptyTableTitle')"
     :message="t('contextMenu.confirmEmptyTableMessage', { name: node.label })"
-    :sql="buildEmptyTableSql()"
+    :sql="emptyTablePreviewSql"
     :confirm-label="t('contextMenu.emptyTable')"
     @confirm="confirmEmptyTable"
   />
@@ -2308,7 +2374,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     v-model:open="showTruncateTableConfirm"
     :title="t('contextMenu.confirmTruncateTableTitle')"
     :message="t('contextMenu.confirmTruncateTableMessage', { name: node.label })"
-    :sql="buildTruncateTableSql()"
+    :sql="truncateTablePreviewSql"
     :confirm-label="t('contextMenu.truncateTable')"
     @confirm="confirmTruncateTable"
   />
@@ -2323,7 +2389,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         ? t('contextMenu.confirmDropProcedureMessage', { name: node.label })
         : t('contextMenu.confirmDropFunctionMessage', { name: node.label })
     "
-    :sql="buildDropObjectSql()"
+    :sql="dropObjectPreviewSql"
     :confirm-label="node.type === 'procedure' ? t('contextMenu.dropProcedure') : t('contextMenu.dropFunction')"
     @confirm="confirmDropObject"
   />
@@ -2390,7 +2456,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     v-model:open="showDropDatabaseConfirm"
     :title="t('contextMenu.confirmDropDatabaseTitle')"
     :message="t('contextMenu.confirmDropDatabaseMessage', { name: node.label })"
-    :sql="buildDropDatabaseSql()"
+    :sql="dropDatabasePreviewSql"
     :confirm-label="t('contextMenu.dropDatabase')"
     @confirm="confirmDropDatabase"
   />
@@ -2427,7 +2493,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
     v-model:open="showDropSchemaConfirm"
     :title="t('contextMenu.confirmDropSchemaTitle')"
     :message="t('contextMenu.confirmDropSchemaMessage', { name: node.label })"
-    :sql="buildDropSchemaSql()"
+    :sql="dropSchemaPreviewSql"
     :confirm-label="t('contextMenu.dropSchema')"
     @confirm="confirmDropSchema"
   />

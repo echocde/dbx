@@ -51,10 +51,15 @@ import {
   supportsTableImport,
   supportsTableStructureEditing,
   supportsTableTruncate,
-  usesPostgresLikeStructureCopy,
-  usesFetchFirst,
 } from "@/lib/databaseFeatureSupport";
-import { buildTableSelectSql, qualifiedTableName, quoteTableIdentifier } from "@/lib/tableSelectSql";
+import { buildTableSelectSql } from "@/lib/tableSelectSql";
+import {
+  buildDropObjectSql,
+  buildDuplicateTableStructureSql,
+  buildEmptyTableSql,
+  buildTruncateTableSql,
+  type TableAdminSqlOptions,
+} from "@/lib/dbAdminSql";
 import { useToast } from "@/composables/useToast";
 import {
   buildExecutableObjectSourceStatements,
@@ -128,10 +133,13 @@ const showRenameDialog = ref(false);
 const renameTarget = ref<ObjectBrowserRow | null>(null);
 const renameInput = ref("");
 const renameError = ref("");
+const renamePreviewSqlText = ref("");
 const showTruncateConfirm = ref(false);
 const truncateTarget = ref<ObjectBrowserRow | null>(null);
+const truncatePreviewSql = ref("");
 const showEmptyConfirm = ref(false);
 const emptyTarget = ref<ObjectBrowserRow | null>(null);
+const emptyPreviewSql = ref("");
 const showDuplicateDialog = ref(false);
 const duplicateTarget = ref<ObjectBrowserRow | null>(null);
 const duplicateTableName = ref("");
@@ -295,7 +303,7 @@ async function openViewDdl(row: ObjectBrowserRow) {
       row.name,
       "VIEW",
     );
-    const ddl = buildViewDdl({
+    const ddl = await buildViewDdl({
       databaseType: props.connection.db_type,
       schema: row.schema || selectedSchema.value || props.database,
       name: row.name,
@@ -308,25 +316,17 @@ async function openViewDdl(row: ObjectBrowserRow) {
   }
 }
 
-function openNewQuery(row: ObjectBrowserRow) {
+async function openNewQuery(row: ObjectBrowserRow) {
   const tabId = queryStore.createTab(props.connection.id, props.database, row.name);
   queryStore.updateSql(
     tabId,
-    buildTableSelectSql({
+    await buildTableSelectSql({
       databaseType: props.connection.db_type,
       schema: row.schema || selectedSchema.value,
       tableName: row.name,
       limit: 100,
     }),
   );
-}
-
-function qualifiedName(row: ObjectBrowserRow): string {
-  return qualifiedTableName({
-    databaseType: props.connection.db_type,
-    schema: row.schema || selectedSchema.value,
-    tableName: row.name,
-  });
 }
 
 function requestDrop(row: ObjectBrowserRow) {
@@ -338,28 +338,41 @@ function requestRename(row: ObjectBrowserRow) {
   renameTarget.value = row;
   renameInput.value = row.name;
   renameError.value = "";
+  renamePreviewSqlText.value = "";
   showRenameDialog.value = true;
 }
 
-function renamePreviewSql() {
+let renamePreviewRequestId = 0;
+
+async function refreshRenamePreviewSql() {
+  const requestId = ++renamePreviewRequestId;
   const row = renameTarget.value;
   const newName = renameInput.value.trim();
-  if (!row || !newName || newName === row.name) return "";
+  if (!showRenameDialog.value || !row || !newName || newName === row.name) {
+    renamePreviewSqlText.value = "";
+    return;
+  }
   if (supportsSourceBackedRoutineRename(props.connection.db_type, row.type as ObjectSourceKind)) {
-    return `-- Recreate ${row.type} from source, then drop the original object.`;
+    renamePreviewSqlText.value = `-- Recreate ${row.type} from source, then drop the original object.`;
+    return;
   }
   try {
-    return buildRenameObjectSql({
+    const sql = await buildRenameObjectSql({
       databaseType: props.connection.db_type,
       objectType: row.type,
       schema: row.schema || selectedSchema.value,
       oldName: row.name,
       newName,
     });
+    if (requestId === renamePreviewRequestId) renamePreviewSqlText.value = sql;
   } catch {
-    return "";
+    if (requestId === renamePreviewRequestId) renamePreviewSqlText.value = "";
   }
 }
+
+watch([showRenameDialog, renameTarget, renameInput, selectedSchema], () => {
+  void refreshRenamePreviewSql();
+});
 
 async function confirmRename() {
   const row = renameTarget.value;
@@ -376,7 +389,7 @@ async function confirmRename() {
         row.name,
         row.type as ObjectSourceKind,
       );
-      const statements = buildRoutineRenameObjectSourceStatements({
+      const statements = await buildRoutineRenameObjectSourceStatements({
         databaseType: props.connection.db_type,
         objectType: row.type as ObjectSourceKind,
         schema,
@@ -388,7 +401,7 @@ async function confirmRename() {
         await api.executeQuery(props.connection.id, props.database, sql, schema);
       }
     } else {
-      const sql = buildRenameObjectSql({
+      const sql = await buildRenameObjectSql({
         databaseType: props.connection.db_type,
         objectType: row.type,
         schema,
@@ -414,17 +427,14 @@ async function confirmRename() {
 async function confirmDrop() {
   if (!dropTarget.value) return;
   const row = dropTarget.value;
-  const typeSql =
-    row.type === "VIEW"
-      ? "VIEW"
-      : row.type === "PROCEDURE"
-        ? "PROCEDURE"
-        : row.type === "FUNCTION"
-          ? "FUNCTION"
-          : "TABLE";
-  const name = qualifiedName(row);
   try {
-    await api.executeQuery(props.connection.id, props.database, `DROP ${typeSql} ${name}`);
+    const sql = await buildDropObjectSql({
+      databaseType: props.connection.db_type,
+      objectType: row.type,
+      schema: row.schema || selectedSchema.value,
+      name: row.name,
+    });
+    await api.executeQuery(props.connection.id, props.database, sql);
     const successKey =
       row.type === "VIEW"
         ? "contextMenu.dropViewSuccess"
@@ -472,10 +482,6 @@ function closeSource() {
   sourceEditing.value = false;
   sourceDraft.value = "";
   sourceSaveError.value = "";
-}
-
-function quoteIdent(name: string): string {
-  return quoteTableIdentifier(props.connection.db_type, name);
 }
 
 async function saveFileContent(content: string, defaultFileName: string, filterName: string, filterExt: string) {
@@ -562,10 +568,6 @@ async function exportStructure(row: ObjectBrowserRow) {
 async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql") {
   try {
     const schema = row.schema || selectedSchema.value;
-    const qualName =
-      isSchemaAware(props.connection.db_type) && schema
-        ? `${quoteIdent(schema)}.${quoteIdent(row.name)}`
-        : quoteIdent(row.name);
     const queryColumns =
       props.connection.db_type === "neo4j"
         ? (await api.getColumns(props.connection.id, props.database, schema || props.database, row.name)).map(
@@ -612,7 +614,13 @@ async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql")
       return;
     }
 
-    const content = formatSqlInsert(qualName, result.columns, result.rows, quoteIdent);
+    const content = await formatSqlInsert({
+      databaseType: props.connection.db_type,
+      schema,
+      tableName: row.name,
+      columns: result.columns,
+      rows: result.rows,
+    });
     await saveFileContent(content, `${row.name}.sql`, "SQL", "sql");
     toast(t("grid.exported"));
   } catch (e: any) {
@@ -667,25 +675,12 @@ async function confirmDuplicateStructure() {
   showDuplicateDialog.value = false;
   try {
     const schema = row.schema || selectedSchema.value;
-    const source = qualifiedName(row);
-    const target = qualifiedTableName({
+    const sql = await buildDuplicateTableStructureSql({
       databaseType: props.connection.db_type,
       schema,
-      tableName: newName,
+      sourceName: row.name,
+      targetName: newName,
     });
-    let sql: string;
-    const dbType = props.connection.db_type;
-    if (dbType === "mysql") {
-      sql = `CREATE TABLE ${target} LIKE ${source};`;
-    } else if (usesPostgresLikeStructureCopy(dbType)) {
-      sql = `CREATE TABLE ${target} (LIKE ${source} INCLUDING ALL);`;
-    } else if (dbType === "sqlserver") {
-      sql = `SELECT TOP 0 * INTO ${target} FROM ${source};`;
-    } else if (usesFetchFirst(dbType)) {
-      sql = `CREATE TABLE ${target} AS SELECT * FROM ${source} WHERE 1=0`;
-    } else {
-      sql = `CREATE TABLE ${target} AS SELECT * FROM ${source} WHERE 0;`;
-    }
     await api.executeQuery(props.connection.id, props.database, sql, schema);
     toast(t("contextMenu.duplicateStructureSuccess", { name: newName }));
     await reload();
@@ -695,15 +690,22 @@ async function confirmDuplicateStructure() {
   }
 }
 
-function buildTruncateTableSql(row: ObjectBrowserRow): string {
-  const name = qualifiedName(row);
-  const dbType = props.connection.db_type;
-  if (dbType === "sqlite" || dbType === "duckdb") return `DELETE FROM ${name};`;
-  return `TRUNCATE TABLE ${name};`;
+function tableAdminSqlOptions(row: ObjectBrowserRow): TableAdminSqlOptions {
+  return {
+    databaseType: props.connection.db_type,
+    schema: row.schema || selectedSchema.value,
+    tableName: row.name,
+  };
+}
+
+async function refreshTruncatePreviewSql(row: ObjectBrowserRow) {
+  truncatePreviewSql.value = "";
+  truncatePreviewSql.value = await buildTruncateTableSql(tableAdminSqlOptions(row)).catch(() => "");
 }
 
 function requestTruncateTable(row: ObjectBrowserRow) {
   truncateTarget.value = row;
+  void refreshTruncatePreviewSql(row);
   showTruncateConfirm.value = true;
 }
 
@@ -711,7 +713,8 @@ async function confirmTruncateTable() {
   const row = truncateTarget.value;
   if (!row) return;
   try {
-    await api.executeQuery(props.connection.id, props.database, buildTruncateTableSql(row));
+    const sql = truncatePreviewSql.value || (await buildTruncateTableSql(tableAdminSqlOptions(row)));
+    await api.executeQuery(props.connection.id, props.database, sql);
     toast(t("contextMenu.truncateTableSuccess", { name: row.name }));
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
@@ -719,12 +722,14 @@ async function confirmTruncateTable() {
   truncateTarget.value = null;
 }
 
-function buildEmptyTableSql(row: ObjectBrowserRow): string {
-  return `DELETE FROM ${qualifiedName(row)};`;
+async function refreshEmptyPreviewSql(row: ObjectBrowserRow) {
+  emptyPreviewSql.value = "";
+  emptyPreviewSql.value = await buildEmptyTableSql(tableAdminSqlOptions(row)).catch(() => "");
 }
 
 function requestEmptyTable(row: ObjectBrowserRow) {
   emptyTarget.value = row;
+  void refreshEmptyPreviewSql(row);
   showEmptyConfirm.value = true;
 }
 
@@ -732,7 +737,8 @@ async function confirmEmptyTable() {
   const row = emptyTarget.value;
   if (!row) return;
   try {
-    await api.executeQuery(props.connection.id, props.database, buildEmptyTableSql(row));
+    const sql = emptyPreviewSql.value || (await buildEmptyTableSql(tableAdminSqlOptions(row)));
+    await api.executeQuery(props.connection.id, props.database, sql);
     toast(t("contextMenu.emptyTableSuccess", { name: row.name }));
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
@@ -771,7 +777,7 @@ async function saveSource() {
   sourceSaving.value = true;
   sourceSaveError.value = "";
   try {
-    const statements = buildExecutableObjectSourceStatements({
+    const statements = await buildExecutableObjectSourceStatements({
       databaseType: props.connection.db_type,
       objectType: row.type as ObjectSourceKind,
       schema,
@@ -1300,9 +1306,9 @@ watch(
           @keydown.enter.prevent="confirmRename"
         />
         <pre
-          v-if="renamePreviewSql()"
+          v-if="renamePreviewSqlText"
           class="max-h-32 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap"
-          >{{ renamePreviewSql() }}</pre
+          >{{ renamePreviewSqlText }}</pre
         >
         <p v-if="renameError" class="text-sm text-destructive">{{ renameError }}</p>
       </div>
@@ -1319,7 +1325,7 @@ watch(
     v-model:open="showTruncateConfirm"
     :title="t('contextMenu.confirmTruncateTableTitle')"
     :message="t('contextMenu.confirmTruncateTableMessage', { name: truncateTarget?.name ?? '' })"
-    :sql="truncateTarget ? buildTruncateTableSql(truncateTarget) : ''"
+    :sql="truncatePreviewSql"
     :confirm-label="t('contextMenu.truncateTable')"
     @confirm="confirmTruncateTable"
   />
@@ -1328,7 +1334,7 @@ watch(
     v-model:open="showEmptyConfirm"
     :title="t('contextMenu.confirmEmptyTableTitle')"
     :message="t('contextMenu.confirmEmptyTableMessage', { name: emptyTarget?.name ?? '' })"
-    :sql="emptyTarget ? buildEmptyTableSql(emptyTarget) : ''"
+    :sql="emptyPreviewSql"
     :confirm-label="t('contextMenu.emptyTable')"
     @confirm="confirmEmptyTable"
   />

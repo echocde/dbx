@@ -3,7 +3,7 @@ import test from "node:test";
 import { computed, nextTick, ref } from "vue";
 import { createPinia, setActivePinia } from "pinia";
 import { useDataGridEditor } from "../../apps/desktop/src/composables/useDataGridEditor.ts";
-import { formatGridSqlLiteral, type DataGridSaveStatementOptions } from "../../apps/desktop/src/lib/dataGridSql.ts";
+import type { DataGridSaveStatementOptions } from "../../apps/desktop/src/lib/dataGridSql.ts";
 import type { ColumnInfo } from "../../apps/desktop/src/types/database.ts";
 
 type CellValue = string | number | boolean | null;
@@ -76,6 +76,14 @@ function primaryKeyWhere(options: DataGridSaveStatementOptions, row: CellValue[]
 
 function quotePgIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
+}
+
+function formatGridSqlLiteral(value: CellValue, databaseType?: string): string {
+  if (value === null) return "NULL";
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value === "number") return String(value);
+  const escaped = `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "''")}'`;
+  return databaseType === "sqlserver" ? `N${escaped}` : escaped;
 }
 
 function column(name: string, isPrimaryKey = false, extra: string | null = null): ColumnInfo {

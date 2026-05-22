@@ -50,9 +50,39 @@ import type {
   DatabaseExportRequest,
   ExportProgress,
   XlsxCellValue,
+  QueryPaginationExecutionPlanOptions,
+  QueryPaginationExecutionPlan,
+  SortedQuerySqlOptions,
+  QuerySqlBuildResult,
+  BuildExplainSqlOptions,
+  ExplainSqlBuildResult,
+  DroppedFilePreviewSqlOptions,
 } from "./tauri";
 import type { QueryEditability } from "@/lib/sqlAnalysis";
-import type { DataGridSaveStatementOptions } from "@/lib/dataGridSql";
+import type {
+  DataGridColumnValueFilterConditionOptions,
+  DataGridContextFilterConditionOptions,
+  DataGridCountSqlOptions,
+  DataGridCopyInsertStatementOptions,
+  DataGridCopyUpdateStatementOptions,
+  DataGridSaveStatementOptions,
+  HiveTablePropertiesSqlOptions,
+} from "@/lib/dataGridSql";
+import type { BuildTableStructureChangeSqlOptions, TableStructureChangeSql } from "@/lib/tableStructureEditorSql";
+import type { BuildTableSelectSqlOptions } from "@/lib/tableSelectSql";
+import type { DatabaseSearchSql, DatabaseSearchSqlOptions, SearchResultWhereOptions } from "@/lib/databaseSearch";
+import type { BuildEditableObjectSourceSqlInput, BuildRoutineRenameObjectSourceInput } from "@/lib/objectSourceEditor";
+import type { BuildViewDdlInput } from "@/lib/viewDdl";
+import type { BuildRenameObjectSqlOptions } from "@/lib/objectRenameSql";
+import type { CreateDatabaseSqlOptions } from "@/lib/createDatabaseSql";
+import type {
+  DatabaseNameSqlOptions,
+  DropObjectSqlOptions,
+  DuplicateTableStructureSqlOptions,
+  SchemaNameSqlOptions,
+  TableAdminSqlOptions,
+} from "@/lib/dbAdminSql";
+import type { BuildDatabaseSqlExportOptions, BuildExportInsertStatementsOptions } from "@/lib/databaseExport";
 import type {
   DataCompareFromTablesOptions,
   DataCompareFromTablesPreparation,
@@ -432,12 +462,170 @@ export async function analyzeSqlReferences(sql: string, dialect?: string): Promi
   return post("/api/query/analyze-sql-references", { sql, dialect });
 }
 
+export async function findStatementAtCursor(sql: string, cursorPos: number): Promise<string> {
+  return post("/api/query/find-statement-at-cursor", { sql, cursorPos });
+}
+
+export async function prepareQueryPaginationExecutionPlan(
+  options: QueryPaginationExecutionPlanOptions,
+): Promise<QueryPaginationExecutionPlan> {
+  return post("/api/query/prepare-pagination-plan", { options });
+}
+
+export async function buildSortedQuerySql(options: SortedQuerySqlOptions): Promise<QuerySqlBuildResult> {
+  return post("/api/query/build-sorted-sql", { options });
+}
+
+export async function buildExplainSql(options: BuildExplainSqlOptions): Promise<ExplainSqlBuildResult> {
+  return post("/api/query/build-explain-sql", { options });
+}
+
+export async function buildDroppedFilePreviewSql(options: DroppedFilePreviewSqlOptions): Promise<string | undefined> {
+  const result = await post<string | null>("/api/query/build-dropped-file-preview-sql", { options });
+  return result ?? undefined;
+}
+
+export async function buildTableSelectSql(options: BuildTableSelectSqlOptions): Promise<string> {
+  return post("/api/query/build-table-select-sql", { options });
+}
+
+export async function buildDatabaseSearchSql(options: DatabaseSearchSqlOptions): Promise<DatabaseSearchSql | null> {
+  return post("/api/query/build-database-search-sql", { options });
+}
+
+export async function buildSearchResultWhere(options: SearchResultWhereOptions): Promise<string> {
+  return post("/api/query/build-search-result-where", { options });
+}
+
+export async function buildRenameObjectSql(options: BuildRenameObjectSqlOptions): Promise<string> {
+  return post("/api/query/build-rename-object-sql", { options });
+}
+
+export async function buildCreateDatabaseSql(options: CreateDatabaseSqlOptions): Promise<string> {
+  return post("/api/query/build-create-database-sql", { options });
+}
+
+export async function buildDuckDbAttachDatabaseSql(path: string, name: string): Promise<string> {
+  return post("/api/query/build-duckdb-attach-database-sql", { options: { path, name } });
+}
+
+export async function buildDropObjectSql(options: DropObjectSqlOptions): Promise<string> {
+  return post("/api/query/build-drop-object-sql", { options });
+}
+
+export async function buildDropTableSql(options: TableAdminSqlOptions): Promise<string> {
+  return post("/api/query/build-drop-table-sql", { options });
+}
+
+export async function buildEmptyTableSql(options: TableAdminSqlOptions): Promise<string> {
+  return post("/api/query/build-empty-table-sql", { options });
+}
+
+export async function buildTruncateTableSql(options: TableAdminSqlOptions): Promise<string> {
+  return post("/api/query/build-truncate-table-sql", { options });
+}
+
+export async function buildDropDatabaseSql(options: DatabaseNameSqlOptions): Promise<string> {
+  return post("/api/query/build-drop-database-sql", { options });
+}
+
+export async function buildCreateSchemaSql(options: SchemaNameSqlOptions): Promise<string> {
+  return post("/api/query/build-create-schema-sql", { options });
+}
+
+export async function buildDropSchemaSql(options: SchemaNameSqlOptions): Promise<string> {
+  return post("/api/query/build-drop-schema-sql", { options });
+}
+
+export async function buildDuplicateTableStructureSql(options: DuplicateTableStructureSqlOptions): Promise<string> {
+  return post("/api/query/build-duplicate-table-structure-sql", { options });
+}
+
+export async function buildExecutableObjectSourceStatements(
+  input: BuildEditableObjectSourceSqlInput,
+): Promise<string[]> {
+  return post("/api/query/build-executable-object-source-statements", { input });
+}
+
+export async function buildExecutableObjectSourceSql(input: BuildEditableObjectSourceSqlInput): Promise<string> {
+  return post("/api/query/build-executable-object-source-sql", { input });
+}
+
+export async function buildRoutineRenameObjectSourceStatements(
+  input: BuildRoutineRenameObjectSourceInput,
+): Promise<string[]> {
+  return post("/api/query/build-routine-rename-object-source-statements", { input });
+}
+
+export async function buildViewDdlSql(input: BuildViewDdlInput): Promise<string> {
+  return post("/api/query/build-view-ddl-sql", { input });
+}
+
+export async function buildTableStructureChangeSql(
+  options: BuildTableStructureChangeSqlOptions,
+): Promise<TableStructureChangeSql> {
+  return post("/api/query/build-table-structure-change-sql", { options });
+}
+
+export async function buildCreateTableSql(
+  options: BuildTableStructureChangeSqlOptions,
+): Promise<TableStructureChangeSql> {
+  return post("/api/query/build-create-table-sql", { options });
+}
+
 export async function analyzeEditableQueryEditability(sql: string): Promise<QueryEditability> {
   return post("/api/query/analyze-editability", { sql });
 }
 
 export async function prepareDataGridSave(options: DataGridSaveStatementOptions): Promise<DataGridSavePreparation> {
   return post("/api/query/prepare-data-grid-save", { options });
+}
+
+export async function buildDataGridCopyUpdateStatements(
+  options: DataGridCopyUpdateStatementOptions,
+): Promise<string[]> {
+  return post("/api/query/build-data-grid-copy-update-statements", { options });
+}
+
+export async function buildDataGridCopyInsertStatement(
+  options: DataGridCopyInsertStatementOptions,
+): Promise<string | undefined> {
+  const result = await post<string | null>("/api/query/build-data-grid-copy-insert-statement", { options });
+  return result ?? undefined;
+}
+
+export async function buildDataGridContextFilterCondition(
+  options: DataGridContextFilterConditionOptions,
+): Promise<string | undefined> {
+  const result = await post<string | null>("/api/query/build-data-grid-context-filter-condition", { options });
+  return result ?? undefined;
+}
+
+export async function buildDataGridColumnValueFilterCondition(
+  options: DataGridColumnValueFilterConditionOptions,
+): Promise<string | undefined> {
+  const result = await post<string | null>("/api/query/build-data-grid-column-value-filter-condition", { options });
+  return result ?? undefined;
+}
+
+export async function buildDataGridCountSql(options: DataGridCountSqlOptions): Promise<string> {
+  return post("/api/query/build-data-grid-count-sql", { options });
+}
+
+export async function buildHiveTablePropertiesSql(options: HiveTablePropertiesSqlOptions): Promise<string> {
+  return post("/api/query/build-hive-table-properties-sql", { options });
+}
+
+export async function buildExportInsertStatements(options: BuildExportInsertStatementsOptions): Promise<string[]> {
+  return post("/api/query/build-export-insert-statements", { options });
+}
+
+export async function buildExportSqlInsert(options: BuildExportInsertStatementsOptions): Promise<string> {
+  return post("/api/query/build-export-sql-insert", { options });
+}
+
+export async function buildDatabaseSqlExport(options: BuildDatabaseSqlExportOptions): Promise<string> {
+  return post("/api/query/build-database-sql-export", { options });
 }
 
 export async function prepareDataCompare(options: DataComparePreparationOptions): Promise<DataComparePreparation> {

@@ -14,7 +14,6 @@ import {
   parseMongoCountDocumentsCommand,
   parseMongoFindCommand,
 } from "@/lib/mongoShellCommand";
-import { buildQueryPaginationExecutionPlan } from "@/lib/queryResultPagination";
 import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
 import { editablePrimaryKeys } from "@/lib/tableEditing";
 import * as api from "@/lib/api";
@@ -484,7 +483,7 @@ export const useQueryStore = defineStore("query", () => {
       await closeResultSession(tab, options?.pagination?.sessionId);
       if (tab.mode === "query") {
         const pagination = options?.pagination ?? { limit: settingsStore.editorSettings.pageSize, offset: 0 };
-        const plan = buildQueryPaginationExecutionPlan({
+        const plan = await api.prepareQueryPaginationExecutionPlan({
           sql,
           queryBaseSql,
           databaseType: conn?.db_type,
@@ -659,7 +658,7 @@ export const useQueryStore = defineStore("query", () => {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab) return { ok: false as const, reason: "empty" as const };
 
-    const built = buildExplainSql(databaseType, sql);
+    const built = await buildExplainSql(databaseType, sql);
     if (!built.ok) {
       tab.explainPlan = undefined;
       tab.explainError = built.reason;

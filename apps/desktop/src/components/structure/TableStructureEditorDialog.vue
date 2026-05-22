@@ -33,12 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
-import {
-  buildTableStructureChangeSql,
-  buildCreateTableSql,
-  type EditableStructureColumn,
-  type EditableStructureIndex,
-} from "@/lib/tableStructureEditorSql";
+import { type EditableStructureColumn, type EditableStructureIndex } from "@/lib/tableStructureEditorSql";
 import { getTableStructureCapabilities } from "@/lib/tableStructureCapabilities";
 import {
   buildStructureTargetLabel,
@@ -68,9 +63,12 @@ const emit = defineEmits<{
 const activeTab = ref("columns");
 const loading = ref(false);
 const saving = ref(false);
+const sqlPreviewLoading = ref(false);
 const errorMessage = ref("");
 const columns = ref<EditableStructureColumn[]>([]);
 const indexes = ref<EditableStructureIndex[]>([]);
+const pendingStatements = ref<string[]>([]);
+const warnings = ref<string[]>([]);
 const foreignKeys = ref<ForeignKeyInfo[]>([]);
 const triggers = ref<TriggerInfo[]>([]);
 
@@ -131,30 +129,44 @@ const targetLabel = computed(() =>
   ),
 );
 
-const changeSql = computed(() => {
-  if (isCreateMode.value) {
-    return buildCreateTableSql({
-      databaseType: databaseType.value,
-      schema: props.prefillSchema,
-      tableName: newTableName.value,
-      columns: columns.value,
-      indexes: indexes.value,
-    });
+let sqlPreviewRequestId = 0;
+
+async function refreshSqlPreview() {
+  const requestId = ++sqlPreviewRequestId;
+  if (!open.value) {
+    pendingStatements.value = [];
+    warnings.value = [];
+    return;
   }
-  return buildTableStructureChangeSql({
+  sqlPreviewLoading.value = true;
+  const options = {
     databaseType: databaseType.value,
     schema: props.prefillSchema,
-    tableName: props.prefillTable || "",
+    tableName: isCreateMode.value ? newTableName.value : props.prefillTable || "",
     columns: columns.value,
     indexes: indexes.value,
-  });
-});
-const pendingStatements = computed(() => changeSql.value.statements);
-const warnings = computed(() => changeSql.value.warnings);
+  };
+  try {
+    const result = isCreateMode.value
+      ? await api.buildCreateTableSql(options)
+      : await api.buildTableStructureChangeSql(options);
+    if (requestId !== sqlPreviewRequestId) return;
+    pendingStatements.value = result.statements;
+    warnings.value = result.warnings;
+  } catch (e: any) {
+    if (requestId !== sqlPreviewRequestId) return;
+    pendingStatements.value = [];
+    warnings.value = [e?.message || String(e)];
+  } finally {
+    if (requestId === sqlPreviewRequestId) sqlPreviewLoading.value = false;
+  }
+}
+
 const canApply = computed(
   () =>
     !loading.value &&
     !saving.value &&
+    !sqlPreviewLoading.value &&
     pendingStatements.value.length > 0 &&
     warnings.value.length === 0 &&
     !!props.prefillConnectionId &&
@@ -165,9 +177,12 @@ function resetState() {
   activeTab.value = "columns";
   loading.value = false;
   saving.value = false;
+  sqlPreviewLoading.value = false;
   errorMessage.value = "";
   columns.value = [];
   indexes.value = [];
+  pendingStatements.value = [];
+  warnings.value = [];
   foreignKeys.value = [];
   triggers.value = [];
   newTableName.value = "";
@@ -374,6 +389,23 @@ watch(
     }
   },
   { immediate: true },
+);
+
+watch(
+  [
+    open,
+    isCreateMode,
+    databaseType,
+    () => props.prefillSchema,
+    () => props.prefillTable,
+    newTableName,
+    columns,
+    indexes,
+  ],
+  () => {
+    void refreshSqlPreview();
+  },
+  { deep: true, immediate: true },
 );
 </script>
 
@@ -843,7 +875,10 @@ watch(
           <div class="flex min-w-0 flex-col rounded-md border">
             <div class="flex items-center justify-between border-b px-2 py-1.5 text-[11px] font-medium">
               <span>{{ t("structureEditor.sqlPreview") }}</span>
-              <Badge variant="secondary">{{ pendingStatements.length }}</Badge>
+              <Badge variant="secondary">
+                <Loader2 v-if="sqlPreviewLoading" class="h-3 w-3 animate-spin" />
+                <span v-else>{{ pendingStatements.length }}</span>
+              </Badge>
             </div>
             <div class="min-h-0 flex-1 overflow-auto p-2">
               <div v-if="warnings.length" class="mb-2 space-y-1">

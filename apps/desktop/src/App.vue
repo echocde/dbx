@@ -31,7 +31,7 @@ import * as api from "@/lib/api";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { findTreeNodeById, resolveNewQueryTarget } from "@/lib/newQueryContext";
 import { buildExecutableObjectSourceStatements, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
-import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
+import { resolveExecutableSql, resolveExecutableSqlWithBackend } from "@/lib/sqlExecutionTarget";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { sqlFileTitleFromPath } from "@/lib/sqlFileOpen";
 import { parseConnectionDeepLink, type ConnectionDeepLinkDraft } from "@/lib/connectionDeepLink";
@@ -167,6 +167,16 @@ const executableSql = computed(() => {
     : "";
 });
 
+async function resolveActiveExecutableSql() {
+  const tab = activeTab.value;
+  return tab
+    ? await resolveExecutableSqlWithBackend(tab.sql, selectedSql.value, {
+        mode: settingsStore.editorSettings.executeMode,
+        cursorPos: cursorPos.value,
+      })
+    : "";
+}
+
 const {
   dangerSql,
   pendingDangerSql,
@@ -176,7 +186,13 @@ const {
   cancelActiveExecution,
   tryExplain,
   onDangerConfirm,
-} = useSqlExecution({ activeTab, activeConnection, executableSql, activeOutputView });
+} = useSqlExecution({
+  activeTab,
+  activeConnection,
+  executableSql,
+  resolveExecutableSql: resolveActiveExecutableSql,
+  activeOutputView,
+});
 
 const dialogs = useDialogSources();
 const { getDatabaseOptions } = useDatabaseOptions();
@@ -310,7 +326,7 @@ async function saveActiveObjectSource(tab: NonNullable<typeof activeTab.value>) 
   if (!connection || !source) return;
 
   try {
-    const statements = buildExecutableObjectSourceStatements({
+    const statements = await buildExecutableObjectSourceStatements({
       databaseType: connection.db_type,
       objectType: source.objectType,
       schema: source.schema || tab.schema || tab.database,

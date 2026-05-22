@@ -127,8 +127,60 @@ async fn main() {
         .route("/query/execute-script", post(routes::query::execute_script))
         .route("/query/execute-in-transaction", post(routes::query::execute_in_transaction))
         .route("/query/analyze-sql-references", post(routes::query::analyze_sql_references))
+        .route("/query/find-statement-at-cursor", post(routes::query::find_statement_at_cursor))
+        .route("/query/prepare-pagination-plan", post(routes::query::prepare_query_pagination_execution_plan))
+        .route("/query/build-sorted-sql", post(routes::query::build_sorted_query_sql))
+        .route("/query/build-explain-sql", post(routes::query::build_explain_sql))
+        .route("/query/build-dropped-file-preview-sql", post(routes::query::build_dropped_file_preview_sql))
+        .route("/query/build-table-select-sql", post(routes::query::build_table_select_sql))
+        .route("/query/build-database-search-sql", post(routes::query::build_database_search_sql))
+        .route("/query/build-search-result-where", post(routes::query::build_search_result_where))
+        .route("/query/build-rename-object-sql", post(routes::query::build_rename_object_sql))
+        .route("/query/build-create-database-sql", post(routes::query::build_create_database_sql))
+        .route("/query/build-duckdb-attach-database-sql", post(routes::query::build_duckdb_attach_database_sql))
+        .route("/query/build-drop-object-sql", post(routes::query::build_drop_object_sql))
+        .route("/query/build-drop-table-sql", post(routes::query::build_drop_table_sql))
+        .route("/query/build-empty-table-sql", post(routes::query::build_empty_table_sql))
+        .route("/query/build-truncate-table-sql", post(routes::query::build_truncate_table_sql))
+        .route("/query/build-drop-database-sql", post(routes::query::build_drop_database_sql))
+        .route("/query/build-create-schema-sql", post(routes::query::build_create_schema_sql))
+        .route("/query/build-drop-schema-sql", post(routes::query::build_drop_schema_sql))
+        .route("/query/build-duplicate-table-structure-sql", post(routes::query::build_duplicate_table_structure_sql))
+        .route(
+            "/query/build-executable-object-source-statements",
+            post(routes::query::build_executable_object_source_statements),
+        )
+        .route("/query/build-executable-object-source-sql", post(routes::query::build_executable_object_source_sql))
+        .route(
+            "/query/build-routine-rename-object-source-statements",
+            post(routes::query::build_routine_rename_object_source_statements),
+        )
+        .route("/query/build-view-ddl-sql", post(routes::query::build_view_ddl_sql))
+        .route("/query/build-table-structure-change-sql", post(routes::query::build_table_structure_change_sql))
+        .route("/query/build-create-table-sql", post(routes::query::build_create_table_sql))
         .route("/query/analyze-editability", post(routes::query::analyze_editable_query_editability))
         .route("/query/prepare-data-grid-save", post(routes::query::prepare_data_grid_save))
+        .route(
+            "/query/build-data-grid-copy-update-statements",
+            post(routes::query::build_data_grid_copy_update_statements),
+        )
+        .route(
+            "/query/build-data-grid-copy-insert-statement",
+            post(routes::query::build_data_grid_copy_insert_statement),
+        )
+        .route(
+            "/query/build-data-grid-context-filter-condition",
+            post(routes::query::build_data_grid_context_filter_condition),
+        )
+        .route(
+            "/query/build-data-grid-column-value-filter-condition",
+            post(routes::query::build_data_grid_column_value_filter_condition),
+        )
+        .route("/query/build-data-grid-count-sql", post(routes::query::build_data_grid_count_sql))
+        .route("/query/build-hive-table-properties-sql", post(routes::query::build_hive_table_properties_sql))
+        .route("/query/build-export-insert-statements", post(routes::query::build_export_insert_statements))
+        .route("/query/build-export-sql-insert", post(routes::query::build_export_sql_insert))
+        .route("/query/build-database-sql-export", post(routes::query::build_database_sql_export))
         .route("/data-compare/prepare", post(routes::data_compare::prepare_data_compare))
         .route("/data-compare/prepare-from-tables", post(routes::data_compare::prepare_data_compare_from_tables))
         .route("/query/cancel", post(routes::query::cancel_query))

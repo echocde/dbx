@@ -81,6 +81,19 @@ test("evicting cached tab results releases multi-result payloads and sessions", 
         headers: { "Content-Type": "application/json" },
       });
     }
+    if (url === "/api/query/prepare-pagination-plan") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(
+        JSON.stringify({
+          sqlToExecute: body.options.sql,
+          useAgentResultSession: false,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
     return new Response("unexpected request", { status: 500 });
   }) as typeof fetch;
 
