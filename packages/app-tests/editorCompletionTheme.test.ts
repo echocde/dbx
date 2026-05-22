@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   buildEditorFontThemeRules,
@@ -10,7 +11,18 @@ import {
 test("sql completion theme styles the autocomplete popup", () => {
   const rules = buildSqlCompletionThemeRules();
 
-  assert.ok(rules[".cm-tooltip.cm-tooltip-autocomplete"]);
+  assert.deepEqual(rules[".cm-tooltip.cm-tooltip-autocomplete"], {
+    background: "var(--popover)",
+    border: "1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 18%)",
+    borderRadius: "8px",
+    boxShadow: "0 8px 18px rgb(0 0 0 / 0.14)",
+    color: "var(--popover-foreground)",
+    fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, var(--font-mono, monospace))`,
+    maxWidth: "min(520px, calc(100vw - 24px))",
+    minWidth: "min(280px, calc(100vw - 24px))",
+    overflow: "hidden",
+    padding: "4px 0",
+  });
   assert.deepEqual(rules[".cm-completionIcon"], {
     display: "none !important",
     height: "0",
@@ -20,16 +32,23 @@ test("sql completion theme styles the autocomplete popup", () => {
   });
   assert.deepEqual(rules[".cm-completionLabel"], {
     color: "inherit",
-    fontFamily: "var(--font-mono, 'JetBrains Mono', 'SF Mono', monospace)",
-    fontSize: "16px",
-    fontWeight: "760",
+    fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, var(--font-mono, monospace))`,
+    fontSize: `clamp(12px, var(${EDITOR_FONT_SIZE_CSS_VAR}, 13px), 14px)`,
+    fontWeight: "520",
     letterSpacing: "0",
   });
-  assert.equal(rules[".cm-completionMatchedText"]?.color, "#5794f9");
+  assert.equal(rules[".cm-completionMatchedText"]?.color, "oklch(0.62 0.19 255)");
   assert.equal(
     rules[".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]"]?.background,
-    "rgba(70, 75, 84, 0.86) !important",
+    "color-mix(in oklch, var(--primary) 14%, var(--popover)) !important",
   );
+});
+
+test("query editor portals CodeMirror tooltips outside clipped editor panes", () => {
+  const source = readFileSync("apps/desktop/src/components/editor/QueryEditor.vue", "utf8");
+
+  assert.match(source, /tooltips/);
+  assert.match(source, /tooltips\(\{\s*parent:\s*document\.body\s*\}\)/s);
 });
 
 test("editor font theme reads size and family from CSS variables", () => {

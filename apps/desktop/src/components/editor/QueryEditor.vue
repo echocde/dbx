@@ -719,7 +719,7 @@ onMounted(async () => {
   if (!editorRef.value) return;
 
   const [
-    { EditorView, keymap, rectangularSelection, hoverTooltip, showTooltip, Decoration },
+    { EditorView, keymap, rectangularSelection, hoverTooltip, showTooltip, Decoration, tooltips },
     { EditorState, Compartment, Prec, StateEffect, StateField },
     { sql, MSSQL, MySQL, PostgreSQL, SQLDialect },
     { basicSetup },
@@ -825,6 +825,7 @@ onMounted(async () => {
       }),
       basicSetup,
       sql({ dialect }),
+      tooltips({ parent: document.body }),
       autocompletion({
         activateOnTyping: true,
         override: [
