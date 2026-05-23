@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use duckdb::types::{TimeUnit, ValueRef};
+use mysql_async::prelude::Queryable;
 use std::future::Future;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -904,7 +905,7 @@ pub async fn execute_statements_in_transaction(
 /// Owned pool variants for safe dispatch across async boundaries.
 enum TxPath {
     Pg(sqlx::postgres::PgPool),
-    Mysql(sqlx::mysql::MySqlPool, bool),
+    Mysql(mysql_async::Pool, bool),
     Sqlite(sqlx::sqlite::SqlitePool),
     Explicit,
     None,
@@ -950,43 +951,23 @@ async fn exec_tx_pg_inner(
 }
 
 async fn exec_tx_mysql_inner(
-    pool: sqlx::mysql::MySqlPool,
+    pool: mysql_async::Pool,
     statements: &[String],
     start: std::time::Instant,
 ) -> Result<db::QueryResult, String> {
-    let statements = statements.to_vec();
-    tokio::task::spawn_blocking(move || {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|e| format!("Failed to start MySQL transaction runtime: {}", e))?
-            .block_on(exec_tx_mysql_raw_inner(pool, statements, start))
-    })
-    .await
-    .map_err(|e| format!("MySQL transaction task failed: {}", e))?
-}
-
-async fn exec_tx_mysql_raw_inner(
-    pool: sqlx::mysql::MySqlPool,
-    statements: Vec<String>,
-    start: std::time::Instant,
-) -> Result<db::QueryResult, String> {
-    let mut conn = pool.acquire().await.map_err(|e| format!("Failed to acquire connection: {}", e))?;
-    sqlx::raw_sql("START TRANSACTION")
-        .execute(&mut *conn)
-        .await
-        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+    let mut conn = pool.get_conn().await.map_err(|e| format!("Failed to acquire connection: {}", e))?;
+    conn.query_drop("START TRANSACTION").await.map_err(|e| format!("Failed to begin transaction: {}", e))?;
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
-        match sqlx::raw_sql(sql).execute(&mut *conn).await {
-            Ok(r) => total_affected += r.rows_affected(),
+        match conn.query_iter(sql).await {
+            Ok(result) => total_affected += result.affected_rows(),
             Err(e) => {
-                let _ = sqlx::raw_sql("ROLLBACK").execute(&mut *conn).await;
+                let _ = conn.query_drop("ROLLBACK").await;
                 return Err(format!("Statement {} failed: {}", i + 1, e));
             }
         }
     }
-    sqlx::raw_sql("COMMIT").execute(&mut *conn).await.map_err(|e| format!("COMMIT failed: {}", e))?;
+    conn.query_drop("COMMIT").await.map_err(|e| format!("COMMIT failed: {}", e))?;
     Ok(db::QueryResult {
         columns: vec![],
         rows: vec![],

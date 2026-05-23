@@ -217,21 +217,21 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
         Ok(()) => match config.db_type {
             DatabaseType::Mysql if config.needs_bare_mysql() => match db::mysql::connect_bare(&url).await {
                 Ok(pool) => {
-                    pool.close().await;
+                    let _ = pool.disconnect().await;
                     Ok("Connection successful".to_string())
                 }
                 Err(e) => Err(e),
             },
             DatabaseType::Mysql => match db::mysql::connect(&url).await {
                 Ok(pool) => {
-                    pool.close().await;
+                    let _ = pool.disconnect().await;
                     Ok("Connection successful".to_string())
                 }
                 Err(e) => Err(e),
             },
             DatabaseType::Doris | DatabaseType::StarRocks => match db::mysql::connect_bare(&url).await {
                 Ok(pool) => {
-                    pool.close().await;
+                    let _ = pool.disconnect().await;
                     Ok("Connection successful".to_string())
                 }
                 Err(e) => Err(e),
@@ -435,7 +435,9 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
     for key in keys_to_remove {
         if let Some(pool) = conns.remove(&key) {
             match pool {
-                PoolKind::Mysql(p, _) => p.close().await,
+                PoolKind::Mysql(p, _) => {
+                    let _ = p.disconnect().await;
+                }
                 PoolKind::Postgres(p) => p.close().await,
                 PoolKind::Sqlite(p) => p.close().await,
                 PoolKind::Redis(_) => {}

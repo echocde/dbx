@@ -908,17 +908,25 @@ fn first_string_cell(result: db::QueryResult) -> Result<String, String> {
 }
 
 async fn mysql_object_source(
-    pool: &sqlx::mysql::MySqlPool,
+    pool: &db::mysql::MySqlPool,
     name: &str,
     kind: &db::ObjectSourceKind,
 ) -> Result<String, String> {
-    use sqlx::Row;
+    use mysql_async::prelude::*;
     let sql = mysql_object_source_sql(name, kind);
-    let row: sqlx::mysql::MySqlRow = sqlx::raw_sql(&sql).fetch_one(pool).await.map_err(|e| e.to_string())?;
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    let row = rows.first().ok_or("Object source not found")?;
     let index = if matches!(kind, db::ObjectSourceKind::View) { 1 } else { 2 };
-    row.try_get::<String, _>(index)
-        .or_else(|_| row.try_get::<Vec<u8>, _>(index).map(|b| String::from_utf8_lossy(&b).to_string()))
-        .map_err(|e| e.to_string())
+    row.get_opt::<String, usize>(index)
+        .and_then(|result| result.ok())
+        .or_else(|| {
+            row.get_opt::<Vec<u8>, usize>(index)
+                .and_then(|result| result.ok())
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+        })
+        .ok_or_else(|| "Failed to read object source".to_string())
 }
 
 pub async fn get_object_source_core(
@@ -1040,13 +1048,21 @@ mod ddl_tests {
     }
 }
 
-pub async fn mysql_ddl(pool: &sqlx::mysql::MySqlPool, table: &str) -> Result<String, String> {
-    use sqlx::Row;
+pub async fn mysql_ddl(pool: &db::mysql::MySqlPool, table: &str) -> Result<String, String> {
+    use mysql_async::prelude::*;
     let sql = format!("SHOW CREATE TABLE `{}`", table.replace('`', "``"));
-    let row: sqlx::mysql::MySqlRow = sqlx::raw_sql(&sql).fetch_one(pool).await.map_err(|e| e.to_string())?;
-    row.try_get::<String, _>(1)
-        .or_else(|_| row.try_get::<Vec<u8>, _>(1).map(|b| String::from_utf8_lossy(&b).to_string()))
-        .map_err(|e| e.to_string())
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    let row = rows.first().ok_or("DDL not found")?;
+    row.get_opt::<String, usize>(1)
+        .and_then(|result| result.ok())
+        .or_else(|| {
+            row.get_opt::<Vec<u8>, usize>(1)
+                .and_then(|result| result.ok())
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+        })
+        .ok_or_else(|| "Failed to read DDL".to_string())
 }
 
 pub async fn sqlite_ddl(pool: &sqlx::sqlite::SqlitePool, table: &str) -> Result<String, String> {

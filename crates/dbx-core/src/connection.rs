@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use mysql_async::prelude::Queryable;
+use mysql_async::Row as MysqlRow;
+
 use crate::database_capabilities;
 use crate::db;
 use crate::db::agent_driver::AgentMethod;
@@ -37,7 +40,7 @@ pub enum MysqlMode {
 }
 
 pub enum PoolKind {
-    Mysql(sqlx::mysql::MySqlPool, MysqlMode),
+    Mysql(db::mysql::MySqlPool, MysqlMode),
     Postgres(sqlx::postgres::PgPool),
     Sqlite(sqlx::sqlite::SqlitePool),
     Redis(tokio::sync::Mutex<redis::aio::MultiplexedConnection>),
@@ -715,17 +718,33 @@ fn is_original_hostname_endpoint(config: &ConnectionConfig, host: &str, port: u1
     host == config.host && port == config.port && host.parse::<std::net::IpAddr>().is_err()
 }
 
-async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &sqlx::mysql::MySqlPool) -> MysqlMode {
+async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &db::mysql::MySqlPool) -> MysqlMode {
     let profile = config.driver_profile.as_deref().unwrap_or("").to_lowercase();
     if !profile.contains("oceanbase") {
         return MysqlMode::Normal;
     }
-    match sqlx::query_as::<_, (String, String)>("SHOW VARIABLES LIKE 'ob_compatibility_mode'")
-        .fetch_optional(pool)
-        .await
-    {
-        Ok(Some((_, val))) if val.to_lowercase() == "oracle" => MysqlMode::OceanBaseOracle,
-        _ => MysqlMode::Normal,
+    let mut conn = match pool.get_conn().await {
+        Ok(c) => c,
+        Err(_) => return MysqlMode::Normal,
+    };
+    let result = conn.query_iter("SHOW VARIABLES LIKE 'ob_compatibility_mode'").await;
+    let rows: Vec<MysqlRow> = match result {
+        Ok(r) => match r.collect_and_drop().await {
+            Ok(rows) => rows,
+            Err(_) => return MysqlMode::Normal,
+        },
+        Err(_) => return MysqlMode::Normal,
+    };
+    match rows.first() {
+        Some(row) => {
+            let val: String = row.get(1).unwrap_or_default();
+            if val.to_lowercase() == "oracle" {
+                MysqlMode::OceanBaseOracle
+            } else {
+                MysqlMode::Normal
+            }
+        }
+        None => MysqlMode::Normal,
     }
 }
 
