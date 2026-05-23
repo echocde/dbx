@@ -115,6 +115,7 @@ import { hasTreeNodeDatabaseContext } from "@/lib/treeNodeContext";
 import { sidebarDisplayTableName } from "@/lib/sidebarTableNameDisplay";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
+import { copyToClipboard } from "@/lib/clipboard";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import ConnectionErrorIndicator from "@/components/connection/ConnectionErrorIndicator.vue";
 import VisibleDatabasesDialog from "@/components/sidebar/VisibleDatabasesDialog.vue";
@@ -631,9 +632,13 @@ async function confirmDelete() {
   }
 }
 
-function copyName() {
-  navigator.clipboard.writeText(props.node.label);
-  toast(t("connection.copied"), 2000);
+async function copyName() {
+  try {
+    await copyToClipboard(props.node.label);
+    toast(t("connection.copied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 async function duplicateConnection() {

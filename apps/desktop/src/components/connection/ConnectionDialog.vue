@@ -19,6 +19,7 @@ import { applyParsedConnectionUrl, parseConnectionUrl } from "@/lib/connectionUr
 import type { ConnectionDeepLinkDraft } from "@/lib/connectionDeepLink";
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connectionPresentation";
 import { mongodbAuthFailureHint, mongoUrlParam, setMongoUrlParam } from "@/lib/mongoConnectionOptions";
+import { copyToClipboard } from "@/lib/clipboard";
 import { showAgentDriverInstallHint, type AgentDriverInstallState } from "@/lib/agentDriverInstallHint";
 import {
   ArrowLeft,
@@ -688,8 +689,12 @@ function applyConnectionUrl() {
 
 async function copyTestResult() {
   if (!testResultMessage.value) return;
-  await navigator.clipboard.writeText(testResultMessage.value);
-  toast(t("grid.copied"));
+  try {
+    await copyToClipboard(testResultMessage.value);
+    toast(t("grid.copied"));
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 function resetForm() {

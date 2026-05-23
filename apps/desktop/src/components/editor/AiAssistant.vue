@@ -68,6 +68,7 @@ import type { ConnectionConfig, QueryTab, TableInfo } from "@/types/database";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
+import { copyToClipboard } from "@/lib/clipboard";
 import { formatAiTableMention, parseAiTableMentions, type AiTableMention } from "@/lib/aiTableMentions";
 import { isAiPromptImeCompositionEvent, shouldSubmitAiPromptOnKeydown } from "@/lib/aiPromptKeyboard";
 
@@ -561,11 +562,15 @@ function executeSql(code: string) {
 const copiedIndex = ref("");
 
 async function copyCode(code: string, key: string) {
-  await navigator.clipboard.writeText(code);
-  copiedIndex.value = key;
-  setTimeout(() => {
-    if (copiedIndex.value === key) copiedIndex.value = "";
-  }, 2000);
+  try {
+    await copyToClipboard(code);
+    copiedIndex.value = key;
+    setTimeout(() => {
+      if (copiedIndex.value === key) copiedIndex.value = "";
+    }, 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 function clearMessages() {

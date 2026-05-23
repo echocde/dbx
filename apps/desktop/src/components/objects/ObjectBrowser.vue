@@ -70,6 +70,7 @@ import {
 import { buildRenameObjectSql, supportsObjectRename } from "@/lib/objectRenameSql";
 import { buildViewDdl } from "@/lib/viewDdl";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
+import { copyToClipboard } from "@/lib/clipboard";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -746,15 +747,23 @@ async function confirmEmptyTable() {
   emptyTarget.value = null;
 }
 
-function copyName(row: ObjectBrowserRow) {
-  navigator.clipboard.writeText(row.name);
-  toast(t("connection.copied"), 2000);
+async function copyName(row: ObjectBrowserRow) {
+  try {
+    await copyToClipboard(row.name);
+    toast(t("connection.copied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
-function copySource() {
+async function copySource() {
   if (!sourceContent.value) return;
-  navigator.clipboard.writeText(sourceContent.value);
-  toast(t("grid.copied"));
+  try {
+    await copyToClipboard(sourceContent.value);
+    toast(t("grid.copied"));
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 function editSource() {

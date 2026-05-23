@@ -10,6 +10,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import * as api from "@/lib/api";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { TableDiff, TableSchemaDetail } from "@/lib/schemaDiff";
 import type { TableInfo } from "@/types/database";
 import { sqlMetadataRefreshTarget } from "@/lib/sqlMetadataRefresh";
@@ -286,9 +287,13 @@ async function executeSql() {
   }
 }
 
-function copySql() {
-  navigator.clipboard.writeText(syncSql.value);
-  toast(t("grid.copied"));
+async function copySql() {
+  try {
+    await copyToClipboard(syncSql.value);
+    toast(t("grid.copied"));
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 function diffBadgeVariant(type: string) {

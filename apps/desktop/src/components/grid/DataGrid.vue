@@ -150,6 +150,13 @@ const { t } = useI18n();
 const settingsStore = useSettingsStore();
 const { toast } = useToast();
 
+interface PreparedCopyValue {
+  key: string;
+  text: string;
+  loading: boolean;
+  ready: boolean;
+}
+
 const props = defineProps<{
   result: QueryResult;
   sql?: string;
@@ -1892,6 +1899,82 @@ const activeValueEditorActions = computed(() => {
   });
 });
 
+const detailSqlConditionCopy = ref<PreparedCopyValue>({
+  key: "",
+  text: "",
+  loading: false,
+  ready: false,
+});
+
+const detailSqlConditionKey = computed(() => {
+  const detail = activeCellDetail.value;
+  if (!detail) return "";
+  return JSON.stringify({
+    databaseType: props.databaseType ?? null,
+    column: detail.column,
+    value: detail.value,
+    type: detail.type,
+    schema: props.tableMeta?.schema ?? null,
+    tableName: props.tableMeta?.tableName ?? null,
+  });
+});
+
+function canCopyPreparedDetailSqlCondition(): boolean {
+  return detailSqlConditionCopy.value.ready && detailSqlConditionCopy.value.key === detailSqlConditionKey.value;
+}
+
+async function prefetchDetailSqlCondition() {
+  const detail = activeCellDetail.value;
+  const key = detailSqlConditionKey.value;
+  if (!detail || !key) {
+    detailSqlConditionCopy.value = {
+      key: "",
+      text: "",
+      loading: false,
+      ready: false,
+    };
+    return;
+  }
+  const current = detailSqlConditionCopy.value;
+  if ((current.loading || current.ready) && current.key === key) return;
+
+  detailSqlConditionCopy.value = {
+    key,
+    text: "",
+    loading: true,
+    ready: false,
+  };
+
+  try {
+    const condition = await buildDataGridContextFilterCondition({
+      databaseType: props.databaseType,
+      columnName: detail.column,
+      columnInfo: props.tableMeta?.columns.find((column) => column.name === detail.column),
+      mode: "equals",
+      value: detail.value,
+    });
+    if (detailSqlConditionCopy.value.key !== key) return;
+    detailSqlConditionCopy.value = {
+      key,
+      text: condition ?? "",
+      loading: false,
+      ready: !!condition,
+    };
+  } catch {
+    if (detailSqlConditionCopy.value.key !== key) return;
+    detailSqlConditionCopy.value = {
+      key,
+      text: "",
+      loading: false,
+      ready: false,
+    };
+  }
+}
+
+watch(activeCellDetail, () => {
+  void prefetchDetailSqlCondition();
+});
+
 const detailEditValue = ref("");
 const isEditingDetail = ref(false);
 const detailTemporalEditorKind = computed(() => {
@@ -2204,6 +2287,10 @@ const {
   copyRow,
   copyRowAsInsert,
   copyRowAsInsertWithoutPrimaryKeys,
+  prefetchRowAsInsertStatement,
+  canCopyPreparedInsert,
+  prefetchRowAsUpdateStatement,
+  canCopyPreparedUpdate,
   copyRowAsUpdate,
   canCopyRowAsInsertWithoutPrimaryKeys,
   canCopyRowAsUpdate,
@@ -2458,16 +2545,8 @@ function copyDetailColumnName() {
 }
 
 async function copyDetailSqlCondition() {
-  const detail = activeCellDetail.value;
-  if (!detail) return;
-  const condition = await buildDataGridContextFilterCondition({
-    databaseType: props.databaseType,
-    columnName: detail.column,
-    columnInfo: props.tableMeta?.columns.find((column) => column.name === detail.column),
-    mode: "equals",
-    value: detail.value,
-  });
-  if (condition) copyText(condition);
+  if (!canCopyPreparedDetailSqlCondition()) return;
+  copyText(detailSqlConditionCopy.value.text);
 }
 
 const TRANSPOSE_RECORD_DEFAULT_WIDTH = 168;
@@ -2677,12 +2756,14 @@ watch(
 function onCellContext(rowId: number, rowIndex: number, colIdx: number, visibleColIdx: number) {
   contextCell.value = { rowId, rowIndex, col: colIdx };
   if (hasRowSelection.value && isRowSelected(rowId)) {
+    void prefetchCopyStatements();
     return;
   }
   clearRowSelection();
   if (!cellIsSelected(rowIndex, visibleColIdx)) {
     selectSingleCell(rowIndex, visibleColIdx);
   }
+  void prefetchCopyStatements();
 }
 
 function onRowContext(rowId: number, rowIndex: number) {
@@ -2691,6 +2772,17 @@ function onRowContext(rowId: number, rowIndex: number) {
     clearCellSelection();
     selectedRowIds.value = new Set([rowId]);
     selection.lastClickedRowIndex.value = rowIndex;
+  }
+  void prefetchCopyStatements();
+}
+
+async function prefetchCopyStatements() {
+  await prefetchRowAsInsertStatement(false);
+  if (canCopyRowAsInsertWithoutPrimaryKeys.value) {
+    await prefetchRowAsInsertStatement(true);
+  }
+  if (canCopyRowAsUpdate.value) {
+    await prefetchRowAsUpdateStatement();
   }
 }
 
@@ -2865,8 +2957,7 @@ if (showTableInfo.value && props.tableMeta && props.connectionId) {
 }
 
 function copyDdl() {
-  navigator.clipboard.writeText(ddlContent.value);
-  toast(t("grid.copied"));
+  copyText(ddlContent.value);
 }
 
 function toggleDdlWrap() {
@@ -4487,7 +4578,13 @@ defineExpose({
                     <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailColumnName">
                       <Copy class="w-3 h-3 mr-2" /> {{ t("grid.copyColumnName") }}
                     </Button>
-                    <Button variant="ghost" size="sm" class="h-7 justify-start text-xs" @click="copyDetailSqlCondition">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="h-7 justify-start text-xs"
+                      :disabled="!canCopyPreparedDetailSqlCondition()"
+                      @click="copyDetailSqlCondition"
+                    >
                       <Code2 class="w-3 h-3 mr-2" /> {{ t("grid.copySqlCondition") }}
                     </Button>
                   </div>
@@ -4598,17 +4695,21 @@ defineExpose({
             <ContextMenuItem @click="copyRow">
               {{ isMultiRow ? t("grid.copyRows", { count: multiRowCount }) : t("grid.copyRow") }}
             </ContextMenuItem>
-            <ContextMenuItem @click="copyRowAsInsert">
+            <ContextMenuItem :disabled="!canCopyPreparedInsert(false)" @click="copyRowAsInsert">
               {{ isMultiRow ? t("grid.copyRowsInsert", { count: multiRowCount }) : t("grid.copyRowInsert") }}
             </ContextMenuItem>
-            <ContextMenuItem v-if="canCopyRowAsInsertWithoutPrimaryKeys" @click="copyRowAsInsertWithoutPrimaryKeys">
+            <ContextMenuItem
+              v-if="canCopyRowAsInsertWithoutPrimaryKeys"
+              :disabled="!canCopyPreparedInsert(true)"
+              @click="copyRowAsInsertWithoutPrimaryKeys"
+            >
               {{
                 isMultiRow
                   ? t("grid.copyRowsInsertWithoutPrimaryKeys", { count: multiRowCount })
                   : t("grid.copyRowInsertWithoutPrimaryKeys")
               }}
             </ContextMenuItem>
-            <ContextMenuItem v-if="canCopyRowAsUpdate" @click="copyRowAsUpdate">
+            <ContextMenuItem v-if="canCopyRowAsUpdate" :disabled="!canCopyPreparedUpdate()" @click="copyRowAsUpdate">
               {{ isMultiRow ? t("grid.copyRowsUpdate", { count: multiRowCount }) : t("grid.copyRowUpdate") }}
             </ContextMenuItem>
             <ContextMenuItem @click="copyAll">{{ t("grid.copyAll") }}</ContextMenuItem>

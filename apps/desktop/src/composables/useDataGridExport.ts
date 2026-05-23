@@ -1,4 +1,4 @@
-import { computed, type ComputedRef, type Ref } from "vue";
+import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import * as api from "@/lib/api";
@@ -46,10 +46,35 @@ export interface UseDataGridExportOptions {
   hasRowSelection: ComputedRef<boolean>;
 }
 
+interface CopyStatementCache {
+  key: string;
+  text: string;
+  loading: boolean;
+  ready: boolean;
+}
+
 export function useDataGridExport(options: UseDataGridExportOptions) {
   const { t } = useI18n();
   const { toast } = useToast();
   const exportGuard: ActionActivationGuard = {};
+  const copyRowInsertCache = ref<CopyStatementCache>({
+    key: "",
+    text: "",
+    loading: false,
+    ready: false,
+  });
+  const copyRowInsertWithoutPrimaryKeysCache = ref<CopyStatementCache>({
+    key: "",
+    text: "",
+    loading: false,
+    ready: false,
+  });
+  const copyRowUpdateCache = ref<CopyStatementCache>({
+    key: "",
+    text: "",
+    loading: false,
+    ready: false,
+  });
 
   const {
     columns,
@@ -97,6 +122,181 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
 
   function updateEligibleRows(): RowItem[] {
     return targetedRows().filter((item) => !item.isNew && !item.isDeleted);
+  }
+
+  function updateCopyKey(): string {
+    const rows = updateEligibleRows().map((item) => item.id);
+    return JSON.stringify({
+      databaseType: databaseType.value ?? null,
+      schema: tableMeta.value?.schema ?? null,
+      tableName: tableMeta.value?.tableName ?? null,
+      primaryKeys: tableMeta.value?.primaryKeys ?? [],
+      columns: columns.value,
+      sourceColumns: sourceColumns.value ?? null,
+      rows,
+    });
+  }
+
+  function insertCopyKey(excludePrimaryKeys: boolean): string {
+    const rows = insertEligibleRows().map((item) => item.id);
+    return JSON.stringify({
+      databaseType: databaseType.value ?? null,
+      schema: tableMeta.value?.schema ?? null,
+      tableName: tableMeta.value?.tableName ?? null,
+      columns: columns.value,
+      sourceColumns: sourceColumns.value ?? null,
+      excludePrimaryKeys,
+      rows,
+    });
+  }
+
+  function insertCopyCache(excludePrimaryKeys: boolean): CopyStatementCache {
+    return excludePrimaryKeys ? copyRowInsertWithoutPrimaryKeysCache.value : copyRowInsertCache.value;
+  }
+
+  function setInsertCopyCache(excludePrimaryKeys: boolean, cache: CopyStatementCache) {
+    if (excludePrimaryKeys) {
+      copyRowInsertWithoutPrimaryKeysCache.value = cache;
+    } else {
+      copyRowInsertCache.value = cache;
+    }
+  }
+
+  function setUpdateCopyCache(cache: CopyStatementCache) {
+    copyRowUpdateCache.value = cache;
+  }
+
+  async function prefetchRowAsInsertStatement(excludePrimaryKeys: boolean) {
+    const rows = insertEligibleRows();
+    if (!rows.length) {
+      setInsertCopyCache(excludePrimaryKeys, {
+        key: "",
+        text: "",
+        loading: false,
+        ready: false,
+      });
+      return;
+    }
+    const key = insertCopyKey(excludePrimaryKeys);
+    const current = insertCopyCache(excludePrimaryKeys);
+    if ((current.loading || current.ready) && current.key === key) return;
+
+    setInsertCopyCache(excludePrimaryKeys, {
+      key,
+      text: "",
+      loading: true,
+      ready: false,
+    });
+
+    try {
+      const statement = await buildDataGridCopyInsertStatement({
+        databaseType: databaseType.value,
+        tableMeta: tableMeta.value,
+        columns: columns.value,
+        sourceColumns: sourceColumns.value,
+        rows: rows.map((item) => item.data),
+        excludePrimaryKeys,
+      });
+      const latest = insertCopyCache(excludePrimaryKeys);
+      if (latest.key !== key) return;
+      setInsertCopyCache(excludePrimaryKeys, {
+        key,
+        text: statement ?? "",
+        loading: false,
+        ready: !!statement,
+      });
+    } catch {
+      const latest = insertCopyCache(excludePrimaryKeys);
+      if (latest.key !== key) return;
+      setInsertCopyCache(excludePrimaryKeys, {
+        key,
+        text: "",
+        loading: false,
+        ready: false,
+      });
+    }
+  }
+
+  function canCopyPreparedInsert(excludePrimaryKeys: boolean): boolean {
+    const cache = insertCopyCache(excludePrimaryKeys);
+    return cache.ready && cache.key === insertCopyKey(excludePrimaryKeys);
+  }
+
+  function copyPreparedRowAsInsert(excludePrimaryKeys: boolean): boolean {
+    if (!canCopyPreparedInsert(excludePrimaryKeys)) return false;
+    void copyText(insertCopyCache(excludePrimaryKeys).text);
+    return true;
+  }
+
+  async function prefetchRowAsUpdateStatement() {
+    if (!tableMeta.value?.primaryKeys.length) {
+      setUpdateCopyCache({
+        key: "",
+        text: "",
+        loading: false,
+        ready: false,
+      });
+      return;
+    }
+    const rows = updateEligibleRows();
+    if (!rows.length) {
+      setUpdateCopyCache({
+        key: "",
+        text: "",
+        loading: false,
+        ready: false,
+      });
+      return;
+    }
+    const key = updateCopyKey();
+    const current = copyRowUpdateCache.value;
+    if ((current.loading || current.ready) && current.key === key) return;
+
+    setUpdateCopyCache({
+      key,
+      text: "",
+      loading: true,
+      ready: false,
+    });
+
+    try {
+      const statements = await buildDataGridCopyUpdateStatements({
+        databaseType: databaseType.value,
+        tableMeta: tableMeta.value,
+        columns: columns.value,
+        sourceColumns: sourceColumns.value,
+        rows: rows.map((item) => item.data),
+      });
+      const latest = copyRowUpdateCache.value;
+      if (latest.key !== key) return;
+      const text = statements.join("\n");
+      setUpdateCopyCache({
+        key,
+        text,
+        loading: false,
+        ready: statements.length > 0,
+      });
+    } catch {
+      const latest = copyRowUpdateCache.value;
+      if (latest.key !== key) return;
+      setUpdateCopyCache({
+        key,
+        text: "",
+        loading: false,
+        ready: false,
+      });
+    }
+  }
+
+  function canCopyPreparedUpdate(): boolean {
+    const cache = copyRowUpdateCache.value;
+    return cache.ready && cache.key === updateCopyKey();
+  }
+
+  function copyPreparedRowAsUpdate(): boolean {
+    if (!canCopyPreparedUpdate()) return false;
+    void copyText(copyRowUpdateCache.value.text);
+    return true;
   }
 
   // --- Selection copy functions ---
@@ -168,38 +368,16 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     return targetedRows();
   }
 
-  async function copyRowAsInsertStatement(excludePrimaryKeys: boolean) {
-    const statement = await buildDataGridCopyInsertStatement({
-      databaseType: databaseType.value,
-      tableMeta: tableMeta.value,
-      columns: columns.value,
-      sourceColumns: sourceColumns.value,
-      rows: insertEligibleRows().map((item) => item.data),
-      excludePrimaryKeys,
-    });
-    if (!statement) return;
-    await copyText(statement);
-  }
-
   async function copyRowAsInsert() {
-    await copyRowAsInsertStatement(false);
+    copyPreparedRowAsInsert(false);
   }
 
   async function copyRowAsInsertWithoutPrimaryKeys() {
-    await copyRowAsInsertStatement(true);
+    copyPreparedRowAsInsert(true);
   }
 
   async function copyRowAsUpdate() {
-    if (!tableMeta.value?.primaryKeys.length) return;
-    const statements = await buildDataGridCopyUpdateStatements({
-      databaseType: databaseType.value,
-      tableMeta: tableMeta.value,
-      columns: columns.value,
-      sourceColumns: sourceColumns.value,
-      rows: updateEligibleRows().map((item) => item.data),
-    });
-    if (!statements.length) return;
-    await copyText(statements.join("\n"));
+    copyPreparedRowAsUpdate();
   }
 
   const canCopyRowAsUpdate = computed(() => {
@@ -353,6 +531,12 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     copyRow,
     copyRowAsInsert,
     copyRowAsInsertWithoutPrimaryKeys,
+    prefetchRowAsInsertStatement,
+    canCopyPreparedInsert,
+    copyPreparedRowAsInsert,
+    prefetchRowAsUpdateStatement,
+    canCopyPreparedUpdate,
+    copyPreparedRowAsUpdate,
     copyRowAsUpdate,
     canCopyRowAsInsertWithoutPrimaryKeys,
     canCopyRowAsUpdate,

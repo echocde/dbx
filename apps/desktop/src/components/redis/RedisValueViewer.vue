@@ -15,6 +15,7 @@ import type { RedisKeyInfo, RedisValue } from "@/lib/api";
 import { useToast } from "@/composables/useToast";
 import { useTheme } from "@/composables/useTheme";
 import { createRedisShikiJsonHighlighter, type RedisJsonHighlighter } from "@/lib/redisJsonHighlighter";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   canEditRedisMemberDetail,
   clampRedisMemberDetailSheetWidth,
@@ -275,20 +276,28 @@ function requestDeleteKey() {
   showDeleteConfirm.value = true;
 }
 
-function copyValue() {
+async function copyValue() {
   if (!data.value) return;
   const text = typeof data.value.value === "string" ? data.value.value : JSON.stringify(data.value.value, null, 2);
-  navigator.clipboard.writeText(text);
-  toast(t("redis.copied"), 2000);
+  try {
+    await copyToClipboard(text);
+    toast(t("redis.copied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
-function copyText(text: string) {
-  navigator.clipboard.writeText(text);
-  toast(t("redis.copied"), 2000);
+async function copyText(text: string) {
+  try {
+    await copyToClipboard(text);
+    toast(t("redis.copied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 function copyMember(value: unknown) {
-  copyText(formatRedisMemberDetail(value).text);
+  void copyText(formatRedisMemberDetail(value).text);
 }
 
 function selectMember(title: string, value: unknown, context: RedisMemberContext) {

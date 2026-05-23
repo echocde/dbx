@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { DataCompareResult } from "@/lib/dataCompare";
 import * as api from "@/lib/api";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
@@ -288,8 +289,12 @@ async function startCompare() {
 }
 
 async function copySql() {
-  await navigator.clipboard.writeText(syncSql.value);
-  toast(t("grid.copied"));
+  try {
+    await copyToClipboard(syncSql.value);
+    toast(t("grid.copied"));
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
 }
 
 async function executeSql() {
