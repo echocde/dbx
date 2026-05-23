@@ -1632,24 +1632,6 @@ const searchMatchSet = computed(() => {
   return set;
 });
 
-const searchRowMemoKeys = computed(() => {
-  const rows = new Map<number, string[]>();
-  for (const match of searchMatches.value) {
-    const row = rows.get(match.displayRow) ?? [];
-    row.push(String(match.col));
-    rows.set(match.displayRow, row);
-  }
-
-  const current = searchMatches.value[currentMatchIndex.value];
-  if (current) {
-    const row = rows.get(current.displayRow) ?? [];
-    row.push(`current:${current.col}`);
-    rows.set(current.displayRow, row);
-  }
-
-  return new Map([...rows].map(([row, parts]) => [row, parts.join("|")]));
-});
-
 watch(searchMatches, (matches) => {
   currentMatchIndex.value = matches.length > 0 ? 0 : -1;
 });
@@ -1663,10 +1645,6 @@ function cellIsCurrentMatch(displayRow: number, col: number): boolean {
   if (idx < 0 || idx >= searchMatches.value.length) return false;
   const m = searchMatches.value[idx];
   return m.displayRow === displayRow && m.col === col;
-}
-
-function rowSearchMemoKey(index: number): string {
-  return searchRowMemoKeys.value.get(index) ?? "";
 }
 
 function navigateMatch(delta: number) {
