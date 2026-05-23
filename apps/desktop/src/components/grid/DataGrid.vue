@@ -297,6 +297,7 @@ function typeColorClass(t: string): string {
   return "text-muted-foreground";
 }
 const contextCell = ref<{ rowId: number; rowIndex: number; col: number } | null>(null);
+const contextHeaderColumn = ref<string | null>(null);
 const detailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const hoveredDetailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const showCellDetail = ref(false);
@@ -2779,7 +2780,18 @@ watch(
 );
 
 // --- Context menu handlers ---
+function onHeaderContext(col: string) {
+  contextCell.value = null;
+  clearCellSelection();
+  clearRowSelection();
+  contextHeaderColumn.value = col;
+}
+async function copyHeaderColumn() {
+  if (!contextHeaderColumn.value) return;
+  await copyText(contextHeaderColumn.value);
+}
 function onCellContext(rowId: number, rowIndex: number, colIdx: number, visibleColIdx: number) {
+  contextHeaderColumn.value = null;
   contextCell.value = { rowId, rowIndex, col: colIdx };
   if (hasRowSelection.value && isRowSelected(rowId)) {
     void prefetchCopyStatements();
@@ -2793,6 +2805,7 @@ function onCellContext(rowId: number, rowIndex: number, colIdx: number, visibleC
 }
 
 function onRowContext(rowId: number, rowIndex: number) {
+  contextHeaderColumn.value = null;
   contextCell.value = { rowId, rowIndex, col: -1 };
   if (!isRowSelected(rowId)) {
     clearCellSelection();
@@ -3669,6 +3682,7 @@ defineExpose({
                           }"
                           :style="{ width: `var(--col-w-${colIdx})` }"
                           :data-grid-column-index="actualColumnIndex(colIdx)"
+                          @contextmenu="onHeaderContext(col)"
                         >
                           <span class="flex min-w-0 items-center gap-1 overflow-hidden">
                             <span
@@ -4674,6 +4688,11 @@ defineExpose({
       </ContextMenuTrigger>
 
       <ContextMenuContent class="w-max max-w-[min(80vw,20rem)]">
+        <template v-if="contextHeaderColumn">
+          <ContextMenuItem @click="copyHeaderColumn">
+            <Copy class="w-3.5 h-3.5 mr-2" /> {{ t("grid.copyColumnName") }}
+          </ContextMenuItem>
+        </template>
         <template v-if="contextColumn">
           <ContextMenuItem @click="applyContextSort('asc')">
             <ArrowUp class="w-3.5 h-3.5 mr-2" /> {{ t("grid.sortAscending") }}
@@ -4708,7 +4727,7 @@ defineExpose({
           </ContextMenuSub>
           <ContextMenuSeparator />
         </template>
-        <ContextMenuSub>
+        <ContextMenuSub v-if="!contextHeaderColumn">
           <ContextMenuSubTrigger> <Copy class="w-3.5 h-3.5 mr-2" /> {{ t("grid.copy") }} </ContextMenuSubTrigger>
           <ContextMenuSubContent class="w-max max-w-[min(80vw,18rem)]">
             <ContextMenuItem v-if="contextColumn" @click="copyCell">{{ t("grid.copyCell") }}</ContextMenuItem>
