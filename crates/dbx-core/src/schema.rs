@@ -240,7 +240,7 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
             let session = session.clone();
             drop(connections);
             return session
-                .invoke::<Vec<db::DatabaseInfo>>("listDatabases", serde_json::json!({ "connection": config }))
+                .invoke::<Vec<db::DatabaseInfo>>("listDatabases", serde_json::json!({ "connection": config.as_ref() }))
                 .await;
         }
         if let Some(client) = extract_clickhouse(&connections, connection_id) {
@@ -298,7 +298,10 @@ pub async fn list_schemas_core(state: &AppState, connection_id: &str, database: 
             let session = session.clone();
             drop(connections);
             return session
-                .invoke::<Vec<String>>("listSchemas", serde_json::json!({ "connection": config, "database": database }))
+                .invoke::<Vec<String>>(
+                    "listSchemas",
+                    serde_json::json!({ "connection": config.as_ref(), "database": database }),
+                )
                 .await;
         }
         if let Some(client) = extract_sqlserver(&connections, &pool_key) {
@@ -352,7 +355,7 @@ pub async fn list_tables_core(
             return session
                 .invoke::<Vec<db::TableInfo>>(
                     "listTables",
-                    serde_json::json!({ "connection": config, "database": database, "schema": schema }),
+                    serde_json::json!({ "connection": config.as_ref(), "database": database, "schema": schema }),
                 )
                 .await;
         }
@@ -497,7 +500,7 @@ pub async fn list_objects_core(
             return session
                 .invoke::<Vec<db::ObjectInfo>>(
                     "listObjects",
-                    serde_json::json!({ "connection": config, "database": database, "schema": schema }),
+                    serde_json::json!({ "connection": config.as_ref(), "database": database, "schema": schema }),
                 )
                 .await;
         }
@@ -574,7 +577,7 @@ pub async fn get_columns_core(
                 .invoke::<Vec<db::ColumnInfo>>(
                     "getColumns",
                     serde_json::json!({
-                        "connection": config,
+                        "connection": config.as_ref(),
                         "database": database,
                         "schema": schema,
                         "table": table,

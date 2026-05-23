@@ -42,8 +42,8 @@ pub async fn preview_import(
         std::fs::write(&file_path, &data).map_err(|e| AppError(e.to_string()))?;
 
         let file_path_str = file_path.to_string_lossy().to_string();
-        let preview = table_import::preview_table_import_file_core(&file_path_str);
-        let _ = std::fs::remove_file(&file_path);
+        let preview = table_import::preview_table_import_file_core(&file_path_str).await;
+        let _ = tokio::fs::remove_file(&file_path).await;
         let preview = preview.map_err(AppError)?;
         return Ok(Json(serde_json::to_value(preview).map_err(|e| AppError(e.to_string()))?));
     }

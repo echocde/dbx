@@ -300,21 +300,26 @@ pub fn parse_xlsx_file(path: &str, preview_limit: usize) -> Result<ParsedImportF
     Ok(ParsedImportFile { columns, rows, total_rows })
 }
 
-pub fn parse_import_file(path: &str, preview_limit: usize) -> Result<ParsedImportFile, String> {
+pub async fn parse_import_file(path: &str, preview_limit: usize) -> Result<ParsedImportFile, String> {
     match import_file_kind(path)? {
         ImportFileKind::Csv => {
-            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
             parse_csv_bytes(&bytes, preview_limit)
         }
         ImportFileKind::Tsv => {
-            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
             parse_delimited_bytes(&bytes, b'\t', preview_limit)
         }
         ImportFileKind::Json => {
-            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            let bytes = tokio::fs::read(path).await.map_err(|e| e.to_string())?;
             parse_json_bytes(&bytes, preview_limit)
         }
-        ImportFileKind::Xlsx => parse_xlsx_file(path, preview_limit),
+        ImportFileKind::Xlsx => {
+            let path = path.to_string();
+            tokio::task::spawn_blocking(move || parse_xlsx_file(&path, preview_limit))
+                .await
+                .map_err(|e| e.to_string())?
+        }
     }
 }
 
@@ -394,10 +399,10 @@ pub fn truncate_sql(table: &str, schema: &str, db_type: &DatabaseType) -> String
     }
 }
 
-pub fn preview_table_import_file_core(file_path: &str) -> Result<TableImportPreview, String> {
+pub async fn preview_table_import_file_core(file_path: &str) -> Result<TableImportPreview, String> {
     let kind = import_file_kind(file_path)?;
-    let parsed = parse_import_file(file_path, DEFAULT_PREVIEW_LIMIT)?;
-    let metadata = std::fs::metadata(file_path).map_err(|e| e.to_string())?;
+    let parsed = parse_import_file(file_path, DEFAULT_PREVIEW_LIMIT).await?;
+    let metadata = tokio::fs::metadata(file_path).await.map_err(|e| e.to_string())?;
     let file_name = Path::new(file_path).file_name().and_then(|name| name.to_str()).unwrap_or(file_path).to_string();
 
     Ok(TableImportPreview {
@@ -426,7 +431,7 @@ where
 {
     let batch_size = if request.batch_size == 0 { DEFAULT_BATCH_SIZE } else { request.batch_size };
 
-    let parsed = match parse_import_file(&request.file_path, usize::MAX) {
+    let parsed = match parse_import_file(&request.file_path, usize::MAX).await {
         Ok(parsed) => parsed,
         Err(error) => {
             progress_callback(TableImportProgress {

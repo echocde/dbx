@@ -353,20 +353,25 @@ pub fn generate_create_table_ddl(
 ) -> String {
     let full_table = qualified_table(table, schema, target_db);
 
-    let col_lines: Vec<String> = columns
-        .iter()
-        .map(|c| {
+    let mut col_lines = Vec::with_capacity(columns.len());
+    for c in columns {
+        col_lines.push({
             let mapped_type = map_column_type(&c.data_type, source_db, target_db);
             let mut line = format!("  {} {}", quote_identifier(&c.name, target_db), mapped_type);
             if !c.is_nullable {
                 line.push_str(" NOT NULL");
             }
             line
-        })
-        .collect();
+        });
+    }
 
-    let pks: Vec<String> =
-        columns.iter().filter(|c| c.is_primary_key).map(|c| quote_identifier(&c.name, target_db)).collect();
+    let mut pks = Vec::new();
+    pks.reserve(columns.iter().filter(|c| c.is_primary_key).count());
+    for c in columns {
+        if c.is_primary_key {
+            pks.push(quote_identifier(&c.name, target_db));
+        }
+    }
 
     let mut ddl = match target_db {
         DatabaseType::SqlServer => {
@@ -431,18 +436,15 @@ fn value_rows_sql(
     column_types: &[Option<String>],
     db_type: &DatabaseType,
 ) -> Vec<String> {
-    rows.iter()
-        .map(|row| {
-            let vals: Vec<String> = row
-                .iter()
-                .enumerate()
-                .map(|(index, v)| {
-                    escape_value_typed(v, db_type, column_types.get(index).and_then(|value| value.as_deref()))
-                })
-                .collect();
-            format!("({})", vals.join(", "))
-        })
-        .collect()
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let mut vals = Vec::with_capacity(row.len());
+        for (index, v) in row.iter().enumerate() {
+            vals.push(escape_value_typed(v, db_type, column_types.get(index).and_then(|value| value.as_deref())));
+        }
+        out.push(format!("({})", vals.join(", ")));
+    }
+    out
 }
 
 pub fn generate_upsert(
@@ -474,7 +476,12 @@ pub fn generate_upsert_typed(
 
     let value_rows = value_rows_sql(rows, column_types, db_type);
 
-    let non_pk_columns: Vec<&String> = columns.iter().filter(|c| !pk_columns.contains(c)).collect();
+    let mut non_pk_columns = Vec::with_capacity(columns.len().saturating_sub(pk_columns.len()));
+    for c in columns {
+        if !pk_columns.contains(c) {
+            non_pk_columns.push(c);
+        }
+    }
 
     match db_type {
         DatabaseType::Postgres | DatabaseType::Sqlite | DatabaseType::DuckDb => {
@@ -549,28 +556,18 @@ pub fn generate_upsert_typed(
             sql
         }
         DatabaseType::Oracle => {
-            let using_rows: Vec<String> = rows
-                .iter()
-                .map(|row| {
-                    let vals: Vec<String> = row
-                        .iter()
-                        .zip(columns.iter())
-                        .enumerate()
-                        .map(|(index, (v, c))| {
-                            format!(
-                                "{} AS {}",
-                                escape_value_typed(
-                                    v,
-                                    db_type,
-                                    column_types.get(index).and_then(|value| value.as_deref())
-                                ),
-                                quote_identifier(c, db_type)
-                            )
-                        })
-                        .collect();
-                    format!("SELECT {} FROM dual", vals.join(", "))
-                })
-                .collect();
+            let mut using_rows = Vec::with_capacity(rows.len());
+            for row in rows {
+                let mut vals = Vec::with_capacity(row.len().min(columns.len()));
+                for (index, (v, c)) in row.iter().zip(columns.iter()).enumerate() {
+                    vals.push(format!(
+                        "{} AS {}",
+                        escape_value_typed(v, db_type, column_types.get(index).and_then(|value| value.as_deref())),
+                        quote_identifier(c, db_type)
+                    ));
+                }
+                using_rows.push(format!("SELECT {} FROM dual", vals.join(", ")));
+            }
 
             let on_clause = pk_columns
                 .iter()

@@ -805,10 +805,10 @@ impl Storage {
 
     async fn migrate_connections_json(&self, data_dir: &Path) -> Result<(), String> {
         let path = data_dir.join("connections.json");
-        if !path.exists() {
+        if tokio::fs::metadata(&path).await.is_err() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let json = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
         let configs: Vec<ConnectionConfig> = serde_json::from_str(&json).unwrap_or_default();
         for config in &configs {
             let config_json = serde_json::to_string(config).map_err(|e| e.to_string())?;
@@ -819,16 +819,16 @@ impl Storage {
                 .await
                 .map_err(|e| e.to_string())?;
         }
-        std::fs::rename(&path, data_dir.join("connections.json.bak")).ok();
+        let _ = tokio::fs::rename(&path, data_dir.join("connections.json.bak")).await;
         Ok(())
     }
 
     async fn migrate_secrets_json(&self, data_dir: &Path) -> Result<(), String> {
         let path = data_dir.join("secrets.json");
-        if !path.exists() {
+        if tokio::fs::metadata(&path).await.is_err() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let json = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
         let secrets: std::collections::HashMap<String, String> = serde_json::from_str(&json).unwrap_or_default();
         for (key, secret) in &secrets {
             // key format: "connection:{id}:{field}"
@@ -846,16 +846,16 @@ impl Storage {
                 .map_err(|e| e.to_string())?;
             }
         }
-        std::fs::rename(&path, data_dir.join("secrets.json.bak")).ok();
+        let _ = tokio::fs::rename(&path, data_dir.join("secrets.json.bak")).await;
         Ok(())
     }
 
     async fn migrate_history_json(&self, data_dir: &Path) -> Result<(), String> {
         let path = data_dir.join("query_history.json");
-        if !path.exists() {
+        if tokio::fs::metadata(&path).await.is_err() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let json = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
         let entries: Vec<HistoryEntry> = serde_json::from_str(&json).unwrap_or_default();
         for entry in &entries {
             sqlx::query(
@@ -884,16 +884,16 @@ impl Storage {
             .await
             .map_err(|e| e.to_string())?;
         }
-        std::fs::rename(&path, data_dir.join("query_history.json.bak")).ok();
+        let _ = tokio::fs::rename(&path, data_dir.join("query_history.json.bak")).await;
         Ok(())
     }
 
     async fn migrate_ai_config_json(&self, data_dir: &Path) -> Result<(), String> {
         let path = data_dir.join("ai_config.json");
-        if !path.exists() {
+        if tokio::fs::metadata(&path).await.is_err() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let json = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
         // Only migrate if the table is empty
         let count: (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM ai_config").fetch_one(&self.db).await.map_err(|e| e.to_string())?;
@@ -904,16 +904,16 @@ impl Storage {
                 .await
                 .map_err(|e| e.to_string())?;
         }
-        std::fs::rename(&path, data_dir.join("ai_config.json.bak")).ok();
+        let _ = tokio::fs::rename(&path, data_dir.join("ai_config.json.bak")).await;
         Ok(())
     }
 
     async fn migrate_ai_conversations_json(&self, data_dir: &Path) -> Result<(), String> {
         let path = data_dir.join("ai_conversations.json");
-        if !path.exists() {
+        if tokio::fs::metadata(&path).await.is_err() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let json = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
         let conversations: Vec<AiConversation> = serde_json::from_str(&json).unwrap_or_default();
         for conv in &conversations {
             let messages_json = serde_json::to_string(&conv.messages).map_err(|e| e.to_string())?;
@@ -934,16 +934,16 @@ impl Storage {
             .await
             .map_err(|e| e.to_string())?;
         }
-        std::fs::rename(&path, data_dir.join("ai_conversations.json.bak")).ok();
+        let _ = tokio::fs::rename(&path, data_dir.join("ai_conversations.json.bak")).await;
         Ok(())
     }
 
     async fn migrate_sidebar_layout_json(&self, data_dir: &Path) -> Result<(), String> {
         let path = data_dir.join("sidebar_layout.json");
-        if !path.exists() {
+        if tokio::fs::metadata(&path).await.is_err() {
             return Ok(());
         }
-        let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let json = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
         let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sidebar_layout")
             .fetch_one(&self.db)
             .await
@@ -955,7 +955,7 @@ impl Storage {
                 .await
                 .map_err(|e| e.to_string())?;
         }
-        std::fs::rename(&path, data_dir.join("sidebar_layout.json.bak")).ok();
+        let _ = tokio::fs::rename(&path, data_dir.join("sidebar_layout.json.bak")).await;
         Ok(())
     }
 }

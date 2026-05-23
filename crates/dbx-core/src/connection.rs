@@ -48,7 +48,7 @@ pub enum PoolKind {
     Elasticsearch(db::elasticsearch_driver::EsClient),
     Agent(Arc<tokio::sync::Mutex<db::agent_driver::AgentDriverClient>>),
     ExternalTabular(Arc<external::ExternalPool>),
-    ExternalDriver { driver_id: String, config: ConnectionConfig, session: Arc<PluginDriverSession> },
+    ExternalDriver { driver_id: String, config: Arc<ConnectionConfig>, session: Arc<PluginDriverSession> },
 }
 
 pub struct AppState {
@@ -130,7 +130,7 @@ impl AppState {
         let session = self.plugins.start_driver_session(driver_id).await?;
         let params = serde_json::json!({ "connection": config });
         session.invoke::<serde_json::Value>("connect", params).await?;
-        Ok(PoolKind::ExternalDriver { driver_id: driver_id.to_string(), config: config.clone(), session })
+        Ok(PoolKind::ExternalDriver { driver_id: driver_id.to_string(), config: Arc::new(config.clone()), session })
     }
 
     pub async fn get_or_create_pool(&self, connection_id: &str, database: Option<&str>) -> Result<String, String> {

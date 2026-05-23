@@ -539,7 +539,7 @@ pub async fn do_execute(
             let max_rows = options.max_rows;
             drop(connections);
             wait_for_query(cancel_token, async move {
-                let params = external_driver_query_params(&config, &sql, &database, schema.as_deref());
+                let params = external_driver_query_params(config.as_ref(), &sql, &database, schema.as_deref());
                 session.invoke::<db::QueryResult>("executeQuery", params).await
             })
             .await
