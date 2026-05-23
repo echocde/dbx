@@ -111,7 +111,13 @@ export const useQueryStore = defineStore("query", () => {
     return tabs.value.find((t) => t.connectionId === connectionId && t.database === database && t.title === title);
   }
 
-  function createTab(connectionId: string, database: string, title?: string, mode: QueryTab["mode"] = "query") {
+  function createTab(
+    connectionId: string,
+    database: string,
+    title?: string,
+    mode: QueryTab["mode"] = "query",
+    schema?: string,
+  ) {
     if (title) {
       const existing = findTabByTitle(connectionId, database, title);
       if (existing) {
@@ -126,6 +132,7 @@ export const useQueryStore = defineStore("query", () => {
       title: title || `Query ${tabs.value.length + 1}`,
       connectionId,
       database,
+      schema,
       sql: "",
       isExecuting: false,
       isCancelling: false,

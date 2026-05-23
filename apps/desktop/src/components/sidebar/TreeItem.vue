@@ -561,7 +561,7 @@ async function newQuery() {
     await connectionStore.ensureConnected(node.connectionId);
     connectionStore.activeConnectionId = node.connectionId;
     if (node.database) {
-      queryStore.createTab(node.connectionId, node.database, undefined, "query");
+      queryStore.createTab(node.connectionId, node.database, undefined, "query", node.schema);
       return;
     }
     const connection = connectionStore.getConfig(node.connectionId);
