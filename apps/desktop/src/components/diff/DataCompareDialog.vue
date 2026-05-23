@@ -138,7 +138,7 @@ const keyColumns = computed(() =>
     .filter(Boolean),
 );
 const rowLimitNumber = computed(() => Number(rowLimit.value) || 1000);
-const comparedResults = computed(() => batchResults.value.filter((item) => item.status !== "error"));
+
 const sameTableCount = computed(() => batchResults.value.filter((item) => item.status === "same").length);
 const differentTableCount = computed(() => batchResults.value.filter((item) => item.status === "different").length);
 const failedTableCount = computed(() => batchResults.value.filter((item) => item.status === "error").length);

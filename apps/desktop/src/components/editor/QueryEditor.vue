@@ -598,7 +598,11 @@ async function provideSqlCompletions(
 
     // If qualifier didn't match any table names, try it as a schema name
     let qualifierIsSchema = false;
-    if (completionContext.qualifier && completionContext.suggestTables && tables.length === 0) {
+    if (
+      completionContext.qualifier &&
+      tables.length === 0 &&
+      (completionContext.suggestTables || completionContext.exclusiveColumnSuggestions)
+    ) {
       const schemaTables = await connectionStore.listCompletionTables(
         props.connectionId,
         props.database,
@@ -676,7 +680,13 @@ async function provideSqlCompletions(
     }
 
     const effectiveContext = qualifierIsSchema
-      ? { ...completionContext, qualifier: undefined, suggestTables: true, suggestColumns: false }
+      ? {
+          ...completionContext,
+          qualifier: undefined,
+          suggestTables: true,
+          suggestColumns: false,
+          exclusiveColumnSuggestions: false,
+        }
       : completionContext;
 
     const items = buildSqlCompletionItemsFromContext(effectiveContext, {
@@ -692,7 +702,7 @@ async function provideSqlCompletions(
         item.type === "snippet" && item.apply
           ? codeMirrorSnippetCompletion(item.apply, {
               label: item.label,
-              type: "snippet",
+              type: item.type,
               detail: item.detail,
               boost: item.boost,
             })

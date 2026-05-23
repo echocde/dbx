@@ -24,12 +24,26 @@ test("sql completion theme styles the autocomplete popup", () => {
     padding: "4px 0",
   });
   assert.deepEqual(rules[".cm-completionIcon"], {
-    display: "none !important",
-    height: "0",
-    margin: "0",
-    paddingRight: "0 !important",
-    width: "0",
+    alignItems: "center",
+    display: "inline-flex",
+    flex: "0 0 15px",
+    height: "15px",
+    justifyContent: "center",
+    marginRight: "0.65em",
+    opacity: "1",
+    overflow: "hidden",
+    position: "relative",
+    width: "15px",
   });
+  assert.equal(rules[".cm-completionIcon:before"]?.backgroundColor, "currentColor");
+  assert.equal(rules[".cm-completionIcon:before"]?.content, "''");
+  assert.equal(rules[".cm-completionIcon:before"]?.WebkitMaskSize, "14px 14px");
+  assert.equal(rules[".cm-completionIcon:after"]?.display, "none");
+  assert.equal(rules[".cm-completionIcon-table"]?.color, "color-mix(in oklch, var(--primary) 92%, var(--popover-foreground))");
+  assert.equal(rules[".cm-completionIcon-column"]?.color, "color-mix(in oklch, var(--blue-500, #3b82f6) 92%, var(--popover-foreground))");
+  assert.equal(rules[".cm-completionIcon-keyword"]?.color, "color-mix(in oklch, var(--orange-500, #f97316) 92%, var(--popover-foreground))");
+  assert.equal(rules[".cm-completionIcon-keyword"]?.["--dbx-completion-icon-mask"]?.includes("m16%2018%206-6-6-6"), true);
+  assert.equal(rules[".cm-completionIcon-snippet"]?.color, "color-mix(in oklch, var(--emerald-500, #10b981) 92%, var(--popover-foreground))");
   assert.deepEqual(rules[".cm-completionLabel"], {
     color: "inherit",
     fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, var(--font-mono, monospace))`,

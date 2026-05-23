@@ -3,9 +3,52 @@ import type { EditorTheme } from "@/stores/settingsStore";
 import type { AppThemeAppearance } from "@/lib/appTheme";
 
 type CodeMirrorStyleSpec = Parameters<typeof import("@codemirror/view").EditorView.theme>[0];
+type LucideIconNode = Array<[string, Record<string, string>]>;
 
 export const EDITOR_FONT_SIZE_CSS_VAR = "--dbx-editor-font-size";
 export const EDITOR_FONT_FAMILY_CSS_VAR = "--dbx-editor-font-family";
+
+const TABLE_ICON: LucideIconNode = [
+  ["path", { d: "M12 3v18" }],
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+  ["path", { d: "M3 9h18" }],
+  ["path", { d: "M3 15h18" }],
+];
+
+const COLUMNS_ICON: LucideIconNode = [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+  ["path", { d: "M12 3v18" }],
+];
+
+const KEYWORD_ICON: LucideIconNode = [
+  ["path", { d: "m16 18 6-6-6-6" }],
+  ["path", { d: "m8 6-6 6 6 6" }],
+];
+
+const SNIPPET_ICON: LucideIconNode = [
+  ["path", { d: "m15 10 5 5-5 5" }],
+  ["path", { d: "M4 4v7a4 4 0 0 0 4 4h12" }],
+];
+
+function encodeSvgIcon(iconNode: LucideIconNode): string {
+  const body = iconNode
+    .map(
+      ([tag, attrs]) =>
+        `<${tag} ${Object.entries(attrs)
+          .map(([key, value]) => `${key}="${value}"`)
+          .join(" ")} />`,
+    )
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+function lucideCompletionIconMask(iconNode: LucideIconNode) {
+  const mask = encodeSvgIcon(iconNode);
+  return {
+    "--dbx-completion-icon-mask": mask,
+  };
+}
 
 /** Load a CodeMirror theme extension by theme name. */
 export function resolveEditorTheme(theme: EditorTheme, appAppearance: AppThemeAppearance): Exclude<EditorTheme, "app"> {
@@ -128,11 +171,52 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
       outline: "1px solid color-mix(in oklch, var(--primary) 22%, transparent)",
     },
     ".cm-completionIcon": {
-      display: "none !important",
-      height: "0",
-      margin: "0",
-      paddingRight: "0 !important",
-      width: "0",
+      alignItems: "center",
+      display: "inline-flex",
+      flex: "0 0 15px",
+      height: "15px",
+      justifyContent: "center",
+      marginRight: "0.65em",
+      opacity: "1",
+      position: "relative",
+      overflow: "hidden",
+      width: "15px",
+    },
+    ".cm-completionIcon:before": {
+      backgroundColor: "currentColor",
+      content: "''",
+      display: "block",
+      height: "14px",
+      position: "absolute",
+      WebkitMaskImage: "var(--dbx-completion-icon-mask)",
+      WebkitMaskPosition: "center",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskSize: "14px 14px",
+      maskImage: "var(--dbx-completion-icon-mask)",
+      maskPosition: "center",
+      maskRepeat: "no-repeat",
+      maskSize: "14px 14px",
+      width: "14px",
+    },
+    ".cm-completionIcon:after": {
+      content: "'none'",
+      display: "none",
+    },
+    ".cm-completionIcon-table": {
+      color: "color-mix(in oklch, var(--primary) 92%, var(--popover-foreground))",
+      ...lucideCompletionIconMask(TABLE_ICON),
+    },
+    ".cm-completionIcon-column": {
+      color: "color-mix(in oklch, var(--blue-500, #3b82f6) 92%, var(--popover-foreground))",
+      ...lucideCompletionIconMask(COLUMNS_ICON),
+    },
+    ".cm-completionIcon-keyword": {
+      color: "color-mix(in oklch, var(--orange-500, #f97316) 92%, var(--popover-foreground))",
+      ...lucideCompletionIconMask(KEYWORD_ICON),
+    },
+    ".cm-completionIcon-snippet": {
+      color: "color-mix(in oklch, var(--emerald-500, #10b981) 92%, var(--popover-foreground))",
+      ...lucideCompletionIconMask(SNIPPET_ICON),
     },
     ".cm-completionLabel": {
       color: "inherit",
