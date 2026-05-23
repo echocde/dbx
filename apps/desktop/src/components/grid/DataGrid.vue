@@ -121,7 +121,13 @@ import {
   type DateTimeFormatterUnit,
 } from "@/lib/columnFormatter";
 import { temporalCellEditorKind, type TemporalCellEditorKind } from "@/lib/dataGridTemporalEditor";
-import { isCancelSearchShortcut, isFocusSearchShortcut, isToggleTransposeShortcut } from "@/lib/keyboardShortcuts";
+import {
+  isCancelSearchShortcut,
+  isCopyCurrentRowShortcut,
+  isDeleteCurrentRowShortcut,
+  isFocusSearchShortcut,
+  isToggleTransposeShortcut,
+} from "@/lib/keyboardShortcuts";
 import { dataGridHeaderContentWidth, scrollbarGutterWidth } from "@/lib/dataGridScrollGutter";
 import { dataGridSaveActionMode, dataGridSaveToolbarState } from "@/lib/dataGridSaveUi";
 import { appendColumnValueFilterCondition, buildColumnValueFilterCondition } from "@/lib/dataGridColumnFilter";
@@ -2441,6 +2447,40 @@ function editSelectedCell(): boolean {
   return true;
 }
 
+function selectedOrCurrentRowIds(): number[] {
+  const affected = affectedRowIds();
+  if (affected.length > 0) return affected;
+  const position = currentSelectedCellPosition();
+  if (!position) return [];
+  const item = displayItems.value[position.rowIndex];
+  return item ? [item.id] : [];
+}
+
+function copyCurrentRow(): boolean {
+  const rowIds = selectedOrCurrentRowIds();
+  if (rowIds.length === 0) return false;
+  if (rowIds.length === 1) {
+    cloneRow(rowIds[0]);
+    return true;
+  }
+  cloneRows(rowIds);
+  return true;
+}
+
+function deleteCurrentRow(): boolean {
+  const rowIds = selectedOrCurrentRowIds();
+  if (rowIds.length === 0) return false;
+
+  const deletableRowIds = rowIds.filter((rowId) => canDeleteRowItem(getRowItem(rowId)));
+  if (deletableRowIds.length === 0) return false;
+  if (deletableRowIds.length === 1) {
+    requestDeleteRow(deletableRowIds[0]);
+    return true;
+  }
+  requestDeleteRows(deletableRowIds);
+  return true;
+}
+
 function commitGridEdit() {
   commitEdit();
   nextTick(() => gridRef.value?.focus({ preventScroll: true }));
@@ -2453,6 +2493,14 @@ async function onGridKeydown(event: KeyboardEvent) {
     return;
   }
   if (eventTargetAllowsNativeClipboard(event)) return;
+  if (isCopyCurrentRowShortcut(event, settingsStore.editorSettings.shortcuts) && copyCurrentRow()) {
+    event.preventDefault();
+    return;
+  }
+  if (isDeleteCurrentRowShortcut(event, settingsStore.editorSettings.shortcuts) && deleteCurrentRow()) {
+    event.preventDefault();
+    return;
+  }
   if (isToggleTransposeShortcut(event, settingsStore.editorSettings.shortcuts) && toggleKeyboardTranspose()) {
     event.preventDefault();
     return;

@@ -102,6 +102,14 @@ export function isObjectSourceSaveShortcutTarget(
   return !!target?.closest("[data-object-source-editor], [data-object-source-preview]");
 }
 
+export function isCopyCurrentRowShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<ShortcutSettings>): boolean {
+  return matchesShortcut(event, actionShortcut("copyCurrentRow", shortcuts));
+}
+
+export function isDeleteCurrentRowShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<ShortcutSettings>): boolean {
+  return matchesShortcut(event, actionShortcut("deleteCurrentRow", shortcuts));
+}
+
 export function isCancelSearchShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<ShortcutSettings>): boolean {
   return matchesShortcut(event, actionShortcut("cancelSearch", shortcuts));
 }

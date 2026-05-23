@@ -36,6 +36,8 @@ test("settings dialog has a shortcuts category", () => {
   assert.match(source, /activeSettingsTab === ['"]shortcuts['"]/);
   assert.match(source, /SHORTCUT_DEFINITIONS/);
   assert.match(shortcutSource, /settings\.shortcutToggleTranspose/);
+  assert.match(shortcutSource, /settings\.shortcutCopyCurrentRow/);
+  assert.match(shortcutSource, /settings\.shortcutDeleteCurrentRow/);
 });
 
 test("settings editor theme preview can follow app appearance", () => {

@@ -217,6 +217,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
     },
     {
       key: shortcutToCodeMirrorKey(shortcuts.executeSql),
+      preventDefault: true,
       run: () => {
         if (view.value) emit("execute", executableSqlFromView(view.value));
         return true;
@@ -224,6 +225,7 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
     },
     {
       key: shortcutToCodeMirrorKey(shortcuts.saveSql),
+      preventDefault: true,
       run: () => {
         emit("save");
         return true;
