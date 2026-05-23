@@ -552,7 +552,7 @@ const canUseProxy = computed(
   () => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb" && form.value.db_type !== "access",
 );
 const shouldShowAgentDriverInstallHint = computed(() =>
-  showAgentDriverInstallHint(form.value.db_type, agentDrivers.value),
+  showAgentDriverInstallHint(form.value.db_type, agentDrivers.value, selectedType.value),
 );
 const testResultMessage = computed(() => {
   if (!testResult.value) return "";
