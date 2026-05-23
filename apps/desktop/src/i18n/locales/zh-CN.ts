@@ -1230,6 +1230,8 @@ export default {
     redisScanPageSizeOption: "{count} 个 Key",
     shortcutExecuteSql: "执行 SQL",
     shortcutSaveSql: "保存 SQL",
+    shortcutCopyCurrentRow: "复制当前数据行",
+    shortcutDeleteCurrentRow: "删除当前数据行",
     shortcutNewQuery: "新建查询",
     shortcutCloseTab: "关闭标签页",
     shortcutFocusSearch: "聚焦搜索",

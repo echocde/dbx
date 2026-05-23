@@ -1,6 +1,8 @@
 export type ShortcutActionId =
   | "executeSql"
   | "saveSql"
+  | "copyCurrentRow"
+  | "deleteCurrentRow"
   | "newQuery"
   | "closeTab"
   | "focusSearch"
@@ -31,6 +33,18 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
     labelKey: "settings.shortcutSaveSql",
     scope: "editor",
     defaultShortcut: "Mod+S",
+  },
+  {
+    id: "copyCurrentRow",
+    labelKey: "settings.shortcutCopyCurrentRow",
+    scope: "grid",
+    defaultShortcut: "Mod+D",
+  },
+  {
+    id: "deleteCurrentRow",
+    labelKey: "settings.shortcutDeleteCurrentRow",
+    scope: "grid",
+    defaultShortcut: "Delete",
   },
   {
     id: "newQuery",

@@ -10,6 +10,8 @@ import {
   isObjectSourceSaveShortcutTarget,
   isRefreshDataShortcut,
   isSaveShortcut,
+  isCopyCurrentRowShortcut,
+  isDeleteCurrentRowShortcut,
   isToggleTransposeShortcut,
 } from "../../apps/desktop/src/lib/keyboardShortcuts.ts";
 import { shortcutToCodeMirrorKey } from "../../apps/desktop/src/lib/shortcutRegistry.ts";
@@ -110,6 +112,14 @@ test("ignores Alt+F for focusing search", () => {
 
 test("matches Cmd+S for saving", () => {
   assert.equal(isSaveShortcut({ key: "s", metaKey: true }), true);
+});
+
+test("matches Mod+D for copying current row", () => {
+  assert.equal(isCopyCurrentRowShortcut({ key: "d", metaKey: true }), true);
+});
+
+test("matches Delete for deleting current row", () => {
+  assert.equal(isDeleteCurrentRowShortcut({ key: "Delete" }), true);
 });
 
 test("matches Ctrl+S for saving", () => {

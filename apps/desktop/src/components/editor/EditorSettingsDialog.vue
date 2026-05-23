@@ -3,6 +3,7 @@ import { ref, watch, shallowRef, computed } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
 import { CircleHelp, ExternalLink, Loader2, RefreshCw, Settings } from "lucide-vue-next";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -652,7 +653,7 @@ watch(
 
 <template>
   <Dialog :open="open" @update:open="(v: boolean) => emit('update:open', v)">
-    <DialogContent class="sm:max-w-[860px] max-h-[calc(100vh-80px)] overflow-hidden">
+    <DialogContent class="sm:max-w-[860px] h-[min(660px,calc(100vh-80px))] flex flex-col overflow-hidden">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
           <Settings class="h-4 w-4" />
@@ -660,7 +661,7 @@ watch(
         </DialogTitle>
       </DialogHeader>
 
-      <div class="flex min-h-[520px] flex-col gap-3 overflow-hidden sm:flex-row">
+      <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden sm:min-h-[520px] sm:flex-row">
         <nav
           class="settingsCategoryNav flex shrink-0 gap-1 overflow-x-auto border-b pb-3 sm:w-40 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r sm:pb-0 sm:pr-3"
         >
@@ -921,30 +922,40 @@ watch(
               </div>
             </section>
 
-            <section v-else-if="activeSettingsTab === 'shortcuts'" class="flex flex-col gap-5 py-2">
-              <div class="space-y-3">
+            <section v-else-if="activeSettingsTab === 'shortcuts'" class="flex flex-col gap-2 py-2">
+              <div class="overflow-hidden rounded-md border bg-background">
                 <div
                   v-for="definition in SHORTCUT_DEFINITIONS"
                   :key="definition.id"
-                  class="grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:items-center"
+                  class="-mt-px grid gap-2 border-t border-border px-3 py-2 sm:first:mt-0 sm:first:border-t-0 sm:grid-cols-[minmax(0,1fr)_208px] sm:items-center"
                 >
-                  <div class="min-w-0 space-y-1">
-                    <Label>{{ t(definition.labelKey) }}</Label>
-                    <p class="text-xs text-muted-foreground">
-                      {{ t(`settings.shortcutScope${definition.scope[0].toUpperCase()}${definition.scope.slice(1)}`) }}
-                    </p>
+                  <div class="min-w-0">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <Label class="min-w-0 truncate leading-none">{{ t(definition.labelKey) }}</Label>
+                      <Badge variant="outline" class="h-5 shrink-0 rounded-md px-1.5 text-[11px] text-muted-foreground">
+                        {{
+                          t(`settings.shortcutScope${definition.scope[0].toUpperCase()}${definition.scope.slice(1)}`)
+                        }}
+                      </Badge>
+                    </div>
                   </div>
-                  <div class="space-y-1.5">
+                  <div class="space-y-1">
                     <div class="flex gap-2">
                       <Input
                         :model-value="formatShortcut(editShortcuts[definition.id])"
                         readonly
                         :aria-invalid="shortcutConflicts.includes(definition.id)"
                         :placeholder="t('settings.shortcutPressShortcut')"
-                        class="font-mono"
+                        class="h-9 font-mono"
                         @keydown="(event: KeyboardEvent) => onShortcutKeydown(definition.id, event)"
                       />
-                      <Button type="button" variant="outline" class="shrink-0" @click="resetShortcut(definition.id)">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        class="h-9 shrink-0 px-3"
+                        @click="resetShortcut(definition.id)"
+                      >
                         {{ t("settings.reset") }}
                       </Button>
                     </div>
@@ -1263,7 +1274,7 @@ watch(
 
           <DialogFooter
             v-if="hasSettingsApplyFooter(activeSettingsTab as SettingsCategory)"
-            class="mx-0 mb-0 shrink-0 rounded-none border-t-0 bg-transparent px-0 pb-0 pt-3 gap-3 sm:gap-3"
+            class="mx-0 mb-0 shrink-0 rounded-none border-t border-border/60 bg-transparent px-0 pb-0 pt-3 gap-3 sm:gap-3"
           >
             <Button variant="outline" @click="resetDefaults">
               {{ t("settings.resetDefaults") }}
@@ -1279,7 +1290,7 @@ watch(
 
           <DialogFooter
             v-else-if="activeSettingsTab === 'ai'"
-            class="mx-0 mb-0 shrink-0 rounded-none border-t-0 bg-transparent px-0 pb-0 pt-3 gap-3 sm:gap-3"
+            class="mx-0 mb-0 shrink-0 rounded-none border-t border-border/60 bg-transparent px-0 pb-0 pt-3 gap-3 sm:gap-3"
           >
             <div class="flex flex-1 items-center gap-2">
               <Button
@@ -1313,7 +1324,7 @@ watch(
 
           <DialogFooter
             v-else-if="activeSettingsTab === 'security' && isWeb"
-            class="mx-0 mb-0 shrink-0 rounded-none border-t-0 bg-transparent px-0 pb-0 pt-3"
+            class="mx-0 mb-0 shrink-0 rounded-none border-t border-border/60 bg-transparent px-0 pb-0 pt-3"
           >
             <Button variant="outline" @click="emit('update:open', false)">
               {{ t("common.close") }}
@@ -1328,7 +1339,7 @@ watch(
 
           <DialogFooter
             v-else-if="activeSettingsTab === 'about'"
-            class="mx-0 mb-0 shrink-0 rounded-none border-t-0 bg-transparent px-0 pb-0 pt-3"
+            class="mx-0 mb-0 shrink-0 rounded-none border-t border-border/60 bg-transparent px-0 pb-0 pt-3"
           >
             <Button variant="outline" @click="emit('update:open', false)">
               {{ t("common.close") }}
