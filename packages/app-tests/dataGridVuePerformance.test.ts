@@ -4,11 +4,8 @@ import test from "node:test";
 
 const source = readFileSync("apps/desktop/src/components/grid/DataGrid.vue", "utf8");
 
-test("data grid memoizes virtual rows with render-affecting dependencies", () => {
-  assert.match(source, /function rowRenderMemoDeps\(item: RowItem, index: number\)/);
-  assert.match(source, /function rowSelectionMemoKey\(item: RowItem, index: number\)/);
-  assert.match(source, /function rowSearchMemoKey\(index: number\)/);
-  assert.match(source, /function rowHoverMemoKey\(index: number\)/);
-  assert.match(source, /const columnFormatterMemoKey = computed/);
-  assert.match(source, /v-memo="rowRenderMemoDeps\(item, index\)"/);
+test("data grid does not memoize virtual rows", () => {
+  assert.doesNotMatch(source, /v-memo=/);
+  assert.doesNotMatch(source, /function rowRenderMemoDeps/);
+  assert.match(source, /\{\{ item\.displayIndex \+ 1 \}\}/);
 });

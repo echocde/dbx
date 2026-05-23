@@ -382,24 +382,6 @@ const savedCustomFormatters = computed(() => {
   );
 });
 
-const columnFormatterMemoKey = computed(() =>
-  JSON.stringify({
-    columns: props.result.columns,
-    columnFormatters: settingsStore.editorSettings.columnFormatters,
-    customColumnFormatters: settingsStore.editorSettings.customColumnFormatters,
-  }),
-);
-
-const cellEditabilityMemoKey = computed(() =>
-  JSON.stringify({
-    editable: props.editable,
-    canEditExistingRows: canEditExistingRows.value,
-    databaseType: props.databaseType,
-    sourceColumns: props.sourceColumns,
-    tableColumns: props.tableMeta?.columns.map((column) => [column.name, column.data_type]),
-  }),
-);
-
 function localFilterKey(value: CellValue): string {
   if (value === null) return "__dbx_null__";
   if (typeof value === "boolean") return `bool:${value}`;
@@ -1407,6 +1389,7 @@ async function lastPage() {
 
 interface RowItem {
   id: number;
+  displayIndex: number;
   sourceIndex?: number;
   newIndex?: number;
   data: CellValue[];
@@ -1577,7 +1560,7 @@ const sortedRows = computed(() => {
 const displayItems = computed<RowItem[]>(() => {
   const cols = props.result.columns;
   const rows = props.result.rows;
-  const items: RowItem[] = sortedRows.value.map((sourceIndex) => {
+  const items: Omit<RowItem, "displayIndex">[] = sortedRows.value.map((sourceIndex) => {
     const row = rows[sourceIndex];
     const dirty = dirtyRows.value.get(sourceIndex);
     const data = rowDataWithChanges(row, sourceIndex);
@@ -1598,7 +1581,9 @@ const displayItems = computed<RowItem[]>(() => {
       status: "new",
     });
   });
-  return items.filter((item) => matchesRowStatusFilter(item.status, rowStatusFilter.value));
+  return items
+    .filter((item) => matchesRowStatusFilter(item.status, rowStatusFilter.value))
+    .map((item, displayIndex) => ({ ...item, displayIndex }));
 });
 
 watch(
@@ -1834,36 +1819,6 @@ function isRowActive(index: number): boolean {
   return index >= range.startRow && index <= range.endRow;
 }
 
-function rowSelectionMemoKey(item: RowItem, index: number): string {
-  const rowSelected = selectedRowIds.value.has(item.id) ? "row" : "";
-  const range = selectedRange.value;
-  if (!range || index < range.startRow || index > range.endRow) return rowSelected;
-  return `${rowSelected}|cells:${range.startCol}:${range.endCol}`;
-}
-
-function rowHoverMemoKey(index: number): string {
-  return hoveredDetailCell.value?.rowIndex === index ? String(hoveredDetailCell.value.col) : "";
-}
-
-function rowEditMemoKey(item: RowItem): string {
-  return editingCell.value?.rowId === item.id ? `${editingCell.value.col}:${editValue.value}` : "";
-}
-
-function rowRenderMemoDeps(item: RowItem, index: number) {
-  return [
-    item.data,
-    item.status,
-    item.isDirtyCol,
-    rowSelectionMemoKey(item, index),
-    rowSearchMemoKey(index),
-    rowHoverMemoKey(index),
-    rowEditMemoKey(item),
-    visibleColumnIndexes.value,
-    columnFormatterMemoKey.value,
-    cellEditabilityMemoKey.value,
-  ];
-}
-
 const contextRowItem = computed(() => (contextCell.value ? getRowItem(contextCell.value.rowId) : undefined));
 const contextColumn = computed(() => {
   if (!contextCell.value || contextCell.value.col < 0) return null;
@@ -2079,6 +2034,9 @@ function setDetailNull() {
 
 function toggleSort(colName: string, colIdx: number) {
   if (getIsResizing()) return;
+  orderByInput.value = "";
+  currentPage.value = 1;
+  resetGridVerticalScroll(true);
   if (sortCol.value === colName && sortColIndex.value === colIdx) {
     if (sortDir.value === "asc") {
       sortDir.value = "desc";
@@ -4083,18 +4041,21 @@ defineExpose({
                   key-field="id"
                   @scroll="onScrollerScroll"
                 >
-                  <template #default="{ item, index }">
+                  <template #default="{ item }">
                     <div
                       class="flex text-xs border-b border-border"
-                      v-memo="rowRenderMemoDeps(item, index)"
                       :class="{
                         'bg-destructive/5 opacity-70': item.isDeleted,
-                        'bg-primary/5': item.isNew && !isRowActive(index),
-                        'bg-muted/30': !item.isNew && !item.isDeleted && !isRowActive(index) && index % 2 === 1,
-                        'active-row': isRowActive(index) && !item.isDeleted,
+                        'bg-primary/5': item.isNew && !isRowActive(item.displayIndex),
+                        'bg-muted/30':
+                          !item.isNew &&
+                          !item.isDeleted &&
+                          !isRowActive(item.displayIndex) &&
+                          item.displayIndex % 2 === 1,
+                        'active-row': isRowActive(item.displayIndex) && !item.isDeleted,
                       }"
                       :style="{ height: '26px', width: 'var(--total-w)' }"
-                      :data-row-index="index"
+                      :data-row-index="item.displayIndex"
                     >
                       <div
                         class="shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50"
@@ -4109,11 +4070,11 @@ defineExpose({
                           },
                         ]"
                         :style="{ width: 'var(--row-num-w)' }"
-                        @click="handleRowClick(index, item.id, $event)"
-                        @dblclick.stop="toggleTranspose(index)"
-                        @contextmenu="onRowContext(item.id, index)"
+                        @click="handleRowClick(item.displayIndex, item.id, $event)"
+                        @dblclick.stop="toggleTranspose(item.displayIndex)"
+                        @contextmenu="onRowContext(item.id, item.displayIndex)"
                       >
-                        {{ index + 1 }}
+                        {{ item.displayIndex + 1 }}
                       </div>
                       <div
                         v-for="(actualColIdx, visibleColIdx) in visibleColumnIndexes"
@@ -4123,21 +4084,23 @@ defineExpose({
                         :class="{
                           'text-muted-foreground italic': isNull(item.data[actualColIdx]),
                           'bg-yellow-500/10 cell-dirty': item.isDirtyCol[actualColIdx],
-                          'cell-selected': cellIsSelected(index, visibleColIdx) && !item.isDirtyCol[actualColIdx],
-                          'cell-selected-dirty': cellIsSelected(index, visibleColIdx) && item.isDirtyCol[actualColIdx],
-                          'bg-yellow-200/60 dark:bg-yellow-500/20': cellIsSearchMatch(index, actualColIdx),
+                          'cell-selected':
+                            cellIsSelected(item.displayIndex, visibleColIdx) && !item.isDirtyCol[actualColIdx],
+                          'cell-selected-dirty':
+                            cellIsSelected(item.displayIndex, visibleColIdx) && item.isDirtyCol[actualColIdx],
+                          'bg-yellow-200/60 dark:bg-yellow-500/20': cellIsSearchMatch(item.displayIndex, actualColIdx),
                           'ring-2 ring-inset ring-yellow-500 bg-yellow-300/60 dark:bg-yellow-500/40':
-                            cellIsCurrentMatch(index, actualColIdx),
+                            cellIsCurrentMatch(item.displayIndex, actualColIdx),
                           'tabular-nums': typeof item.data[actualColIdx] === 'number',
                           'cursor-text hover:bg-accent/50': canEditCellItem(item, actualColIdx),
                           'line-through': item.isDeleted,
                         }"
-                        @mousedown="handleDataCellMousedown(index, visibleColIdx, item.id, $event)"
-                        @mouseenter="onCellMouseenter(index, visibleColIdx, actualColIdx)"
-                        @mouseleave="onCellMouseleave(index, actualColIdx)"
+                        @mousedown="handleDataCellMousedown(item.displayIndex, visibleColIdx, item.id, $event)"
+                        @mouseenter="onCellMouseenter(item.displayIndex, visibleColIdx, actualColIdx)"
+                        @mouseleave="onCellMouseleave(item.displayIndex, actualColIdx)"
                         @dblclick="canEditCellItem(item, actualColIdx) && startEdit(item.id, actualColIdx)"
                         :data-visible-col-index="visibleColIdx"
-                        @contextmenu="onCellContext(item.id, index, actualColIdx, visibleColIdx)"
+                        @contextmenu="onCellContext(item.id, item.displayIndex, actualColIdx, visibleColIdx)"
                       >
                         <template v-if="editingCell?.rowId === item.id && editingCell?.col === actualColIdx">
                           <TemporalCellEditor
@@ -4162,11 +4125,11 @@ defineExpose({
                         <template v-else>
                           {{ formatCell(item.data[actualColIdx], actualColIdx) }}
                           <button
-                            v-if="cellDetailButtonVisible(index, actualColIdx)"
+                            v-if="cellDetailButtonVisible(item.displayIndex, actualColIdx)"
                             class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground"
                             :title="t('grid.cellDetails')"
                             @mousedown.stop
-                            @click.stop="showCellDetailsForVisibleCell(index, visibleColIdx, actualColIdx)"
+                            @click.stop="showCellDetailsForVisibleCell(item.displayIndex, visibleColIdx, actualColIdx)"
                           >
                             <Info class="h-3 w-3" />
                           </button>

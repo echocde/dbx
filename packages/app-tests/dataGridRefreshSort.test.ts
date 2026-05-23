@@ -11,6 +11,21 @@ test("toolbar refresh preserves header sort order", () => {
   assert.doesNotMatch(match[1], /orderByInput\.value\.trim\(\) \|\| undefined/);
 });
 
+test("header sort starts from first page and top row", () => {
+  const match = source.match(/function toggleSort\(colName: string, colIdx: number\) \{([\s\S]*?)\n\}/);
+  assert.ok(match, "DataGrid should define toggleSort");
+  assert.match(match[1], /orderByInput\.value = ""/);
+  assert.match(match[1], /currentPage\.value = 1/);
+  assert.match(match[1], /resetGridVerticalScroll\(true\)/);
+});
+
+test("visible row numbers use display index after sorting", () => {
+  assert.match(source, /displayIndex: number/);
+  assert.match(source, /\.map\(\(item, displayIndex\) => \(\{ \.\.\.item, displayIndex \}\)\)/);
+  assert.match(source, /<template #default="\{ item \}">/);
+  assert.match(source, /\{\{ item\.displayIndex \+ 1 \}\}/);
+});
+
 test("rollback refresh preserves header sort order", () => {
   const match = source.match(/function onToolbarRollback\(\) \{([\s\S]*?)\n\}/);
   assert.ok(match, "DataGrid should define onToolbarRollback");

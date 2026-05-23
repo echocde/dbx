@@ -444,6 +444,26 @@ mod tests {
     }
 
     #[test]
+    fn explicit_table_data_order_overrides_default_key_order() {
+        assert_eq!(
+            build_table_data_select_sql(TableDataSelectSqlOptions {
+                database_type: Some(DatabaseType::Postgres),
+                schema: Some("public".to_string()),
+                table_name: "country_gdp".to_string(),
+                primary_keys: vec!["year".to_string()],
+                columns: vec!["iso3".to_string(), "year".to_string(), "gdp_pc".to_string()],
+                fallback_order_columns: Vec::new(),
+                order_by: Some("\"iso3\" ASC".to_string()),
+                limit: Some(100),
+                offset: None,
+                where_input: None,
+                include_row_id: false,
+            }),
+            "SELECT * FROM \"public\".\"country_gdp\" ORDER BY \"iso3\" ASC LIMIT 100;"
+        );
+    }
+
+    #[test]
     fn builds_table_data_special_column_queries() {
         assert_eq!(
             build_table_data_select_sql(TableDataSelectSqlOptions {

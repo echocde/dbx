@@ -680,6 +680,23 @@ mod tests {
     }
 
     #[test]
+    fn builds_sorted_query_sql_for_first_result_column() {
+        let result = build_sorted_query_sql(SortedQuerySqlOptions {
+            original_sql: "SELECT iso3, year, gdp_pc FROM country_gdp".to_string(),
+            database_type: Some(DatabaseType::Postgres),
+            result_columns: vec!["iso3".to_string(), "year".to_string(), "gdp_pc".to_string()],
+            column_index: 0,
+            column: "iso3".to_string(),
+            direction: QuerySortDirection::Asc,
+        });
+
+        assert_eq!(
+            result.sql.unwrap(),
+            "SELECT * FROM (SELECT iso3, year, gdp_pc FROM country_gdp) t(\"iso3\", \"year\", \"gdp_pc\") ORDER BY \"iso3\" ASC;"
+        );
+    }
+
+    #[test]
     fn builds_mysql_sorted_query_without_alias_list() {
         let result = build_sorted_query_sql(SortedQuerySqlOptions {
             original_sql: "SELECT * FROM admin LIMIT 100;".to_string(),
