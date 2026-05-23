@@ -6,7 +6,7 @@ const dataGridSource = readFileSync("apps/desktop/src/components/grid/DataGrid.v
 
 test("data grid mounts the cell detail action only for the active cell", () => {
   assert.match(dataGridSource, /cellDetailButtonVisible/);
-  assert.match(dataGridSource, /v-if="cellDetailButtonVisible\(index, actualColIdx\)"/);
-  assert.match(dataGridSource, /@mouseenter="onCellMouseenter\(index, visibleColIdx, actualColIdx\)"/);
+  assert.match(dataGridSource, /v-if="cellDetailButtonVisible\(item\.displayIndex, actualColIdx\)"/);
+  assert.match(dataGridSource, /@mouseenter="onCellMouseenter\(item\.displayIndex, visibleColIdx, actualColIdx\)"/);
   assert.doesNotMatch(dataGridSource, /group-hover\/cell:flex/);
 });

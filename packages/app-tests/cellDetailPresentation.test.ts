@@ -86,6 +86,6 @@ test("cell detail action focuses the hovered cell before opening details", () =>
     /function showCellDetailsForVisibleCell\(rowIndex: number, visibleColIdx: number, actualColIdx: number\)/,
   );
   assert.match(source, /selectSingleCell\(rowIndex, visibleColIdx\)/);
-  assert.match(source, /@click\.stop="showCellDetailsForVisibleCell\(index, visibleColIdx, actualColIdx\)"/);
-  assert.doesNotMatch(source, /@click\.stop="showCellDetails\(index, actualColIdx\)"/);
+  assert.match(source, /@click\.stop="showCellDetailsForVisibleCell\(item\.displayIndex, visibleColIdx, actualColIdx\)"/);
+  assert.doesNotMatch(source, /@click\.stop="showCellDetails\(item\.displayIndex, actualColIdx\)"/);
 });
