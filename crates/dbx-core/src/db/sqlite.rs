@@ -57,6 +57,112 @@ mod tests {
 
         assert_eq!(result.rows[0][0], serde_json::json!("Ada"));
     }
+
+    #[test]
+    fn normalize_if_to_iif_basic() {
+        assert_eq!(normalize_sqlite_sql("SELECT if(1, 'a', 'b')"), "SELECT IIF(1, 'a', 'b')");
+        assert_eq!(normalize_sqlite_sql("SELECT if(1, if(0, 'x', 'y'), 'b')"), "SELECT IIF(1, IIF(0, 'x', 'y'), 'b')");
+    }
+
+    #[test]
+    fn normalize_substring_to_substr() {
+        assert_eq!(normalize_sqlite_sql("SELECT substring(name, 1, 3) FROM t"), "SELECT substr(name, 1, 3) FROM t");
+        assert_eq!(normalize_sqlite_sql("SELECT substring(name, 2) FROM t"), "SELECT substr(name, 2) FROM t");
+    }
+
+    #[test]
+    fn normalize_preserves_string_literals() {
+        let sql = "SELECT 'if(1,2,3)' AS literal, 'substring(x,1,2)', if(1, 'ok', 'no')";
+        let normalized = normalize_sqlite_sql(sql);
+        assert_eq!(normalized, "SELECT 'if(1,2,3)' AS literal, 'substring(x,1,2)', IIF(1, 'ok', 'no')");
+    }
+
+    #[test]
+    fn normalize_preserves_line_comments() {
+        let sql = "-- if(1,2,3) is a comment\nSELECT if(1, 'x', 'y')";
+        let normalized = normalize_sqlite_sql(sql);
+        assert_eq!(normalized, "-- if(1,2,3) is a comment\nSELECT IIF(1, 'x', 'y')");
+    }
+
+    #[test]
+    fn normalize_preserves_block_comments() {
+        let sql = "/* if(1,2,3) */ SELECT if(1, 'x', 'y')";
+        let normalized = normalize_sqlite_sql(sql);
+        assert_eq!(normalized, "/* if(1,2,3) */ SELECT IIF(1, 'x', 'y')");
+    }
+
+    #[test]
+    fn normalize_does_not_match_inside_words() {
+        let sql = "SELECT difference, stiff, ifsubstring FROM t";
+        let normalized = normalize_sqlite_sql(sql);
+        assert_eq!(normalized, sql);
+    }
+
+    #[test]
+    fn normalize_if_with_spaces_before_paren() {
+        assert_eq!(normalize_sqlite_sql("SELECT if  (1, 'a', 'b')"), "SELECT IIF  (1, 'a', 'b')");
+    }
+
+    #[tokio::test]
+    async fn view_with_if_function_works_after_normalization() {
+        let pool = connect_path(":memory:").await.expect("connect in-memory SQLite");
+
+        // Create a view that uses if() — this succeeds because CREATE VIEW
+        // just stores the SQL text without evaluating it
+        execute_query(&pool, "CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1), (2), (3);")
+            .await
+            .expect("create and populate table");
+
+        execute_query(&pool, "CREATE VIEW v AS SELECT x, IIF(x > 1, 'big', 'small') AS label FROM t")
+            .await
+            .expect("create view");
+
+        // Query the view — this must go through normalize_sqlite_sql
+        let result = execute_query(&pool, "SELECT * FROM v ORDER BY x").await.expect("query view");
+
+        assert_eq!(result.rows.len(), 3);
+        assert_eq!(result.rows[0][1], serde_json::json!("small"));
+        assert_eq!(result.rows[1][1], serde_json::json!("big"));
+    }
+
+    #[tokio::test]
+    async fn if_rewrite_works_in_direct_query() {
+        let pool = connect_path(":memory:").await.expect("connect in-memory SQLite");
+
+        // if() is not a built-in SQLite function — the normalizer must rewrite it to IIF()
+        let result = execute_query(&pool, "SELECT if(1 = 1, 'yes', 'no') AS answer")
+            .await
+            .expect("if() should be rewritten to IIF()");
+
+        assert_eq!(result.rows[0][0], serde_json::json!("yes"));
+    }
+
+    #[tokio::test]
+    async fn substring_rewrite_works_in_direct_query() {
+        let pool = connect_path(":memory:").await.expect("connect in-memory SQLite");
+
+        execute_query(&pool, "CREATE TABLE t (name TEXT); INSERT INTO t VALUES ('hello');").await.expect("setup");
+
+        let result = execute_query(&pool, "SELECT substring(name, 1, 2) AS s FROM t")
+            .await
+            .expect("substring() should be rewritten to substr()");
+
+        assert_eq!(result.rows[0][0], serde_json::json!("he"));
+    }
+
+    #[tokio::test]
+    async fn both_rewrites_combined() {
+        let pool = connect_path(":memory:").await.expect("connect in-memory SQLite");
+
+        execute_query(&pool, "CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1), (2);").await.expect("setup");
+
+        let result = execute_query(&pool, "SELECT substring(if(x > 1, 'big', 'small'), 1, 1) AS s FROM t ORDER BY x")
+            .await
+            .expect("combined rewrite");
+
+        assert_eq!(result.rows[0][0], serde_json::json!("s"));
+        assert_eq!(result.rows[1][0], serde_json::json!("b"));
+    }
 }
 
 pub async fn list_databases(_pool: &SqlitePool) -> Result<Vec<DatabaseInfo>, String> {
@@ -198,6 +304,98 @@ fn query_result_row_limit(max_rows: Option<usize>) -> usize {
     max_rows.unwrap_or(crate::query::MAX_ROWS).max(1)
 }
 
+/// Function-name rewrites for SQLite compatibility.
+/// Keys are lowercase source names; values are replacement names.
+/// Applied only at word boundaries followed by optional whitespace and `(`.
+const SQLITE_FUNCTION_ALIASES: &[(&str, &str)] = &[("if", "IIF"), ("substring", "substr")];
+
+/// Rewrites known non-SQLite function names (e.g. `if()` → `IIF()`, `substring()` → `substr()`)
+/// before sending SQL to SQLite. Avoids modifying string literals, comments, and identifiers.
+fn normalize_sqlite_sql(sql: &str) -> String {
+    let mut result = String::with_capacity(sql.len());
+    let chars: Vec<char> = sql.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        if i + 1 < len && chars[i] == '-' && chars[i + 1] == '-' {
+            while i < len && chars[i] != '\n' {
+                result.push(chars[i]);
+                i += 1;
+            }
+            continue;
+        }
+
+        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '*' {
+            while i + 1 < len && !(chars[i] == '*' && chars[i + 1] == '/') {
+                result.push(chars[i]);
+                i += 1;
+            }
+            if i + 1 < len {
+                result.push(chars[i]);
+                result.push(chars[i + 1]);
+                i += 2;
+            }
+            continue;
+        }
+
+        if chars[i] == '\'' {
+            result.push(chars[i]);
+            i += 1;
+            while i < len {
+                if chars[i] == '\'' {
+                    result.push('\'');
+                    i += 1;
+                    if i < len && chars[i] == '\'' {
+                        result.push('\'');
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                } else {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+            }
+            continue;
+        }
+
+        let prev = if i == 0 { '\0' } else { chars[i - 1] };
+        let boundary = !prev.is_alphanumeric() && prev != '_' && prev != '.';
+
+        if boundary {
+            let remaining: String = chars[i..].iter().collect();
+            let remaining_lower = remaining.to_lowercase();
+
+            let mut matched = false;
+            for (source, replacement) in SQLITE_FUNCTION_ALIASES {
+                if remaining_lower.starts_with(*source) && chars.get(i + source.len()) != Some(&'_') {
+                    let mut j = i + source.len();
+                    while j < len && chars[j].is_whitespace() {
+                        j += 1;
+                    }
+                    if j < len && chars[j] == '(' {
+                        let whitespace: String = chars[i + source.len()..j].iter().collect();
+                        result.push_str(replacement);
+                        result.push_str(&whitespace);
+                        i = j;
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+            if matched {
+                continue;
+            }
+        }
+
+        result.push(chars[i]);
+        i += 1;
+    }
+
+    result
+}
+
 pub async fn execute_query_with_max_rows(
     pool: &SqlitePool,
     sql: &str,
@@ -205,12 +403,13 @@ pub async fn execute_query_with_max_rows(
 ) -> Result<QueryResult, String> {
     let start = Instant::now();
     let row_limit = query_result_row_limit(max_rows);
+    let sql = normalize_sqlite_sql(sql);
 
-    if starts_with_executable_sql_keyword(sql, &["SELECT", "PRAGMA", "EXPLAIN", "WITH"]) {
-        let desc = pool.describe(sql).await.map_err(|e| e.to_string())?;
+    if starts_with_executable_sql_keyword(&sql, &["SELECT", "PRAGMA", "EXPLAIN", "WITH"]) {
+        let desc = pool.describe(&sql).await.map_err(|e| e.to_string())?;
         let columns: Vec<String> = desc.columns().iter().map(|c| c.name().to_string()).collect();
 
-        let mut stream = sqlx::query(sql).fetch(pool);
+        let mut stream = sqlx::query(&sql).fetch(pool);
         let mut result_rows: Vec<Vec<serde_json::Value>> = Vec::new();
 
         while let Some(row) = stream.next().await {
@@ -253,7 +452,7 @@ pub async fn execute_query_with_max_rows(
             has_more: false,
         })
     } else {
-        let result = sqlx::query(sql).execute(pool).await.map_err(|e| e.to_string())?;
+        let result = sqlx::query(&sql).execute(pool).await.map_err(|e| e.to_string())?;
 
         Ok(QueryResult {
             columns: vec![],
