@@ -267,19 +267,35 @@ pub fn find_statement_at_cursor(sql: &str, cursor_pos: usize) -> String {
     let statements = split_sql_statement_ranges(sql);
     let cursor = utf16_offset_to_byte_index(sql, cursor_pos);
 
-    for statement in &statements {
-        if cursor >= statement.start && cursor <= statement.end {
+    for (idx, statement) in statements.iter().enumerate() {
+        if cursor > statement.start && cursor < statement.end {
+            return statement.text.clone();
+        }
+
+        if cursor == statement.start {
+            if cursor_has_sql_after_cursor_on_line(sql, cursor) {
+                return statement.text.clone();
+            }
+            if let Some(prev) = idx.checked_sub(1).and_then(|prev_idx| statements.get(prev_idx)) {
+                return prev.text.clone();
+            }
+            return statement.text.clone();
+        }
+
+        if cursor < statement.start {
+            if let Some(prev) = idx.checked_sub(1).and_then(|prev_idx| statements.get(prev_idx)) {
+                return prev.text.clone();
+            }
             return statement.text.clone();
         }
     }
 
-    if let Some(last) = statements.last() {
-        if cursor >= last.end {
-            return last.text.clone();
-        }
-    }
+    statements.last().map(|statement| statement.text.clone()).unwrap_or_else(|| sql.trim().to_string())
+}
 
-    sql.trim().to_string()
+fn cursor_has_sql_after_cursor_on_line(sql: &str, cursor: usize) -> bool {
+    let line_end = sql[cursor..].find('\n').map_or(sql.len(), |offset| cursor + offset);
+    sql[cursor..line_end].chars().any(|ch| !ch.is_whitespace())
 }
 
 fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
@@ -1204,6 +1220,21 @@ DELIMITER ;";
         let sql = "-- 判断字段是否存在\nSELECT 1; SELECT 2";
         let cursor_byte = sql.find("SELECT 2").unwrap();
         let cursor = sql[..cursor_byte].encode_utf16().count();
+
+        assert_eq!(super::find_statement_at_cursor(sql, cursor), "SELECT 2");
+    }
+
+    #[test]
+    fn finds_statement_at_cursor_after_semicolon_with_blank_line_stays_on_previous_statement() {
+        let sql = "SELECT 1;\n\nSELECT 2;";
+        let cursor = sql[..sql.find(';').unwrap() + 1].encode_utf16().count();
+        assert_eq!(super::find_statement_at_cursor(sql, cursor), "SELECT 1");
+    }
+
+    #[test]
+    fn finds_statement_at_cursor_after_semicolon_same_line_moves_to_next_statement() {
+        let sql = "SELECT 1; SELECT 2;";
+        let cursor = sql[..sql.find("SELECT 2").unwrap()].encode_utf16().count();
 
         assert_eq!(super::find_statement_at_cursor(sql, cursor), "SELECT 2");
     }
