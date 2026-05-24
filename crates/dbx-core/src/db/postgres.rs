@@ -145,16 +145,35 @@ pub async fn connect(url: &str) -> Result<Pool, String> {
             .build()
             .map_err(|e| format!("Failed to create PostgreSQL pool: {e}"))?;
 
-        // Verify connectivity and set timezone
+        // Verify connectivity and set timezone. Only set timezone if the user
+        // hasn't already specified one via connection parameters (e.g. options=-c timezone=...)
         let client = pool.get().await.map_err(|e| format!("PostgreSQL connection failed: {e}"))?;
-        client
-            .execute(&format!("SET timezone = '{}'", tz.replace('\'', "''")), &[])
-            .await
-            .map_err(|e| format!("PostgreSQL SET timezone failed: {e}"))?;
+        if !pg_url_has_timezone_setting(url) {
+            client
+                .execute(&format!("SET timezone = '{}'", tz.replace('\'', "''")), &[])
+                .await
+                .map_err(|e| format!("PostgreSQL SET timezone failed: {e}"))?;
+        }
 
         Ok(pool)
     })
     .await
+}
+
+/// Check whether the user's connection URL already specifies a timezone via
+/// the `options` parameter so we don't overwrite it with the local timezone.
+fn pg_url_has_timezone_setting(url: &str) -> bool {
+    let lower = url.to_lowercase();
+    // Match "timezone=" anywhere after the query string, covering:
+    //   ?options=-c timezone=Asia/Shanghai
+    //   ?options=--timezone=UTC
+    // Also handles URL-encoded forms like timezone%3D
+    if let Some(query) = lower.split('?').nth(1) {
+        if query.contains("timezone=") || query.contains("timezone%3d") {
+            return true;
+        }
+    }
+    false
 }
 
 fn validate_postgres_ssl_paths(url: &str) -> Result<(), String> {
@@ -873,5 +892,28 @@ mod tests {
         let tz = "Some'Zone";
         let escaped = tz.replace('\'', "''");
         assert_eq!(escaped, "Some''Zone");
+    }
+
+    // --- pg_url_has_timezone_setting ---
+
+    #[test]
+    fn url_without_timezone_returns_false() {
+        assert!(!pg_url_has_timezone_setting("postgres://localhost/db"));
+        assert!(!pg_url_has_timezone_setting("postgres://localhost/db?sslmode=require"));
+    }
+
+    #[test]
+    fn url_with_options_timezone_returns_true() {
+        assert!(pg_url_has_timezone_setting("postgres://localhost/db?options=-c timezone=Asia/Shanghai"));
+    }
+
+    #[test]
+    fn url_with_url_encoded_timezone_returns_true() {
+        assert!(pg_url_has_timezone_setting("postgres://localhost/db?options=-c%20timezone%3DUTC"));
+    }
+
+    #[test]
+    fn url_with_uppercase_timezone_returns_true() {
+        assert!(pg_url_has_timezone_setting("postgres://localhost/db?options=--TimeZone=UTC"));
     }
 }
