@@ -494,7 +494,7 @@ async function openData() {
     table: node.label,
     dbType: config?.db_type,
   });
-  const tabId = queryStore.createTab(node.connectionId, node.database, node.label, "data");
+  const tabId = queryStore.createTab(node.connectionId, node.database, node.label, "data", node.schema);
   console.info("[DBX][openData:tab-created]", { traceId, tabId, elapsed: elapsed() });
   queryStore.setExecuting(tabId, true);
 

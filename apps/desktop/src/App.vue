@@ -473,7 +473,7 @@ async function newQuery() {
   const conn = connectionStore.getConfig(target.connectionId);
   if (!conn) return;
   connectionStore.activeConnectionId = target.connectionId;
-  const tabId = queryStore.createTab(conn.id, target.database);
+  const tabId = queryStore.createTab(conn.id, target.database, undefined, "query", target.schema);
   try {
     await connectionStore.ensureConnected(target.connectionId);
     if (target.shouldRefreshDefaultDatabase) {

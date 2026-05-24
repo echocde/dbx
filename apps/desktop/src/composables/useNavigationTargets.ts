@@ -23,7 +23,7 @@ async function openTableTarget(target: NavigationTarget) {
   connectionStore.activeConnectionId = target.connectionId;
   const config = connectionStore.getConfig(target.connectionId);
   const tabTitle = target.schema ? `${target.schema}.${target.tableName}` : target.tableName;
-  const tabId = queryStore.createTab(target.connectionId, target.database, tabTitle, "data");
+  const tabId = queryStore.createTab(target.connectionId, target.database, tabTitle, "data", target.schema);
   queryStore.setExecuting(tabId, true);
 
   try {
