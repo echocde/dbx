@@ -8,11 +8,17 @@ use tokio_util::sync::CancellationToken;
 
 use crate::connection::{AppState, PoolKind};
 use crate::db;
+use crate::models::connection::DatabaseType;
 use crate::sql::{split_sql_batches, split_sql_statements, starts_with_executable_sql_keyword};
 
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ROWS: usize = 10000;
 pub const QUERY_CANCELED: &str = "Query canceled";
+
+async fn connection_database_type(state: &AppState, connection_id: &str) -> Option<DatabaseType> {
+    let configs = state.configs.read().await;
+    configs.get(connection_id).map(|config| config.db_type)
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct QueryExecutionOptions {
@@ -683,7 +689,11 @@ pub async fn execute_multi_core_with_options(
         return execute_multi_sqlserver(state, &pool_key, sql, cancel_token, options).await;
     }
 
-    let statements = split_sql_statements(sql);
+    let db_type = connection_database_type(state, connection_id).await;
+    let statements = db_type.map_or_else(
+        || split_sql_statements(sql),
+        |db_type| crate::sql::split_sql_statements_for_database(sql, db_type),
+    );
     if statements.len() <= 1 {
         let single_sql = statements.into_iter().next().unwrap_or_default();
         let result = execute_sql_statement_with_options(

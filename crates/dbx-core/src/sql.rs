@@ -39,6 +39,26 @@ pub enum SqlFileStatementAction {
     Skip,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SqlParsingOptions {
+    pub supports_hash_line_comments: bool,
+}
+
+impl SqlParsingOptions {
+    pub fn for_database_type(db_type: DatabaseType) -> Self {
+        Self {
+            supports_hash_line_comments: matches!(
+                db_type,
+                DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Goldendb
+            ),
+        }
+    }
+
+    pub fn mysql_compatible() -> Self {
+        Self { supports_hash_line_comments: true }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SqlFileProgress {
@@ -64,9 +84,14 @@ pub struct SqlStatementSplitter {
     dollar_quote_tag: Option<String>,
     previous: Option<char>,
     custom_delimiter: Option<String>,
+    options: SqlParsingOptions,
 }
 
 impl SqlStatementSplitter {
+    pub fn with_options(options: SqlParsingOptions) -> Self {
+        Self { options, ..Self::default() }
+    }
+
     pub fn push_chunk(&mut self, chunk: &str) -> Vec<String> {
         let mut statements = Vec::new();
         let chars = chunk.chars().collect::<Vec<_>>();
@@ -137,6 +162,13 @@ impl SqlStatementSplitter {
                     i += 1;
                     continue;
                 }
+                if self.options.supports_hash_line_comments && ch == '#' {
+                    self.in_line_comment = true;
+                    self.buffer.push(ch);
+                    self.previous = Some(ch);
+                    i += 1;
+                    continue;
+                }
                 if ch == '/' && next == Some('*') {
                     self.in_block_comment = true;
                     self.buffer.push(ch);
@@ -188,9 +220,9 @@ impl SqlStatementSplitter {
                     if let Some(new_delim) = parse_delimiter_command(last_line) {
                         self.custom_delimiter = if new_delim == ";" { None } else { Some(new_delim.to_string()) };
                         if last_line_start > 0 {
-                            let before = self.buffer[..last_line_start].trim();
-                            if has_executable_sql(before) {
-                                statements.push(before.to_string());
+                            let before = &self.buffer[..last_line_start];
+                            if let Some(statement) = executable_sql_slice(before, self.options) {
+                                statements.push(statement.to_string());
                             }
                         }
                         self.buffer.clear();
@@ -220,8 +252,8 @@ impl SqlStatementSplitter {
         let last_line = trimmed.rsplit('\n').next().unwrap_or(trimmed).trim();
         if parse_delimiter_command(last_line).is_some() {
             let before = trimmed.rsplitn(2, '\n').nth(1).unwrap_or("").trim();
-            if has_executable_sql(before) {
-                statements.push(before.to_string());
+            if let Some(statement) = executable_sql_slice(before, self.options) {
+                statements.push(statement.to_string());
             }
             self.buffer.clear();
         } else if let Some(ref delim) = self.custom_delimiter {
@@ -234,8 +266,7 @@ impl SqlStatementSplitter {
     }
 
     fn push_current_statement(&mut self, statements: &mut Vec<String>) {
-        let statement = self.buffer.trim();
-        if has_executable_sql(statement) {
+        if let Some(statement) = executable_sql_slice(&self.buffer, self.options) {
             statements.push(statement.to_string());
         }
         self.buffer.clear();
@@ -250,7 +281,15 @@ impl SqlStatementSplitter {
 }
 
 pub fn split_sql_statements(sql: &str) -> Vec<String> {
-    let mut splitter = SqlStatementSplitter::default();
+    split_sql_statements_with_options(sql, SqlParsingOptions::default())
+}
+
+pub fn split_sql_statements_for_database(sql: &str, db_type: DatabaseType) -> Vec<String> {
+    split_sql_statements_with_options(sql, SqlParsingOptions::for_database_type(db_type))
+}
+
+pub fn split_sql_statements_with_options(sql: &str, options: SqlParsingOptions) -> Vec<String> {
+    let mut splitter = SqlStatementSplitter::with_options(options);
     let mut statements = splitter.push_chunk(sql);
     statements.extend(splitter.finish());
     statements
@@ -264,7 +303,15 @@ pub struct SqlStatementRange {
 }
 
 pub fn find_statement_at_cursor(sql: &str, cursor_pos: usize) -> String {
-    let statements = split_sql_statement_ranges(sql);
+    find_statement_at_cursor_with_options(sql, cursor_pos, SqlParsingOptions::default())
+}
+
+pub fn find_statement_at_cursor_for_database(sql: &str, cursor_pos: usize, db_type: DatabaseType) -> String {
+    find_statement_at_cursor_with_options(sql, cursor_pos, SqlParsingOptions::for_database_type(db_type))
+}
+
+pub fn find_statement_at_cursor_with_options(sql: &str, cursor_pos: usize, options: SqlParsingOptions) -> String {
+    let statements = split_sql_statement_ranges_with_options(sql, options);
     let cursor = utf16_offset_to_byte_index(sql, cursor_pos);
 
     for (idx, statement) in statements.iter().enumerate() {
@@ -298,7 +345,12 @@ fn cursor_has_sql_after_cursor_on_line(sql: &str, cursor: usize) -> bool {
     sql[cursor..line_end].chars().any(|ch| !ch.is_whitespace())
 }
 
+#[allow(dead_code)]
 fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
+    split_sql_statement_ranges_with_options(sql, SqlParsingOptions::default())
+}
+
+fn split_sql_statement_ranges_with_options(sql: &str, options: SqlParsingOptions) -> Vec<SqlStatementRange> {
     let mut ranges = Vec::new();
     let mut start = 0;
     let mut i = 0;
@@ -348,6 +400,11 @@ fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
                 i += 2;
                 continue;
             }
+            if options.supports_hash_line_comments && ch == '#' {
+                in_line_comment = true;
+                i += ch.len_utf8();
+                continue;
+            }
             if ch == '/' && next == Some('*') {
                 in_block_comment = true;
                 i += 2;
@@ -365,8 +422,8 @@ fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
                 let line = sql[line_start..i].trim();
                 if let Some(new_delimiter) = parse_delimiter_command(line) {
                     let before = sql[start..line_start].trim();
-                    if has_executable_sql(before) {
-                        push_statement_range(&mut ranges, sql, start, line_start);
+                    if has_executable_sql_with_options(before, options) {
+                        push_statement_range(&mut ranges, sql, start, line_start, options);
                     }
                     custom_delimiter = if new_delimiter == ";" { None } else { Some(new_delimiter.to_string()) };
                     start = i + ch.len_utf8();
@@ -390,7 +447,7 @@ fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
                 i += ch.len_utf8();
             }
             ';' if !in_single_quote && !in_double_quote && !in_backtick && custom_delimiter.is_none() => {
-                push_statement_range(&mut ranges, sql, start, i);
+                push_statement_range(&mut ranges, sql, start, i, options);
                 i += ch.len_utf8();
                 start = i;
             }
@@ -400,7 +457,7 @@ fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
                     if let Some(delimiter) = &custom_delimiter {
                         if sql[start..i].ends_with(delimiter) {
                             let end = i - delimiter.len();
-                            push_statement_range(&mut ranges, sql, start, end);
+                            push_statement_range(&mut ranges, sql, start, end, options);
                             start = i;
                         }
                     }
@@ -413,19 +470,30 @@ fn split_sql_statement_ranges(sql: &str) -> Vec<SqlStatementRange> {
     let last_line = trimmed.rsplit('\n').next().unwrap_or(trimmed).trim();
     if parse_delimiter_command(last_line).is_some() {
         if let Some(line_start) = sql[start..].rfind('\n').map(|pos| start + pos + 1) {
-            push_statement_range(&mut ranges, sql, start, line_start);
+            push_statement_range(&mut ranges, sql, start, line_start, options);
         }
     } else {
-        push_statement_range(&mut ranges, sql, start, sql.len());
+        push_statement_range(&mut ranges, sql, start, sql.len(), options);
     }
 
     ranges
 }
 
-fn push_statement_range(ranges: &mut Vec<SqlStatementRange>, sql: &str, start: usize, end: usize) {
-    let text = sql[start..end].trim();
-    if has_executable_sql(text) {
-        ranges.push(SqlStatementRange { text: text.to_string(), start, end });
+fn push_statement_range(
+    ranges: &mut Vec<SqlStatementRange>,
+    sql: &str,
+    start: usize,
+    end: usize,
+    options: SqlParsingOptions,
+) {
+    let Some((relative_start, relative_end)) = executable_sql_bounds(&sql[start..end], options) else {
+        return;
+    };
+    let statement_start = start + relative_start;
+    let statement_end = start + relative_end;
+    let text = sql[statement_start..statement_end].to_string();
+    if !text.is_empty() {
+        ranges.push(SqlStatementRange { text, start: statement_start, end: statement_end });
     }
 }
 
@@ -584,7 +652,19 @@ pub fn prepare_sql_file_statement(
 }
 
 pub fn starts_with_executable_sql_keyword(sql: &str, keywords: &[&str]) -> bool {
-    let Some(token) = first_executable_sql_token(sql) else {
+    starts_with_executable_sql_keyword_with_options(sql, keywords, SqlParsingOptions::default())
+}
+
+pub fn starts_with_executable_sql_keyword_for_database(sql: &str, keywords: &[&str], db_type: DatabaseType) -> bool {
+    starts_with_executable_sql_keyword_with_options(sql, keywords, SqlParsingOptions::for_database_type(db_type))
+}
+
+pub fn starts_with_executable_sql_keyword_with_options(
+    sql: &str,
+    keywords: &[&str],
+    options: SqlParsingOptions,
+) -> bool {
+    let Some(token) = first_executable_sql_token_with_options(sql, options) else {
         return false;
     };
     keywords.iter().any(|keyword| token.eq_ignore_ascii_case(keyword))
@@ -634,6 +714,14 @@ fn leading_mysql_executable_comment_start(statement: &str) -> Option<usize> {
             continue;
         }
 
+        if bytes[i] == b'#' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
         if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
             if i + 2 < bytes.len() && (bytes[i + 2] == b'!' || (i + 3 < bytes.len() && &bytes[i + 2..i + 4] == b"M!")) {
                 return Some(i);
@@ -672,7 +760,7 @@ fn is_mysql_lock_table_statement(statement: &str) -> bool {
 }
 
 fn is_mysql_session_restore_statement(statement: &str) -> bool {
-    let executable = leading_executable_sql(statement);
+    let executable = leading_executable_sql_with_options(statement, SqlParsingOptions::mysql_compatible());
     let upper = executable.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_uppercase();
     if !upper.starts_with("SET ") {
         return false;
@@ -690,6 +778,10 @@ fn is_mysql_session_restore_statement(statement: &str) -> bool {
 }
 
 fn leading_executable_sql(sql: &str) -> &str {
+    leading_executable_sql_with_options(sql, SqlParsingOptions::default())
+}
+
+fn leading_executable_sql_with_options(sql: &str, options: SqlParsingOptions) -> &str {
     let bytes = sql.as_bytes();
     let mut i = 0;
 
@@ -700,6 +792,14 @@ fn leading_executable_sql(sql: &str) -> &str {
 
         if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
             i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if options.supports_hash_line_comments && bytes[i] == b'#' {
+            i += 1;
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
@@ -724,7 +824,7 @@ fn leading_executable_sql(sql: &str) -> &str {
     &sql[i..]
 }
 
-fn first_executable_sql_token(sql: &str) -> Option<&str> {
+fn first_executable_sql_token_with_options(sql: &str, options: SqlParsingOptions) -> Option<&str> {
     let bytes = sql.as_bytes();
     let mut i = 0;
 
@@ -735,6 +835,14 @@ fn first_executable_sql_token(sql: &str) -> Option<&str> {
 
         if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
             i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if options.supports_hash_line_comments && bytes[i] == b'#' {
+            i += 1;
             while i < bytes.len() && bytes[i] != b'\n' {
                 i += 1;
             }
@@ -799,6 +907,25 @@ fn dollar_quote_tag_at(chars: &[char], start: usize) -> Option<String> {
 }
 
 fn has_executable_sql(statement: &str) -> bool {
+    has_executable_sql_with_options(statement, SqlParsingOptions::default())
+}
+
+fn executable_sql_slice(statement: &str, options: SqlParsingOptions) -> Option<&str> {
+    executable_sql_bounds(statement, options).map(|(start, end)| &statement[start..end])
+}
+
+fn executable_sql_bounds(statement: &str, options: SqlParsingOptions) -> Option<(usize, usize)> {
+    let trimmed_end = statement.trim_end().len();
+    let trimmed = &statement[..trimmed_end];
+    let executable = leading_executable_sql_with_options(trimmed, options);
+    if executable.is_empty() {
+        return None;
+    }
+    let start = trimmed.len() - executable.len();
+    Some((start, trimmed_end))
+}
+
+fn has_executable_sql_with_options(statement: &str, options: SqlParsingOptions) -> bool {
     let chars = statement.chars().collect::<Vec<_>>();
     let mut in_line_comment = false;
     let mut in_block_comment = false;
@@ -828,6 +955,13 @@ fn has_executable_sql(statement: &str) -> bool {
         }
 
         if ch == '-' && next == Some('-') {
+            in_line_comment = true;
+            previous = Some(ch);
+            i += 1;
+            continue;
+        }
+
+        if options.supports_hash_line_comments && ch == '#' {
             in_line_comment = true;
             previous = Some(ch);
             i += 1;
@@ -872,8 +1006,9 @@ mod tests {
     use crate::models::connection::DatabaseType;
 
     use super::{
-        prepare_sql_file_statement, split_sql_script, starts_with_executable_sql_keyword, SqlFileStatementAction,
-        SqlStatementSplitter,
+        find_statement_at_cursor_for_database, prepare_sql_file_statement, split_sql_script,
+        split_sql_statements_for_database, starts_with_executable_sql_keyword,
+        starts_with_executable_sql_keyword_for_database, SqlFileStatementAction, SqlStatementSplitter,
     };
 
     #[test]
@@ -977,6 +1112,16 @@ mod tests {
     fn detects_mysql_executable_comment_keyword() {
         assert!(starts_with_executable_sql_keyword("/*!40101 SELECT 1 */", &["SELECT"]));
         assert!(starts_with_executable_sql_keyword("/*M! SELECT 1 */", &["SELECT"]));
+    }
+
+    #[test]
+    fn mysql_hash_comments_are_ignored_for_keyword_detection() {
+        assert!(starts_with_executable_sql_keyword_for_database(
+            "# comment only for mysql\nSELECT 1",
+            &["SELECT"],
+            DatabaseType::Mysql
+        ));
+        assert!(!starts_with_executable_sql_keyword("# comment only for mysql\nSELECT 1", &["SELECT"]));
     }
 
     #[test]
@@ -1262,5 +1407,31 @@ SELECT 2;";
 
         assert_eq!(super::find_statement_at_cursor(sql, cursor), "CREATE PROCEDURE foo()\nBEGIN\n  SELECT 1;\nEND");
         assert_eq!(super::find_statement_at_cursor(sql, next_cursor), "SELECT 2");
+    }
+
+    #[test]
+    fn mysql_hash_comments_split_statements_per_issue_428() {
+        let sql = "SELECT 1; # mysql comment\n\nSELECT 2 # trailing comment";
+        assert_eq!(
+            split_sql_statements_for_database(sql, DatabaseType::Mysql),
+            vec!["SELECT 1", "SELECT 2 # trailing comment"]
+        );
+    }
+
+    #[test]
+    fn mysql_current_statement_keeps_inline_hash_comment_per_issue_428() {
+        let sql = "SELECT 1; # mysql comment\n\nSELECT 2 # trailing comment";
+        let cursor = sql[..sql.find("SELECT 2").unwrap()].encode_utf16().count();
+        assert_eq!(
+            find_statement_at_cursor_for_database(sql, cursor, DatabaseType::Mysql),
+            "SELECT 2 # trailing comment"
+        );
+    }
+
+    #[test]
+    fn mysql_single_statement_with_inline_comment_stays_executable_per_issue_428() {
+        let sql = "SELECT 1 # mysql comment";
+        let cursor = sql.encode_utf16().count();
+        assert_eq!(find_statement_at_cursor_for_database(sql, cursor, DatabaseType::Mysql), "SELECT 1 # mysql comment");
     }
 }
