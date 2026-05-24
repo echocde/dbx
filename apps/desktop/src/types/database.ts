@@ -43,6 +43,13 @@ export type DatabaseType =
   | "tdengine"
   | "jdbc";
 
+export interface SqlSnippet {
+  id: string;
+  label: string;
+  prefix: string;
+  body: string;
+}
+
 export interface ConnectionConfig {
   id: string;
   name: string;
