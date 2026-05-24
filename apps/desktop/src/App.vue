@@ -173,6 +173,7 @@ async function resolveActiveExecutableSql() {
     ? await resolveExecutableSqlWithBackend(tab.sql, selectedSql.value, {
         mode: settingsStore.editorSettings.executeMode,
         cursorPos: cursorPos.value,
+        databaseType: activeConnection.value?.db_type,
       })
     : "";
 }
