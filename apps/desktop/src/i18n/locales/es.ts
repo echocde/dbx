@@ -785,6 +785,7 @@ export default {
     columnName: "Columna",
     dataType: "Tipo",
     nullable: "Admite nulos",
+    primaryKey: "Clave primaria",
     defaultValue: "Valor por defecto",
     comment: "Comentario",
     editComment: "Editar comentario",

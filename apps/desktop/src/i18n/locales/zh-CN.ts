@@ -869,6 +869,7 @@ export default {
     columnName: "字段名",
     dataType: "类型",
     nullable: "可为空",
+    primaryKey: "主键",
     defaultValue: "默认值",
     comment: "注释",
     editComment: "编辑注释",

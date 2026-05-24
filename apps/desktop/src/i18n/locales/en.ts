@@ -888,6 +888,7 @@ export default {
     columnName: "Column",
     dataType: "Type",
     nullable: "Nullable",
+    primaryKey: "Primary Key",
     defaultValue: "Default",
     comment: "Comment",
     editComment: "Edit comment",

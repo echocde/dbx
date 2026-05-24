@@ -188,9 +188,9 @@ function resetState() {
   newTableName.value = "";
 }
 
-async function loadStructure() {
+async function loadStructure(silent = false) {
   if (!props.prefillConnectionId || !props.prefillDatabase || !props.prefillTable) return;
-  loading.value = true;
+  if (!silent) loading.value = true;
   errorMessage.value = "";
   try {
     await store.ensureConnected(props.prefillConnectionId);
@@ -218,7 +218,7 @@ async function loadStructure() {
   } catch (e: any) {
     errorMessage.value = e?.message || String(e);
   } finally {
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 }
 
@@ -280,6 +280,12 @@ function isColumnDefaultDisabled(column: EditableStructureColumn): boolean {
 
 function isColumnCommentDisabled(column: EditableStructureColumn): boolean {
   return column.markedForDrop || !structureCapabilities.value.comment;
+}
+
+function isPrimaryKeyDisabled(column: EditableStructureColumn): boolean {
+  if (column.markedForDrop) return true;
+  if (!column.original) return false;
+  return !structureCapabilities.value.alterPrimaryKey;
 }
 
 function canDropColumn(column: EditableStructureColumn): boolean {
@@ -371,7 +377,7 @@ async function applyChanges() {
     if (isCreateMode.value) {
       open.value = false;
     } else {
-      await loadStructure();
+      await loadStructure(true);
     }
   } catch (e: any) {
     errorMessage.value = e?.message || String(e);
@@ -503,6 +509,9 @@ watch(
                       <th class="w-16 whitespace-nowrap border-b border-r px-1.5 py-1.5 text-left">
                         {{ t("structureEditor.nullable") }}
                       </th>
+                      <th class="w-14 whitespace-nowrap border-b border-r px-1.5 py-1.5 text-center">
+                        {{ t("structureEditor.primaryKey") }}
+                      </th>
                       <th class="min-w-28 border-b border-r px-1.5 py-1.5 text-left">
                         {{ t("structureEditor.defaultValue") }}
                       </th>
@@ -550,6 +559,15 @@ watch(
                           />
                           <span>{{ column.isNullable ? t("structureEditor.yes") : t("structureEditor.no") }}</span>
                         </label>
+                      </td>
+                      <td class="border-b border-r px-1.5 py-1 text-center">
+                        <input
+                          v-model="column.isPrimaryKey"
+                          type="checkbox"
+                          class="h-3.5 w-3.5"
+                          :disabled="isPrimaryKeyDisabled(column)"
+                          @change="() => { if (column.isPrimaryKey) column.isNullable = false; }"
+                        />
                       </td>
                       <td class="border-b border-r px-1.5 py-1">
                         <Input
@@ -874,7 +892,13 @@ watch(
 
           <div class="flex min-w-0 flex-col rounded-md border">
             <div class="flex items-center justify-between border-b px-2 py-1.5 text-[11px] font-medium">
-              <span>{{ t("structureEditor.sqlPreview") }}</span>
+              <div class="flex items-center gap-1.5">
+                <span>{{ t("structureEditor.sqlPreview") }}</span>
+                <Badge v-if="!saving && pendingStatements.length && warnings.length === 0" variant="outline" class="h-4 px-1 text-[10px]">
+                  <Check class="h-3 w-3" />
+                  {{ t("structureEditor.ready") }}
+                </Badge>
+              </div>
               <Badge variant="secondary">
                 <Loader2 v-if="sqlPreviewLoading" class="h-3 w-3 animate-spin" />
                 <span v-else>{{ pendingStatements.length }}</span>
@@ -921,10 +945,6 @@ watch(
           <Save v-else class="mr-1.5 h-3.5 w-3.5" />
           {{ t("structureEditor.apply") }}
         </Button>
-        <Badge v-if="!saving && pendingStatements.length && warnings.length === 0" variant="outline" class="h-8">
-          <Check class="h-3.5 w-3.5" />
-          {{ t("structureEditor.ready") }}
-        </Badge>
       </DialogFooter>
     </DialogScrollContent>
   </Dialog>
