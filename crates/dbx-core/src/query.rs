@@ -344,6 +344,9 @@ pub fn is_connection_error(err: &str) -> bool {
         || lower.contains("closed")
         || lower.contains("eof")
         || lower.contains("i/o error")
+        || lower.contains("not connected")
+        || lower.contains("end-of-file")
+        || lower.contains("idle")
         || is_os_connection_error(&lower)
 }
 
@@ -1160,6 +1163,17 @@ mod tests {
         assert!(is_connection_error("Connection timed out"));
         assert!(is_connection_error("socket closed"));
         assert!(is_connection_error("unexpected eof"));
+    }
+
+    #[test]
+    fn is_connection_error_detects_oracle_idle_timeout() {
+        assert!(is_connection_error("ORA-02396: exceeded maximum idle time, please connect again"));
+        assert!(is_connection_error(
+            "Agent RPC error (-32603): ORA-02396: exceeded maximum idle time, please connect again"
+        ));
+        assert!(is_connection_error("ORA-03113: end-of-file on communication channel"));
+        assert!(is_connection_error("ORA-03114: not connected to Oracle"));
+        assert!(is_connection_error("ORA-03135: connection lost contact"));
     }
 
     #[test]
