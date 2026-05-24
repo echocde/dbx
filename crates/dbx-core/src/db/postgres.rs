@@ -463,6 +463,19 @@ pub async fn execute_query_with_schema_and_max_rows(
         .await
         .map_err(|e| e.to_string())?;
 
+    let result = execute_query_with_max_rows_inner(&client, sql, max_rows).await;
+
+    // Always reset search_path so the connection is clean when returned to the pool
+    let _ = client.execute("RESET search_path", &[]).await;
+
+    result
+}
+
+async fn execute_query_with_max_rows_inner(
+    client: &deadpool_postgres::Client,
+    sql: &str,
+    max_rows: Option<usize>,
+) -> Result<QueryResult, String> {
     let start = Instant::now();
     let row_limit = query_result_row_limit(max_rows);
 

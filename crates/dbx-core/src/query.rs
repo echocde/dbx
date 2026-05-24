@@ -933,12 +933,35 @@ async fn exec_tx_pg_inner(
     start: std::time::Instant,
 ) -> Result<db::QueryResult, String> {
     let mut client = pool.get().await.map_err(|e| format!("Failed to acquire connection: {}", e))?;
+    let had_schema = schema.is_some();
     if let Some(s) = schema {
         client
             .execute(&format!("SET search_path TO {}, public", db::postgres::pg_quote_ident(s)), &[])
             .await
             .map_err(|e| format!("SET search_path failed: {}", e))?;
     }
+    let tx_result = exec_tx_pg_statements(&mut client, statements).await;
+
+    // Always reset search_path so the connection is clean when returned to the pool
+    if had_schema {
+        let _ = client.execute("RESET search_path", &[]).await;
+    }
+
+    match tx_result {
+        Ok(total_affected) => Ok(db::QueryResult {
+            columns: vec![],
+            rows: vec![],
+            affected_rows: total_affected,
+            execution_time_ms: start.elapsed().as_millis(),
+            truncated: false,
+            session_id: None,
+            has_more: false,
+        }),
+        Err(e) => Err(e),
+    }
+}
+
+async fn exec_tx_pg_statements(client: &mut deadpool_postgres::Client, statements: &[String]) -> Result<u64, String> {
     let tx = client.transaction().await.map_err(|e| format!("Failed to begin transaction: {}", e))?;
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
@@ -951,15 +974,7 @@ async fn exec_tx_pg_inner(
         }
     }
     tx.commit().await.map_err(|e| format!("COMMIT failed: {}", e))?;
-    Ok(db::QueryResult {
-        columns: vec![],
-        rows: vec![],
-        affected_rows: total_affected,
-        execution_time_ms: start.elapsed().as_millis(),
-        truncated: false,
-        session_id: None,
-        has_more: false,
-    })
+    Ok(total_affected)
 }
 
 async fn exec_tx_mysql_inner(
