@@ -497,10 +497,10 @@ watch(
                   <th class="min-w-32 border-b border-r px-1.5 py-1.5 text-left">
                     {{ t("structureEditor.columnName") }}
                   </th>
-                  <th class="min-w-28 border-b border-r px-1.5 py-1.5 text-left">
+                  <th class="w-36 border-b border-r px-1.5 py-1.5 text-left">
                     {{ t("structureEditor.dataType") }}
                   </th>
-                  <th class="min-w-20 border-b border-r px-1.5 py-1.5 text-left">
+                  <th class="w-24 border-b border-r px-1.5 py-1.5 text-left">
                     {{ t("structureEditor.length") }}
                   </th>
                   <th class="w-16 whitespace-nowrap border-b border-r px-1.5 py-1.5 text-left">
@@ -549,13 +549,13 @@ watch(
                       :empty-text="t('structureEditor.noMatchingType')"
                       :loading-text="t('common.loading')"
                       :allow-custom="true"
-                      trigger-class="h-6 min-w-24 font-mono text-[11px]"
+                      trigger-class="h-6 w-full font-mono text-[11px]"
                       @update:model-value="(v: string) => column.dataType = combineDataType(v, splitDataType(column.dataType).params)"
                     />
                     <Input
                       v-else
                       :model-value="splitDataType(column.dataType).baseType"
-                      class="h-6 min-w-24 font-mono text-[11px]"
+                      class="h-6 w-full font-mono text-[11px]"
                       disabled
                     />
                   </td>
