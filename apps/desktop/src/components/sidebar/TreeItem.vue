@@ -1240,12 +1240,7 @@ async function confirmDuplicateStructure() {
 function createTable() {
   const node = props.node;
   if (!node.connectionId || !node.database) return;
-  connectionStore.structureEditorSource = {
-    connectionId: node.connectionId,
-    database: node.database,
-    schema: node.schema,
-    tableName: "",
-  };
+  queryStore.openTableStructure(node.connectionId, node.database, node.schema, "");
 }
 
 async function saveFileContent(content: string, defaultFileName: string, filterName: string, filterExt: string) {
@@ -1491,12 +1486,7 @@ function openTableImport() {
 function openStructureEditor() {
   const node = props.node;
   if (node.type !== "table" || !node.connectionId || !node.database) return;
-  connectionStore.structureEditorSource = {
-    connectionId: node.connectionId,
-    database: node.database,
-    schema: node.schema,
-    tableName: node.label,
-  };
+  queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.label);
 }
 
 function openFieldLineage() {

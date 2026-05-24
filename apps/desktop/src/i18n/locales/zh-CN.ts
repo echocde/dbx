@@ -858,6 +858,7 @@ export default {
   structureEditor: {
     title: "编辑表结构",
     createTitle: "新建表",
+    editTabTitle: "编辑: {tableName}",
     tableName: "表名",
     refresh: "刷新结构",
     columns: "字段",

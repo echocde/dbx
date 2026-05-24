@@ -101,12 +101,6 @@ export const useConnectionStore = defineStore("connection", () => {
     schema?: string;
     tableName: string;
   } | null>(null);
-  const structureEditorSource = ref<{
-    connectionId: string;
-    database: string;
-    schema?: string;
-    tableName: string;
-  } | null>(null);
   const fieldLineageSource = ref<{
     connectionId: string;
     database: string;
@@ -1782,7 +1776,6 @@ export const useConnectionStore = defineStore("connection", () => {
     sqlFileSource,
     diagramSource,
     tableImportSource,
-    structureEditorSource,
     fieldLineageSource,
     databaseSearchSource,
     databaseExportSource,

@@ -877,6 +877,7 @@ export default {
   structureEditor: {
     title: "Edit Table Structure",
     createTitle: "Create Table",
+    editTabTitle: "Edit: {tableName}",
     tableName: "Table Name",
     refresh: "Refresh Structure",
     columns: "Columns",

@@ -322,7 +322,8 @@ export interface QueryTab {
   executionId?: string;
   isExplaining?: boolean;
   explainExecutionId?: string;
-  mode: "data" | "query" | "redis" | "mongo" | "objects";
+  mode: "data" | "query" | "redis" | "mongo" | "objects" | "structure";
+  structureTableName?: string;
   objectBrowser?: {
     schema?: string;
     objectType?: "tables";
