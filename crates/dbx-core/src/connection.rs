@@ -41,7 +41,7 @@ pub enum MysqlMode {
 
 pub enum PoolKind {
     Mysql(db::mysql::MySqlPool, MysqlMode),
-    Postgres(sqlx::postgres::PgPool),
+    Postgres(deadpool_postgres::Pool),
     Sqlite(db::sqlite::SqliteHandle),
     Redis(tokio::sync::Mutex<redis::aio::MultiplexedConnection>),
     DuckDb(Arc<std::sync::Mutex<duckdb::Connection>>),

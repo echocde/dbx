@@ -1118,7 +1118,7 @@ pub async fn sqlite_ddl(pool: &db::sqlite::SqliteHandle, table: &str) -> Result<
     .map_err(|e| e.to_string())?
 }
 
-pub async fn pg_ddl(pool: &sqlx::postgres::PgPool, schema: &str, table: &str) -> Result<String, String> {
+pub async fn pg_ddl(pool: &deadpool_postgres::Pool, schema: &str, table: &str) -> Result<String, String> {
     let (columns, indexes, fkeys) = tokio::try_join!(
         db::postgres::get_columns(pool, schema, table),
         db::postgres::list_indexes(pool, schema, table),

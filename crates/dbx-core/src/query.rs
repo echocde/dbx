@@ -916,7 +916,7 @@ pub async fn execute_statements_in_transaction(
 
 /// Owned pool variants for safe dispatch across async boundaries.
 enum TxPath {
-    Pg(sqlx::postgres::PgPool),
+    Pg(deadpool_postgres::Pool),
     Mysql(mysql_async::Pool, bool),
     Sqlite(db::sqlite::SqliteHandle),
     Explicit,
@@ -925,32 +925,32 @@ enum TxPath {
 
 // Each of these acquires a dedicated connection and runs all statements within
 // BEGIN ... COMMIT/ROLLBACK, guaranteeing a single physical connection.
-// This avoids sqlx::Transaction<T> which has Send/lifetime incompatibility with Tauri macro.
 
 async fn exec_tx_pg_inner(
-    pool: sqlx::postgres::PgPool,
+    pool: deadpool_postgres::Pool,
     statements: &[String],
     schema: Option<&str>,
     start: std::time::Instant,
 ) -> Result<db::QueryResult, String> {
-    let mut conn = pool.acquire().await.map_err(|e| format!("Failed to acquire connection: {}", e))?;
-    // Set schema first
+    let mut client = pool.get().await.map_err(|e| format!("Failed to acquire connection: {}", e))?;
     if let Some(s) = schema {
-        let sp = format!("SET search_path TO \"{}\", public", s);
-        sqlx::query(&sp).execute(&mut *conn).await.map_err(|e| format!("SET search_path failed: {}", e))?;
+        client
+            .execute(&format!("SET search_path TO {}, public", db::postgres::pg_quote_ident(s)), &[])
+            .await
+            .map_err(|e| format!("SET search_path failed: {}", e))?;
     }
-    sqlx::query("BEGIN").execute(&mut *conn).await.map_err(|e| format!("Failed to begin transaction: {}", e))?;
+    let tx = client.transaction().await.map_err(|e| format!("Failed to begin transaction: {}", e))?;
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
-        match sqlx::query(sql).execute(&mut *conn).await {
-            Ok(r) => total_affected += r.rows_affected(),
+        match tx.execute(sql, &[]).await {
+            Ok(affected) => total_affected += affected,
             Err(e) => {
-                let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+                // Transaction auto-rollbacks on drop
                 return Err(format!("Statement {} failed: {}", i + 1, e));
             }
         }
     }
-    sqlx::query("COMMIT").execute(&mut *conn).await.map_err(|e| format!("COMMIT failed: {}", e))?;
+    tx.commit().await.map_err(|e| format!("COMMIT failed: {}", e))?;
     Ok(db::QueryResult {
         columns: vec![],
         rows: vec![],

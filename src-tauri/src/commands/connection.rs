@@ -238,7 +238,7 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
             },
             DatabaseType::Postgres | DatabaseType::Redshift => match db::postgres::connect(&url).await {
                 Ok(pool) => {
-                    pool.close().await;
+                    pool.close();
                     Ok("Connection successful".to_string())
                 }
                 Err(e) => Err(e),
@@ -435,7 +435,7 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
                 PoolKind::Mysql(p, _) => {
                     let _ = p.disconnect().await;
                 }
-                PoolKind::Postgres(p) => p.close().await,
+                PoolKind::Postgres(p) => p.close(),
                 PoolKind::Sqlite(_) => {}
                 PoolKind::Redis(_) => {}
                 PoolKind::DuckDb(_) => {}
