@@ -855,6 +855,7 @@ async function provideSqlCompletions(
       columnsByTable,
       schemas: schemaNames,
       translations: completionTranslations.value,
+      snippets: settingsStore.editorSettings.snippets,
     });
 
     if (items.length === 0) return null;
