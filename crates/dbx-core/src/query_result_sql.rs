@@ -576,6 +576,19 @@ mod tests {
     }
 
     #[test]
+    fn uses_sqlserver_top_for_count_queries_without_derived_table() {
+        let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
+            original_sql: "SELECT COUNT(*) FROM TicketInfo".to_string(),
+            database_type: Some(DatabaseType::SqlServer),
+            limit: 100,
+            offset: 0,
+        });
+
+        assert_eq!(result.ok, true);
+        assert_eq!(result.sql.unwrap(), "SELECT TOP (100) COUNT(*) FROM TicketInfo");
+    }
+
+    #[test]
     fn wraps_sqlserver_select_with_unnamed_column() {
         let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
             original_sql: "SELECT @@version".to_string(),
