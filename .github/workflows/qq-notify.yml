@@ -154,7 +154,7 @@ jobs:
           req = urllib.request.Request(
               "https://api.deepseek.com/v1/chat/completions",
               data=json.dumps({
-                  "model": "deepseek-chat",
+                  "model": "deepseek-v4-pro",
                   "max_tokens": 300,
                   "messages": [{"role": "user", "content": prompt}],
               }).encode(),
