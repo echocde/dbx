@@ -26,6 +26,7 @@ pub struct QueryExecutionOptions {
     pub fetch_size: Option<usize>,
     pub page_size: Option<usize>,
     pub result_session_id: Option<String>,
+    pub client_session_id: Option<String>,
 }
 
 fn query_result_row_limit(max_rows: Option<usize>) -> usize {
@@ -602,9 +603,11 @@ pub async fn execute_sql_statement_with_options(
     options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
     let pool_key = if database.is_empty() {
-        connection_id.to_string()
+        state.get_or_create_pool_for_session(connection_id, None, options.client_session_id.as_deref()).await?
     } else {
-        state.get_or_create_pool(connection_id, Some(database)).await?
+        state
+            .get_or_create_pool_for_session(connection_id, Some(database), options.client_session_id.as_deref())
+            .await?
     };
 
     if is_canceled(&cancel_token) {
@@ -616,7 +619,8 @@ pub async fn execute_sql_statement_with_options(
     match &result {
         Err(e) if is_connection_error(e) && !is_canceled(&cancel_token) => {
             let db_opt = if database.is_empty() { None } else { Some(database) };
-            let new_key = state.reconnect_pool(connection_id, db_opt).await?;
+            let new_key =
+                state.reconnect_pool_for_session(connection_id, db_opt, options.client_session_id.as_deref()).await?;
             do_execute(state, &new_key, Some(database), sql, schema, cancel_token, options).await
         }
         _ => result,
@@ -628,11 +632,12 @@ pub async fn close_query_session(
     connection_id: &str,
     database: &str,
     session_id: &str,
+    client_session_id: Option<&str>,
 ) -> Result<bool, String> {
     let pool_key = if database.is_empty() {
-        connection_id.to_string()
+        state.get_or_create_pool_for_session(connection_id, None, client_session_id).await?
     } else {
-        state.get_or_create_pool(connection_id, Some(database)).await?
+        state.get_or_create_pool_for_session(connection_id, Some(database), client_session_id).await?
     };
 
     let connections = state.connections.read().await;
@@ -678,9 +683,11 @@ pub async fn execute_multi_core_with_options(
     options: QueryExecutionOptions,
 ) -> Result<Vec<db::QueryResult>, String> {
     let pool_key = if database.is_empty() {
-        connection_id.to_string()
+        state.get_or_create_pool_for_session(connection_id, None, options.client_session_id.as_deref()).await?
     } else {
-        state.get_or_create_pool(connection_id, Some(database)).await?
+        state
+            .get_or_create_pool_for_session(connection_id, Some(database), options.client_session_id.as_deref())
+            .await?
     };
 
     let is_sqlserver = {
@@ -726,7 +733,17 @@ pub async fn execute_multi_core_with_options(
             });
             break;
         }
-        match execute_sql_statement(state, connection_id, database, stmt, schema, cancel_token.clone()).await {
+        match execute_sql_statement_with_options(
+            state,
+            connection_id,
+            database,
+            stmt,
+            schema,
+            cancel_token.clone(),
+            options.clone(),
+        )
+        .await
+        {
             Ok(r) => results.push(r),
             Err(e) => {
                 results.push(db::QueryResult {

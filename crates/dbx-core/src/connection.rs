@@ -137,13 +137,22 @@ impl AppState {
     }
 
     pub async fn get_or_create_pool(&self, connection_id: &str, database: Option<&str>) -> Result<String, String> {
+        self.get_or_create_pool_for_session(connection_id, database, None).await
+    }
+
+    pub async fn get_or_create_pool_for_session(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        client_session_id: Option<&str>,
+    ) -> Result<String, String> {
         let db_type = {
             let configs = self.configs.read().await;
             configs.get(connection_id).map(|c| c.db_type.clone())
         };
 
         let is_single_conn = db_type.as_ref().is_some_and(database_capabilities::is_single_connection_pool);
-        let pool_key = if is_single_conn {
+        let base_pool_key = if is_single_conn {
             connection_id.to_string()
         } else {
             match database {
@@ -151,6 +160,7 @@ impl AppState {
                 None => connection_id.to_string(),
             }
         };
+        let pool_key = session_scoped_pool_key(base_pool_key, client_session_id);
 
         let conns = self.connections.read().await;
         if conns.contains_key(&pool_key) {
@@ -430,6 +440,15 @@ impl AppState {
     }
 
     pub async fn reconnect_pool(&self, connection_id: &str, database: Option<&str>) -> Result<String, String> {
+        self.reconnect_pool_for_session(connection_id, database, None).await
+    }
+
+    pub async fn reconnect_pool_for_session(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        client_session_id: Option<&str>,
+    ) -> Result<String, String> {
         let is_single_conn = {
             let configs = self.configs.read().await;
             configs
@@ -440,7 +459,7 @@ impl AppState {
                 })
                 .unwrap_or(false)
         };
-        let pool_key = if is_single_conn {
+        let base_pool_key = if is_single_conn {
             connection_id.to_string()
         } else {
             match database {
@@ -448,13 +467,41 @@ impl AppState {
                 None => connection_id.to_string(),
             }
         };
+        let pool_key = session_scoped_pool_key(base_pool_key, client_session_id);
         if self.uses_forwarded_transport(connection_id).await {
             self.remove_connection_pools(connection_id).await;
             self.reset_connection_transport(connection_id).await;
         } else {
             self.connections.write().await.remove(&pool_key);
         }
-        self.get_or_create_pool(connection_id, database).await
+        self.get_or_create_pool_for_session(connection_id, database, client_session_id).await
+    }
+
+    pub async fn close_client_session_pool(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        client_session_id: &str,
+    ) -> Result<bool, String> {
+        let session = normalize_client_session_id(Some(client_session_id));
+        let Some(session) = session else {
+            return Ok(false);
+        };
+        let db_type = {
+            let configs = self.configs.read().await;
+            configs.get(connection_id).map(|c| c.db_type.clone())
+        };
+        let is_single_conn = db_type.as_ref().is_some_and(database_capabilities::is_single_connection_pool);
+        let base_pool_key = if is_single_conn {
+            connection_id.to_string()
+        } else {
+            match database {
+                Some(db) => format!("{connection_id}:{db}"),
+                None => connection_id.to_string(),
+            }
+        };
+        let pool_key = session_scoped_pool_key(base_pool_key, Some(&session));
+        Ok(self.connections.write().await.remove(&pool_key).is_some())
     }
 
     pub async fn duckdb_existing_pool_is_usable_for_config(&self, config: &ConnectionConfig) -> Result<bool, String> {
@@ -513,6 +560,16 @@ impl AppState {
                 || (config.proxy_enabled && !config.proxy_host.is_empty())
         })
     }
+}
+
+fn normalize_client_session_id(client_session_id: Option<&str>) -> Option<String> {
+    client_session_id.map(str::trim).filter(|session| !session.is_empty()).map(|session| session.replace(':', "_"))
+}
+
+fn session_scoped_pool_key(base_pool_key: String, client_session_id: Option<&str>) -> String {
+    normalize_client_session_id(client_session_id)
+        .map(|session| format!("{base_pool_key}:session:{session}"))
+        .unwrap_or(base_pool_key)
 }
 
 fn default_plugin_dir() -> PathBuf {
@@ -1104,6 +1161,8 @@ mod tests {
             let mut conns = state.connections.write().await;
             conns.insert("conn".to_string(), PoolKind::Sqlite(pool.clone()));
             conns.insert("conn:analytics".to_string(), PoolKind::Sqlite(pool.clone()));
+            conns.insert("conn:session:tab-1".to_string(), PoolKind::Sqlite(pool.clone()));
+            conns.insert("conn:analytics:session:tab-1".to_string(), PoolKind::Sqlite(pool.clone()));
             conns.insert("other".to_string(), PoolKind::Sqlite(pool));
         }
 
@@ -1112,6 +1171,8 @@ mod tests {
         let conns = state.connections.read().await;
         assert!(!conns.contains_key("conn"));
         assert!(!conns.contains_key("conn:analytics"));
+        assert!(!conns.contains_key("conn:session:tab-1"));
+        assert!(!conns.contains_key("conn:analytics:session:tab-1"));
         assert!(conns.contains_key("other"));
 
         let _ = std::fs::remove_dir_all(dir);

@@ -125,7 +125,7 @@ pub async fn connect(url: &str) -> Result<Pool, String> {
 
     let tz = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string());
 
-    super::with_connection_timeout("PostgreSQL", async {
+    super::with_connection_timeout("PostgreSQL", super::connection_timeout(), async {
         let pg_config =
             tokio_postgres::Config::from_str(url).map_err(|e| format!("Invalid PostgreSQL connection URL: {e}"))?;
 
@@ -139,7 +139,7 @@ pub async fn connect(url: &str) -> Result<Pool, String> {
             mgr_config,
         );
         let pool = Pool::builder(mgr)
-            .max_size(10)
+            .max_size(1)
             .runtime(Runtime::Tokio1)
             .wait_timeout(Some(super::connection_timeout()))
             .build()

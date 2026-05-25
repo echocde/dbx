@@ -187,7 +187,7 @@ pub async fn connect(url: &str) -> Result<MySqlPool, String> {
 fn create_pool(url: &str) -> Result<MySqlPool, String> {
     let opts = mysql_async::Opts::from_url(&mysql_async_url(url)).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
     let pool_opts = mysql_async::PoolOpts::new()
-        .with_constraints(mysql_async::PoolConstraints::new(1, 5).unwrap())
+        .with_constraints(mysql_async::PoolConstraints::new(1, 1).unwrap())
         .with_inactive_connection_ttl(Duration::from_secs(300));
     let builder =
         mysql_async::OptsBuilder::from_opts(opts).stmt_cache_size(0).prefer_socket(false).pool_opts(Some(pool_opts));
@@ -797,35 +797,35 @@ mod tests {
     #[test]
     fn parse_connect_timeout_extracts_underscore_form() {
         let url = "mysql://host:3306/db?connect_timeout=30";
-        assert_eq!(super::parse_connect_timeout(url), Duration::from_secs(30));
+        assert_eq!(crate::db::parse_connect_timeout(url), Duration::from_secs(30));
     }
 
     #[test]
     fn parse_connect_timeout_extracts_camelcase_form() {
         let url = "mysql://host:3306/db?connectTimeout=60";
-        assert_eq!(super::parse_connect_timeout(url), Duration::from_secs(60));
+        assert_eq!(crate::db::parse_connect_timeout(url), Duration::from_secs(60));
     }
 
     #[test]
     fn parse_connect_timeout_ignores_out_of_range() {
-        let default = super::connection_timeout();
+        let default = crate::db::connection_timeout();
         let url = "mysql://host:3306/db?connect_timeout=999";
-        assert_eq!(super::parse_connect_timeout(url), default);
+        assert_eq!(crate::db::parse_connect_timeout(url), default);
         let url2 = "mysql://host:3306/db?connect_timeout=0";
-        assert_eq!(super::parse_connect_timeout(url2), default);
+        assert_eq!(crate::db::parse_connect_timeout(url2), default);
     }
 
     #[test]
     fn parse_connect_timeout_returns_default_when_missing() {
-        let default = super::connection_timeout();
+        let default = crate::db::connection_timeout();
         let url = "mysql://host:3306/db?ssl-mode=preferred&charset=utf8mb4";
-        assert_eq!(super::parse_connect_timeout(url), default);
+        assert_eq!(crate::db::parse_connect_timeout(url), default);
     }
 
     #[test]
     fn parse_connect_timeout_returns_default_when_no_query() {
-        let default = super::connection_timeout();
+        let default = crate::db::connection_timeout();
         let url = "mysql://host:3306/db";
-        assert_eq!(super::parse_connect_timeout(url), default);
+        assert_eq!(crate::db::parse_connect_timeout(url), default);
     }
 }

@@ -89,6 +89,7 @@ export const executeScript = forward("executeScript");
 export const executeInTransaction = forward("executeInTransaction");
 export const cancelQuery = forward("cancelQuery");
 export const closeQuerySession = forward("closeQuerySession");
+export const closeClientConnectionSession = forward("closeClientConnectionSession");
 export const analyzeSqlReferences = forward("analyzeSqlReferences");
 export const findStatementAtCursor = forward("findStatementAtCursor");
 export const prepareQueryPaginationExecutionPlan = forward("prepareQueryPaginationExecutionPlan");

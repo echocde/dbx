@@ -185,6 +185,7 @@ async fn main() {
         .route("/data-compare/prepare-from-tables", post(routes::data_compare::prepare_data_compare_from_tables))
         .route("/query/cancel", post(routes::query::cancel_query))
         .route("/query/close-session", post(routes::query::close_query_session))
+        .route("/query/close-client-session", post(routes::query::close_client_connection_session))
         .route("/export/query-result-json", post(routes::text_export::export_query_result_json))
         .route("/export/query-result-markdown", post(routes::text_export::export_query_result_markdown))
         // Redis

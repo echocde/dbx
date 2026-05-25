@@ -361,7 +361,13 @@ export async function executeQuery(
   sql: string,
   schema?: string,
   executionId?: string,
-  options?: { maxRows?: number; fetchSize?: number; pageSize?: number; resultSessionId?: string },
+  options?: {
+    maxRows?: number;
+    fetchSize?: number;
+    pageSize?: number;
+    resultSessionId?: string;
+    clientSessionId?: string;
+  },
 ): Promise<QueryResult> {
   return invoke("execute_query", { connectionId, database, sql, schema, executionId, ...options });
 }
@@ -372,7 +378,13 @@ export async function executeMulti(
   sql: string,
   schema?: string,
   executionId?: string,
-  options?: { maxRows?: number; fetchSize?: number; pageSize?: number; resultSessionId?: string },
+  options?: {
+    maxRows?: number;
+    fetchSize?: number;
+    pageSize?: number;
+    resultSessionId?: string;
+    clientSessionId?: string;
+  },
 ): Promise<QueryResult[]> {
   return invoke("execute_multi", { connectionId, database, sql, schema, executionId, ...options });
 }
@@ -381,8 +393,21 @@ export async function cancelQuery(executionId: string): Promise<boolean> {
   return invoke("cancel_query", { executionId });
 }
 
-export async function closeQuerySession(connectionId: string, database: string, sessionId: string): Promise<boolean> {
-  return invoke("close_query_session", { connectionId, database, sessionId });
+export async function closeQuerySession(
+  connectionId: string,
+  database: string,
+  sessionId: string,
+  clientSessionId?: string,
+): Promise<boolean> {
+  return invoke("close_query_session", { connectionId, database, sessionId, clientSessionId });
+}
+
+export async function closeClientConnectionSession(
+  connectionId: string,
+  database: string,
+  clientSessionId: string,
+): Promise<boolean> {
+  return invoke("close_client_connection_session", { connectionId, database, clientSessionId });
 }
 
 export async function executeBatch(

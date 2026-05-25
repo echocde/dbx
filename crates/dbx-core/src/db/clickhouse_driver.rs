@@ -114,7 +114,7 @@ fn limited_query_result(result: ChJsonResult, execution_time_ms: u128, max_rows:
 pub async fn test_connection(client: &ChClient) -> Result<(), String> {
     let url = format!("{}/?query=SELECT%201", client.base_url);
     let req = build_request(client, client.http.get(&url));
-    let resp = with_connection_timeout("ClickHouse", async {
+    let resp = with_connection_timeout("ClickHouse", connection_timeout(), async {
         req.send().await.map_err(|e| format!("ClickHouse connection failed: {e}"))
     })
     .await?;
