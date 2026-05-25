@@ -108,9 +108,45 @@ pub fn escape_value_typed(val: &serde_json::Value, db_type: &DatabaseType, colum
         serde_json::Value::String(s) => {
             format!("'{}'", format_literal_string(s, db_type, column_type).replace('\\', "\\\\").replace('\'', "''"))
         }
+        serde_json::Value::Array(arr) => format_pg_array_sql_literal(arr),
         _ => {
             let s = val.to_string();
             format!("'{}'", s.replace('\\', "\\\\").replace('\'', "''"))
+        }
+    }
+}
+
+pub fn format_pg_array_sql_literal(arr: &[serde_json::Value]) -> String {
+    if arr.is_empty() {
+        return "'{}'".to_string();
+    }
+    let elements: Vec<String> = arr.iter().map(format_pg_array_element).collect();
+    let inner = format!("{{{}}}", elements.join(","));
+    format!("'{}'", inner.replace('\\', "\\\\").replace('\'', "''"))
+}
+
+fn format_pg_array_element(val: &serde_json::Value) -> String {
+    match val {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Array(arr) => {
+            if arr.is_empty() {
+                return "{}".to_string();
+            }
+            let elements: Vec<String> = arr.iter().map(format_pg_array_element).collect();
+            format!("{{{}}}", elements.join(","))
+        }
+        serde_json::Value::String(s) => {
+            let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+            format!("\"{}\"", escaped)
+        }
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b { "true".to_string() } else { "false".to_string() }
+        }
+        serde_json::Value::Object(o) => {
+            let json = serde_json::to_string(o).unwrap_or_default();
+            let escaped = json.replace('\\', "\\\\").replace('"', "\\\"");
+            format!("\"{}\"", escaped)
         }
     }
 }
