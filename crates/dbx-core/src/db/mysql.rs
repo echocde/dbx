@@ -188,7 +188,8 @@ fn create_pool(url: &str) -> Result<MySqlPool, String> {
     let pool_opts = mysql_async::PoolOpts::new()
         .with_constraints(mysql_async::PoolConstraints::new(1, 5).unwrap())
         .with_inactive_connection_ttl(Duration::from_secs(300));
-    let builder = mysql_async::OptsBuilder::from_opts(opts).stmt_cache_size(0).pool_opts(Some(pool_opts));
+    let builder =
+        mysql_async::OptsBuilder::from_opts(opts).stmt_cache_size(0).prefer_socket(false).pool_opts(Some(pool_opts));
     Ok(MySqlPool::new(builder))
 }
 
