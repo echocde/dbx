@@ -321,6 +321,9 @@ fn has_top_level_select_into(sql: &str) -> bool {
 }
 
 fn add_sql_server_top(sql: &str, limit: usize) -> String {
+    if has_top_level_select_top(sql) {
+        return sql.to_string();
+    }
     if sql.len() >= 6 && sql[..6].to_ascii_uppercase() == "SELECT" {
         format!("SELECT TOP ({limit}){}", &sql[6..])
     } else {
@@ -586,6 +589,19 @@ mod tests {
 
         assert_eq!(result.ok, true);
         assert_eq!(result.sql.unwrap(), "SELECT TOP (100) COUNT(*) FROM TicketInfo");
+    }
+
+    #[test]
+    fn keeps_existing_sqlserver_top_clause() {
+        let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
+            original_sql: "SELECT TOP 1000 * FROM TicketInfo".to_string(),
+            database_type: Some(DatabaseType::SqlServer),
+            limit: 100,
+            offset: 0,
+        });
+
+        assert_eq!(result.ok, true);
+        assert_eq!(result.sql.unwrap(), "SELECT TOP 1000 * FROM TicketInfo");
     }
 
     #[test]
