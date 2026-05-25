@@ -160,6 +160,7 @@ mod tests {
             proxy_username: String::new(),
             proxy_password: String::new(),
             ssl: false,
+            ca_cert_path: String::new(),
             sysdba: false,
             oracle_connection_type: None,
             connection_string: None,

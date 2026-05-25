@@ -23,6 +23,7 @@ export interface ConnectionConfig {
   proxy_username?: string;
   proxy_password?: string;
   ssl: boolean;
+  ca_cert_path?: string;
   oracle_connection_type?: "service_name" | "sid";
 }
 

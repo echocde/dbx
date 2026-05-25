@@ -1,5 +1,6 @@
-use reqwest::Client as HttpClient;
+use reqwest::{Certificate, Client as HttpClient};
 use serde::Deserialize;
+use std::fs;
 use std::time::Instant;
 
 use super::{connection_timeout, with_connection_timeout};
@@ -20,6 +21,51 @@ impl ChClient {
             HttpClient::builder().connect_timeout(connection_timeout()).build().unwrap_or_else(|_| HttpClient::new());
         Self { http, base_url: url.trim_end_matches('/').to_string(), username, password }
     }
+
+    pub fn new_with_ca_cert(
+        url: &str,
+        username: Option<String>,
+        password: Option<String>,
+        ca_cert_path: Option<&str>,
+    ) -> Result<Self, String> {
+        let mut builder = HttpClient::builder().connect_timeout(connection_timeout());
+        if let Some(path) = ca_cert_path.map(str::trim).filter(|path| !path.is_empty()) {
+            let path = expand_cert_path(path);
+            let cert_bytes =
+                fs::read(&path).map_err(|e| format!("Failed to read ClickHouse CA certificate at {path}: {e}"))?;
+            let cert = Certificate::from_pem(&cert_bytes)
+                .or_else(|_| Certificate::from_der(&cert_bytes))
+                .map_err(|e| format!("Failed to parse ClickHouse CA certificate at {path}: {e}"))?;
+            builder = builder.add_root_certificate(cert);
+        }
+        let http = builder.build().map_err(|e| format!("Failed to configure ClickHouse HTTP client: {e}"))?;
+        Ok(Self { http, base_url: url.trim_end_matches('/').to_string(), username, password })
+    }
+}
+
+fn expand_cert_path(path: &str) -> String {
+    let home = || std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok();
+    if path == "~" || path.starts_with("~/") || path.starts_with("~\\") {
+        if let Some(home) = home() {
+            return format!("{}{}", home, &path[1..]);
+        }
+    }
+    if let Some(rest) = path.strip_prefix("$HOME") {
+        if let Some(home) = home() {
+            return format!("{home}{rest}");
+        }
+    }
+    if let Some(rest) = path.strip_prefix("${HOME}") {
+        if let Some(home) = home() {
+            return format!("{home}{rest}");
+        }
+    }
+    if let Some(rest) = path.strip_prefix("%USERPROFILE%") {
+        if let Ok(home) = std::env::var("USERPROFILE") {
+            return format!("{home}{rest}");
+        }
+    }
+    path.to_string()
 }
 
 impl Clone for ChClient {

@@ -92,6 +92,7 @@ const defaultForm = (): Omit<ConnectionConfig, "id"> => ({
   proxy_username: "",
   proxy_password: "",
   ssl: false,
+  ca_cert_path: "",
   oracle_connection_type: "service_name",
   connection_string: undefined,
   jdbc_driver_class: undefined,
@@ -342,6 +343,7 @@ watch(
         proxy_username: config.proxy_username || "",
         proxy_password: config.proxy_password || "",
         ssl: config.ssl || false,
+        ca_cert_path: config.ca_cert_path || "",
         oracle_connection_type: config.oracle_connection_type || "service_name",
         connection_string: config.connection_string,
         jdbc_driver_class: config.jdbc_driver_class,
@@ -662,6 +664,11 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
   } else {
     config.oracle_connection_type = config.oracle_connection_type || "service_name";
   }
+  if (config.db_type !== "clickhouse") {
+    config.ca_cert_path = undefined;
+  } else {
+    config.ca_cert_path = config.ca_cert_path?.trim() || "";
+  }
   if (config.db_type === "jdbc") {
     config.host = "";
     config.port = 0;
@@ -867,6 +874,20 @@ async function browseSshKeyPath() {
     });
     if (selected && typeof selected === "string") {
       form.value.ssh_key_path = selected;
+    }
+  }
+}
+
+async function browseCaCertPath() {
+  if (isTauriRuntime()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({
+      title: "Select CA Certificate",
+      multiple: false,
+      filters: [{ name: "Certificate", extensions: ["crt", "cer", "pem"] }],
+    });
+    if (selected && typeof selected === "string") {
+      form.value.ca_cert_path = selected;
     }
   }
 }
@@ -1433,6 +1454,33 @@ function openExternalUrl(url: string) {
                     <Input v-model="form.database" class="col-span-3" :placeholder="databasePlaceholder" />
                   </div>
 
+                  <div v-if="form.db_type === 'clickhouse'" class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">SSL/TLS</Label>
+                    <label class="col-span-3 flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" v-model="form.ssl" class="mr-0" />
+                      <span class="text-xs text-muted-foreground">{{ t("connection.sslEnable") }}</span>
+                    </label>
+                  </div>
+
+                  <div v-if="form.db_type === 'clickhouse'" class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.caCertPath") }}</Label>
+                    <div class="col-span-3 flex items-center gap-1">
+                      <Input
+                        v-model="form.ca_cert_path"
+                        class="flex-1"
+                        :placeholder="t('connection.caCertPathPlaceholder')"
+                      />
+                      <Tooltip v-if="isDesktop">
+                        <TooltipTrigger as-child>
+                          <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" @click="browseCaCertPath">
+                            <FolderOpen class="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{{ t("connection.caCertPathBrowse") }}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+
                   <div v-if="form.db_type === 'oracle'" class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right text-xs">连接方式</Label>
                     <div
@@ -1513,6 +1561,7 @@ function openExternalUrl(url: string) {
                       form.db_type === 'yashandb' ||
                       form.db_type === 'vastbase' ||
                       form.db_type === 'goldendb' ||
+                      form.db_type === 'clickhouse' ||
                       form.db_type === 'saphana' ||
                       form.db_type === 'bigquery'
                     "
@@ -1527,11 +1576,13 @@ function openExternalUrl(url: string) {
                           ? 'charset=utf8mb4'
                           : form.db_type === 'saphana'
                             ? 'databaseName=TENANT_DB'
-                            : form.db_type === 'bigquery'
-                              ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
-                              : form.db_type === 'informix'
-                                ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
-                                : 'sslmode=disable'
+                            : form.db_type === 'clickhouse'
+                              ? 'secure=true'
+                              : form.db_type === 'bigquery'
+                                ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
+                                : form.db_type === 'informix'
+                                  ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
+                                  : 'sslmode=disable'
                       "
                     />
                   </div>

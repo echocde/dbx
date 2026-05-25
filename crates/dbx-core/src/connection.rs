@@ -232,7 +232,12 @@ impl AppState {
             DatabaseType::ClickHouse => {
                 let username = if db_config.username.is_empty() { None } else { Some(db_config.username.clone()) };
                 let password = if db_config.password.is_empty() { None } else { Some(db_config.password.clone()) };
-                let client = db::clickhouse_driver::ChClient::new(&url, username, password);
+                let client = db::clickhouse_driver::ChClient::new_with_ca_cert(
+                    &url,
+                    username,
+                    password,
+                    Some(&db_config.ca_cert_path),
+                )?;
                 db::clickhouse_driver::test_connection(&client).await?;
                 PoolKind::ClickHouse(client)
             }
@@ -873,6 +878,7 @@ mod tests {
             proxy_username: String::new(),
             proxy_password: String::new(),
             ssl: false,
+            ca_cert_path: String::new(),
             sysdba: false,
             oracle_connection_type: None,
             connection_string: None,

@@ -55,6 +55,8 @@ pub struct ConnectionConfig {
     pub proxy_password: String,
     #[serde(default)]
     pub ssl: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub ca_cert_path: String,
     #[serde(default)]
     pub sysdba: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -241,6 +243,7 @@ impl ConnectionConfig {
     }
 
     pub fn redacted_connection_url_with_host(&self, host: &str, port: u16) -> String {
+        let raw_host = host;
         let host = bracket_ipv6(host);
         let db_part = self.effective_database().map(|d| format!("/{}", encode_url_part(d))).unwrap_or_default();
         let params = self.normalized_url_params();
@@ -261,7 +264,7 @@ impl ConnectionConfig {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
                 format!("postgres://{host}:{port}{db_part}{suffix}")
             }
-            DatabaseType::ClickHouse => format!("http://{host}:{port}"),
+            DatabaseType::ClickHouse => clickhouse_http_url(self, raw_host, port),
             DatabaseType::SqlServer => {
                 format!("server=tcp:{host},{port};database={}", self.database.as_deref().unwrap_or("master"))
             }
@@ -321,6 +324,7 @@ impl ConnectionConfig {
     }
 
     pub fn connection_url_with_host(&self, host: &str, port: u16) -> String {
+        let raw_host = host;
         let host = bracket_ipv6(host);
         let db_part = self.effective_database().map(|d| format!("/{}", encode_url_part(d))).unwrap_or_default();
         let username = encode_url_part(&self.username);
@@ -349,7 +353,7 @@ impl ConnectionConfig {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
                 format!("postgres://{}:{}@{host}:{port}{db_part}{suffix}", username, password)
             }
-            DatabaseType::ClickHouse => format!("http://{host}:{port}"),
+            DatabaseType::ClickHouse => clickhouse_http_url(self, raw_host, port),
             DatabaseType::SqlServer => format!(
                 "server=tcp:{host},{port};user={};password={};database={}",
                 self.username,
@@ -528,6 +532,41 @@ impl ConnectionConfig {
             _ => value.trim_start_matches('?').to_string(),
         }
     }
+
+    pub fn clickhouse_uses_tls(&self) -> bool {
+        self.ssl || url_params_contains_flag(self.url_params.as_deref(), "secure", "true")
+    }
+}
+
+fn url_params_contains_flag(params: Option<&str>, key: &str, expected: &str) -> bool {
+    params.unwrap_or("").trim().trim_start_matches('?').split(['&', ';']).filter_map(|part| part.split_once('=')).any(
+        |(part_key, value)| part_key.trim().eq_ignore_ascii_case(key) && value.trim().eq_ignore_ascii_case(expected),
+    )
+}
+
+fn clickhouse_http_url(config: &ConnectionConfig, host: &str, port: u16) -> String {
+    let trimmed = host.trim();
+    if let Some(rest) = trimmed.strip_prefix("https://") {
+        return format!("https://{}", trim_clickhouse_host_port(rest, port));
+    }
+    if let Some(rest) = trimmed.strip_prefix("http://") {
+        let scheme = if config.clickhouse_uses_tls() { "https" } else { "http" };
+        return format!("{scheme}://{}", trim_clickhouse_host_port(rest, port));
+    }
+    let scheme = if config.clickhouse_uses_tls() { "https" } else { "http" };
+    format!("{scheme}://{}:{port}", bracket_ipv6(trimmed))
+}
+
+fn trim_clickhouse_host_port(value: &str, default_port: u16) -> String {
+    let authority = value.trim_end_matches('/').split('/').next().unwrap_or(value).split('?').next().unwrap_or(value);
+    if authority.starts_with('[') && !authority.contains("]:") {
+        return format!("{authority}:{default_port}");
+    }
+    if authority.rsplit_once(':').is_some() {
+        authority.to_string()
+    } else {
+        format!("{authority}:{default_port}")
+    }
 }
 
 pub fn parse_mongo_first_host(uri: &str) -> Option<(String, u16)> {
@@ -671,6 +710,7 @@ mod tests {
             proxy_username: String::new(),
             proxy_password: String::new(),
             ssl: false,
+            ca_cert_path: String::new(),
             sysdba: false,
             oracle_connection_type: None,
             connection_string: None,
@@ -851,6 +891,32 @@ mod tests {
         config.port = 8123;
 
         assert_eq!(config.effective_database(), Some("default"));
+    }
+
+    #[test]
+    fn clickhouse_tls_uses_https_from_ssl_or_secure_param() {
+        let mut config = mysql_config("default", "", None);
+        config.db_type = DatabaseType::ClickHouse;
+        config.port = 8443;
+
+        assert_eq!(config.connection_url(), "http://10.1.2.3:8443");
+
+        config.ssl = true;
+        assert_eq!(config.connection_url(), "https://10.1.2.3:8443");
+
+        config.ssl = false;
+        config.url_params = Some("secure=true".to_string());
+        assert_eq!(config.connection_url(), "https://10.1.2.3:8443");
+    }
+
+    #[test]
+    fn clickhouse_host_may_include_http_scheme() {
+        let mut config = mysql_config("default", "", None);
+        config.db_type = DatabaseType::ClickHouse;
+        config.host = "https://clickhouse.example.com".to_string();
+        config.port = 8443;
+
+        assert_eq!(config.connection_url(), "https://clickhouse.example.com:8443");
     }
 
     #[test]
