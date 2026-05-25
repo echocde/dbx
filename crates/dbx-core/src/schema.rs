@@ -1,9 +1,45 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use crate::connection::{AppState, MysqlMode, PoolKind};
 use crate::db;
 use crate::models::connection::DatabaseType;
+
+macro_rules! extract_pool {
+    ($connections:expr, $key:expr, $variant:ident) => {
+        $connections.get($key).and_then(|v| match v {
+            PoolKind::$variant(val) => Some(val.clone()),
+            _ => None,
+        })
+    };
+}
+
+macro_rules! dispatch_mysql {
+    ($p:expr, $mode:expr, $mysql:path, $ob:path $(, $arg:expr)*) => {
+        if *$mode == MysqlMode::OceanBaseOracle {
+            $ob($p $(, $arg)*).await
+        } else {
+            $mysql($p $(, $arg)*).await
+        }
+    };
+}
+
+macro_rules! try_sqlserver {
+    ($connections:expr, $pool_key:expr, $method:ident $(, $arg:expr)*) => {
+        if let Some(client) = extract_pool!(&$connections, $pool_key, SqlServer) {
+            drop($connections);
+            let mut client = client.lock().await;
+            return db::sqlserver::$method(&mut client $(, $arg)*).await;
+        }
+    };
+}
+
+macro_rules! try_agent {
+    ($connections:expr, $pool_key:expr, $method:ident $(, $arg:expr)*) => {
+        if let Some(client) = extract_pool!(&$connections, $pool_key, Agent) {
+            drop($connections);
+            let mut client = client.lock().await;
+            return client.$method($($arg),*).await;
+        }
+    };
+}
 
 pub fn duckdb_query_tables(con: &duckdb::Connection) -> Result<Vec<db::TableInfo>, String> {
     duckdb_query_tables_in_database(con, "main", "main")
@@ -187,56 +223,6 @@ pub fn duckdb_query_columns_in_database_with_attached(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-pub fn extract_duckdb(
-    connections: &HashMap<String, PoolKind>,
-    key: &str,
-) -> Option<Arc<std::sync::Mutex<duckdb::Connection>>> {
-    match connections.get(key)? {
-        PoolKind::DuckDb(con) => Some(con.clone()),
-        _ => None,
-    }
-}
-
-pub fn extract_external(
-    connections: &HashMap<String, PoolKind>,
-    key: &str,
-) -> Option<Arc<crate::external::ExternalPool>> {
-    match connections.get(key)? {
-        PoolKind::ExternalTabular(pool) => Some(pool.clone()),
-        _ => None,
-    }
-}
-
-pub fn extract_sqlserver(
-    connections: &HashMap<String, PoolKind>,
-    key: &str,
-) -> Option<Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>> {
-    match connections.get(key)? {
-        PoolKind::SqlServer(client) => Some(client.clone()),
-        _ => None,
-    }
-}
-
-pub fn extract_clickhouse(
-    connections: &HashMap<String, PoolKind>,
-    key: &str,
-) -> Option<db::clickhouse_driver::ChClient> {
-    match connections.get(key)? {
-        PoolKind::ClickHouse(client) => Some(client.clone()),
-        _ => None,
-    }
-}
-
-pub fn extract_agent(
-    connections: &HashMap<String, PoolKind>,
-    key: &str,
-) -> Option<Arc<tokio::sync::Mutex<db::agent_driver::AgentDriverClient>>> {
-    match connections.get(key)? {
-        PoolKind::Agent(client) => Some(client.clone()),
-        _ => None,
-    }
-}
-
 async fn duckdb_attached_database_names(state: &AppState, connection_id: &str) -> Vec<String> {
     state
         .configs
@@ -259,7 +245,7 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
     log::info!("[list_databases] connection_id={connection_id}");
     {
         let connections = state.connections.read().await;
-        if extract_external(&connections, connection_id).is_some() {
+        if extract_pool!(&connections, connection_id, ExternalTabular).is_some() {
             return Ok(vec![db::DatabaseInfo { name: "main".to_string() }]);
         }
         if let Some(PoolKind::ExternalDriver { config, session, .. }) = connections.get(connection_id) {
@@ -270,16 +256,12 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
                 .invoke::<Vec<db::DatabaseInfo>>("listDatabases", serde_json::json!({ "connection": config.as_ref() }))
                 .await;
         }
-        if let Some(client) = extract_clickhouse(&connections, connection_id) {
+        if let Some(client) = extract_pool!(&connections, connection_id, ClickHouse) {
             drop(connections);
             return db::clickhouse_driver::list_databases(&client).await;
         }
-        if let Some(client) = extract_sqlserver(&connections, connection_id) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_databases(&mut client).await;
-        }
-        if let Some(client) = extract_agent(&connections, connection_id) {
+        try_sqlserver!(connections, connection_id, list_databases);
+        if let Some(client) = extract_pool!(&connections, connection_id, Agent) {
             let is_mongo =
                 state.configs.read().await.get(connection_id).is_some_and(|c| c.db_type == DatabaseType::MongoDb);
             if is_mongo {
@@ -298,13 +280,7 @@ pub async fn list_databases_core(state: &AppState, connection_id: &str) -> Resul
     let pool = connections.get(connection_id).ok_or("Connection not found")?;
 
     match pool {
-        PoolKind::Mysql(p, mode) => {
-            if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::list_databases(p).await
-            } else {
-                db::mysql::list_databases(p).await
-            }
-        }
+        PoolKind::Mysql(p, mode) => dispatch_mysql!(p, mode, db::mysql::list_databases, db::ob_oracle::list_databases),
         PoolKind::Postgres(p) => db::postgres::list_databases(p).await,
         PoolKind::Sqlite(p) => db::sqlite::list_databases(p).await,
         PoolKind::DuckDb(con) => {
@@ -331,16 +307,8 @@ pub async fn list_schemas_core(state: &AppState, connection_id: &str, database: 
                 )
                 .await;
         }
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_schemas(&mut client).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_schemas(database).await;
-        }
+        try_sqlserver!(connections, &pool_key, list_schemas);
+        try_agent!(connections, &pool_key, list_schemas, database);
     }
 
     let connections = state.connections.read().await;
@@ -370,7 +338,7 @@ pub async fn list_tables_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(ext_pool) = extract_external(&connections, &pool_key) {
+        if let Some(ext_pool) = extract_pool!(&connections, &pool_key, ExternalTabular) {
             drop(connections);
             let cache = ext_pool.cache.clone();
             return tokio::task::spawn_blocking(move || {
@@ -391,25 +359,17 @@ pub async fn list_tables_core(
                 )
                 .await;
         }
-        if let Some(con) = extract_duckdb(&connections, &pool_key) {
+        if let Some(con) = extract_pool!(&connections, &pool_key, DuckDb) {
             drop(connections);
             let con = con.lock().map_err(|e| e.to_string())?;
             return duckdb_query_tables_in_database_with_attached(&con, database, schema, &duckdb_attached_names);
         }
-        if let Some(client) = extract_clickhouse(&connections, &pool_key) {
+        if let Some(client) = extract_pool!(&connections, &pool_key, ClickHouse) {
             drop(connections);
             return db::clickhouse_driver::list_tables(&client, clickhouse_metadata_database(database, schema)).await;
         }
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_tables(&mut client, schema, filter, limit).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_tables(schema).await;
-        }
+        try_sqlserver!(connections, &pool_key, list_tables, schema, filter, limit);
+        try_agent!(connections, &pool_key, list_tables, schema);
     }
 
     let connections = state.connections.read().await;
@@ -417,11 +377,8 @@ pub async fn list_tables_core(
 
     match pool {
         PoolKind::Mysql(p, mode) => {
-            if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
-            } else {
-                db::mysql::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
-            }
+            dispatch_mysql!(p, mode, db::mysql::list_tables, db::ob_oracle::list_tables, schema)
+                .map(|tables| filter_table_infos(tables, filter, limit))
         }
         PoolKind::Postgres(p) => {
             db::postgres::list_tables(p, schema).await.map(|tables| filter_table_infos(tables, filter, limit))
@@ -505,7 +462,7 @@ pub async fn list_objects_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(ext_pool) = extract_external(&connections, &pool_key) {
+        if let Some(ext_pool) = extract_pool!(&connections, &pool_key, ExternalTabular) {
             drop(connections);
             let cache = ext_pool.cache.clone();
             return tokio::task::spawn_blocking(move || {
@@ -536,16 +493,8 @@ pub async fn list_objects_core(
                 )
                 .await;
         }
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_objects(&mut client, schema).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_objects(schema).await;
-        }
+        try_sqlserver!(connections, &pool_key, list_objects, schema);
+        try_agent!(connections, &pool_key, list_objects, schema);
     }
 
     let connections = state.connections.read().await;
@@ -553,6 +502,7 @@ pub async fn list_objects_core(
 
     match pool {
         PoolKind::Mysql(p, mode) => {
+            // Note: mysql and ob_oracle take different second args (database vs schema)
             if *mode == MysqlMode::OceanBaseOracle {
                 db::ob_oracle::list_objects(p, schema).await
             } else {
@@ -590,7 +540,7 @@ pub async fn get_columns_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(ext_pool) = extract_external(&connections, &pool_key) {
+        if let Some(ext_pool) = extract_pool!(&connections, &pool_key, ExternalTabular) {
             drop(connections);
             let cache = ext_pool.cache.clone();
             let table = table.to_string();
@@ -617,7 +567,7 @@ pub async fn get_columns_core(
                 )
                 .await;
         }
-        if let Some(con) = extract_duckdb(&connections, &pool_key) {
+        if let Some(con) = extract_pool!(&connections, &pool_key, DuckDb) {
             drop(connections);
             let con = con.lock().map_err(|e| e.to_string())?;
             return duckdb_query_columns_in_database_with_attached(
@@ -628,21 +578,13 @@ pub async fn get_columns_core(
                 &duckdb_attached_names,
             );
         }
-        if let Some(client) = extract_clickhouse(&connections, &pool_key) {
+        if let Some(client) = extract_pool!(&connections, &pool_key, ClickHouse) {
             drop(connections);
             return db::clickhouse_driver::get_columns(&client, clickhouse_metadata_database(database, schema), table)
                 .await;
         }
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::get_columns(&mut client, schema, table).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.get_columns(schema, table).await;
-        }
+        try_sqlserver!(connections, &pool_key, get_columns, schema, table);
+        try_agent!(connections, &pool_key, get_columns, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -650,11 +592,7 @@ pub async fn get_columns_core(
 
     match pool {
         PoolKind::Mysql(p, mode) => {
-            if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::get_columns(p, database, table).await
-            } else {
-                db::mysql::get_columns(p, database, table).await
-            }
+            dispatch_mysql!(p, mode, db::mysql::get_columns, db::ob_oracle::get_columns, database, table)
         }
         PoolKind::Postgres(p) => db::postgres::get_columns(p, schema, table).await,
         PoolKind::Sqlite(p) => db::sqlite::get_columns(p, schema, table).await,
@@ -673,16 +611,8 @@ pub async fn list_indexes_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_indexes(&mut client, schema, table).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_indexes(schema, table).await;
-        }
+        try_sqlserver!(connections, &pool_key, list_indexes, schema, table);
+        try_agent!(connections, &pool_key, list_indexes, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -690,11 +620,7 @@ pub async fn list_indexes_core(
 
     match pool {
         PoolKind::Mysql(p, mode) => {
-            if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::list_indexes(p, schema, table).await
-            } else {
-                db::mysql::list_indexes(p, schema, table).await
-            }
+            dispatch_mysql!(p, mode, db::mysql::list_indexes, db::ob_oracle::list_indexes, schema, table)
         }
         PoolKind::Postgres(p) => db::postgres::list_indexes(p, schema, table).await,
         PoolKind::Sqlite(p) => db::sqlite::list_indexes(p, schema, table).await,
@@ -713,16 +639,8 @@ pub async fn list_foreign_keys_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_foreign_keys(&mut client, schema, table).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_foreign_keys(schema, table).await;
-        }
+        try_sqlserver!(connections, &pool_key, list_foreign_keys, schema, table);
+        try_agent!(connections, &pool_key, list_foreign_keys, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -730,11 +648,7 @@ pub async fn list_foreign_keys_core(
 
     match pool {
         PoolKind::Mysql(p, mode) => {
-            if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::list_foreign_keys(p, schema, table).await
-            } else {
-                db::mysql::list_foreign_keys(p, schema, table).await
-            }
+            dispatch_mysql!(p, mode, db::mysql::list_foreign_keys, db::ob_oracle::list_foreign_keys, schema, table)
         }
         PoolKind::Postgres(p) => db::postgres::list_foreign_keys(p, schema, table).await,
         PoolKind::Sqlite(p) => db::sqlite::list_foreign_keys(p, schema, table).await,
@@ -753,16 +667,8 @@ pub async fn list_triggers_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return db::sqlserver::list_triggers(&mut client, schema, table).await;
-        }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.list_triggers(schema, table).await;
-        }
+        try_sqlserver!(connections, &pool_key, list_triggers, schema, table);
+        try_agent!(connections, &pool_key, list_triggers, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -770,11 +676,7 @@ pub async fn list_triggers_core(
 
     match pool {
         PoolKind::Mysql(p, mode) => {
-            if *mode == MysqlMode::OceanBaseOracle {
-                db::ob_oracle::list_triggers(p, schema, table).await
-            } else {
-                db::mysql::list_triggers(p, schema, table).await
-            }
+            dispatch_mysql!(p, mode, db::mysql::list_triggers, db::ob_oracle::list_triggers, schema, table)
         }
         PoolKind::Postgres(p) => db::postgres::list_triggers(p, schema, table).await,
         PoolKind::Sqlite(p) => db::sqlite::list_triggers(p, schema, table).await,
@@ -793,7 +695,7 @@ pub async fn get_table_ddl_core(
 
     {
         let connections = state.connections.read().await;
-        if let Some(con) = extract_duckdb(&connections, &pool_key) {
+        if let Some(con) = extract_pool!(&connections, &pool_key, DuckDb) {
             drop(connections);
             let tbl = table.replace('\'', "''");
             let con = con.lock().map_err(|e| e.to_string())?;
@@ -806,7 +708,7 @@ pub async fn get_table_ddl_core(
             }
             return Err("Table not found".to_string());
         }
-        if let Some(client) = extract_clickhouse(&connections, &pool_key) {
+        if let Some(client) = extract_pool!(&connections, &pool_key, ClickHouse) {
             drop(connections);
             let clickhouse_database = clickhouse_metadata_database(database, schema);
             let result = db::clickhouse_driver::execute_query(
@@ -823,16 +725,12 @@ pub async fn get_table_ddl_core(
                 .map(|s| s.to_string())
                 .ok_or_else(|| "Table not found".to_string());
         }
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
+        if let Some(client) = extract_pool!(&connections, &pool_key, SqlServer) {
             drop(connections);
             let mut client = client.lock().await;
             return build_sqlserver_ddl(&mut client, schema, table).await;
         }
-        if let Some(client) = extract_agent(&connections, &pool_key) {
-            drop(connections);
-            let mut client = client.lock().await;
-            return client.get_table_ddl(schema, table).await;
-        }
+        try_agent!(connections, &pool_key, get_table_ddl, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -978,14 +876,14 @@ pub async fn get_object_source_core(
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
     let source = {
         let connections = state.connections.read().await;
-        if let Some(client) = extract_sqlserver(&connections, &pool_key) {
+        if let Some(client) = extract_pool!(&connections, &pool_key, SqlServer) {
             drop(connections);
             let mut client = client.lock().await;
             first_string_cell(
                 db::sqlserver::execute_query(&mut client, &sqlserver_object_source_sql(schema, name, &object_type))
                     .await?,
             )?
-        } else if let Some(client) = extract_agent(&connections, &pool_key) {
+        } else if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
             drop(connections);
             let mut client = client.lock().await;
             let result: db::ObjectSource = client.get_object_source(schema, name, &object_type).await?;
