@@ -384,14 +384,32 @@ pub fn map_column_type(source_type: &str, _source_db: &DatabaseType, target_db: 
     }
 }
 
+fn mysql_type_needs_key_prefix(mapped_type: &str) -> bool {
+    let base = mapped_type.split('(').next().unwrap_or(mapped_type).trim().to_ascii_lowercase();
+    matches!(
+        base.as_str(),
+        "text" | "tinytext" | "mediumtext" | "longtext" | "blob" | "tinyblob" | "mediumblob" | "longblob"
+    )
+}
+
 pub fn generate_create_table_ddl(
     columns: &[db::ColumnInfo],
     table: &str,
     schema: &str,
     target_db: &DatabaseType,
     source_db: &DatabaseType,
+    table_comment: Option<&str>,
 ) -> String {
     let full_table = qualified_table(table, schema, target_db);
+
+    let is_mysql_family = matches!(
+        target_db,
+        DatabaseType::Mysql
+            | DatabaseType::Doris
+            | DatabaseType::StarRocks
+            | DatabaseType::Goldendb
+            | DatabaseType::Sundb
+    );
 
     let mut col_lines = Vec::with_capacity(columns.len());
     for c in columns {
@@ -401,6 +419,14 @@ pub fn generate_create_table_ddl(
             if !c.is_nullable {
                 line.push_str(" NOT NULL");
             }
+            if is_mysql_family {
+                if let Some(ref comment) = c.comment {
+                    let trimmed = comment.trim();
+                    if !trimmed.is_empty() {
+                        line.push_str(&format!(" COMMENT '{}'", trimmed.replace('\'', "''")));
+                    }
+                }
+            }
             line
         });
     }
@@ -409,7 +435,15 @@ pub fn generate_create_table_ddl(
     pks.reserve(columns.iter().filter(|c| c.is_primary_key).count());
     for c in columns {
         if c.is_primary_key {
-            pks.push(quote_identifier(&c.name, target_db));
+            let qname = quote_identifier(&c.name, target_db);
+            if is_mysql_family {
+                let mapped = map_column_type(&c.data_type, source_db, target_db);
+                if mysql_type_needs_key_prefix(&mapped) {
+                    pks.push(format!("{qname}(255)"));
+                    continue;
+                }
+            }
+            pks.push(qname);
         }
     }
 
@@ -434,11 +468,72 @@ pub fn generate_create_table_ddl(
 
     ddl.push_str("\n)");
 
+    if is_mysql_family {
+        if let Some(ref comment) = table_comment {
+            let trimmed = comment.trim();
+            if !trimmed.is_empty() {
+                ddl.push_str(&format!(" COMMENT='{}'", trimmed.replace('\'', "''")));
+            }
+        }
+    }
+
     if matches!(target_db, DatabaseType::ClickHouse) {
         ddl.push_str(" ENGINE = MergeTree() ORDER BY tuple()");
     }
 
     ddl
+}
+
+/// Generate COMMENT ON COLUMN / ALTER TABLE COMMENT COLUMN / COMMENT ON TABLE
+/// statements for databases that don't support inline comments in CREATE TABLE.
+/// MySQL family uses inline syntax (handled in generate_create_table_ddl).
+pub fn generate_comment_ddl(
+    columns: &[db::ColumnInfo],
+    table: &str,
+    schema: &str,
+    target_db: &DatabaseType,
+    table_comment: Option<&str>,
+) -> Vec<String> {
+    if !matches!(target_db, DatabaseType::Postgres | DatabaseType::Oracle | DatabaseType::ClickHouse) {
+        return Vec::new();
+    }
+
+    let full_table = qualified_table(table, schema, target_db);
+    let mut statements = Vec::new();
+
+    // Table-level comment first (PostgreSQL/Oracle only; ClickHouse doesn't support COMMENT ON TABLE)
+    if matches!(target_db, DatabaseType::Postgres | DatabaseType::Oracle) {
+        if let Some(ref comment) = table_comment {
+            let trimmed = comment.trim();
+            if !trimmed.is_empty() {
+                let escaped = trimmed.replace('\'', "''");
+                statements.push(format!("COMMENT ON TABLE {full_table} IS '{escaped}'"));
+            }
+        }
+    }
+
+    for c in columns {
+        if let Some(ref comment) = c.comment {
+            let trimmed = comment.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let escaped = trimmed.replace('\'', "''");
+            let qcol = quote_identifier(&c.name, target_db);
+
+            match target_db {
+                DatabaseType::Postgres | DatabaseType::Oracle => {
+                    statements.push(format!("COMMENT ON COLUMN {full_table}.{qcol} IS '{escaped}'"));
+                }
+                DatabaseType::ClickHouse => {
+                    statements.push(format!("ALTER TABLE {full_table} COMMENT COLUMN {qcol} '{escaped}'"));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    statements
 }
 
 pub fn generate_insert(
@@ -920,6 +1015,21 @@ where
     let col_types: Vec<Option<String>> = columns.iter().map(|c| Some(c.data_type.clone())).collect();
     log::info!("[transfer] {} has {} columns, counting rows...", table, columns.len());
 
+    // Fetch source table comment
+    let table_comment: Option<String> = crate::schema::list_tables_core(
+        state,
+        &request.source_connection_id,
+        &request.source_database,
+        &request.source_schema,
+        Some(table),
+        Some(1),
+    )
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .next()
+    .and_then(|t| t.comment);
+
     // Count source rows
     let total_rows = {
         let sql = count_sql(table, &request.source_schema, source_db_type);
@@ -939,12 +1049,33 @@ where
 
     // Create table on target if requested
     if request.create_table {
-        let ddl = generate_create_table_ddl(&columns, table, &request.target_schema, target_db_type, source_db_type);
+        let ddl = generate_create_table_ddl(
+            &columns,
+            table,
+            &request.target_schema,
+            target_db_type,
+            source_db_type,
+            table_comment.as_deref(),
+        );
         log::info!("[transfer] creating target table: {}", &ddl[..ddl.len().min(200)]);
-        if let Err(e) = execute_on_pool(state, target_pool_key, &ddl).await {
-            let err_lower = e.to_lowercase();
-            if !err_lower.contains("already exists") && !err_lower.contains("there is already") {
-                return Err(format!("Failed to create table: {e}"));
+        let table_exists = match execute_on_pool(state, target_pool_key, &ddl).await {
+            Ok(_) => true,
+            Err(e) => {
+                let err_lower = e.to_lowercase();
+                if err_lower.contains("already exists") || err_lower.contains("there is already") {
+                    true
+                } else {
+                    return Err(format!("Failed to create table: {e}"));
+                }
+            }
+        };
+        if table_exists {
+            let comment_stmts =
+                generate_comment_ddl(&columns, table, &request.target_schema, target_db_type, table_comment.as_deref());
+            for stmt in &comment_stmts {
+                if let Err(e) = execute_on_pool(state, target_pool_key, stmt).await {
+                    log::warn!("[transfer] failed to set column comment for {}: {}", table, e);
+                }
             }
         }
     }
@@ -1101,6 +1232,119 @@ mod tests {
             jdbc_driver_paths: Vec::new(),
             one_time: false,
         }
+    }
+
+    fn test_column(name: &str, data_type: &str) -> db::ColumnInfo {
+        db::ColumnInfo {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            is_nullable: true,
+            column_default: None,
+            is_primary_key: false,
+            extra: None,
+            comment: None,
+            numeric_precision: None,
+            numeric_scale: None,
+            character_maximum_length: None,
+        }
+    }
+
+    #[test]
+    fn mysql_create_table_includes_column_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: Some("用户ID".to_string()), is_primary_key: true, ..test_column("id", "int") },
+            db::ColumnInfo {
+                comment: Some("用户姓名".to_string()),
+                is_nullable: false,
+                ..test_column("name", "varchar(100)")
+            },
+            db::ColumnInfo { comment: None, ..test_column("age", "int") },
+        ];
+
+        let ddl = generate_create_table_ddl(&cols, "users", "", &DatabaseType::Mysql, &DatabaseType::Mysql, None);
+
+        assert!(ddl.contains("COMMENT '用户ID'"));
+        assert!(ddl.contains("COMMENT '用户姓名'"));
+        assert!(!ddl.contains("`age` INT COMMENT")); // no comment for age
+        assert!(ddl.contains("`name` VARCHAR(100) NOT NULL COMMENT '用户姓名'"));
+        assert!(ddl.contains("PRIMARY KEY (`id`)"));
+    }
+
+    #[test]
+    fn mysql_create_table_includes_table_comment() {
+        let cols = vec![db::ColumnInfo { is_primary_key: true, ..test_column("id", "int") }];
+
+        let ddl =
+            generate_create_table_ddl(&cols, "users", "", &DatabaseType::Mysql, &DatabaseType::Mysql, Some("用户表"));
+
+        assert!(ddl.contains(") COMMENT='用户表'"));
+    }
+
+    #[test]
+    fn mysql_text_pk_gets_key_prefix() {
+        let cols =
+            vec![db::ColumnInfo { data_type: "text".to_string(), is_primary_key: true, ..test_column("id", "text") }];
+
+        let ddl = generate_create_table_ddl(&cols, "logs", "", &DatabaseType::Mysql, &DatabaseType::Sqlite, None);
+
+        assert!(ddl.contains("PRIMARY KEY (`id`(255))"));
+        assert!(ddl.contains("`id` TEXT"));
+    }
+
+    #[test]
+    fn mysql_int_pk_no_prefix() {
+        let cols = vec![db::ColumnInfo { is_primary_key: true, ..test_column("id", "int") }];
+
+        let ddl = generate_create_table_ddl(&cols, "users", "", &DatabaseType::Mysql, &DatabaseType::Sqlite, None);
+
+        assert!(ddl.contains("PRIMARY KEY (`id`)"));
+        assert!(!ddl.contains("PRIMARY KEY (`id`(255))"));
+    }
+
+    #[test]
+    fn postgres_comment_ddl_generates_column_and_table_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: Some("主键".to_string()), ..test_column("id", "int") },
+            db::ColumnInfo { comment: Some("名称".to_string()), ..test_column("name", "varchar(100)") },
+        ];
+
+        let stmts = generate_comment_ddl(&cols, "items", "public", &DatabaseType::Postgres, Some("项目表"));
+
+        assert_eq!(stmts.len(), 3);
+        assert!(stmts[0].contains("COMMENT ON TABLE \"public\".\"items\" IS '项目表'"));
+        assert!(stmts[1].contains("COMMENT ON COLUMN \"public\".\"items\".\"id\" IS '主键'"));
+        assert!(stmts[2].contains("COMMENT ON COLUMN \"public\".\"items\".\"name\" IS '名称'"));
+    }
+
+    #[test]
+    fn clickhouse_comment_ddl_uses_alter_table() {
+        let cols = vec![db::ColumnInfo { comment: Some("日志消息".to_string()), ..test_column("message", "text") }];
+
+        let stmts = generate_comment_ddl(&cols, "logs", "", &DatabaseType::ClickHouse, None);
+
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].contains("ALTER TABLE `logs` COMMENT COLUMN `message` '日志消息'"));
+    }
+
+    #[test]
+    fn pg_comment_ddl_skips_empty_comments() {
+        let cols = vec![
+            db::ColumnInfo { comment: None, ..test_column("id", "int") },
+            db::ColumnInfo { comment: Some("  ".to_string()), ..test_column("name", "varchar(100)") },
+        ];
+
+        let stmts = generate_comment_ddl(&cols, "t", "", &DatabaseType::Postgres, None);
+
+        assert!(stmts.is_empty());
+    }
+
+    #[test]
+    fn non_mysql_family_no_inline_comment() {
+        let cols = vec![db::ColumnInfo { comment: Some("test".to_string()), ..test_column("col", "text") }];
+
+        // PostgreSQL target should NOT have inline COMMENT
+        let ddl = generate_create_table_ddl(&cols, "t", "", &DatabaseType::Postgres, &DatabaseType::Postgres, None);
+        assert!(!ddl.contains("COMMENT"));
     }
 
     #[test]
