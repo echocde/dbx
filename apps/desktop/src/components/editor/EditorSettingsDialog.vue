@@ -76,9 +76,7 @@ const systemFontsLoading = ref(false);
 const systemFontsLoaded = ref(false);
 
 // --- Snippet state ---
-const editSnippets = ref<SqlSnippet[]>(
-  settingsStore.editorSettings.snippets.map((s) => ({ ...s })),
-);
+const editSnippets = ref<SqlSnippet[]>(settingsStore.editorSettings.snippets.map((s) => ({ ...s })));
 
 const snippetDialogOpen = ref(false);
 const snippetEditingId = ref<string | null>(null);
@@ -105,9 +103,7 @@ function saveSnippet() {
     snippetFormPrefixError.value = "Prefix is required.";
     return;
   }
-  const duplicate = editSnippets.value.find(
-    (s) => s.prefix === prefix && s.id !== snippetEditingId.value,
-  );
+  const duplicate = editSnippets.value.find((s) => s.prefix === prefix && s.id !== snippetEditingId.value);
   if (duplicate) {
     snippetFormPrefixError.value = "Prefix must be unique.";
     return;
@@ -338,7 +334,16 @@ function setSidebarActivation(value: "single" | "double") {
 const activeSettingsTab = ref("editor");
 const isWeb = !isTauriRuntime();
 const displayedAppVersion = computed(() => (props.appVersion ? `v${props.appVersion}` : ""));
-type SettingsCategory = "editor" | "appearance" | "navigation" | "redis" | "shortcuts" | "snippets" | "ai" | "security" | "about";
+type SettingsCategory =
+  | "editor"
+  | "appearance"
+  | "navigation"
+  | "redis"
+  | "shortcuts"
+  | "snippets"
+  | "ai"
+  | "security"
+  | "about";
 const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[]>(() => [
   { value: "editor", label: t("settings.editorTab") },
   { value: "appearance", label: t("settings.appearanceTab") },
@@ -1059,9 +1064,9 @@ watch(
             <!-- Snippets Tab -->
             <section v-else-if="activeSettingsTab === 'snippets'" class="flex flex-col gap-4 py-2">
               <div class="flex items-center justify-between">
-                <p class="text-sm text-muted-foreground">{{ t('settings.snippetsDescription') }}</p>
+                <p class="text-sm text-muted-foreground">{{ t("settings.snippetsDescription") }}</p>
                 <Button variant="outline" size="sm" @click="openAddSnippetDialog">
-                  {{ t('settings.snippetsAdd') }}
+                  {{ t("settings.snippetsAdd") }}
                 </Button>
               </div>
 
@@ -1069,9 +1074,9 @@ watch(
                 <table class="w-full text-sm">
                   <thead>
                     <tr class="border-b bg-muted/50">
-                      <th class="px-3 py-2 text-left font-medium">{{ t('settings.snippetsLabel') }}</th>
-                      <th class="px-3 py-2 text-left font-medium">{{ t('settings.snippetsPrefix') }}</th>
-                      <th class="px-3 py-2 text-left font-medium">{{ t('settings.snippetsBody') }}</th>
+                      <th class="px-3 py-2 text-left font-medium">{{ t("settings.snippetsLabel") }}</th>
+                      <th class="px-3 py-2 text-left font-medium">{{ t("settings.snippetsPrefix") }}</th>
+                      <th class="px-3 py-2 text-left font-medium">{{ t("settings.snippetsBody") }}</th>
                       <th class="px-3 py-2 w-20"></th>
                     </tr>
                   </thead>
@@ -1103,7 +1108,7 @@ watch(
 
               <div class="flex justify-end">
                 <Button variant="outline" size="sm" @click="restoreDefaultSnippets">
-                  {{ t('settings.snippetsRestoreDefaults') }}
+                  {{ t("settings.snippetsRestoreDefaults") }}
                 </Button>
               </div>
             </section>
@@ -1496,21 +1501,29 @@ watch(
       <DialogContent class="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
-            {{ snippetEditingId ? t('settings.snippetsEditTitle') : t('settings.snippetsAddTitle') }}
+            {{ snippetEditingId ? t("settings.snippetsEditTitle") : t("settings.snippetsAddTitle") }}
           </DialogTitle>
         </DialogHeader>
         <div class="flex flex-col gap-4 py-2">
           <div class="flex flex-col gap-1.5">
-            <Label for="snippet-label">{{ t('settings.snippetsLabel') }}</Label>
-            <Input id="snippet-label" v-model="snippetForm.label" :placeholder="t('settings.snippetsLabelPlaceholder')" />
+            <Label for="snippet-label">{{ t("settings.snippetsLabel") }}</Label>
+            <Input
+              id="snippet-label"
+              v-model="snippetForm.label"
+              :placeholder="t('settings.snippetsLabelPlaceholder')"
+            />
           </div>
           <div class="flex flex-col gap-1.5">
-            <Label for="snippet-prefix">{{ t('settings.snippetsPrefix') }}</Label>
-            <Input id="snippet-prefix" v-model="snippetForm.prefix" :placeholder="t('settings.snippetsPrefixPlaceholder')" />
+            <Label for="snippet-prefix">{{ t("settings.snippetsPrefix") }}</Label>
+            <Input
+              id="snippet-prefix"
+              v-model="snippetForm.prefix"
+              :placeholder="t('settings.snippetsPrefixPlaceholder')"
+            />
             <p v-if="snippetFormPrefixError" class="text-xs text-destructive">{{ snippetFormPrefixError }}</p>
           </div>
           <div class="flex flex-col gap-1.5">
-            <Label for="snippet-body">{{ t('settings.snippetsBody') }}</Label>
+            <Label for="snippet-body">{{ t("settings.snippetsBody") }}</Label>
             <textarea
               id="snippet-body"
               v-model="snippetForm.body"
@@ -1521,8 +1534,8 @@ watch(
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" @click="snippetDialogOpen = false">{{ t('settings.cancel') }}</Button>
-          <Button @click="saveSnippet">{{ t('settings.save') }}</Button>
+          <Button variant="outline" @click="snippetDialogOpen = false">{{ t("settings.cancel") }}</Button>
+          <Button @click="saveSnippet">{{ t("settings.save") }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

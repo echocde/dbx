@@ -265,9 +265,12 @@ function normalizeSqlSnippets(value: unknown, existing?: SqlSnippet[]): SqlSnipp
     if (
       !item ||
       typeof item !== "object" ||
-      typeof item.id !== "string" || !item.id ||
-      typeof item.label !== "string" || !item.label ||
-      typeof item.prefix !== "string" || !item.prefix ||
+      typeof item.id !== "string" ||
+      !item.id ||
+      typeof item.label !== "string" ||
+      !item.label ||
+      typeof item.prefix !== "string" ||
+      !item.prefix ||
       typeof item.body !== "string"
     ) {
       continue;

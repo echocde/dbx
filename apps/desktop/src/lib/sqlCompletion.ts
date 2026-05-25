@@ -1889,9 +1889,7 @@ export function buildSnippetItemsForTest(prefix: string, snippets: SqlSnippet[])
 function buildSnippetItems(prefix: string, snippets: SqlSnippet[]): SqlCompletionItem[] {
   if (!prefix) return [];
   return snippets
-    .filter(
-      (snippet) => matchesPrefix(snippet.prefix, prefix) || matchesPrefix(snippet.label, prefix),
-    )
+    .filter((snippet) => matchesPrefix(snippet.prefix, prefix) || matchesPrefix(snippet.label, prefix))
     .map((snippet) => {
       const boostByPrefix = computeBoost(snippet.prefix, prefix);
       const boostByLabel = computeBoost(snippet.label, prefix);
