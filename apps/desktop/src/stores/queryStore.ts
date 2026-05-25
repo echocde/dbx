@@ -643,18 +643,20 @@ export const useQueryStore = defineStore("query", () => {
       }
 
       console.info("[DBX][executeTabSql:execute-multi:start]", { traceId, elapsed: elapsed() });
-      const executionOptions =
-        typeof pageLimit === "number"
+      const executionOptions = {
+        ...(typeof pageLimit === "number"
           ? useAgentResultSession
             ? {
                 maxRows: pageLimit,
                 fetchSize: pageLimit,
                 pageSize: pageLimit,
                 resultSessionId: options?.pagination?.sessionId,
-                clientSessionId: tab.id,
               }
-            : { maxRows: pageLimit, fetchSize: pageLimit, clientSessionId: tab.id }
-          : undefined;
+            : { maxRows: pageLimit, fetchSize: pageLimit }
+          : {}),
+        clientSessionId: tab.id,
+        timeoutSecs: settingsStore.editorSettings.queryTimeoutSecs,
+      };
       const results = await api.executeMulti(
         tab.connectionId,
         tab.database,
@@ -755,6 +757,7 @@ export const useQueryStore = defineStore("query", () => {
     try {
       const result = await api.executeQuery(tab.connectionId, tab.database, built.sql, tab.schema, executionId, {
         clientSessionId: tab.id,
+        timeoutSecs: useSettingsStore().editorSettings.queryTimeoutSecs,
       });
       const current = tabs.value.find((t) => t.id === id);
       if (current?.explainExecutionId === executionId) {

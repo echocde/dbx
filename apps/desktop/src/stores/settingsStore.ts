@@ -187,6 +187,8 @@ export interface EditorSettings {
   columnFormatters: Record<string, ColumnFormatterConfig>;
   customColumnFormatters: Record<string, CustomColumnFormatterConfig>;
   snippets: SqlSnippet[];
+  /** Query timeout in seconds. 0 = no timeout. Default 30s. */
+  queryTimeoutSecs: number;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -232,6 +234,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   columnFormatters: {},
   customColumnFormatters: {},
   snippets: DEFAULT_SQL_SNIPPETS,
+  queryTimeoutSecs: 30,
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
@@ -283,6 +286,11 @@ function normalizeSqlSnippets(value: unknown, existing?: SqlSnippet[]): SqlSnipp
   return valid;
 }
 
+function normalizeQueryTimeoutSecs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  return DEFAULT_EDITOR_SETTINGS.queryTimeoutSecs;
+}
+
 export function normalizeEditorSettings(settings: Partial<EditorSettings>, existing?: EditorSettings): EditorSettings {
   return {
     fontFamily: settings.fontFamily ?? DEFAULT_EDITOR_SETTINGS.fontFamily,
@@ -306,6 +314,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
     customColumnFormatters: normalizeCustomColumnFormatters(settings.customColumnFormatters),
     snippets: normalizeSqlSnippets(settings.snippets, existing?.snippets),
+    queryTimeoutSecs: normalizeQueryTimeoutSecs(settings.queryTimeoutSecs),
   };
 }
 
@@ -408,6 +417,9 @@ export const useSettingsStore = defineStore("settings", () => {
     const normalizedPartial = {
       ...partial,
       ...(partial.pageSize !== undefined ? { pageSize: normalizeResultPageSize(partial.pageSize) } : {}),
+      ...(partial.queryTimeoutSecs !== undefined
+        ? { queryTimeoutSecs: normalizeQueryTimeoutSecs(partial.queryTimeoutSecs) }
+        : {}),
       ...(partial.sidebarHiddenTablePrefixes !== undefined
         ? { sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(partial.sidebarHiddenTablePrefixes) }
         : {}),

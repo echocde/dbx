@@ -1367,6 +1367,8 @@ export default {
     shortcutPressShortcut: "Press shortcut",
     shortcutConflict: "This shortcut conflicts with another action in the same scope.",
     preview: "Live Preview",
+    queryTimeoutSecs: "Query Timeout (seconds)",
+    queryTimeoutSecsDescription: "Maximum execution time per query. 0 = no timeout. Default 30s.",
     jdbcPlugin: "DBX JDBC plugin",
     jdbcPluginInstall: "Install JDBC plugin",
     jdbcPluginInstallSuccess: "JDBC plugin installed",

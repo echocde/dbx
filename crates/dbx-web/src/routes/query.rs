@@ -20,6 +20,7 @@ pub struct ExecuteQueryRequest {
     pub page_size: Option<usize>,
     pub result_session_id: Option<String>,
     pub client_session_id: Option<String>,
+    pub timeout_secs: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -271,6 +272,7 @@ pub async fn execute_query(
             page_size: req.page_size,
             result_session_id: req.result_session_id,
             client_session_id: req.client_session_id,
+            timeout_secs: req.timeout_secs,
         },
     )
     .await
@@ -302,6 +304,7 @@ pub async fn execute_multi(
             page_size: req.page_size,
             result_session_id: req.result_session_id,
             client_session_id: req.client_session_id,
+            timeout_secs: req.timeout_secs,
         },
     )
     .await

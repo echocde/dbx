@@ -413,6 +413,7 @@ export async function executeQuery(
     pageSize?: number;
     resultSessionId?: string;
     clientSessionId?: string;
+    timeoutSecs?: number;
   },
 ): Promise<QueryResult> {
   return post("/api/query/execute", { connectionId, database, sql, schema, executionId, ...options });
@@ -430,6 +431,7 @@ export async function executeMulti(
     pageSize?: number;
     resultSessionId?: string;
     clientSessionId?: string;
+    timeoutSecs?: number;
   },
 ): Promise<QueryResult[]> {
   return post("/api/query/execute-multi", { connectionId, database, sql, schema, executionId, ...options });

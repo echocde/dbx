@@ -22,6 +22,7 @@ pub async fn execute_query(
     page_size: Option<usize>,
     result_session_id: Option<String>,
     client_session_id: Option<String>,
+    timeout_secs: Option<u64>,
 ) -> Result<db::QueryResult, String> {
     let registered_query =
         execution_id.as_ref().filter(|id| !id.trim().is_empty()).map(|id| state.running_queries.register(id.clone()));
@@ -40,6 +41,7 @@ pub async fn execute_query(
             page_size,
             result_session_id,
             client_session_id,
+            timeout_secs,
         },
     )
     .await
@@ -58,6 +60,7 @@ pub async fn execute_multi(
     page_size: Option<usize>,
     result_session_id: Option<String>,
     client_session_id: Option<String>,
+    timeout_secs: Option<u64>,
 ) -> Result<Vec<db::QueryResult>, String> {
     let registered_query =
         execution_id.as_ref().filter(|id| !id.trim().is_empty()).map(|id| state.running_queries.register(id.clone()));
@@ -85,6 +88,7 @@ pub async fn execute_multi(
             page_size,
             result_session_id,
             client_session_id,
+            timeout_secs,
         },
     )
     .await;

@@ -1342,6 +1342,8 @@ export default {
     shortcutPressShortcut: "按下快捷键",
     shortcutConflict: "这个快捷键与同一作用域内的其他操作冲突。",
     preview: "实时预览",
+    queryTimeoutSecs: "查询超时（秒）",
+    queryTimeoutSecsDescription: "每条查询的最大执行时间。0 = 不限制。默认 30 秒。",
     jdbcPlugin: "DBX JDBC 插件",
     jdbcPluginInstall: "安装 JDBC 插件",
     jdbcPluginInstallSuccess: "JDBC 插件已安装",

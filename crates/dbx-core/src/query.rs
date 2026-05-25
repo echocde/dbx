@@ -27,6 +27,9 @@ pub struct QueryExecutionOptions {
     pub page_size: Option<usize>,
     pub result_session_id: Option<String>,
     pub client_session_id: Option<String>,
+    /// Query timeout in seconds. `None` uses the default (30s).
+    /// `Some(0)` disables the timeout entirely.
+    pub timeout_secs: Option<u64>,
 }
 
 fn query_result_row_limit(max_rows: Option<usize>) -> usize {
@@ -399,6 +402,39 @@ where
     }
 }
 
+/// Like `wait_for_query_with_timeout` but with an optional timeout.
+/// `None` means no timeout (only cancellation can stop the query).
+pub async fn wait_for_query_opt<F>(
+    cancel_token: Option<CancellationToken>,
+    timeout_duration: Option<Duration>,
+    future: F,
+) -> Result<db::QueryResult, String>
+where
+    F: Future<Output = Result<db::QueryResult, String>>,
+{
+    match timeout_duration {
+        Some(d) => wait_for_query_with_timeout(cancel_token, d, future).await,
+        None => match cancel_token {
+            Some(token) => {
+                tokio::select! {
+                    biased;
+                    _ = token.cancelled() => Err(canceled_error()),
+                    result = future => result,
+                }
+            }
+            None => future.await,
+        },
+    }
+}
+
+fn resolve_query_timeout(timeout_secs: Option<u64>) -> Option<Duration> {
+    match timeout_secs {
+        Some(0) => None,
+        Some(n) => Some(Duration::from_secs(n)),
+        None => Some(QUERY_TIMEOUT),
+    }
+}
+
 pub async fn do_execute(
     state: &AppState,
     pool_key: &str,
@@ -408,6 +444,7 @@ pub async fn do_execute(
     cancel_token: Option<CancellationToken>,
     options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
+    let query_timeout = resolve_query_timeout(options.timeout_secs);
     let duckdb_attached_names = state
         .configs
         .read()
@@ -426,7 +463,7 @@ pub async fn do_execute(
             let attached_names = duckdb_attached_names;
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, async move {
+            wait_for_query_opt(cancel_token, query_timeout, async move {
                 let task = tokio::task::spawn_blocking(move || {
                     let con = con.lock().map_err(|e| e.to_string())?;
                     duckdb_execute_for_database(&con, &attached_names, database.as_deref(), &sql, max_rows)
@@ -440,7 +477,12 @@ pub async fn do_execute(
             let bare = *mode == crate::connection::MysqlMode::Bare;
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, db::mysql::execute_query_with_max_rows(&p, sql, bare, max_rows)).await
+            wait_for_query_opt(
+                cancel_token,
+                query_timeout,
+                db::mysql::execute_query_with_max_rows(&p, sql, bare, max_rows),
+            )
+            .await
         }
         PoolKind::Postgres(p) => {
             let p = p.clone();
@@ -448,28 +490,36 @@ pub async fn do_execute(
             let max_rows = options.max_rows;
             drop(connections);
             if let Some(schema) = schema {
-                wait_for_query(
+                wait_for_query_opt(
                     cancel_token,
+                    query_timeout,
                     db::postgres::execute_query_with_schema_and_max_rows(&p, &schema, sql, max_rows),
                 )
                 .await
             } else {
-                wait_for_query(cancel_token, db::postgres::execute_query_with_max_rows(&p, sql, max_rows)).await
+                wait_for_query_opt(
+                    cancel_token,
+                    query_timeout,
+                    db::postgres::execute_query_with_max_rows(&p, sql, max_rows),
+                )
+                .await
             }
         }
         PoolKind::Sqlite(p) => {
             let p = p.clone();
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, db::sqlite::execute_query_with_max_rows(&p, sql, max_rows)).await
+            wait_for_query_opt(cancel_token, query_timeout, db::sqlite::execute_query_with_max_rows(&p, sql, max_rows))
+                .await
         }
         PoolKind::ClickHouse(client) => {
             let client = client.clone();
             let database = pool_key.split(':').nth(1).unwrap_or("default").to_string();
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(
+            wait_for_query_opt(
                 cancel_token,
+                query_timeout,
                 db::clickhouse_driver::execute_query_with_max_rows(&client, &database, sql, max_rows),
             )
             .await
@@ -487,16 +537,20 @@ pub async fn do_execute(
                 },
                 None => client.lock().await,
             };
-            wait_for_query(cancel_token, db::sqlserver::execute_query_with_max_rows(&mut client, sql, max_rows))
-                .await
-                .map(|result| truncate_result_with_max_rows(result, max_rows))
+            wait_for_query_opt(
+                cancel_token,
+                query_timeout,
+                db::sqlserver::execute_query_with_max_rows(&mut client, sql, max_rows),
+            )
+            .await
+            .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
         PoolKind::Elasticsearch(client) => {
             let client = client.clone();
             let sql = sql.to_string();
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, db::elasticsearch_driver::execute_rest_query(&client, &sql))
+            wait_for_query_opt(cancel_token, query_timeout, db::elasticsearch_driver::execute_rest_query(&client, &sql))
                 .await
                 .map(|result| truncate_result_with_max_rows(result, max_rows))
         }
@@ -508,7 +562,7 @@ pub async fn do_execute(
             let schema = schema.map(|s| s.to_string());
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, async move {
+            wait_for_query_opt(cancel_token, query_timeout, async move {
                 let mut client = client.lock().await;
                 if let Some(session_id) = options.result_session_id.as_deref() {
                     let params = agent_fetch_query_page_params(session_id, options.page_size.unwrap_or(MAX_ROWS));
@@ -532,7 +586,7 @@ pub async fn do_execute(
             let sql = sql.to_string();
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, async move {
+            wait_for_query_opt(cancel_token, query_timeout, async move {
                 let task = tokio::task::spawn_blocking(move || {
                     let con = con.lock().map_err(|e| e.to_string())?;
                     duckdb_execute_with_max_rows(&con, &sql, max_rows)
@@ -549,7 +603,7 @@ pub async fn do_execute(
             let database = config.effective_database().unwrap_or("").to_string();
             let max_rows = options.max_rows;
             drop(connections);
-            wait_for_query(cancel_token, async move {
+            wait_for_query_opt(cancel_token, query_timeout, async move {
                 let params = external_driver_query_params(config.as_ref(), &sql, &database, schema.as_deref());
                 session.invoke::<db::QueryResult>("executeQuery", params).await
             })
