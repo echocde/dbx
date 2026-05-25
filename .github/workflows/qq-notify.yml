@@ -43,8 +43,6 @@ jobs:
               title = os.environ["ISSUE_TITLE"]
               url = os.environ["ISSUE_URL"]
               user = os.environ["ISSUE_USER"]
-              issue_body = (os.environ.get("ISSUE_BODY") or "").strip()
-              summary = f"\n\n内容: {issue_body[:300]}" if issue_body else ""
               msg = "\n".join([
                   "━━━━━━━━━━━━━━━",
                   "📋 新 Issue",
@@ -52,8 +50,6 @@ jobs:
                   f"标题: {title}",
                   f"提交者: {user}",
                   f"链接: {url}",
-                  f"{summary}",
-                  "━━━━━━━━━━━━━━━",
               ])
 
           elif event == "release":
@@ -141,9 +137,9 @@ jobs:
 
           prompt = f"""分析这个 GitHub Issue，用中文回复。格式要求（严格遵守，不要多余内容）：
 
-          合理性: [一句话判断，有效问题/重复报告/信息不足/不是bug]
-          优先级: [P0紧急/P1重要/P2普通/P3低优]
           总结: [一句话概括核心问题]
+          优先级: [P0紧急/P1重要/P2普通/P3低优]
+          合理性: [有效问题/重复报告/信息不足/不是bug]
           建议: [一句话给出处理建议或关联方向]
 
           ---
@@ -194,7 +190,8 @@ jobs:
             MSG_CONTENT="${MSG_CONTENT}
 
           🤖 AI 分析:
-          ${AI_ANALYSIS}"
+          ${AI_ANALYSIS}
+          ━━━━━━━━━━━━━━━"
           fi
 
           MSG=$(echo "$MSG_CONTENT" | jq -Rs .)
