@@ -126,7 +126,7 @@ pub fn format_export_sql_literal(value: &Value) -> String {
         return if value { "TRUE" } else { "FALSE" }.to_string();
     }
     let text = value.as_str().map_or_else(|| value.to_string(), ToString::to_string);
-    format!("'{}'", text.replace('\'', "''"))
+    format!("'{}'", text.replace('\\', "\\\\").replace('\'', "''"))
 }
 
 pub fn build_export_insert_statements(options: BuildExportInsertStatementsOptions) -> Result<Vec<String>, String> {

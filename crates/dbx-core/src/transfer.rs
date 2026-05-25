@@ -106,11 +106,11 @@ pub fn escape_value_typed(val: &serde_json::Value, db_type: &DatabaseType, colum
         },
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::String(s) => {
-            format!("'{}'", format_literal_string(s, db_type, column_type).replace('\'', "''"))
+            format!("'{}'", format_literal_string(s, db_type, column_type).replace('\\', "\\\\").replace('\'', "''"))
         }
         _ => {
             let s = val.to_string();
-            format!("'{}'", s.replace('\'', "''"))
+            format!("'{}'", s.replace('\\', "\\\\").replace('\'', "''"))
         }
     }
 }
