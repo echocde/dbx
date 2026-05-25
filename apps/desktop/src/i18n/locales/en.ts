@@ -361,6 +361,7 @@ export default {
     filterBuilderLessThan: "Less than",
     filterBuilderIsNull: "Is NULL",
     filterBuilderIsNotNull: "Is not NULL",
+    columnActions: "Column actions",
     localFilter: "Local column filter",
     localFilterFor: "Local Filter For '{column}'",
     columnFormatter: "Column formatter",
@@ -1318,6 +1319,12 @@ export default {
     showTrayIcon: "Show tray/menu bar icon",
     showTrayIconDescription:
       "When disabled, no icon is shown, but closing the window still hides DBX in the background as before.",
+    dataGridDisplay: "Data grid display",
+    showColumnCommentsInHeader: "Show column comments under names",
+    showColumnCommentsInHeaderDescription: "Display table column comments directly below grid column names.",
+    compactColumnHeaderActions: "Compact column header tools",
+    compactColumnHeaderActionsDescription:
+      "Move sort, formatter, and local filter tools into a more menu so column names get priority.",
     sidebarActivation: "Sidebar activation",
     sidebarActivationSingle: "Single click",
     sidebarActivationSingleDescription: "Open actionable sidebar items with one click.",

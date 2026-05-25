@@ -65,6 +65,8 @@ const editExecuteMode = ref(settingsStore.editorSettings.executeMode);
 const editWordWrap = ref(settingsStore.editorSettings.wordWrap);
 const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editShowTrayIcon = ref(settingsStore.desktopSettings.show_tray_icon);
+const editShowColumnCommentsInHeader = ref(settingsStore.editorSettings.showColumnCommentsInHeader);
+const editCompactColumnHeaderActions = ref(settingsStore.editorSettings.compactColumnHeaderActions);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
 const editQueryTimeoutSecs = ref(settingsStore.editorSettings.queryTimeoutSecs);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
@@ -198,6 +200,8 @@ watch(
       editWordWrap.value = settingsStore.editorSettings.wordWrap;
       editAppLayout.value = settingsStore.editorSettings.appLayout;
       editShowTrayIcon.value = settingsStore.desktopSettings.show_tray_icon;
+      editShowColumnCommentsInHeader.value = settingsStore.editorSettings.showColumnCommentsInHeader;
+      editCompactColumnHeaderActions.value = settingsStore.editorSettings.compactColumnHeaderActions;
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
       editQueryTimeoutSecs.value = settingsStore.editorSettings.queryTimeoutSecs;
       editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
@@ -239,6 +243,8 @@ function hasChanges(): boolean {
     editWordWrap.value !== settingsStore.editorSettings.wordWrap ||
     editAppLayout.value !== settingsStore.editorSettings.appLayout ||
     editShowTrayIcon.value !== settingsStore.desktopSettings.show_tray_icon ||
+    editShowColumnCommentsInHeader.value !== settingsStore.editorSettings.showColumnCommentsInHeader ||
+    editCompactColumnHeaderActions.value !== settingsStore.editorSettings.compactColumnHeaderActions ||
     editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
     editQueryTimeoutSecs.value !== settingsStore.editorSettings.queryTimeoutSecs ||
     JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts) ||
@@ -259,6 +265,8 @@ async function applySettings() {
     executeMode: editExecuteMode.value,
     wordWrap: editWordWrap.value,
     appLayout: editAppLayout.value,
+    showColumnCommentsInHeader: editShowColumnCommentsInHeader.value,
+    compactColumnHeaderActions: editCompactColumnHeaderActions.value,
     redisScanPageSize: editRedisScanPageSize.value,
     queryTimeoutSecs: editQueryTimeoutSecs.value,
     shortcuts: editShortcuts.value,
@@ -281,6 +289,8 @@ function resetDefaults() {
   editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
   editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
   editShowTrayIcon.value = DEFAULT_DESKTOP_SETTINGS.show_tray_icon;
+  editShowColumnCommentsInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader;
+  editCompactColumnHeaderActions.value = DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions;
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
   editQueryTimeoutSecs.value = DEFAULT_EDITOR_SETTINGS.queryTimeoutSecs;
   editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
@@ -964,6 +974,34 @@ watch(
                   <p class="text-xs text-muted-foreground">{{ t("settings.showTrayIconDescription") }}</p>
                 </div>
                 <Switch id="show-tray-icon" v-model="editShowTrayIcon" />
+              </div>
+
+              <Separator />
+
+              <div class="space-y-3">
+                <Label>{{ t("settings.dataGridDisplay") }}</Label>
+                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="show-column-comments-in-header">
+                      {{ t("settings.showColumnCommentsInHeader") }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("settings.showColumnCommentsInHeaderDescription") }}
+                    </p>
+                  </div>
+                  <Switch id="show-column-comments-in-header" v-model="editShowColumnCommentsInHeader" />
+                </div>
+                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="compact-column-header-actions">
+                      {{ t("settings.compactColumnHeaderActions") }}
+                    </Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("settings.compactColumnHeaderActionsDescription") }}
+                    </p>
+                  </div>
+                  <Switch id="compact-column-header-actions" v-model="editCompactColumnHeaderActions" />
+                </div>
               </div>
             </section>
 

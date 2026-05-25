@@ -352,6 +352,7 @@ export default {
     filterBuilderLessThan: "Menor que",
     filterBuilderIsNull: "Es NULL",
     filterBuilderIsNotNull: "No es NULL",
+    columnActions: "Acciones de columna",
     localFilter: "Filtro local de columna",
     localFilterFor: "Filtro local para '{column}'",
     searchValues: "Buscar valores...",
@@ -1211,6 +1212,13 @@ export default {
     showTrayIcon: "Mostrar icono en bandeja/barra de menú",
     showTrayIconDescription:
       "Si está desactivado, no se muestra el icono, pero cerrar la ventana sigue ocultando DBX en segundo plano como antes.",
+    dataGridDisplay: "Visualización de la tabla",
+    showColumnCommentsInHeader: "Mostrar comentarios bajo los nombres",
+    showColumnCommentsInHeaderDescription:
+      "Muestra los comentarios de columnas directamente debajo del nombre de la columna.",
+    compactColumnHeaderActions: "Compactar herramientas del encabezado",
+    compactColumnHeaderActionsDescription:
+      "Mueve ordenar, formatear y filtrar a un menú de más acciones para priorizar el nombre de columna.",
     sidebarActivation: "Activación de la barra lateral",
     sidebarActivationSingle: "Un clic",
     sidebarActivationSingleDescription: "Abrir elementos accionables de la barra lateral con un clic.",

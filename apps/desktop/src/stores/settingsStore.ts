@@ -180,6 +180,8 @@ export interface EditorSettings {
   pageSize: number;
   redisScanPageSize: number;
   mongoViewMode: "document" | "table";
+  showColumnCommentsInHeader: boolean;
+  compactColumnHeaderActions: boolean;
   shortcuts: ShortcutSettings;
   sidebarActivation: SidebarActivation;
   autoSelectActiveSidebarNode: boolean;
@@ -227,6 +229,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   pageSize: 100,
   redisScanPageSize: 1000,
   mongoViewMode: "document",
+  showColumnCommentsInHeader: false,
+  compactColumnHeaderActions: true,
   shortcuts: normalizeShortcutSettings(),
   sidebarActivation: "single",
   autoSelectActiveSidebarNode: false,
@@ -303,6 +307,10 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     pageSize: normalizeResultPageSize(settings.pageSize),
     redisScanPageSize: settings.redisScanPageSize ?? DEFAULT_EDITOR_SETTINGS.redisScanPageSize,
     mongoViewMode: settings.mongoViewMode === "table" ? "table" : DEFAULT_EDITOR_SETTINGS.mongoViewMode,
+    showColumnCommentsInHeader:
+      settings.showColumnCommentsInHeader ?? DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader,
+    compactColumnHeaderActions:
+      settings.compactColumnHeaderActions ?? DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions,
     shortcuts: normalizeShortcutSettings(settings.shortcuts),
     sidebarActivation:
       settings.sidebarActivation === "single" || settings.sidebarActivation === "double"

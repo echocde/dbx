@@ -14,6 +14,7 @@ import {
   Plus,
   Trash2,
   Save,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -64,7 +65,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -237,6 +238,13 @@ const columnCommentMap = computed(() => {
   }
   return map;
 });
+const showColumnCommentsInHeader = computed(() => settingsStore.editorSettings.showColumnCommentsInHeader);
+const compactColumnHeaderActions = computed(() => settingsStore.editorSettings.compactColumnHeaderActions);
+
+function headerColumnComment(column: string): string {
+  if (!showColumnCommentsInHeader.value) return "";
+  return columnCommentMap.value.get(column) || "";
+}
 
 function shortTypeName(t: string): string {
   const s = t.toLowerCase();
@@ -391,6 +399,8 @@ type StructuredFilterRule = {
 
 const localColumnFilters = ref<Record<number, Set<string>>>({});
 const localFilterOpenColumn = ref<number | null>(null);
+const headerActionMenuOpenColumn = ref<number | null>(null);
+const headerPanelDismissGuardUntil = ref(0);
 const localFilterSearch = ref("");
 const localFilterDraft = ref<LocalColumnFilterDraft | null>(null);
 const filterBuilderOpen = ref(false);
@@ -546,6 +556,35 @@ function openLocalFilter(colIdx: number) {
   localFilterOpenColumn.value = colIdx;
 }
 
+function guardHeaderPanelDismiss() {
+  headerPanelDismissGuardUntil.value = Date.now() + 350;
+}
+
+function shouldIgnoreHeaderPanelClose(columnIndex: number, openColumn: number | null): boolean {
+  return (
+    compactColumnHeaderActions.value && openColumn === columnIndex && Date.now() < headerPanelDismissGuardUntil.value
+  );
+}
+
+function openCompactLocalFilter(colIdx: number) {
+  headerActionMenuOpenColumn.value = null;
+  guardHeaderPanelDismiss();
+  nextTick(() => {
+    window.setTimeout(() => {
+      guardHeaderPanelDismiss();
+      openLocalFilter(colIdx);
+    }, 0);
+  });
+}
+
+function handleLocalFilterOpenChange(value: boolean, columnIndex: number) {
+  if (value) {
+    openLocalFilter(columnIndex);
+  } else if (!shouldIgnoreHeaderPanelClose(columnIndex, localFilterOpenColumn.value)) {
+    closeLocalFilter();
+  }
+}
+
 function closeLocalFilter() {
   localFilterOpenColumn.value = null;
   localFilterDraft.value = null;
@@ -630,8 +669,27 @@ function openColumnFormatter(columnIndex: number) {
   formatterOpenColumn.value = columnIndex;
 }
 
+function openCompactColumnFormatter(columnIndex: number) {
+  headerActionMenuOpenColumn.value = null;
+  guardHeaderPanelDismiss();
+  nextTick(() => {
+    window.setTimeout(() => {
+      guardHeaderPanelDismiss();
+      openColumnFormatter(columnIndex);
+    }, 0);
+  });
+}
+
 function closeColumnFormatter() {
   formatterOpenColumn.value = null;
+}
+
+function handleColumnFormatterOpenChange(value: boolean, columnIndex: number) {
+  if (value) {
+    openColumnFormatter(columnIndex);
+  } else if (!shouldIgnoreHeaderPanelClose(columnIndex, formatterOpenColumn.value)) {
+    closeColumnFormatter();
+  }
 }
 
 function saveColumnFormatter(columnIndex: number) {
@@ -2257,6 +2315,24 @@ function toggleSort(colName: string, colIdx: number) {
     syncOrderByInputWithSort(colName, "asc");
     emit("sort", colName, colIdx, "asc", currentWhereInput());
   }
+}
+
+function applyHeaderSort(colName: string, colIdx: number, direction: "asc" | "desc" | null) {
+  if (getIsResizing()) return;
+  currentPage.value = 1;
+  resetGridVerticalScroll(true);
+  if (direction) {
+    sortCol.value = colName;
+    sortColIndex.value = colIdx;
+    sortDir.value = direction;
+    syncOrderByInputWithSort(colName, direction);
+  } else {
+    sortCol.value = null;
+    sortColIndex.value = null;
+    sortDir.value = "asc";
+    syncOrderByInputWithSort(null, null);
+  }
+  emit("sort", colName, colIdx, direction, currentWhereInput());
 }
 
 function applyContextSort(direction: "asc" | "desc" | null) {
@@ -3945,13 +4021,23 @@ defineExpose({
                           @contextmenu="onHeaderContext(col)"
                         >
                           <span class="flex min-w-0 items-center gap-1 overflow-hidden">
-                            <span
-                              class="min-w-0 flex-1 truncate cursor-pointer"
-                              @click="toggleSort(col, actualColumnIndex(colIdx))"
-                            >
-                              {{ col }}
+                            <span class="flex min-w-0 flex-1 flex-col overflow-hidden">
+                              <span
+                                class="min-w-0 truncate cursor-pointer leading-4"
+                                @click="toggleSort(col, actualColumnIndex(colIdx))"
+                              >
+                                {{ col }}
+                              </span>
+                              <span
+                                v-if="headerColumnComment(col)"
+                                class="min-w-0 truncate text-[10px] font-normal leading-3 text-muted-foreground"
+                                :title="headerColumnComment(col)"
+                              >
+                                {{ headerColumnComment(col) }}
+                              </span>
                             </span>
                             <button
+                              v-if="!compactColumnHeaderActions"
                               type="button"
                               class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                               :class="
@@ -3976,14 +4062,88 @@ defineExpose({
                               />
                               <ArrowUpDown v-else class="h-3 w-3 shrink-0" />
                             </button>
+                            <DropdownMenu
+                              v-if="compactColumnHeaderActions"
+                              :open="headerActionMenuOpenColumn === actualColumnIndex(colIdx)"
+                              @update:open="
+                                (value: boolean) =>
+                                  (headerActionMenuOpenColumn = value ? actualColumnIndex(colIdx) : null)
+                              "
+                            >
+                              <DropdownMenuTrigger as-child>
+                                <button
+                                  type="button"
+                                  class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  :class="
+                                    sortCol === col && sortColIndex === actualColumnIndex(colIdx)
+                                      ? 'text-primary opacity-100'
+                                      : columnHasFormatter(actualColumnIndex(colIdx)) ||
+                                          localFilterActive(actualColumnIndex(colIdx))
+                                        ? 'text-primary opacity-90'
+                                        : 'opacity-80'
+                                  "
+                                  :title="t('grid.columnActions')"
+                                  @click.stop
+                                >
+                                  <ChevronDown class="h-3 w-3" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                class="w-max min-w-28 max-w-48 p-0.5"
+                                @click.stop
+                                @keydown.stop
+                              >
+                                <DropdownMenuItem
+                                  class="gap-1 px-1.5 py-0.5 text-xs"
+                                  @click="applyHeaderSort(col, actualColumnIndex(colIdx), 'asc')"
+                                >
+                                  <ArrowUp class="h-3 w-3" />
+                                  {{ t("grid.sortAscending") }}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  class="gap-1 px-1.5 py-0.5 text-xs"
+                                  @click="applyHeaderSort(col, actualColumnIndex(colIdx), 'desc')"
+                                >
+                                  <ArrowDown class="h-3 w-3" />
+                                  {{ t("grid.sortDescending") }}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  class="gap-1 px-1.5 py-0.5 text-xs"
+                                  :disabled="!sortCol"
+                                  @click="applyHeaderSort(col, actualColumnIndex(colIdx), null)"
+                                >
+                                  <ArrowUpDown class="h-3 w-3" />
+                                  {{ t("grid.clearSort") }}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  class="gap-1 px-1.5 py-0.5 text-xs"
+                                  :disabled="!formatterKeyForColumn(col)"
+                                  @select.prevent="openCompactColumnFormatter(actualColumnIndex(colIdx))"
+                                >
+                                  <Code2 class="h-3 w-3" />
+                                  {{ t("grid.columnFormatter") }}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  class="gap-1 px-1.5 py-0.5 text-xs"
+                                  @select.prevent="openCompactLocalFilter(actualColumnIndex(colIdx))"
+                                >
+                                  <Filter class="h-3 w-3" />
+                                  {{ t("grid.localFilter") }}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <Popover
                               :open="formatterOpenColumn === actualColumnIndex(colIdx)"
                               @update:open="
-                                (value: boolean) =>
-                                  value ? openColumnFormatter(actualColumnIndex(colIdx)) : closeColumnFormatter()
+                                (value: boolean) => handleColumnFormatterOpenChange(value, actualColumnIndex(colIdx))
                               "
                             >
-                              <PopoverTrigger as-child>
+                              <PopoverAnchor v-if="compactColumnHeaderActions" as-child>
+                                <span class="pointer-events-none absolute right-3 top-1/2 h-px w-px -translate-y-1/2" />
+                              </PopoverAnchor>
+                              <PopoverTrigger v-else as-child>
                                 <button
                                   type="button"
                                   class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -4203,11 +4363,13 @@ defineExpose({
                             <Popover
                               :open="localFilterOpenColumn === actualColumnIndex(colIdx)"
                               @update:open="
-                                (value: boolean) =>
-                                  value ? openLocalFilter(actualColumnIndex(colIdx)) : closeLocalFilter()
+                                (value: boolean) => handleLocalFilterOpenChange(value, actualColumnIndex(colIdx))
                               "
                             >
-                              <PopoverTrigger as-child>
+                              <PopoverAnchor v-if="compactColumnHeaderActions" as-child>
+                                <span class="pointer-events-none absolute right-3 top-1/2 h-px w-px -translate-y-1/2" />
+                              </PopoverAnchor>
+                              <PopoverTrigger v-else as-child>
                                 <button
                                   type="button"
                                   class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
