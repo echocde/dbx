@@ -141,7 +141,11 @@ fn format_pg_array_element(val: &serde_json::Value) -> String {
         }
         serde_json::Value::Number(n) => n.to_string(),
         serde_json::Value::Bool(b) => {
-            if *b { "true".to_string() } else { "false".to_string() }
+            if *b {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
         }
         serde_json::Value::Object(o) => {
             let json = serde_json::to_string(o).unwrap_or_default();
