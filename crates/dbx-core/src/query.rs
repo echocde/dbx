@@ -602,8 +602,12 @@ pub async fn execute_sql_statement_with_options(
     cancel_token: Option<CancellationToken>,
     options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
+    // When database is not set, fall back to the shared (non-session-scoped) pool
+    // to avoid creating a connection without a default database context.
+    // This is particularly important for Doris/StarRocks, where metadata connections
+    // omit the database and would cause "Current database is not selected" errors.
     let pool_key = if database.is_empty() {
-        state.get_or_create_pool_for_session(connection_id, None, options.client_session_id.as_deref()).await?
+        state.get_or_create_pool(connection_id, None).await?
     } else {
         state
             .get_or_create_pool_for_session(connection_id, Some(database), options.client_session_id.as_deref())
@@ -619,8 +623,11 @@ pub async fn execute_sql_statement_with_options(
     match &result {
         Err(e) if is_connection_error(e) && !is_canceled(&cancel_token) => {
             let db_opt = if database.is_empty() { None } else { Some(database) };
-            let new_key =
-                state.reconnect_pool_for_session(connection_id, db_opt, options.client_session_id.as_deref()).await?;
+            let new_key = if database.is_empty() {
+                state.reconnect_pool(connection_id, db_opt).await?
+            } else {
+                state.reconnect_pool_for_session(connection_id, db_opt, options.client_session_id.as_deref()).await?
+            };
             do_execute(state, &new_key, Some(database), sql, schema, cancel_token, options).await
         }
         _ => result,
@@ -635,7 +642,7 @@ pub async fn close_query_session(
     client_session_id: Option<&str>,
 ) -> Result<bool, String> {
     let pool_key = if database.is_empty() {
-        state.get_or_create_pool_for_session(connection_id, None, client_session_id).await?
+        state.get_or_create_pool(connection_id, None).await?
     } else {
         state.get_or_create_pool_for_session(connection_id, Some(database), client_session_id).await?
     };
@@ -683,7 +690,7 @@ pub async fn execute_multi_core_with_options(
     options: QueryExecutionOptions,
 ) -> Result<Vec<db::QueryResult>, String> {
     let pool_key = if database.is_empty() {
-        state.get_or_create_pool_for_session(connection_id, None, options.client_session_id.as_deref()).await?
+        state.get_or_create_pool(connection_id, None).await?
     } else {
         state
             .get_or_create_pool_for_session(connection_id, Some(database), options.client_session_id.as_deref())
