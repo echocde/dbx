@@ -1842,6 +1842,7 @@ dependencies = [
  "csv",
  "deadpool-postgres",
  "duckdb",
+ "encoding_rs",
  "font-kit",
  "futures",
  "iana-time-zone",
