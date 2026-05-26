@@ -148,18 +148,10 @@ impl AppState {
     ) -> Result<String, String> {
         let db_type = {
             let configs = self.configs.read().await;
-            configs.get(connection_id).map(|c| c.db_type.clone())
+            configs.get(connection_id).map(|c| c.db_type)
         };
 
-        let is_single_conn = db_type.as_ref().is_some_and(database_capabilities::is_single_connection_pool);
-        let base_pool_key = if is_single_conn {
-            connection_id.to_string()
-        } else {
-            match database {
-                Some(db) => format!("{connection_id}:{db}"),
-                None => connection_id.to_string(),
-            }
-        };
+        let base_pool_key = base_pool_key_for(db_type, connection_id, database, false);
         let pool_key = session_scoped_pool_key(base_pool_key, client_session_id);
 
         let conns = self.connections.read().await;
@@ -454,24 +446,11 @@ impl AppState {
         database: Option<&str>,
         client_session_id: Option<&str>,
     ) -> Result<String, String> {
-        let is_single_conn = {
+        let db_type = {
             let configs = self.configs.read().await;
-            configs
-                .get(connection_id)
-                .map(|c| {
-                    database_capabilities::is_single_connection_pool(&c.db_type)
-                        || c.db_type == DatabaseType::Elasticsearch
-                })
-                .unwrap_or(false)
+            configs.get(connection_id).map(|c| c.db_type)
         };
-        let base_pool_key = if is_single_conn {
-            connection_id.to_string()
-        } else {
-            match database {
-                Some(db) => format!("{connection_id}:{db}"),
-                None => connection_id.to_string(),
-            }
-        };
+        let base_pool_key = base_pool_key_for(db_type, connection_id, database, true);
         let pool_key = session_scoped_pool_key(base_pool_key, client_session_id);
         if self.uses_forwarded_transport(connection_id).await {
             self.remove_connection_pools(connection_id).await;
@@ -494,17 +473,9 @@ impl AppState {
         };
         let db_type = {
             let configs = self.configs.read().await;
-            configs.get(connection_id).map(|c| c.db_type.clone())
+            configs.get(connection_id).map(|c| c.db_type)
         };
-        let is_single_conn = db_type.as_ref().is_some_and(database_capabilities::is_single_connection_pool);
-        let base_pool_key = if is_single_conn {
-            connection_id.to_string()
-        } else {
-            match database {
-                Some(db) => format!("{connection_id}:{db}"),
-                None => connection_id.to_string(),
-            }
-        };
+        let base_pool_key = base_pool_key_for(db_type, connection_id, database, false);
         let pool_key = session_scoped_pool_key(base_pool_key, Some(&session));
         Ok(self.connections.write().await.remove(&pool_key).is_some())
     }
@@ -575,6 +546,28 @@ fn session_scoped_pool_key(base_pool_key: String, client_session_id: Option<&str
     normalize_client_session_id(client_session_id)
         .map(|session| format!("{base_pool_key}:session:{session}"))
         .unwrap_or(base_pool_key)
+}
+
+fn base_pool_key_for(
+    db_type: Option<DatabaseType>,
+    connection_id: &str,
+    database: Option<&str>,
+    include_elasticsearch_single_pool: bool,
+) -> String {
+    let is_single_connection_pool = db_type.as_ref().is_some_and(|db_type| {
+        let is_single = database_capabilities::is_single_connection_pool(db_type)
+            || (include_elasticsearch_single_pool && *db_type == DatabaseType::Elasticsearch);
+        is_single && !database_capabilities::is_agent_type(db_type)
+    });
+
+    if is_single_connection_pool {
+        connection_id.to_string()
+    } else {
+        match database.map(str::trim).filter(|db| !db.is_empty()) {
+            Some(db) => format!("{connection_id}:{db}"),
+            None => connection_id.to_string(),
+        }
+    }
 }
 
 fn default_plugin_dir() -> PathBuf {
@@ -1197,6 +1190,38 @@ mod tests {
         let scoped = database_connection_config(&config, Some("analytics"));
 
         assert_eq!(scoped.database.as_deref(), Some("ORCL"));
+    }
+
+    #[test]
+    fn agent_single_connection_types_keep_database_scoped_pool_keys() {
+        assert_eq!(
+            super::base_pool_key_for(Some(DatabaseType::Kingbase), "kingbase-conn", Some("app1"), false),
+            "kingbase-conn:app1"
+        );
+        assert_eq!(
+            super::base_pool_key_for(Some(DatabaseType::Oracle), "oracle-conn", Some("ORCLPDB1"), false),
+            "oracle-conn:ORCLPDB1"
+        );
+        assert_eq!(
+            super::base_pool_key_for(Some(DatabaseType::MongoDb), "mongo-conn", Some("shop"), false),
+            "mongo-conn:shop"
+        );
+    }
+
+    #[test]
+    fn non_agent_single_connection_types_still_share_pool_keys() {
+        assert_eq!(
+            super::base_pool_key_for(Some(DatabaseType::Sqlite), "sqlite-conn", Some("main"), false),
+            "sqlite-conn"
+        );
+        assert_eq!(
+            super::base_pool_key_for(Some(DatabaseType::DuckDb), "duckdb-conn", Some("analytics"), false),
+            "duckdb-conn"
+        );
+        assert_eq!(
+            super::base_pool_key_for(Some(DatabaseType::Jdbc), "jdbc-conn", Some("analytics"), false),
+            "jdbc-conn"
+        );
     }
 
     #[test]

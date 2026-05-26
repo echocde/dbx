@@ -291,6 +291,7 @@ fn json_value_for_js(value: serde_json::Value) -> serde_json::Value {
 
 pub fn agent_execute_query_params(
     sql: &str,
+    database: Option<&str>,
     schema: Option<&str>,
     options: QueryExecutionOptions,
 ) -> serde_json::Value {
@@ -298,6 +299,9 @@ pub fn agent_execute_query_params(
         "sql": sql,
         "maxRows": options.max_rows.unwrap_or(MAX_ROWS),
     });
+    if let Some(database) = database.map(str::trim).filter(|database| !database.is_empty()) {
+        params["database"] = serde_json::json!(database);
+    }
     if let Some(schema) = schema {
         params["schema"] = serde_json::json!(schema);
     }
@@ -309,6 +313,7 @@ pub fn agent_execute_query_params(
 
 pub fn agent_execute_query_page_params(
     sql: &str,
+    database: Option<&str>,
     schema: Option<&str>,
     options: QueryExecutionOptions,
 ) -> serde_json::Value {
@@ -317,6 +322,9 @@ pub fn agent_execute_query_page_params(
         "pageSize": options.page_size.unwrap_or(MAX_ROWS),
         "maxRows": options.max_rows.unwrap_or(MAX_ROWS),
     });
+    if let Some(database) = database.map(str::trim).filter(|database| !database.is_empty()) {
+        params["database"] = serde_json::json!(database);
+    }
     if let Some(schema) = schema {
         params["schema"] = serde_json::json!(schema);
     }
@@ -559,6 +567,7 @@ pub async fn do_execute(
         PoolKind::Agent(client) => {
             let client = client.clone();
             let sql = sql.to_string();
+            let database = database.map(|s| s.to_string());
             let schema = schema.map(|s| s.to_string());
             let max_rows = options.max_rows;
             drop(connections);
@@ -568,10 +577,10 @@ pub async fn do_execute(
                     let params = agent_fetch_query_page_params(session_id, options.page_size.unwrap_or(MAX_ROWS));
                     client.fetch_query_page(params).await
                 } else if options.page_size.is_some() {
-                    let params = agent_execute_query_page_params(&sql, schema.as_deref(), options);
+                    let params = agent_execute_query_page_params(&sql, database.as_deref(), schema.as_deref(), options);
                     client.execute_query_page(params).await
                 } else {
-                    let params = agent_execute_query_params(&sql, schema.as_deref(), options);
+                    let params = agent_execute_query_params(&sql, database.as_deref(), schema.as_deref(), options);
                     client.execute_query(params).await
                 }
             })
@@ -986,8 +995,10 @@ pub async fn execute_statements_in_transaction(
         Some(TxPath::Pg(pool)) => exec_tx_pg_inner(pool, statements, schema, start).await,
         Some(TxPath::Mysql(pool, _bare)) => exec_tx_mysql_inner(pool, statements, start).await,
         Some(TxPath::Sqlite(pool)) => exec_tx_sqlite_inner(pool, statements, start).await,
-        Some(TxPath::Explicit) => exec_tx_explicit_inner(state, &pool_key, statements, schema, start).await,
-        Some(TxPath::None) => exec_tx_none_inner(state, &pool_key, statements, schema, start).await,
+        Some(TxPath::Explicit) => {
+            exec_tx_explicit_inner(state, &pool_key, Some(database), statements, schema, start).await
+        }
+        Some(TxPath::None) => exec_tx_none_inner(state, &pool_key, Some(database), statements, schema, start).await,
         None => Err("Connection not found for transaction".to_string()),
     }
 }
@@ -1122,6 +1133,7 @@ async fn exec_tx_sqlite_inner(
 async fn exec_tx_explicit_inner(
     state: &AppState,
     pool_key: &str,
+    database: Option<&str>,
     statements: &[String],
     schema: Option<&str>,
     start: std::time::Instant,
@@ -1129,24 +1141,25 @@ async fn exec_tx_explicit_inner(
     let conns = state.connections.read().await;
     if let Some(crate::connection::PoolKind::Agent(client)) = conns.get(pool_key) {
         let mut client = client.lock().await;
-        let result: db::QueryResult = client.execute_transaction(statements, schema).await?;
+        let result: db::QueryResult = client.execute_transaction(database, statements, schema).await?;
         return Ok(db::QueryResult { execution_time_ms: start.elapsed().as_millis(), ..result });
     }
     drop(conns);
 
-    do_execute(state, pool_key, None, "BEGIN TRANSACTION", schema, None, QueryExecutionOptions::default())
+    do_execute(state, pool_key, database, "BEGIN TRANSACTION", schema, None, QueryExecutionOptions::default())
         .await
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
-        match do_execute(state, pool_key, None, sql, schema, None, QueryExecutionOptions::default()).await {
+        match do_execute(state, pool_key, database, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
             }
             Err(e) => {
                 if let Err(rb_err) =
-                    do_execute(state, pool_key, None, "ROLLBACK", schema, None, QueryExecutionOptions::default()).await
+                    do_execute(state, pool_key, database, "ROLLBACK", schema, None, QueryExecutionOptions::default())
+                        .await
                 {
                     log::error!("ROLLBACK failed after statement {} error: {}", i + 1, rb_err);
                 }
@@ -1155,7 +1168,7 @@ async fn exec_tx_explicit_inner(
         }
     }
 
-    do_execute(state, pool_key, None, "COMMIT", schema, None, QueryExecutionOptions::default())
+    do_execute(state, pool_key, database, "COMMIT", schema, None, QueryExecutionOptions::default())
         .await
         .map_err(|e| format!("COMMIT failed: {}", e))?;
 
@@ -1173,6 +1186,7 @@ async fn exec_tx_explicit_inner(
 async fn exec_tx_none_inner(
     state: &AppState,
     pool_key: &str,
+    database: Option<&str>,
     statements: &[String],
     schema: Option<&str>,
     start: std::time::Instant,
@@ -1180,7 +1194,7 @@ async fn exec_tx_none_inner(
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {
         log::info!("[query][tx-none:statement:start] index={} sql={}", i + 1, sql);
-        match do_execute(state, pool_key, None, sql, schema, None, QueryExecutionOptions::default()).await {
+        match do_execute(state, pool_key, database, sql, schema, None, QueryExecutionOptions::default()).await {
             Ok(result) => {
                 total_affected += result.affected_rows;
                 log::info!("[query][tx-none:statement:done] index={} affected_rows={}", i + 1, result.affected_rows);
@@ -1421,11 +1435,13 @@ mod tests {
     fn agent_execute_query_params_include_row_and_fetch_limits() {
         let params = agent_execute_query_params(
             "SELECT * FROM events",
+            Some("analytics"),
             Some("app"),
             QueryExecutionOptions { max_rows: Some(500), fetch_size: Some(250), ..Default::default() },
         );
 
         assert_eq!(params["sql"], "SELECT * FROM events");
+        assert_eq!(params["database"], "analytics");
         assert_eq!(params["schema"], "app");
         assert_eq!(params["maxRows"], 500);
         assert_eq!(params["fetchSize"], 250);
@@ -1433,9 +1449,10 @@ mod tests {
 
     #[test]
     fn agent_execute_query_params_default_to_safety_row_limit() {
-        let params = agent_execute_query_params("SELECT * FROM events", None, QueryExecutionOptions::default());
+        let params = agent_execute_query_params("SELECT * FROM events", None, None, QueryExecutionOptions::default());
 
         assert_eq!(params["sql"], "SELECT * FROM events");
+        assert!(params.get("database").is_none());
         assert!(params.get("schema").is_none());
         assert_eq!(params["maxRows"], MAX_ROWS);
         assert!(params.get("fetchSize").is_none());
@@ -1445,11 +1462,13 @@ mod tests {
     fn agent_execute_query_page_params_include_page_fetch_and_safety_limits() {
         let params = agent_execute_query_page_params(
             "SELECT * FROM events",
+            Some("analytics"),
             Some("app"),
             QueryExecutionOptions { page_size: Some(500), fetch_size: Some(250), ..Default::default() },
         );
 
         assert_eq!(params["sql"], "SELECT * FROM events");
+        assert_eq!(params["database"], "analytics");
         assert_eq!(params["schema"], "app");
         assert_eq!(params["pageSize"], 500);
         assert_eq!(params["fetchSize"], 250);

@@ -369,7 +369,7 @@ pub async fn list_tables_core(
             return db::clickhouse_driver::list_tables(&client, clickhouse_metadata_database(database, schema)).await;
         }
         try_sqlserver!(connections, &pool_key, list_tables, schema, filter, limit);
-        try_agent!(connections, &pool_key, list_tables, schema);
+        try_agent!(connections, &pool_key, list_tables, database, schema);
     }
 
     let connections = state.connections.read().await;
@@ -494,7 +494,7 @@ pub async fn list_objects_core(
                 .await;
         }
         try_sqlserver!(connections, &pool_key, list_objects, schema);
-        try_agent!(connections, &pool_key, list_objects, schema);
+        try_agent!(connections, &pool_key, list_objects, database, schema);
     }
 
     let connections = state.connections.read().await;
@@ -584,7 +584,7 @@ pub async fn get_columns_core(
                 .await;
         }
         try_sqlserver!(connections, &pool_key, get_columns, schema, table);
-        try_agent!(connections, &pool_key, get_columns, schema, table);
+        try_agent!(connections, &pool_key, get_columns, database, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -612,7 +612,7 @@ pub async fn list_indexes_core(
     {
         let connections = state.connections.read().await;
         try_sqlserver!(connections, &pool_key, list_indexes, schema, table);
-        try_agent!(connections, &pool_key, list_indexes, schema, table);
+        try_agent!(connections, &pool_key, list_indexes, database, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -640,7 +640,7 @@ pub async fn list_foreign_keys_core(
     {
         let connections = state.connections.read().await;
         try_sqlserver!(connections, &pool_key, list_foreign_keys, schema, table);
-        try_agent!(connections, &pool_key, list_foreign_keys, schema, table);
+        try_agent!(connections, &pool_key, list_foreign_keys, database, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -668,7 +668,7 @@ pub async fn list_triggers_core(
     {
         let connections = state.connections.read().await;
         try_sqlserver!(connections, &pool_key, list_triggers, schema, table);
-        try_agent!(connections, &pool_key, list_triggers, schema, table);
+        try_agent!(connections, &pool_key, list_triggers, database, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -730,7 +730,7 @@ pub async fn get_table_ddl_core(
             let mut client = client.lock().await;
             return build_sqlserver_ddl(&mut client, schema, table).await;
         }
-        try_agent!(connections, &pool_key, get_table_ddl, schema, table);
+        try_agent!(connections, &pool_key, get_table_ddl, database, schema, table);
     }
 
     let connections = state.connections.read().await;
@@ -886,7 +886,7 @@ pub async fn get_object_source_core(
         } else if let Some(client) = extract_pool!(&connections, &pool_key, Agent) {
             drop(connections);
             let mut client = client.lock().await;
-            let result: db::ObjectSource = client.get_object_source(schema, name, &object_type).await?;
+            let result: db::ObjectSource = client.get_object_source(database, schema, name, &object_type).await?;
             return Ok(result);
         } else {
             match connections.get(&pool_key).ok_or("Pool not found")? {

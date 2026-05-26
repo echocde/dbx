@@ -5,6 +5,7 @@ use tokio::sync::RwLock;
 use crate::connection::{AppState, PoolKind};
 use crate::db;
 use crate::models::connection::DatabaseType;
+use crate::query::{agent_execute_query_params, QueryExecutionOptions};
 
 static CANCELLED: std::sync::LazyLock<RwLock<HashSet<String>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashSet::new()));
@@ -789,7 +790,7 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
         }
         PoolKind::ClickHouse(client) => {
             let client = client.clone();
-            let database = pool_key.split(':').nth(1).unwrap_or("default").to_string();
+            let database = database_from_pool_key(pool_key).unwrap_or("default").to_string();
             drop(connections);
             db::clickhouse_driver::execute_query(&client, &database, sql).await
         }
@@ -798,6 +799,20 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
             drop(connections);
             let mut client = client.lock().await;
             db::sqlserver::execute_query(&mut client, sql).await
+        }
+        PoolKind::Agent(client) => {
+            let client = client.clone();
+            let database = database_from_pool_key(pool_key).map(str::to_string);
+            let sql = sql.to_string();
+            drop(connections);
+            let mut client = client.lock().await;
+            let params = agent_execute_query_params(
+                &sql,
+                database.as_deref(),
+                None,
+                QueryExecutionOptions { max_rows: None, ..QueryExecutionOptions::default() },
+            );
+            client.execute_query(params).await
         }
         PoolKind::DuckDb(con) => {
             let con = con.clone();
@@ -880,6 +895,16 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
     }
 }
 
+fn database_from_pool_key(pool_key: &str) -> Option<&str> {
+    pool_key
+        .split_once(":session:")
+        .map(|(base, _)| base)
+        .unwrap_or(pool_key)
+        .split_once(':')
+        .map(|(_, database)| database)
+        .filter(|database| !database.is_empty())
+}
+
 pub async fn get_db_type(state: &AppState, connection_id: &str) -> Result<DatabaseType, String> {
     let configs = state.configs.read().await;
     configs
@@ -938,6 +963,15 @@ pub async fn get_columns_for_transfer(
         drop(connections);
         let mut client = client.lock().await;
         return db::sqlserver::get_columns(&mut client, &schema, &table).await;
+    }
+    if let Some(PoolKind::Agent(client)) = connections.get(pool_key) {
+        let client = client.clone();
+        let database = database.to_string();
+        let schema = schema.to_string();
+        let table = table.to_string();
+        drop(connections);
+        let mut client = client.lock().await;
+        return client.get_columns(&database, &schema, &table).await;
     }
     let pool = connections.get(pool_key).ok_or("Pool not found")?;
     let schema = schema.to_string();
@@ -1406,5 +1440,12 @@ mod tests {
             get_columns_for_transfer(&state, "duckdb-1", "duckdb-1", "main", "analytics", "items").await.unwrap();
 
         assert_eq!(columns.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), vec!["id"]);
+    }
+
+    #[test]
+    fn database_from_pool_key_handles_session_scoped_keys() {
+        assert_eq!(database_from_pool_key("conn:analytics"), Some("analytics"));
+        assert_eq!(database_from_pool_key("conn:analytics:session:editor-1"), Some("analytics"));
+        assert_eq!(database_from_pool_key("conn"), None);
     }
 }
