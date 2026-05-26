@@ -83,7 +83,7 @@ const emit = defineEmits<{
   clickTable: [tableName: string];
   openObjectTable: [target: { tableName: string; schema?: string }];
   objectSchemaChange: [schema: string | undefined];
-  structureEditorSaved: [];
+  structureEditorSaved: [commentChanged: boolean];
   structureEditorClose: [];
 }>();
 
@@ -690,7 +690,7 @@ defineExpose({ focusSearch, refreshData });
         :database="activeTab.database"
         :schema="activeTab.schema"
         :table-name="activeTab.structureTableName || ''"
-        @saved="emit('structureEditorSaved')"
+        @saved="(commentChanged) => emit('structureEditorSaved', commentChanged)"
         @close="emit('structureEditorClose')"
       />
     </template>

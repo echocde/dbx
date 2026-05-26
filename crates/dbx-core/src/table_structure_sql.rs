@@ -93,6 +93,10 @@ pub struct TableStructureSqlOptions {
     pub columns: Vec<EditableStructureColumn>,
     #[serde(default)]
     pub indexes: Vec<EditableStructureIndex>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub table_comment: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_table_comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -291,7 +295,41 @@ pub fn build_table_structure_change_sql(options: TableStructureSqlOptions) -> Ta
     let mut warnings = validate_draft(&options);
     let mut statements = build_column_sql(&options, &mut warnings);
     statements.extend(build_index_sql(&options, &mut warnings));
+    statements.extend(build_table_comment_sql(&options, &mut warnings));
     TableStructureSqlResult { statements, warnings }
+}
+
+fn build_table_comment_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<String>) -> Vec<String> {
+    let capabilities = capabilities_for(options.database_type);
+    if !capabilities.comment {
+        return Vec::new();
+    }
+    let new_comment = options.table_comment.as_deref().unwrap_or("");
+    let original_comment = options.original_table_comment.as_deref().unwrap_or("");
+    if clean(new_comment) == clean(original_comment) {
+        return Vec::new();
+    }
+    let dialect = capabilities.dialect;
+    let table = qualified_table(dialect, options.schema.as_deref(), &options.table_name);
+    let quoted = quote_string(&clean(new_comment));
+    match dialect {
+        StructureDialect::Mysql => {
+            vec![format!("ALTER TABLE {table} COMMENT = {quoted};")]
+        }
+        StructureDialect::Postgres | StructureDialect::Oracle | StructureDialect::H2 => {
+            vec![format!("COMMENT ON TABLE {table} IS {quoted};")]
+        }
+        StructureDialect::ClickHouse => {
+            vec![format!("ALTER TABLE {table} MODIFY COMMENT {quoted};")]
+        }
+        StructureDialect::SqlServer | StructureDialect::Sqlite | StructureDialect::DuckDb | _ => {
+            if !clean(new_comment).is_empty() {
+                warnings
+                    .push(format!("Table comments are not supported for {} from this editor.", dialect_label(dialect)));
+            }
+            Vec::new()
+        }
+    }
 }
 
 pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructureSqlResult {
@@ -337,6 +375,21 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
     }
 
     statements.push(format!("CREATE TABLE {table} (\n  {}\n);", column_definitions.join(",\n  ")));
+
+    if capabilities.comment {
+        let table_comment = clean(options.table_comment.as_deref().unwrap_or(""));
+        if !table_comment.is_empty() {
+            if dialect == StructureDialect::Mysql {
+                if let Some(last) = statements.last_mut() {
+                    *last = last.replace(");", &format!(") COMMENT = {};", quote_string(&table_comment)));
+                }
+            } else if matches!(dialect, StructureDialect::Postgres | StructureDialect::Oracle | StructureDialect::H2) {
+                statements.push(format!("COMMENT ON TABLE {table} IS {};", quote_string(&table_comment)));
+            } else if dialect == StructureDialect::ClickHouse {
+                statements.push(format!("ALTER TABLE {table} MODIFY COMMENT {};", quote_string(&table_comment)));
+            }
+        }
+    }
 
     if capabilities.comment
         && matches!(dialect, StructureDialect::Postgres | StructureDialect::Oracle | StructureDialect::H2)

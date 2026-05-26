@@ -75,7 +75,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  saved: [];
+  saved: [commentChanged: boolean];
   close: [];
 }>();
 
@@ -140,6 +140,8 @@ const indexColLabels = computed(() => [
 const targetSchema = computed(() => props.schema || props.database || "");
 const isCreateMode = computed(() => !props.tableName);
 const newTableName = ref("");
+const tableComment = ref("");
+const originalTableComment = ref("");
 const targetLabel = computed(() =>
   buildStructureTargetLabel(
     connection.value?.name,
@@ -160,6 +162,8 @@ async function refreshSqlPreview() {
     tableName: isCreateMode.value ? newTableName.value : props.tableName || "",
     columns: columns.value,
     indexes: indexes.value,
+    tableComment: tableComment.value,
+    originalTableComment: isCreateMode.value ? undefined : originalTableComment.value,
   };
   try {
     const result = isCreateMode.value
@@ -201,6 +205,8 @@ function resetState() {
   foreignKeys.value = [];
   triggers.value = [];
   newTableName.value = "";
+  tableComment.value = "";
+  originalTableComment.value = "";
 }
 
 async function loadStructure(silent = false) {
@@ -219,6 +225,16 @@ async function loadStructure(silent = false) {
     indexes.value = createIndexDrafts(nextIndexes);
     foreignKeys.value = nextForeignKeys;
     triggers.value = nextTriggers;
+    try {
+      const tables = await api.listTables(props.connectionId, props.database, targetSchema.value);
+      const table = tables.find(
+        (t) => t.name.toLowerCase() === props.tableName!.toLowerCase() && t.table_type !== "VIEW",
+      );
+      originalTableComment.value = table?.comment || "";
+      tableComment.value = table?.comment || "";
+    } catch {
+      /* ignore — table comment is optional */
+    }
   } catch (e: any) {
     errorMessage.value = e?.message || String(e);
   } finally {
@@ -385,7 +401,7 @@ async function applyChanges() {
   try {
     await api.executeBatch(props.connectionId, props.database, pendingStatements.value);
     toast(t("structureEditor.saved"), 2500);
-    emit("saved");
+    emit("saved", tableComment.value !== originalTableComment.value);
     if (isCreateMode.value) {
       emit("close");
     } else {
@@ -404,7 +420,7 @@ onMounted(() => {
 });
 
 watch(
-  [isCreateMode, databaseType, () => props.schema, () => props.tableName, newTableName, columns, indexes],
+  [isCreateMode, databaseType, () => props.schema, () => props.tableName, newTableName, tableComment, columns, indexes],
   () => {
     void refreshSqlPreview();
   },
@@ -441,6 +457,15 @@ watch(
         v-model="newTableName"
         :placeholder="t('contextMenu.duplicateNamePlaceholder')"
         class="h-6 max-w-[220px] text-[11px]"
+      />
+    </div>
+
+    <div class="flex shrink-0 items-center gap-2">
+      <label class="shrink-0 text-[11px] font-medium text-muted-foreground">{{ t("structureEditor.comment") }}</label>
+      <Input
+        v-model="tableComment"
+        :placeholder="t('structureEditor.commentPlaceholder')"
+        class="h-6 max-w-[320px] text-[11px]"
       />
     </div>
 

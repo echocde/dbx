@@ -925,13 +925,19 @@ onUnmounted(() => {
                     "
                     @object-schema-change="(schema) => activeTab && queryStore.updateSchema(activeTab.id, schema)"
                     @structure-editor-saved="
-                      activeTab &&
-                      onStructureEditorSaved(onReloadData, toast, {
-                        connectionId: activeTab.connectionId,
-                        database: activeTab.database,
-                        schema: activeTab.schema,
-                        tableName: activeTab.structureTableName || '',
-                      })
+                      (commentChanged) =>
+                        activeTab &&
+                        onStructureEditorSaved(
+                          onReloadData,
+                          toast,
+                          {
+                            connectionId: activeTab.connectionId,
+                            database: activeTab.database,
+                            schema: activeTab.schema,
+                            tableName: activeTab.structureTableName || '',
+                          },
+                          commentChanged,
+                        )
                     "
                     @structure-editor-close="activeTab && queryStore.closeTab(activeTab.id)"
                   />
