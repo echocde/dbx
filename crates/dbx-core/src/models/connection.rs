@@ -1,4 +1,4 @@
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -526,9 +526,8 @@ impl ConnectionConfig {
                     format!("ssl-mode=disabled&{}", filtered.join("&"))
                 }
             }
-            DatabaseType::Postgres | DatabaseType::Redshift | DatabaseType::MongoDb => {
-                value.trim_start_matches('?').to_string()
-            }
+            DatabaseType::Postgres | DatabaseType::Redshift => normalize_postgres_url_params(value),
+            DatabaseType::MongoDb => value.trim_start_matches('?').to_string(),
             _ => value.trim_start_matches('?').to_string(),
         }
     }
@@ -542,6 +541,51 @@ fn url_params_contains_flag(params: Option<&str>, key: &str, expected: &str) -> 
     params.unwrap_or("").trim().trim_start_matches('?').split(['&', ';']).filter_map(|part| part.split_once('=')).any(
         |(part_key, value)| part_key.trim().eq_ignore_ascii_case(key) && value.trim().eq_ignore_ascii_case(expected),
     )
+}
+
+fn normalize_postgres_url_params(value: &str) -> String {
+    let value = value.trim_start_matches('?');
+    if value.is_empty() {
+        return String::new();
+    }
+
+    let mut timezone: Option<String> = None;
+    let mut parts: Vec<String> = Vec::new();
+
+    for part in value.split('&').filter(|part| !part.is_empty()) {
+        let (raw_key, raw_value) = part.split_once('=').unwrap_or((part, ""));
+        let key = percent_decode_str(raw_key).decode_utf8_lossy();
+        if key.eq_ignore_ascii_case("timezone") || key.eq_ignore_ascii_case("time_zone") {
+            let decoded_value = percent_decode_str(raw_value).decode_utf8_lossy().trim().to_string();
+            if !decoded_value.is_empty() {
+                timezone = Some(decoded_value);
+            }
+        } else {
+            parts.push(part.to_string());
+        }
+    }
+
+    let Some(timezone) = timezone else {
+        return parts.join("&");
+    };
+
+    let timezone_option = format!("-c TimeZone={timezone}");
+    if let Some(options_index) = parts.iter().position(|part| {
+        part.split_once('=')
+            .map(|(raw_key, _)| percent_decode_str(raw_key).decode_utf8_lossy().eq_ignore_ascii_case("options"))
+            .unwrap_or(false)
+    }) {
+        let (raw_key, raw_value) = parts[options_index].split_once('=').unwrap_or(("options", ""));
+        let options_value = percent_decode_str(raw_value).decode_utf8_lossy();
+        if !options_value.to_ascii_lowercase().contains("timezone=") {
+            let combined = format!("{} {}", options_value.trim(), timezone_option).trim().to_string();
+            parts[options_index] = format!("{raw_key}={}", encode_url_part(&combined));
+        }
+    } else {
+        parts.push(format!("options={}", encode_url_part(&timezone_option)));
+    }
+
+    parts.join("&")
 }
 
 fn clickhouse_http_url(config: &ConnectionConfig, host: &str, port: u16) -> String {
@@ -677,6 +721,7 @@ fn bracket_ipv6(host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{default_ssh_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
+    use std::str::FromStr;
 
     fn mysql_config(username: &str, password: &str, database: Option<&str>) -> ConnectionConfig {
         ConnectionConfig {
@@ -947,6 +992,44 @@ mod tests {
         config.url_params = Some("sslmode=disable".to_string());
 
         assert_eq!(config.connection_url(), "postgres://postgres:secret@10.1.2.3:2883/test?sslmode=disable");
+    }
+
+    #[test]
+    fn postgres_url_normalizes_timezone_param_into_options() {
+        let mut config = mysql_config("postgres", "secret", Some("test"));
+        config.db_type = DatabaseType::Postgres;
+        config.url_params = Some("sslmode=require&timezone=Asia/Shanghai".to_string());
+
+        assert_eq!(
+            config.connection_url(),
+            "postgres://postgres:secret@10.1.2.3:2883/test?sslmode=require&options=%2Dc%20TimeZone%3DAsia%2FShanghai"
+        );
+        let pg_config = tokio_postgres::Config::from_str(&config.connection_url()).unwrap();
+        assert_eq!(pg_config.get_options(), Some("-c TimeZone=Asia/Shanghai"));
+    }
+
+    #[test]
+    fn postgres_url_appends_timezone_to_existing_options() {
+        let mut config = mysql_config("postgres", "secret", Some("test"));
+        config.db_type = DatabaseType::Postgres;
+        config.url_params = Some("options=-c%20statement_timeout%3D5000&TimeZone=UTC".to_string());
+
+        assert_eq!(
+            config.connection_url(),
+            "postgres://postgres:secret@10.1.2.3:2883/test?options=%2Dc%20statement%5Ftimeout%3D5000%20%2Dc%20TimeZone%3DUTC"
+        );
+    }
+
+    #[test]
+    fn postgres_url_keeps_existing_options_timezone() {
+        let mut config = mysql_config("postgres", "secret", Some("test"));
+        config.db_type = DatabaseType::Postgres;
+        config.url_params = Some("options=-c%20TimeZone%3DUTC&timezone=Asia/Shanghai".to_string());
+
+        assert_eq!(
+            config.connection_url(),
+            "postgres://postgres:secret@10.1.2.3:2883/test?options=-c%20TimeZone%3DUTC"
+        );
     }
 
     #[test]
