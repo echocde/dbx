@@ -70,3 +70,13 @@ test("structure editor keeps the table body vertically scrollable", () => {
   assert.match(source, /class="flex h-full min-h-0 flex-col"/);
   assert.match(source, /<TabsContent value="columns" class="m-0 min-h-0 flex-1 overflow-auto p-0">/);
 });
+
+test("new column input is focused after adding a field", () => {
+  assert.match(source, /import \{ computed, nextTick, onMounted, ref, watch \} from "vue"/);
+  assert.match(source, /async function addColumn/);
+  assert.match(source, /activeTab\.value = "columns"/);
+  assert.match(source, /await nextTick\(\)/);
+  assert.match(source, /data-new-column-row="true"/);
+  assert.match(source, /data-column-name-input/);
+  assert.match(source, /input\?\.focus\(\)/);
+});

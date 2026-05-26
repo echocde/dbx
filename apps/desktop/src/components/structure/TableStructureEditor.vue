@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { uuid } from "@/lib/utils";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ const { t } = useI18n();
 const { isDark } = useTheme();
 const store = useConnectionStore();
 const { toast } = useToast();
+const rootRef = ref<HTMLElement>();
 
 const sqlHighlighter = ref<SqlHighlighter>();
 onMounted(async () => {
@@ -225,8 +226,9 @@ async function loadStructure(silent = false) {
   }
 }
 
-function addColumn() {
+async function addColumn() {
   if (!structureCapabilities.value.addColumn) return;
+  activeTab.value = "columns";
   columns.value.push({
     id: `new:${uuid()}`,
     name: "",
@@ -237,6 +239,13 @@ function addColumn() {
     isPrimaryKey: false,
     markedForDrop: false,
   });
+  await nextTick();
+  const newRows = rootRef.value?.querySelectorAll<HTMLElement>('[data-new-column-row="true"]');
+  const row = newRows?.[newRows.length - 1];
+  const input = row?.querySelector<HTMLInputElement>("[data-column-name-input]");
+  row?.scrollIntoView({ block: "nearest" });
+  input?.focus();
+  input?.select();
 }
 
 function removeNewColumn(column: EditableStructureColumn) {
@@ -404,7 +413,11 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3 text-[11px]" data-structure-density="compact">
+  <div
+    ref="rootRef"
+    class="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3 text-[11px]"
+    data-structure-density="compact"
+  >
     <div class="flex shrink-0 items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-[11px]">
       <Database class="h-3.5 w-3.5 text-muted-foreground" />
       <span class="min-w-0 flex-1 truncate font-medium">{{ targetLabel || t("editor.noDatabase") }}</span>
@@ -504,6 +517,7 @@ watch(
                   v-for="(column, index) in columns"
                   :key="column.id"
                   :class="column.markedForDrop ? 'bg-destructive/5 opacity-60' : ''"
+                  :data-new-column-row="!column.original ? 'true' : undefined"
                 >
                   <td class="border-b border-r px-1.5 py-1 text-muted-foreground">
                     <div class="flex items-center gap-1">
@@ -516,6 +530,7 @@ watch(
                       v-model="column.name"
                       class="h-6 min-w-28 text-[11px]"
                       :disabled="isColumnNameDisabled(column)"
+                      data-column-name-input
                     />
                   </td>
                   <td class="border-b border-r px-1.5 py-1">
