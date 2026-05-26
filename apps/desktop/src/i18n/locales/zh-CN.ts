@@ -878,6 +878,13 @@ export default {
     search: "搜索表、视图、函数或存储过程...",
     loading: "正在加载对象...",
     empty: "没有找到对象",
+    selectedTables: "已选择 {count} 张表",
+    exportSelected: "导出所选",
+    dropSelected: "删除所选",
+    clearSelection: "清空选择",
+    confirmBatchDropTitle: "删除所选表",
+    confirmBatchDropMessage: "确定要删除已选择的 {count} 张表吗？此操作不可撤销。",
+    batchDropSuccess: "已删除 {count} 张表",
   },
   structureEditor: {
     title: "编辑表结构",

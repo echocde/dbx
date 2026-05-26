@@ -897,6 +897,13 @@ export default {
     search: "Search tables, views, functions, or procedures...",
     loading: "Loading objects...",
     empty: "No objects found",
+    selectedTables: "{count} tables selected",
+    exportSelected: "Export selected",
+    dropSelected: "Drop selected",
+    clearSelection: "Clear selection",
+    confirmBatchDropTitle: "Drop Selected Tables",
+    confirmBatchDropMessage: "Are you sure you want to drop {count} selected tables? This cannot be undone.",
+    batchDropSuccess: "Dropped {count} tables",
   },
   structureEditor: {
     title: "Edit Table Structure",

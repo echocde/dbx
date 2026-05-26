@@ -790,6 +790,14 @@ export default {
     search: "Buscar tablas, vistas, funciones o procedimientos...",
     loading: "Cargando objetos...",
     empty: "No se encontraron objetos",
+    selectedTables: "{count} tablas seleccionadas",
+    exportSelected: "Exportar seleccionadas",
+    dropSelected: "Eliminar seleccionadas",
+    clearSelection: "Limpiar selección",
+    confirmBatchDropTitle: "Eliminar tablas seleccionadas",
+    confirmBatchDropMessage:
+      "¿Seguro que quieres eliminar {count} tablas seleccionadas? Esta acción no se puede deshacer.",
+    batchDropSuccess: "{count} tablas eliminadas",
   },
   structureEditor: {
     title: "Editar estructura de tabla",
