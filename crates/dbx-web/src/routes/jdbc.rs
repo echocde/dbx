@@ -70,7 +70,7 @@ pub async fn install_jdbc_plugin_local(
     let temp_dir = root.join("jdbc").with_extension("upload_tmp");
     std::fs::create_dir_all(&temp_dir).map_err(|e| AppError::internal(e.to_string()))?;
 
-    while let Ok(Some(field)) = multipart.next_field().await {
+    if let Ok(Some(field)) = multipart.next_field().await {
         let file_name = field.file_name().unwrap_or("plugin.zip").to_string();
         if !file_name.to_lowercase().ends_with(".zip") {
             return Err(AppError::bad_request("Only .zip files can be imported for JDBC plugin"));
