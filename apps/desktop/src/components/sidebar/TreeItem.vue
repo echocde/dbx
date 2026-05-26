@@ -1899,7 +1899,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
           }}</span>
           <span
             v-if="tableComment"
-            class="truncate text-muted-foreground/60 text-[10px] max-w-[50%] group-hover:hidden"
+            class="truncate text-muted-foreground/60 text-[10px] max-w-[25%] group-hover:hidden"
             :title="tableComment"
             >{{ tableComment }}</span
           >
@@ -2085,6 +2085,8 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
       </template>
 
       <template v-if="node.type === 'table' || node.type === 'view'">
+        <ContextMenuItem @click="copyName"> <Copy class="w-4 h-4" /> {{ t("contextMenu.copyName") }} </ContextMenuItem>
+        <ContextMenuSeparator />
         <ContextMenuItem @click="openData">
           <TableProperties class="w-4 h-4" /> {{ t("contextMenu.viewData") }}
         </ContextMenuItem>
