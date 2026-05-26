@@ -315,11 +315,7 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
     let mut column_definitions = Vec::new();
 
     for column in &active_columns {
-        let data_type = if dialect == StructureDialect::ClickHouse {
-            clickhouse_column_type(column)
-        } else {
-            column.data_type.trim().to_string()
-        };
+        let data_type = column_data_type(dialect, column);
         let mut parts = vec![quote_ident(dialect, &column.name), data_type];
         if !column.is_nullable && !column.is_primary_key && dialect != StructureDialect::ClickHouse {
             parts.push("NOT NULL".to_string());
@@ -650,7 +646,7 @@ fn build_postgres_existing_column_sql(table: &str, column: &EditableStructureCol
         statements.push(format!(
             "ALTER TABLE {table} ALTER COLUMN {} TYPE {};",
             quote_ident(StructureDialect::Postgres, current_name),
-            column.data_type.trim()
+            column_data_type(StructureDialect::Postgres, column)
         ));
     }
     if column.is_nullable != original.is_nullable {
@@ -702,7 +698,7 @@ fn build_oracle_like_existing_column_sql(
         statements.push(format!(
             "ALTER TABLE {table} MODIFY ({} {});",
             quote_ident(dialect, &current_name),
-            column.data_type.trim()
+            column_data_type(dialect, column)
         ));
     }
     if column.is_nullable != original.is_nullable {
@@ -744,7 +740,7 @@ fn build_h2_existing_column_sql(table: &str, column: &EditableStructureColumn) -
         statements.push(format!(
             "ALTER TABLE {table} ALTER COLUMN {} SET DATA TYPE {};",
             quote_ident(StructureDialect::H2, &current_name),
-            column.data_type.trim()
+            column_data_type(StructureDialect::H2, column)
         ));
     }
     if column.is_nullable != original.is_nullable {
@@ -991,11 +987,7 @@ fn validate_columns(columns: &[&EditableStructureColumn], warnings: &mut Vec<Str
 }
 
 fn column_definition(dialect: StructureDialect, column: &EditableStructureColumn) -> String {
-    let data_type = if dialect == StructureDialect::ClickHouse {
-        clickhouse_column_type(column)
-    } else {
-        column.data_type.trim().to_string()
-    };
+    let data_type = column_data_type(dialect, column);
     let mut parts = vec![quote_ident(dialect, &column.name), data_type];
     if !column.is_nullable && !is_oracle_like(dialect) && dialect != StructureDialect::ClickHouse {
         parts.push("NOT NULL".to_string());
@@ -1008,6 +1000,68 @@ fn column_definition(dialect: StructureDialect, column: &EditableStructureColumn
         parts.push(format!("COMMENT {}", quote_string(&clean(&column.comment))));
     }
     parts.join(" ")
+}
+
+fn column_data_type(dialect: StructureDialect, column: &EditableStructureColumn) -> String {
+    if dialect == StructureDialect::ClickHouse {
+        return clickhouse_column_type(column);
+    }
+    normalize_column_data_type(dialect, &column.data_type)
+}
+
+fn normalize_column_data_type(dialect: StructureDialect, data_type: &str) -> String {
+    let trimmed = data_type.trim();
+    let Some(open_index) = trimmed.find('(') else {
+        return trimmed.to_string();
+    };
+    if !trimmed.ends_with(')') {
+        return trimmed.to_string();
+    }
+
+    let base_type = trimmed[..open_index].trim();
+    let params = trimmed[open_index + 1..trimmed.len() - 1].trim();
+    if base_type.is_empty() || params.is_empty() {
+        return trimmed.to_string();
+    }
+
+    if is_temporal_precision_type(dialect, base_type) {
+        return if is_valid_temporal_precision(params, dialect) {
+            format!("{base_type}({params})")
+        } else {
+            base_type.to_string()
+        };
+    }
+
+    trimmed.to_string()
+}
+
+fn is_temporal_precision_type(dialect: StructureDialect, base_type: &str) -> bool {
+    let normalized = base_type.split_whitespace().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
+    match dialect {
+        StructureDialect::Mysql => matches!(normalized.as_str(), "time" | "datetime" | "timestamp"),
+        StructureDialect::Postgres => matches!(
+            normalized.as_str(),
+            "time"
+                | "time without time zone"
+                | "time with time zone"
+                | "timestamp"
+                | "timestamp without time zone"
+                | "timestamp with time zone"
+        ),
+        StructureDialect::SqlServer => matches!(normalized.as_str(), "time" | "datetime2" | "datetimeoffset"),
+        StructureDialect::Oracle => {
+            matches!(normalized.as_str(), "timestamp" | "timestamp with time zone" | "timestamp with local time zone")
+        }
+        _ => false,
+    }
+}
+
+fn is_valid_temporal_precision(params: &str, dialect: StructureDialect) -> bool {
+    let Ok(value) = params.parse::<u8>() else {
+        return false;
+    };
+    let max = if dialect == StructureDialect::Oracle { 9 } else { 6 };
+    value <= max && params == value.to_string()
 }
 
 fn clickhouse_column_type(column: &EditableStructureColumn) -> String {
@@ -1296,6 +1350,48 @@ mod tests {
                 "DROP INDEX `idx_old` ON `users`;",
                 "CREATE UNIQUE INDEX `uniq_users_email` ON `users` (`email`);",
             ]
+        );
+    }
+
+    #[test]
+    fn mysql_add_timestamp_column_drops_invalid_precision() {
+        let mut created_at = column("created_at");
+        created_at.data_type = "timestamp(255)".to_string();
+        created_at.default_value = "CURRENT_TIMESTAMP".to_string();
+
+        let result = build_table_structure_change_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::Mysql),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![created_at],
+            indexes: Vec::new(),
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert_eq!(
+            result.statements,
+            vec!["ALTER TABLE `users` ADD COLUMN `created_at` timestamp DEFAULT CURRENT_TIMESTAMP;"]
+        );
+    }
+
+    #[test]
+    fn mysql_add_timestamp_column_preserves_valid_precision() {
+        let mut created_at = column("created_at");
+        created_at.data_type = "timestamp(3)".to_string();
+        created_at.default_value = "CURRENT_TIMESTAMP(3)".to_string();
+
+        let result = build_table_structure_change_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::Mysql),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![created_at],
+            indexes: Vec::new(),
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert_eq!(
+            result.statements,
+            vec!["ALTER TABLE `users` ADD COLUMN `created_at` timestamp(3) DEFAULT CURRENT_TIMESTAMP(3);"]
         );
     }
 

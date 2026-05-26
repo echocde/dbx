@@ -38,7 +38,7 @@ import { type EditableStructureColumn, type EditableStructureIndex } from "@/lib
 import { getTableStructureCapabilities } from "@/lib/tableStructureCapabilities";
 import {
   buildStructureTargetLabel,
-  combineDataType,
+  combineDataTypeForDatabase,
   createColumnDrafts,
   createIndexDrafts,
   DATA_TYPE_OPTIONS,
@@ -545,7 +545,12 @@ watch(
                       :allow-custom="true"
                       trigger-class="h-6 w-full font-mono text-[11px]"
                       @update:model-value="
-                        (v: string) => (column.dataType = combineDataType(v, splitDataType(column.dataType).params))
+                        (v: string) =>
+                          (column.dataType = combineDataTypeForDatabase(
+                            databaseType,
+                            v,
+                            splitDataType(column.dataType).params,
+                          ))
                       "
                     />
                     <Input
@@ -561,7 +566,11 @@ watch(
                       class="h-6 min-w-16 font-mono text-[11px]"
                       :disabled="isColumnTypeDisabled(column)"
                       @update:model-value="
-                        column.dataType = combineDataType(splitDataType(column.dataType).baseType, String($event))
+                        column.dataType = combineDataTypeForDatabase(
+                          databaseType,
+                          splitDataType(column.dataType).baseType,
+                          String($event),
+                        )
                       "
                     />
                   </td>
