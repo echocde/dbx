@@ -397,6 +397,7 @@ type StructuredFilterRule = {
   columnName: string;
   mode: FilterMode;
   rawValue: string;
+  conjunction: "AND" | "OR";
 };
 
 const localColumnFilters = ref<Record<number, Set<string>>>({});
@@ -844,6 +845,7 @@ function defaultStructuredFilterRule(): StructuredFilterRule {
     columnName: filterBuilderColumnOptions.value[0] ?? "",
     mode: "equals",
     rawValue: "",
+    conjunction: "AND",
   };
 }
 
@@ -886,28 +888,68 @@ async function clearAllFilters() {
   await applyWhereFilter();
 }
 
+function buildGroupedWhere(conditions: string[], rules: StructuredFilterRule[]): string {
+  if (conditions.length === 0) return "";
+  if (conditions.length === 1) return conditions[0];
+
+  const groups: { conditions: string[]; conjunction: string }[] = [];
+  let current = { conditions: [conditions[0]], conjunction: "AND" };
+
+  for (let i = 1; i < conditions.length; i++) {
+    const conj = rules[i].conjunction;
+    if (conj !== current.conjunction) {
+      groups.push(current);
+      current = { conditions: [conditions[i]], conjunction: conj };
+    } else {
+      current.conditions.push(conditions[i]);
+    }
+  }
+  groups.push(current);
+
+  if (groups.length === 1) {
+    const g = groups[0];
+    return g.conditions.length > 1 ? `(${g.conditions.join(` ${g.conjunction} `)})` : g.conditions[0];
+  }
+
+  const groupClauses = groups.map((g) => {
+    const inner = g.conditions.join(` ${g.conjunction} `);
+    return g.conditions.length > 1 ? `(${inner})` : inner;
+  });
+
+  let result = groupClauses[0];
+  for (let i = 1; i < groupClauses.length; i++) {
+    result = `(${result}) ${groups[i].conjunction} (${groupClauses[i]})`;
+  }
+  return result;
+}
+
 async function applyStructuredFilters() {
   if (!canUseWhereSearch.value) return;
-  const conditions = (
+  const rulesWithConditions = (
     await Promise.all(
       structuredFilterRules.value.map(async (rule) => {
-        if (!rule.columnName) return null;
-        if (filterModeNeedsValue(rule.mode) && !rule.rawValue.trim()) return null;
+        if (!rule.columnName) return { rule, condition: null };
+        if (filterModeNeedsValue(rule.mode) && !rule.rawValue.trim()) return { rule, condition: null };
         const columnInfo = filterBuilderColumns.value.find((column) => column.name === rule.columnName);
-        return (
-          (await buildDataGridContextFilterCondition({
-            databaseType: props.databaseType,
-            columnName: rule.columnName,
-            columnInfo,
-            mode: rule.mode,
-            value: filterModeNeedsValue(rule.mode) ? parseFilterValue(rule.rawValue, columnInfo) : null,
-          })) ?? null
-        );
+        return {
+          rule,
+          condition:
+            (await buildDataGridContextFilterCondition({
+              databaseType: props.databaseType,
+              columnName: rule.columnName,
+              columnInfo,
+              mode: rule.mode,
+              value: filterModeNeedsValue(rule.mode) ? parseFilterValue(rule.rawValue, columnInfo) : null,
+            })) ?? null,
+        };
       }),
     )
-  ).filter((condition): condition is string => !!condition);
+  ).filter((item): item is { rule: StructuredFilterRule; condition: string } => !!item.condition);
 
-  appliedStructuredWhereInput.value = conditions.join(" AND ");
+  appliedStructuredWhereInput.value = buildGroupedWhere(
+    rulesWithConditions.map((item) => item.condition),
+    rulesWithConditions.map((item) => item.rule),
+  );
   filterBuilderOpen.value = false;
   await applyWhereFilter();
 }
@@ -3551,78 +3593,92 @@ defineExpose({
                         </div>
 
                         <div v-if="structuredFilterRules.length" class="space-y-2">
-                          <div
-                            v-for="rule in structuredFilterRules"
-                            :key="rule.id"
-                            class="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2"
-                          >
-                            <Select
-                              :model-value="rule.columnName"
-                              @update:model-value="
-                                (value: any) => updateStructuredFilterRule(rule.id, { columnName: String(value) })
-                              "
-                            >
-                              <SelectTrigger class="h-8 min-w-0 text-xs">
-                                <SelectValue :placeholder="t('grid.filterBuilderColumn')" />
-                              </SelectTrigger>
-                              <SelectContent position="popper">
-                                <SelectItem
-                                  v-for="columnName in filterBuilderColumnOptions"
-                                  :key="columnName"
-                                  :value="columnName"
-                                >
-                                  {{ columnName }}
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-
-                            <Select
-                              :model-value="rule.mode"
-                              @update:model-value="
-                                (value: any) => updateStructuredFilterRule(rule.id, { mode: value as FilterMode })
-                              "
-                            >
-                              <SelectTrigger class="h-8 min-w-0 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent position="popper">
-                                <SelectItem
-                                  v-for="option in filterModeOptions"
-                                  :key="option.value"
-                                  :value="option.value"
-                                >
-                                  {{ t(option.labelKey) }}
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-
-                            <Input
-                              v-if="filterModeNeedsValue(rule.mode)"
-                              :model-value="rule.rawValue"
-                              class="h-8 min-w-0 text-xs"
-                              :placeholder="t('grid.filterBuilderValue')"
-                              @update:model-value="
-                                (value) => updateStructuredFilterRule(rule.id, { rawValue: String(value ?? '') })
-                              "
-                              @keydown.enter.prevent="applyStructuredFilters"
-                            />
-                            <div
-                              v-else
-                              class="flex h-8 items-center rounded-md border border-dashed px-2 text-xs text-muted-foreground"
-                            >
-                              {{ t("grid.filterBuilderNoValue") }}
+                          <template v-for="(rule, index) in structuredFilterRules" :key="rule.id">
+                            <div v-if="index > 0" class="flex justify-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                class="h-6 px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                                @click="
+                                  updateStructuredFilterRule(rule.id, {
+                                    conjunction: rule.conjunction === 'AND' ? 'OR' : 'AND',
+                                  })
+                                "
+                              >
+                                {{ rule.conjunction }}
+                              </Button>
                             </div>
-
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              class="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                              :disabled="structuredFilterRules.length === 1"
-                              @click="removeStructuredFilterRule(rule.id)"
+                            <div
+                              class="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-2"
                             >
-                              <Trash2 class="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
+                              <Select
+                                :model-value="rule.columnName"
+                                @update:model-value="
+                                  (value: any) => updateStructuredFilterRule(rule.id, { columnName: String(value) })
+                                "
+                              >
+                                <SelectTrigger class="h-8 min-w-0 text-xs">
+                                  <SelectValue :placeholder="t('grid.filterBuilderColumn')" />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                  <SelectItem
+                                    v-for="columnName in filterBuilderColumnOptions"
+                                    :key="columnName"
+                                    :value="columnName"
+                                  >
+                                    {{ columnName }}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+
+                              <Select
+                                :model-value="rule.mode"
+                                @update:model-value="
+                                  (value: any) => updateStructuredFilterRule(rule.id, { mode: value as FilterMode })
+                                "
+                              >
+                                <SelectTrigger class="h-8 min-w-0 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                  <SelectItem
+                                    v-for="option in filterModeOptions"
+                                    :key="option.value"
+                                    :value="option.value"
+                                  >
+                                    {{ t(option.labelKey) }}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+
+                              <Input
+                                v-if="filterModeNeedsValue(rule.mode)"
+                                :model-value="rule.rawValue"
+                                class="h-8 min-w-0 text-xs"
+                                :placeholder="t('grid.filterBuilderValue')"
+                                @update:model-value="
+                                  (value) => updateStructuredFilterRule(rule.id, { rawValue: String(value ?? '') })
+                                "
+                                @keydown.enter.prevent="applyStructuredFilters"
+                              />
+                              <div
+                                v-else
+                                class="flex h-8 items-center rounded-md border border-dashed px-2 text-xs text-muted-foreground"
+                              >
+                                {{ t("grid.filterBuilderNoValue") }}
+                              </div>
+
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                :disabled="structuredFilterRules.length === 1"
+                                @click="removeStructuredFilterRule(rule.id)"
+                              >
+                                <Trash2 class="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </template>
                         </div>
 
                         <div
