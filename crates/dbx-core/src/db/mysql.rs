@@ -197,9 +197,33 @@ fn create_pool(url: &str) -> Result<MySqlPool, String> {
     let pool_opts = mysql_async::PoolOpts::new()
         .with_constraints(mysql_async::PoolConstraints::new(1, 1).unwrap())
         .with_inactive_connection_ttl(Duration::from_secs(300));
-    let builder =
-        mysql_async::OptsBuilder::from_opts(opts).stmt_cache_size(0).prefer_socket(false).pool_opts(Some(pool_opts));
+    let builder = mysql_async::OptsBuilder::from_opts(opts)
+        .stmt_cache_size(0)
+        .prefer_socket(false)
+        .pool_opts(Some(pool_opts))
+        .setup(mysql_setup_queries(url));
     Ok(MySqlPool::new(builder))
+}
+
+fn mysql_setup_queries(url: &str) -> Vec<String> {
+    let charset = mysql_connection_charset(url).unwrap_or("utf8mb4");
+    vec![format!("SET NAMES {charset}")]
+}
+
+fn mysql_connection_charset(url: &str) -> Option<&str> {
+    let (_, query) = url.split_once('?')?;
+    query.split('&').find_map(|segment| {
+        let (key, value) = segment.split_once('=')?;
+        if !key.eq_ignore_ascii_case("charset") {
+            return None;
+        }
+        let value = value.trim();
+        is_safe_mysql_charset_name(value).then_some(value)
+    })
+}
+
+fn is_safe_mysql_charset_name(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 async fn verify_pool_connection(pool: &MySqlPool, timeout: Duration) -> Result<(), String> {
@@ -831,5 +855,19 @@ mod tests {
         let default = crate::db::connection_timeout();
         let url = "mysql://host:3306/db";
         assert_eq!(crate::db::parse_connect_timeout(url), default);
+    }
+
+    #[test]
+    fn mysql_setup_queries_default_to_utf8mb4() {
+        assert_eq!(mysql_setup_queries("mysql://host:3306/db"), vec!["SET NAMES utf8mb4"]);
+    }
+
+    #[test]
+    fn mysql_setup_queries_use_safe_custom_charset() {
+        assert_eq!(mysql_setup_queries("mysql://host:3306/db?ssl-mode=preferred&charset=gbk"), vec!["SET NAMES gbk"]);
+        assert_eq!(
+            mysql_setup_queries("mysql://host:3306/db?charset=utf8mb4;DROP TABLE users"),
+            vec!["SET NAMES utf8mb4"]
+        );
     }
 }
