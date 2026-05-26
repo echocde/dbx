@@ -142,6 +142,12 @@ export const loadDesktopSettings = forward("loadDesktopSettings");
 export const saveDesktopSettings = forward("saveDesktopSettings");
 export const loadPinnedTreeNodeIds = forward("loadPinnedTreeNodeIds");
 export const savePinnedTreeNodeIds = forward("savePinnedTreeNodeIds");
+export const webdavSyncTest = forward("webdavSyncTest");
+export const webdavPasswordStatus = forward("webdavPasswordStatus");
+export const saveWebdavSavedPassword = forward("saveWebdavSavedPassword");
+export const forgetWebdavSavedPassword = forward("forgetWebdavSavedPassword");
+export const webdavSyncUpload = forward("webdavSyncUpload");
+export const webdavSyncDownload = forward("webdavSyncDownload");
 export const saveAiConversation = forward("saveAiConversation");
 export const loadAiConversations = forward("loadAiConversations");
 export const deleteAiConversation = forward("deleteAiConversation");
@@ -237,6 +243,10 @@ export type {
   JavaRuntimeMode,
   JavaRuntimeConfig,
   DriverInstallProgress,
+  WebDavConfig,
+  WebDavPasswordStatus,
+  WebDavSyncSummary,
+  WebDavDownloadResult,
   UpdateInfo,
   RedisDatabaseInfo,
   RedisKeyInfo,

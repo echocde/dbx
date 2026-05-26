@@ -776,6 +776,65 @@ export async function saveDesktopSettings(_settings: DesktopSettings): Promise<v
   return;
 }
 
+export interface WebDavConfig {
+  endpoint: string;
+  username?: string;
+  password?: string;
+  remotePath?: string;
+}
+
+export interface WebDavSyncSummary {
+  remotePath: string;
+  bytes: number;
+  exportedAt?: string;
+  appVersion?: string;
+}
+
+export interface WebDavDownloadResult {
+  summary: WebDavSyncSummary;
+  editorSettings?: unknown;
+  desktopSettings: DesktopSettings;
+  applySummary: {
+    encryptedSecretsPresent: boolean;
+    secretsApplied: boolean;
+  };
+}
+
+export interface WebDavPasswordStatus {
+  hasSavedPassword: boolean;
+}
+
+export async function webdavSyncTest(_config: WebDavConfig): Promise<void> {
+  throw new Error("WebDAV sync is only available in the desktop app.");
+}
+
+export async function webdavPasswordStatus(_config: WebDavConfig): Promise<WebDavPasswordStatus> {
+  return { hasSavedPassword: false };
+}
+
+export async function saveWebdavSavedPassword(_config: WebDavConfig, _password: string): Promise<void> {
+  throw new Error("WebDAV sync is only available in the desktop app.");
+}
+
+export async function forgetWebdavSavedPassword(_config: WebDavConfig): Promise<void> {
+  throw new Error("WebDAV sync is only available in the desktop app.");
+}
+
+export async function webdavSyncUpload(
+  _config: WebDavConfig,
+  _editorSettings?: unknown,
+  _secretsPassphrase?: string,
+): Promise<WebDavSyncSummary> {
+  throw new Error("WebDAV sync is only available in the desktop app.");
+}
+
+export async function webdavSyncDownload(
+  _config: WebDavConfig,
+  _secretsPassphrase?: string,
+): Promise<WebDavDownloadResult> {
+  throw new Error("WebDAV sync is only available in the desktop app.");
+}
+
 export async function loadPinnedTreeNodeIds(): Promise<string[]> {
   return get("/api/app-settings/pinned-tree-node-ids");
 }

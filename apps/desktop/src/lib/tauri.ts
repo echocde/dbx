@@ -93,6 +93,34 @@ export interface DesktopSettings {
   show_tray_icon: boolean;
 }
 
+export interface WebDavConfig {
+  endpoint: string;
+  username?: string;
+  password?: string;
+  remotePath?: string;
+}
+
+export interface WebDavSyncSummary {
+  remotePath: string;
+  bytes: number;
+  exportedAt?: string;
+  appVersion?: string;
+}
+
+export interface WebDavDownloadResult {
+  summary: WebDavSyncSummary;
+  editorSettings?: unknown;
+  desktopSettings: DesktopSettings;
+  applySummary: {
+    encryptedSecretsPresent: boolean;
+    secretsApplied: boolean;
+  };
+}
+
+export interface WebDavPasswordStatus {
+  hasSavedPassword: boolean;
+}
+
 export interface QueryPagination {
   limit: number;
   offset: number;
@@ -234,6 +262,37 @@ export async function loadDesktopSettings(): Promise<DesktopSettings> {
 
 export async function saveDesktopSettings(settings: DesktopSettings): Promise<void> {
   return invoke("save_desktop_settings", { settings });
+}
+
+export async function webdavSyncTest(config: WebDavConfig): Promise<void> {
+  return invoke("webdav_sync_test", { config });
+}
+
+export async function webdavPasswordStatus(config: WebDavConfig): Promise<WebDavPasswordStatus> {
+  return invoke("webdav_password_status", { config });
+}
+
+export async function saveWebdavSavedPassword(config: WebDavConfig, password: string): Promise<void> {
+  return invoke("save_webdav_saved_password", { config, password });
+}
+
+export async function forgetWebdavSavedPassword(config: WebDavConfig): Promise<void> {
+  return invoke("forget_webdav_saved_password", { config });
+}
+
+export async function webdavSyncUpload(
+  config: WebDavConfig,
+  editorSettings?: unknown,
+  secretsPassphrase?: string,
+): Promise<WebDavSyncSummary> {
+  return invoke("webdav_sync_upload", { config, editorSettings, secretsPassphrase });
+}
+
+export async function webdavSyncDownload(
+  config: WebDavConfig,
+  secretsPassphrase?: string,
+): Promise<WebDavDownloadResult> {
+  return invoke("webdav_sync_download", { config, secretsPassphrase });
 }
 
 export async function loadPinnedTreeNodeIds(): Promise<string[]> {

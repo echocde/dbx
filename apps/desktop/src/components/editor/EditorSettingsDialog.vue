@@ -1,8 +1,20 @@
 <script setup lang="ts">
-import { ref, watch, shallowRef, computed } from "vue";
+import { ref, watch, shallowRef, computed, onMounted } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
-import { CircleHelp, ExternalLink, Loader2, Pencil, RefreshCw, Settings, Trash2 } from "lucide-vue-next";
+import {
+  CircleHelp,
+  Cloud,
+  Download,
+  ExternalLink,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Settings,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-vue-next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +25,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useSettingsStore,
   AI_PROVIDER_PRESETS,
@@ -27,7 +40,19 @@ import {
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { useTheme } from "@/composables/useTheme";
-import { aiListModels, aiTestConnection, listSystemFonts, type AiModelInfo } from "@/lib/api";
+import {
+  aiListModels,
+  aiTestConnection,
+  forgetWebdavSavedPassword,
+  listSystemFonts,
+  saveWebdavSavedPassword,
+  webdavPasswordStatus,
+  webdavSyncDownload,
+  webdavSyncTest,
+  webdavSyncUpload,
+  type AiModelInfo,
+  type WebDavConfig,
+} from "@/lib/api";
 import { eventToShortcut } from "@/lib/keyboardShortcuts";
 import {
   SHORTCUT_DEFINITIONS,
@@ -42,9 +67,11 @@ import { uuid } from "@/lib/utils";
 import { DEFAULT_SQL_SNIPPETS } from "@/lib/sqlCompletion";
 import AiProviderLogo from "@/components/icons/AiProviderLogo.vue";
 import type { AppThemeAppearance } from "@/lib/appTheme";
+import { useConnectionStore } from "@/stores/connectionStore";
 
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
+const connectionStore = useConnectionStore();
 const { isDark } = useTheme();
 
 const props = defineProps<{
@@ -142,10 +169,6 @@ function confirmDeleteSnippet(snippet: SqlSnippet) {
   }
 }
 
-function restoreDefaultSnippets() {
-  editSnippets.value = DEFAULT_SQL_SNIPPETS.map((s) => ({ ...s }));
-}
-
 const presetFontLabels = new Map(FONT_FAMILIES.map((font) => [font.value, font.label]));
 
 function cssFontFamilyForName(name: string): string {
@@ -212,6 +235,7 @@ watch(
       void loadSystemFontOptions();
     }
   },
+  { immediate: true },
 );
 
 watch(
@@ -356,6 +380,7 @@ type SettingsCategory =
   | "redis"
   | "shortcuts"
   | "snippets"
+  | "sync"
   | "ai"
   | "security"
   | "about";
@@ -366,6 +391,7 @@ const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[
   { value: "redis", label: t("settings.redisTab") },
   { value: "shortcuts", label: t("settings.shortcutsTab") },
   { value: "snippets", label: t("settings.snippetsTab") },
+  ...(isWeb ? [] : [{ value: "sync" as const, label: t("settings.syncTab") }]),
   { value: "ai", label: t("settings.aiTab") },
   ...(isWeb ? [{ value: "security" as const, label: t("settings.securityTab") }] : []),
   { value: "about", label: t("settings.aboutTab") },
@@ -400,6 +426,138 @@ function openExternalUrl(url: string) {
   }
 }
 
+// ---------- WebDAV Sync ----------
+const webdavEndpoint = ref(localStorage.getItem("dbx-webdav-endpoint") || "");
+const webdavUsername = ref(localStorage.getItem("dbx-webdav-username") || "");
+const webdavPassword = ref("");
+const webdavRememberPassword = ref(localStorage.getItem("dbx-webdav-remember-password") === "true");
+const webdavHasSavedPassword = ref(false);
+const webdavRemotePath = ref(localStorage.getItem("dbx-webdav-remote-path") || "DBX/sync/snapshot.json");
+const webdavSyncSecrets = ref(false);
+const webdavSecretsPassphrase = ref("");
+const webdavBusy = ref<"" | "test" | "upload" | "download">("");
+const webdavMessage = ref("");
+const webdavError = ref(false);
+
+const webdavReady = computed(
+  () =>
+    !!webdavEndpoint.value.trim() &&
+    !webdavBusy.value &&
+    (!webdavSyncSecrets.value || !!webdavSecretsPassphrase.value.trim()),
+);
+
+function currentWebDavConfig(): WebDavConfig {
+  return {
+    endpoint: webdavEndpoint.value.trim(),
+    username: webdavUsername.value.trim() || undefined,
+    password: webdavPassword.value || undefined,
+    remotePath: webdavRemotePath.value.trim() || "DBX/sync/snapshot.json",
+  };
+}
+
+function currentWebDavAccountConfig(): WebDavConfig {
+  const config = currentWebDavConfig();
+  return { ...config, password: undefined };
+}
+
+function rememberWebDavFields() {
+  localStorage.setItem("dbx-webdav-endpoint", webdavEndpoint.value.trim());
+  localStorage.setItem("dbx-webdav-username", webdavUsername.value.trim());
+  localStorage.setItem("dbx-webdav-remote-path", webdavRemotePath.value.trim() || "DBX/sync/snapshot.json");
+}
+
+function setWebDavResult(message: string, error = false) {
+  webdavMessage.value = message;
+  webdavError.value = error;
+}
+
+async function runWebDavAction(kind: "test" | "upload" | "download", action: () => Promise<string>) {
+  webdavBusy.value = kind;
+  webdavMessage.value = "";
+  webdavError.value = false;
+  try {
+    rememberWebDavFields();
+    await applyWebDavPasswordPreference();
+    setWebDavResult(await action());
+  } catch (e: any) {
+    setWebDavResult(e?.message || String(e), true);
+  } finally {
+    webdavBusy.value = "";
+  }
+}
+
+async function refreshWebDavPasswordStatus() {
+  if (!webdavEndpoint.value.trim()) {
+    webdavHasSavedPassword.value = false;
+    webdavRememberPassword.value = false;
+    return;
+  }
+  try {
+    const status = await webdavPasswordStatus(currentWebDavAccountConfig());
+    webdavHasSavedPassword.value = status.hasSavedPassword;
+    if (status.hasSavedPassword) webdavRememberPassword.value = true;
+  } catch {
+    webdavHasSavedPassword.value = false;
+  }
+}
+
+async function applyWebDavPasswordPreference() {
+  const password = webdavPassword.value;
+  if (webdavRememberPassword.value && password) {
+    await saveWebdavSavedPassword(currentWebDavAccountConfig(), password);
+    webdavHasSavedPassword.value = true;
+    return;
+  }
+  if (!webdavRememberPassword.value && webdavHasSavedPassword.value) {
+    await forgetWebdavSavedPassword(currentWebDavAccountConfig());
+    webdavHasSavedPassword.value = false;
+  }
+}
+
+async function testWebDav() {
+  await runWebDavAction("test", async () => {
+    await webdavSyncTest(currentWebDavConfig());
+    return t("settings.syncTestSuccess");
+  });
+}
+
+async function uploadWebDavSnapshot() {
+  await runWebDavAction("upload", async () => {
+    const summary = await webdavSyncUpload(
+      currentWebDavConfig(),
+      settingsStore.editorSettings,
+      webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined,
+    );
+    return t("settings.syncUploadSuccess", { bytes: summary.bytes, path: summary.remotePath });
+  });
+}
+
+async function downloadWebDavSnapshot() {
+  if (!window.confirm(t("settings.syncDownloadConfirm"))) return;
+  await runWebDavAction("download", async () => {
+    const result = await webdavSyncDownload(
+      currentWebDavConfig(),
+      webdavSyncSecrets.value ? webdavSecretsPassphrase.value : undefined,
+    );
+    if (result.editorSettings && typeof result.editorSettings === "object") {
+      settingsStore.updateEditorSettings(result.editorSettings as any);
+    }
+    await settingsStore.updateDesktopSettings(result.desktopSettings);
+    await connectionStore.initFromDisk();
+    const message = t("settings.syncDownloadSuccess", {
+      bytes: result.summary.bytes,
+      path: result.summary.remotePath,
+    });
+    if (result.applySummary.encryptedSecretsPresent && !result.applySummary.secretsApplied) {
+      return `${message} ${t("settings.syncSecretsSkipped")}`;
+    }
+    if (result.applySummary.secretsApplied) {
+      return `${message} ${t("settings.syncSecretsApplied")}`;
+    }
+    return message;
+  });
+}
+
 watch(
   () => props.open,
   async (open) => {
@@ -412,10 +570,25 @@ watch(
       await settingsStore.initAiConfig();
       await settingsStore.initDesktopSettings();
       editShowTrayIcon.value = settingsStore.desktopSettings.show_tray_icon;
+      webdavPassword.value = "";
+      await refreshWebDavPasswordStatus();
       syncAiEditState();
     }
   },
+  { immediate: true },
 );
+
+watch([webdavEndpoint, webdavUsername], () => {
+  void refreshWebDavPasswordStatus();
+});
+watch(webdavRememberPassword, (val) => {
+  localStorage.setItem("dbx-webdav-remember-password", String(val));
+});
+
+onMounted(() => {
+  void refreshWebDavPasswordStatus();
+});
+
 const oldPassword = ref("");
 const newPassword = ref("");
 const confirmNewPassword = ref("");
@@ -1040,11 +1213,16 @@ watch(
                 </div>
               </div>
               <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
-                <div class="space-y-1">
+                <div class="flex items-center gap-2">
                   <Label for="auto-select-active-sidebar-node">{{ t("settings.autoSelectActiveSidebarNode") }}</Label>
-                  <p class="text-xs text-muted-foreground">
-                    {{ t("settings.autoSelectActiveSidebarNodeDescription") }}
-                  </p>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <CircleHelp class="h-3.5 w-3.5 cursor-help text-muted-foreground hover:text-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent class="max-w-[320px] text-xs leading-relaxed" side="top" align="start">
+                      {{ t("settings.autoSelectActiveSidebarNodeDescription") }}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
                 <Switch id="auto-select-active-sidebar-node" v-model="editAutoSelectActiveSidebarNode" />
               </div>
@@ -1168,11 +1346,103 @@ watch(
                   </tbody>
                 </table>
               </div>
+            </section>
 
-              <div class="flex justify-end">
-                <Button variant="outline" size="sm" @click="restoreDefaultSnippets">
-                  {{ t("settings.snippetsRestoreDefaults") }}
-                </Button>
+            <section v-else-if="activeSettingsTab === 'sync'" class="flex flex-col gap-5 py-2">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2 text-sm font-medium">
+                  <Cloud class="h-4 w-4 text-muted-foreground" />
+                  {{ t("settings.syncWebDavTitle") }}
+                </div>
+                <p class="text-xs text-muted-foreground">{{ t("settings.syncWebDavDescription") }}</p>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2">
+                <div class="space-y-2 md:col-span-2">
+                  <Label for="webdav-endpoint">{{ t("settings.syncEndpoint") }}</Label>
+                  <Input
+                    id="webdav-endpoint"
+                    v-model="webdavEndpoint"
+                    autocomplete="off"
+                    placeholder="https://example.com/remote.php/dav/files/user/"
+                  />
+                </div>
+                <div class="space-y-2">
+                  <Label for="webdav-username">{{ t("settings.syncUsername") }}</Label>
+                  <Input id="webdav-username" v-model="webdavUsername" autocomplete="username" />
+                </div>
+                <div class="space-y-2">
+                  <Label for="webdav-password">{{ t("settings.syncPassword") }}</Label>
+                  <div class="relative">
+                    <Input
+                      id="webdav-password"
+                      v-model="webdavPassword"
+                      type="password"
+                      :placeholder="webdavHasSavedPassword ? '••••••••' : '输入密码'"
+                      :disabled="webdavHasSavedPassword"
+                      autocomplete="current-password"
+                    />
+                    <Button
+                      v-if="webdavHasSavedPassword"
+                      variant="ghost"
+                      size="icon-xs"
+                      class="absolute right-1 top-1/2 -translate-y-1/2"
+                      title="清除已保存的密码"
+                      @click="
+                        webdavRememberPassword = false;
+                        forgetWebdavSavedPassword(currentWebDavAccountConfig());
+                        webdavHasSavedPassword = false;
+                        webdavPassword = '';
+                      "
+                    >
+                      <X class="size-3.5" />
+                    </Button>
+                  </div>
+                  <label class="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input v-model="webdavRememberPassword" type="checkbox" class="h-4 w-4 shrink-0 accent-primary" />
+                    <span>
+                      {{ t("settings.syncRememberWebDavPassword") }}
+                      <span v-if="webdavHasSavedPassword">{{ t("settings.syncSavedPassword") }}</span>
+                    </span>
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <CircleHelp class="h-3.5 w-3.5 cursor-help text-muted-foreground hover:text-foreground" />
+                      </TooltipTrigger>
+                      <TooltipContent class="max-w-[320px] text-xs leading-relaxed" side="top" align="start">
+                        {{ t("settings.syncRememberWebDavPasswordDescription") }}
+                      </TooltipContent>
+                    </Tooltip>
+                  </label>
+                </div>
+                <div class="space-y-2 md:col-span-2">
+                  <Label for="webdav-remote-path">{{ t("settings.syncRemotePath") }}</Label>
+                  <Input id="webdav-remote-path" v-model="webdavRemotePath" autocomplete="off" />
+                  <p class="text-xs text-muted-foreground">{{ t("settings.syncRemotePathDescription") }}</p>
+                </div>
+              </div>
+
+              <div class="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                {{ t("settings.syncSecretNotice") }}
+              </div>
+
+              <div class="space-y-3 rounded-md border bg-muted/20 px-3 py-3">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="space-y-1">
+                    <Label for="webdav-sync-secrets">{{ t("settings.syncSecrets") }}</Label>
+                    <p class="text-xs text-muted-foreground">{{ t("settings.syncSecretsDescription") }}</p>
+                  </div>
+                  <Switch id="webdav-sync-secrets" v-model="webdavSyncSecrets" />
+                </div>
+                <div v-if="webdavSyncSecrets" class="space-y-2">
+                  <Label for="webdav-secrets-passphrase">{{ t("settings.syncSecretsPassphrase") }}</Label>
+                  <Input
+                    id="webdav-secrets-passphrase"
+                    v-model="webdavSecretsPassphrase"
+                    type="password"
+                    autocomplete="new-password"
+                  />
+                  <p class="text-xs text-muted-foreground">{{ t("settings.syncSecretsPassphraseDescription") }}</p>
+                </div>
               </div>
             </section>
 
@@ -1530,6 +1800,37 @@ watch(
             </div>
             <Button variant="outline" @click="emit('update:open', false)">{{ t("common.close") }}</Button>
             <Button :disabled="!aiHasChanges()" @click="aiApplySettings">{{ t("settings.apply") }}</Button>
+          </DialogFooter>
+
+          <DialogFooter
+            v-else-if="activeSettingsTab === 'sync'"
+            class="mx-0 mb-0 shrink-0 rounded-none border-t border-border/60 bg-transparent px-0 pb-0 pt-3 gap-3 sm:gap-3"
+          >
+            <Button variant="outline" @click="emit('update:open', false)">
+              {{ t("common.close") }}
+            </Button>
+            <p
+              v-if="webdavMessage"
+              class="text-xs self-center truncate max-w-[280px]"
+              :class="webdavError ? 'text-destructive' : 'text-green-500'"
+            >
+              {{ webdavMessage }}
+            </p>
+            <div class="flex-1" />
+            <Button variant="outline" :disabled="!webdavReady" @click="testWebDav">
+              <Loader2 v-if="webdavBusy === 'test'" class="mr-1 h-3 w-3 animate-spin" />
+              {{ t("settings.syncTest") }}
+            </Button>
+            <Button variant="outline" :disabled="!webdavReady" @click="downloadWebDavSnapshot">
+              <Loader2 v-if="webdavBusy === 'download'" class="mr-1 h-3 w-3 animate-spin" />
+              <Download v-else class="mr-1 h-3 w-3" />
+              {{ t("settings.syncDownload") }}
+            </Button>
+            <Button :disabled="!webdavReady" @click="uploadWebDavSnapshot">
+              <Loader2 v-if="webdavBusy === 'upload'" class="mr-1 h-3 w-3 animate-spin" />
+              <Upload v-else class="mr-1 h-3 w-3" />
+              {{ t("settings.syncUpload") }}
+            </Button>
           </DialogFooter>
 
           <DialogFooter
