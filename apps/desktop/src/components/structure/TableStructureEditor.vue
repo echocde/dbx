@@ -404,8 +404,8 @@ watch(
 </script>
 
 <template>
-  <div class="flex h-full flex-col space-y-2 p-3 text-[11px]" data-structure-density="compact">
-    <div class="flex items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-[11px]">
+  <div class="flex h-full min-h-0 flex-col gap-2 overflow-hidden p-3 text-[11px]" data-structure-density="compact">
+    <div class="flex shrink-0 items-center gap-2 rounded-md border bg-muted/20 px-2.5 py-1.5 text-[11px]">
       <Database class="h-3.5 w-3.5 text-muted-foreground" />
       <span class="min-w-0 flex-1 truncate font-medium">{{ targetLabel || t("editor.noDatabase") }}</span>
       <Badge variant="outline">{{ connection?.driver_label || databaseType }}</Badge>
@@ -422,7 +422,7 @@ watch(
       </Button>
     </div>
 
-    <div v-if="isCreateMode" class="flex items-center gap-2">
+    <div v-if="isCreateMode" class="flex shrink-0 items-center gap-2">
       <label class="shrink-0 text-[11px] font-medium text-muted-foreground">{{ t("structureEditor.tableName") }}</label>
       <Input
         v-model="newTableName"
@@ -431,15 +431,15 @@ watch(
       />
     </div>
 
-    <div v-if="loading" class="flex h-[420px] items-center justify-center gap-2 text-sm text-muted-foreground">
+    <div v-if="loading" class="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
       <Loader2 class="h-4 w-4 animate-spin" />
       {{ t("common.loading") }}
     </div>
 
-    <div v-else class="grid flex-1 min-h-0 grid-cols-[minmax(0,1fr)_300px] gap-2">
-      <div class="min-w-0 rounded-md border">
-        <Tabs v-model="activeTab" class="flex h-full flex-col">
-          <div class="flex items-center justify-between border-b px-2 py-1.5">
+    <div v-else class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_300px] gap-2 overflow-hidden">
+      <div class="min-h-0 min-w-0 overflow-hidden rounded-md border">
+        <Tabs v-model="activeTab" class="flex h-full min-h-0 flex-col">
+          <div class="flex shrink-0 items-center justify-between border-b px-2 py-1.5">
             <TabsList>
               <TabsTrigger value="columns">{{ t("structureEditor.columns") }}</TabsTrigger>
               <TabsTrigger value="indexes">{{ t("structureEditor.indexes") }}</TabsTrigger>
@@ -885,8 +885,8 @@ watch(
         </Tabs>
       </div>
 
-      <div class="flex min-w-0 flex-col rounded-md border">
-        <div class="flex items-center justify-between border-b px-2 py-1.5 text-[11px] font-medium">
+      <div class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border">
+        <div class="flex shrink-0 items-center justify-between border-b px-2 py-1.5 text-[11px] font-medium">
           <div class="flex items-center gap-1.5">
             <span>{{ t("structureEditor.sqlPreview") }}</span>
             <Badge
@@ -928,12 +928,12 @@ watch(
 
     <div
       v-if="errorMessage"
-      class="rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive"
+      class="shrink-0 rounded-md border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive"
     >
       {{ errorMessage }}
     </div>
 
-    <div class="flex items-center justify-end gap-2">
+    <div class="flex shrink-0 items-center justify-end gap-2">
       <Button :disabled="!canApply" @click="applyChanges">
         <Loader2 v-if="saving" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
         <Save v-else class="mr-1.5 h-3.5 w-3.5" />
