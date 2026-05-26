@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from "vue";
+import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
 import {
@@ -137,6 +138,7 @@ const queryStore = useQueryStore();
 const savedSqlStore = useSavedSqlStore();
 const settingsStore = useSettingsStore();
 const { toast } = useToast();
+const { highlight } = useSqlHighlighter();
 const { getDatabaseOptions } = useDatabaseOptions();
 const showVisibleDatabasesDialog = ref(false);
 
@@ -2299,8 +2301,8 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
         <pre
           v-if="renameObjectPreviewSql"
           class="max-h-32 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap"
-          >{{ renameObjectPreviewSql }}</pre
-        >
+          v-html="highlight(renameObjectPreviewSql)"
+        ></pre>
         <p v-if="renameObjectError" class="text-sm text-destructive">{{ renameObjectError }}</p>
       </div>
       <DialogFooter>

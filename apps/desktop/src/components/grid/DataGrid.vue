@@ -157,11 +157,13 @@ import { useDataGridExport } from "@/composables/useDataGridExport";
 import { useDataGridColumnResize } from "@/composables/useDataGridColumnResize";
 import { useDataGridSelection } from "@/composables/useDataGridSelection";
 import { useDataGridEditor } from "@/composables/useDataGridEditor";
+import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
 const { toast } = useToast();
+const { highlight } = useSqlHighlighter();
 
 interface PreparedCopyValue {
   key: string;
@@ -3330,6 +3332,8 @@ onUnmounted(() => {
 const SQL_KEYWORDS =
   /\b(CREATE|TABLE|INDEX|UNIQUE|PRIMARY|KEY|FOREIGN|REFERENCES|CONSTRAINT|NOT|NULL|DEFAULT|INT|INTEGER|BIGINT|SMALLINT|VARCHAR|CHARACTER|VARYING|TEXT|BOOLEAN|DOUBLE|PRECISION|REAL|FLOAT|NUMERIC|DECIMAL|TIMESTAMP|DATE|TIME|SERIAL|AUTOINCREMENT|AUTO_INCREMENT|IF|EXISTS|ON|SET|CASCADE|RESTRICT|CHECK|WITH|WITHOUT|ZONE)\b/gi;
 
+const highlightedDdlContent = computed(() => highlight(ddlContent.value));
+
 function highlightSql(sql: string): string {
   const tokens: string[] = [];
   let rest = sql;
@@ -4850,7 +4854,7 @@ defineExpose({
                 v-else-if="activeTableInfoTab === 'ddl' && !ddlLoading"
                 class="flex-1 min-w-0 text-xs font-mono p-3 overflow-auto ddl-code leading-5 select-text"
                 :class="ddlWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
-                v-html="highlightSql(ddlContent)"
+                v-html="highlightedDdlContent"
               ></pre>
               <div v-else class="flex-1 flex items-center justify-center">
                 <Loader2 class="w-4 h-4 animate-spin text-muted-foreground" />
