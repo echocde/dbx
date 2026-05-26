@@ -1572,6 +1572,12 @@ const columnComment = computed(() =>
     ? (props.node.meta as any).comment
     : null,
 );
+const tableComment = computed(() =>
+  (props.node.type === "table" || props.node.type === "view" || props.node.type === "mongo-collection") &&
+  props.node.comment
+    ? props.node.comment
+    : null,
+);
 const paddingLeft = computed(() => treeItemPaddingLeft(props.depth));
 const isConnected = computed(
   () =>
@@ -1891,6 +1897,12 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
           <span v-if="columnComment" class="truncate text-muted-foreground/60 text-[10px] max-w-[40%]">{{
             columnComment
           }}</span>
+          <span
+            v-if="tableComment"
+            class="truncate text-muted-foreground/60 text-[10px] max-w-[50%] group-hover:hidden"
+            :title="tableComment"
+            >{{ tableComment }}</span
+          >
           <span
             v-if="
               node.type === 'connection' && node.connectionId && connectionStore.connectedIds.has(node.connectionId)

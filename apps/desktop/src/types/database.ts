@@ -292,6 +292,7 @@ export interface TreeNode {
   database?: string;
   schema?: string;
   tableName?: string;
+  comment?: string | null;
   objectCount?: number;
   loadedKeyCount?: number;
   totalKeyCount?: number;
