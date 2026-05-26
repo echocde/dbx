@@ -3,8 +3,13 @@ use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
 use futures::{SinkExt, StreamExt};
 use percent_encoding::percent_decode_str;
 use rust_decimal::Decimal;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio_postgres::config::SslMode;
 use tokio_postgres::types::{FromSql, Type};
 use tokio_postgres::{Row, SimpleQueryMessage};
 
@@ -278,9 +283,7 @@ pub async fn connect(url: &str) -> Result<Pool, String> {
             tokio_postgres::Config::from_str(url).map_err(|e| format!("Invalid PostgreSQL connection URL: {e}"))?;
 
         let mgr_config = ManagerConfig { recycling_method: RecyclingMethod::Fast };
-        let mut root_store = rustls::RootCertStore::empty();
-        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        let tls_config = rustls::ClientConfig::builder().with_root_certificates(root_store).with_no_client_auth();
+        let tls_config = postgres_tls_config(&pg_config);
         let mgr = deadpool_postgres::Manager::from_config(
             pg_config.clone(),
             tokio_postgres_rustls::MakeRustlsConnect::new(tls_config),
@@ -306,6 +309,64 @@ pub async fn connect(url: &str) -> Result<Pool, String> {
         Ok(pool)
     })
     .await
+}
+
+fn postgres_tls_config(pg_config: &tokio_postgres::Config) -> rustls::ClientConfig {
+    if postgres_sslmode_accepts_invalid_certs(pg_config.get_ssl_mode()) {
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        return rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoPostgresCertVerification { provider }))
+            .with_no_client_auth();
+    }
+
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    rustls::ClientConfig::builder().with_root_certificates(root_store).with_no_client_auth()
+}
+
+fn postgres_sslmode_accepts_invalid_certs(ssl_mode: SslMode) -> bool {
+    matches!(ssl_mode, SslMode::Prefer | SslMode::Require)
+}
+
+#[derive(Debug)]
+struct NoPostgresCertVerification {
+    provider: Arc<CryptoProvider>,
+}
+
+impl ServerCertVerifier for NoPostgresCertVerification {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls12_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls13_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.provider.signature_verification_algorithms.supported_schemes()
+    }
 }
 
 /// Check whether the user's connection URL already specifies a timezone via
@@ -904,6 +965,27 @@ mod tests {
         let result =
             validate_postgres_ssl_paths("postgres://localhost/db?sslmode=require&sslcert=/nonexistent/cert.pem");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn postgres_tls_accepts_invalid_certs_for_require_sslmode() {
+        let pg_config = tokio_postgres::Config::from_str("postgres://localhost/db?sslmode=require").unwrap();
+
+        assert!(postgres_sslmode_accepts_invalid_certs(pg_config.get_ssl_mode()));
+    }
+
+    #[test]
+    fn postgres_tls_accepts_invalid_certs_for_default_prefer_sslmode() {
+        let pg_config = tokio_postgres::Config::from_str("postgres://localhost/db").unwrap();
+
+        assert!(postgres_sslmode_accepts_invalid_certs(pg_config.get_ssl_mode()));
+    }
+
+    #[test]
+    fn postgres_tls_keeps_verification_off_only_when_ssl_is_disabled() {
+        let pg_config = tokio_postgres::Config::from_str("postgres://localhost/db?sslmode=disable").unwrap();
+
+        assert!(!postgres_sslmode_accepts_invalid_certs(pg_config.get_ssl_mode()));
     }
 
     // --- SQL generation ---
