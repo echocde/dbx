@@ -213,6 +213,7 @@ export const deleteHistoryEntry = forward("deleteHistoryEntry");
 
 // Updates
 export const checkForUpdates = forward("checkForUpdates");
+export const getSystemProxyUrl = forward("getSystemProxyUrl");
 export const getAppVersion = forward("getAppVersion");
 
 // Layout

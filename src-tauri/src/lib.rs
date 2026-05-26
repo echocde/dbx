@@ -369,6 +369,7 @@ pub fn run() {
             commands::history::clear_history,
             commands::history::delete_history_entry,
             commands::update::check_for_updates,
+            commands::update::get_system_proxy_url,
             commands::transfer::start_transfer,
             commands::transfer::cancel_transfer,
             commands::database_export::export_database_sql,

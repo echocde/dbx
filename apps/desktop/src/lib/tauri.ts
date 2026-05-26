@@ -830,6 +830,10 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
   return invoke("check_for_updates");
 }
 
+export async function getSystemProxyUrl(): Promise<string | null> {
+  return invoke("get_system_proxy_url");
+}
+
 export async function getAppVersion(): Promise<string> {
   const { getVersion } = await import("@tauri-apps/api/app");
   return getVersion();
