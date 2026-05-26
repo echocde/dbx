@@ -164,6 +164,10 @@ pub fn build_paginated_query_sql(options: PaginatedQuerySqlOptions) -> QuerySqlB
         return ok(add_sql_server_top(&statement, safe_limit));
     }
 
+    if options.database_type == Some(DatabaseType::Mysql) {
+        return ok(add_mysql_limit(&statement, safe_limit, safe_offset));
+    }
+
     let alias = quote_table_identifier(options.database_type, "dbx_page");
     let base = format!("SELECT * FROM ({statement}) {alias}");
 
@@ -339,6 +343,18 @@ fn sql_server_statement_for_derived_table(statement: &str) -> String {
         return statement.to_string();
     }
     statement[..order_by].trim_end().to_string()
+}
+
+fn add_mysql_limit(statement: &str, limit: usize, offset: usize) -> String {
+    if has_top_level_limit(statement) {
+        return format!("{statement};");
+    }
+    let offset_sql = if offset > 0 { format!(" OFFSET {offset}") } else { String::new() };
+    format!("{statement} LIMIT {limit}{offset_sql};")
+}
+
+fn has_top_level_limit(sql: &str) -> bool {
+    top_level_sql_tokens(sql).iter().any(|token| token.text == "LIMIT")
 }
 
 fn find_top_level_trailing_order_by(sql: &str) -> Option<usize> {
@@ -650,7 +666,34 @@ mod tests {
             offset: 0,
         });
 
-        assert_eq!(result.sql.unwrap(), "SELECT * FROM (SELECT id FROM users WHERE active = 1) `dbx_page` LIMIT 50;");
+        assert_eq!(result.sql.unwrap(), "SELECT id FROM users WHERE active = 1 LIMIT 50;");
+    }
+
+    #[test]
+    fn mysql_pagination_does_not_wrap_duplicate_result_columns() {
+        let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
+            original_sql: "SELECT p.id, t.id FROM table1 p LEFT JOIN table2 t ON p.f = t.f".to_string(),
+            database_type: Some(DatabaseType::Mysql),
+            limit: 50,
+            offset: 100,
+        });
+
+        assert_eq!(
+            result.sql.unwrap(),
+            "SELECT p.id, t.id FROM table1 p LEFT JOIN table2 t ON p.f = t.f LIMIT 50 OFFSET 100;"
+        );
+    }
+
+    #[test]
+    fn mysql_pagination_keeps_existing_top_level_limit() {
+        let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
+            original_sql: "SELECT id FROM users LIMIT 20;".to_string(),
+            database_type: Some(DatabaseType::Mysql),
+            limit: 50,
+            offset: 0,
+        });
+
+        assert_eq!(result.sql.unwrap(), "SELECT id FROM users LIMIT 20;");
     }
 
     #[test]
