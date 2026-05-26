@@ -583,6 +583,23 @@ fn normalize_postgres_url_params(value: &str, force_tls: bool) -> String {
             if !decoded_value.is_empty() {
                 timezone = Some(decoded_value);
             }
+        } else if key.eq_ignore_ascii_case("ssl-mode") {
+            let decoded_value = percent_decode_str(raw_value).decode_utf8_lossy();
+            match decoded_value.to_ascii_lowercase().replace('_', "-").as_str() {
+                "require" | "required" => parts.push("sslmode=require".to_string()),
+                "prefer" | "preferred" => parts.push("sslmode=prefer".to_string()),
+                "disable" | "disabled" => parts.push("sslmode=disable".to_string()),
+                "verify-ca" => parts.push("sslmode=verify-ca".to_string()),
+                "verify-full" | "verify-identity" => parts.push("sslmode=verify-full".to_string()),
+                _ => {}
+            }
+        } else if key.eq_ignore_ascii_case("charset")
+            || key.eq_ignore_ascii_case("require_ssl")
+            || key.eq_ignore_ascii_case("verify_ca")
+            || key.eq_ignore_ascii_case("verify_identity")
+        {
+            // These MySQL-style parameters may be present in older/imported
+            // saved connections. tokio-postgres rejects unknown URL keys.
         } else {
             parts.push(part.to_string());
         }
@@ -1079,6 +1096,26 @@ mod tests {
         );
         let pg_config = tokio_postgres::Config::from_str(&config.connection_url()).unwrap();
         assert_eq!(pg_config.get_options(), Some("-c TimeZone=Asia/Shanghai"));
+    }
+
+    #[test]
+    fn postgres_url_ignores_mysql_only_params_from_saved_connections() {
+        let mut config = mysql_config("postgres", "secret", Some("test"));
+        config.db_type = DatabaseType::Postgres;
+        config.url_params = Some("ssl-mode=preferred&charset=utf8mb4".to_string());
+
+        assert_eq!(config.connection_url(), "postgres://postgres:secret@10.1.2.3:2883/test?sslmode=prefer");
+        tokio_postgres::Config::from_str(&config.connection_url()).unwrap();
+    }
+
+    #[test]
+    fn postgres_url_maps_mysql_ssl_mode_require_to_sslmode() {
+        let mut config = mysql_config("postgres", "secret", Some("test"));
+        config.db_type = DatabaseType::Postgres;
+        config.url_params = Some("ssl-mode=required&verify_ca=false&verify_identity=false".to_string());
+
+        assert_eq!(config.connection_url(), "postgres://postgres:secret@10.1.2.3:2883/test?sslmode=require");
+        tokio_postgres::Config::from_str(&config.connection_url()).unwrap();
     }
 
     #[test]
