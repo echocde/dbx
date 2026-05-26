@@ -1253,6 +1253,7 @@ export default {
     redisScanPageSizeOption: "{count} claves",
     shortcutExecuteSql: "Ejecutar SQL",
     shortcutSaveSql: "Guardar SQL",
+    shortcutAcceptCompletion: "Aceptar completado",
     shortcutCopyCurrentRow: "Copiar fila de datos actual",
     shortcutDeleteCurrentRow: "Eliminar fila de datos actual",
     shortcutNewQuery: "Nueva consulta",

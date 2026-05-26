@@ -102,6 +102,15 @@ export function buildEditorFontThemeRules(
     ...(opts?.scrollable ? { ".cm-scroller": { overflow: "auto" } } : {}),
     ".cm-content": {
       fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, ${defaults?.family ?? "monospace"})`,
+      lineHeight: "1.6",
+      padding: "0",
+    },
+    ".cm-line": {
+      padding: "0 2px !important",
+    },
+    ".cm-selectionLayer .cm-selectionBackground": {
+      transform: "scaleY(1.55)",
+      transformOrigin: "center",
     },
     ".cm-gutters": {
       borderRight: "0 !important",

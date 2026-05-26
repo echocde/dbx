@@ -1371,6 +1371,7 @@ export default {
     redisScanPageSizeOption: "{count} keys",
     shortcutExecuteSql: "Execute SQL",
     shortcutSaveSql: "Save SQL",
+    shortcutAcceptCompletion: "Accept completion",
     shortcutCopyCurrentRow: "Copy current data row",
     shortcutDeleteCurrentRow: "Delete current data row",
     shortcutNewQuery: "New query",

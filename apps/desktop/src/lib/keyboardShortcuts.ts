@@ -96,6 +96,10 @@ export function isSaveShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<Sho
   return matchesShortcut(event, actionShortcut("saveSql", shortcuts));
 }
 
+export function isAcceptCompletionShortcut(event: ShortcutLikeEvent, shortcuts?: Partial<ShortcutSettings>): boolean {
+  return matchesShortcut(event, actionShortcut("acceptCompletion", shortcuts));
+}
+
 export function isObjectSourceSaveShortcutTarget(
   target: { closest(selector: string): unknown } | null | undefined,
 ): boolean {

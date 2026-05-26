@@ -164,6 +164,8 @@ let buildSqlDiagnosticExtension: (() => import("@codemirror/state").Extension) |
 let buildSqlSignatureExtension: (() => import("@codemirror/state").Extension) | null = null;
 let codeMirrorSnippetCompletion: typeof import("@codemirror/autocomplete").snippetCompletion;
 let codeMirrorCompletionStatus: typeof import("@codemirror/autocomplete").completionStatus | null = null;
+let codeMirrorAcceptCompletion: typeof import("@codemirror/autocomplete").acceptCompletion | null = null;
+let codeMirrorIndentMore: typeof import("@codemirror/commands").indentMore | null = null;
 let setSqlDiagnosticsEffect: import("@codemirror/state").StateEffectType<SqlSemanticDiagnostic[]> | null = null;
 let semanticDiagnostics: SqlSemanticDiagnostic[] = [];
 let semanticDiagnosticTimer: ReturnType<typeof setTimeout> | null = null;
@@ -187,8 +189,6 @@ function syncEditorFontCssVars(fontSize = liveFontSize.value, fontFamily = setti
   if (!editorRef.value) return;
   editorRef.value.style.setProperty(EDITOR_FONT_SIZE_CSS_VAR, `${clampEditorFontSize(fontSize)}px`);
   editorRef.value.style.setProperty(EDITOR_FONT_FAMILY_CSS_VAR, fontFamily);
-  const cm = editorRef.value.querySelector(".cm-editor") as HTMLElement | null;
-  if (cm) cm.style.lineHeight = "1.6";
 }
 
 let pendingFontReconfig: { size: number; family: string } | null = null;
@@ -272,6 +272,18 @@ function onEditorGestureEnd(event: Event) {
   zoomCommitScheduler.flush(liveFontSize.value);
 }
 
+function handleTab(view: EditorViewType): boolean {
+  if (codeMirrorCompletionStatus?.(view.state) === "active") return false;
+  const { state, dispatch } = view;
+  const sel = state.selection.main;
+  if (!sel.empty) return codeMirrorIndentMore?.(view) ?? false;
+  const line = state.doc.lineAt(sel.from);
+  const before = line.text.slice(0, sel.from - line.from);
+  if (/^\s*$/.test(before)) return codeMirrorIndentMore?.(view) ?? false;
+  dispatch(state.update(state.replaceSelection("  "), { userEvent: "input.type" }));
+  return true;
+}
+
 function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view"))["keymap"]) {
   const shortcuts = settingsStore.editorSettings.shortcuts;
   return codeMirrorKeymap.of([
@@ -318,6 +330,10 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
         emit("save");
         return true;
       },
+    },
+    {
+      key: shortcutToCodeMirrorKey(shortcuts.acceptCompletion),
+      run: (view) => codeMirrorAcceptCompletion?.(view) ?? false,
     },
   ]);
 }
@@ -897,8 +913,16 @@ onMounted(async () => {
     { EditorState, Compartment, Prec, StateEffect, StateField },
     { sql, MSSQL, MySQL, PostgreSQL, SQLDialect },
     { basicSetup },
-    { autocompletion, startCompletion, closeBrackets, closeBracketsKeymap, snippetCompletion, completionStatus },
-    { indentWithTab },
+    {
+      autocompletion,
+      startCompletion,
+      acceptCompletion,
+      closeBrackets,
+      closeBracketsKeymap,
+      snippetCompletion,
+      completionStatus,
+    },
+    { indentMore },
     { bracketMatching },
   ] = await Promise.all([
     import("@codemirror/view"),
@@ -919,6 +943,8 @@ onMounted(async () => {
   diagnosticComp = new Compartment();
   setSqlDiagnosticsEffect = StateEffect.define<SqlSemanticDiagnostic[]>();
   codeMirrorCompletionStatus = completionStatus;
+  codeMirrorAcceptCompletion = acceptCompletion;
+  codeMirrorIndentMore = indentMore;
 
   const diagnosticTheme = EditorView.baseTheme({
     ".cm-sql-error": {
@@ -1013,7 +1039,7 @@ onMounted(async () => {
       hoverTooltip((currentView, pos) => resolveSqlHoverTooltip(currentView, pos)),
       buildSqlSignatureExtension(),
       diagnosticComp.of(buildSqlDiagnosticExtension()),
-      Prec.highest(keymap.of([...closeBracketsKeymap, indentWithTab])),
+      Prec.highest(keymap.of([...closeBracketsKeymap, { key: "Tab", run: handleTab }])),
       runKeymapComp.of(runKeymapExtension(keymap)),
       wordWrapComp.of(props.forceWordWrap || ss.wordWrap ? EditorView.lineWrapping : []),
       readOnlyComp.of([EditorState.readOnly.of(!!props.readOnly), EditorView.editable.of(!props.readOnly)]),
