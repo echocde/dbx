@@ -361,11 +361,7 @@ fn add_fetch_first_limit(statement: &str, limit: usize, offset: usize) -> String
     if has_top_level_fetch_first(statement) {
         return format!("{statement};");
     }
-    let offset_sql = if offset > 0 {
-        format!(" OFFSET {offset} ROWS")
-    } else {
-        String::new()
-    };
+    let offset_sql = if offset > 0 { format!(" OFFSET {offset} ROWS") } else { String::new() };
     format!("{statement}{offset_sql} FETCH FIRST {limit} ROWS ONLY;")
 }
 
@@ -373,11 +369,7 @@ fn add_standard_limit(statement: &str, limit: usize, offset: usize) -> String {
     if has_top_level_limit(statement) {
         return format!("{statement};");
     }
-    let offset_sql = if offset > 0 {
-        format!(" OFFSET {offset}")
-    } else {
-        String::new()
-    };
+    let offset_sql = if offset > 0 { format!(" OFFSET {offset}") } else { String::new() };
     format!("{statement} LIMIT {limit}{offset_sql};")
 }
 
@@ -599,10 +591,7 @@ mod tests {
         });
 
         assert_eq!(result.ok, true);
-        assert_eq!(
-            result.sql.unwrap(),
-            "SELECT id, name FROM users LIMIT 100 OFFSET 200;"
-        );
+        assert_eq!(result.sql.unwrap(), "SELECT id, name FROM users LIMIT 100 OFFSET 200;");
     }
 
     #[test]
@@ -678,10 +667,7 @@ mod tests {
             offset: 0,
         });
 
-        assert_eq!(
-            result.sql.unwrap(),
-            "SELECT id FROM users FETCH FIRST 100 ROWS ONLY;"
-        );
+        assert_eq!(result.sql.unwrap(), "SELECT id FROM users FETCH FIRST 100 ROWS ONLY;");
     }
 
     #[test]

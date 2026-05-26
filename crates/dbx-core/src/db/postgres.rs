@@ -201,9 +201,7 @@ fn pg_value_to_json(row: &Row, idx: usize, type_name: &str) -> serde_json::Value
         .or_else(|_| row.try_get::<_, bool>(idx).map(serde_json::Value::Bool))
         .or_else(|_| row.try_get::<_, uuid::Uuid>(idx).map(|v| serde_json::Value::String(v.to_string())))
         .or_else(|e| pg_temporal_to_json_value(row, idx).ok_or(e))
-        .or_else(|_| {
-            row.try_get::<_, Vec<u8>>(idx).map(|bytes| super::binary_value_to_json(&bytes))
-        })
+        .or_else(|_| row.try_get::<_, Vec<u8>>(idx).map(|bytes| super::binary_value_to_json(&bytes)))
         .unwrap_or(serde_json::Value::Null)
 }
 
