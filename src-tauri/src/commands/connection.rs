@@ -482,7 +482,10 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
                 PoolKind::ClickHouse(_) => {}
                 PoolKind::SqlServer(_) => {}
                 PoolKind::Elasticsearch(_) => {}
-                PoolKind::Agent(_) => {}
+                PoolKind::Agent(client) => {
+                    let mut client = client.lock().await;
+                    let _ = client.disconnect().await;
+                }
                 PoolKind::ExternalTabular(_) => {}
                 PoolKind::ExternalDriver { .. } => {}
             }
