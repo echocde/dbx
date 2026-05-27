@@ -529,7 +529,9 @@ impl AppState {
             .cloned()
             .collect();
         for key in keys_to_remove {
-            conns.remove(&key);
+            if let Some(PoolKind::DuckDb(con)) = conns.remove(&key) {
+                crate::db::duckdb_driver::close_connection(con);
+            }
         }
     }
 

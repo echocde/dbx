@@ -269,8 +269,9 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                 if state.duckdb_existing_pool_is_usable_for_config(&config).await? {
                     Ok("Connection successful".to_string())
                 } else {
-                    db::duckdb_driver::connect_path(&expand_tilde(&config.host))
-                        .map(|_| "Connection successful".to_string())
+                    let con = db::duckdb_driver::connect_path(&expand_tilde(&config.host))?;
+                    dbx_core::db::duckdb_driver::close_connection(con);
+                    Ok("Connection successful".to_string())
                 }
             }
             DatabaseType::MongoDb => {
@@ -474,7 +475,9 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
                 PoolKind::Postgres(p) => p.close(),
                 PoolKind::Sqlite(_) => {}
                 PoolKind::Redis(_) => {}
-                PoolKind::DuckDb(_) => {}
+                PoolKind::DuckDb(con) => {
+                    dbx_core::db::duckdb_driver::close_connection(con);
+                }
                 PoolKind::MongoDb(_) => {}
                 PoolKind::ClickHouse(_) => {}
                 PoolKind::SqlServer(_) => {}
