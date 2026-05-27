@@ -77,6 +77,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
@@ -111,6 +112,7 @@ const { toast } = useToast();
 const { highlight } = useSqlHighlighter();
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
+const settingsStore = useSettingsStore();
 
 const schemas = ref<string[]>([]);
 const selectedSchema = ref<string | undefined>(props.schema);
@@ -275,6 +277,15 @@ function canRename(row: ObjectBrowserRow) {
 function sourceTitle(row: ObjectBrowserRow | null) {
   if (!row) return t("objects.source");
   return `${row.name} ${t("objects.source")}`;
+}
+
+function onRowClick(row: ObjectBrowserRow, event: MouseEvent) {
+  if (settingsStore.editorSettings.sidebarActivation === "double") {
+    if (event.detail === 2) openRow(row);
+    return;
+  }
+  if (event.detail > 1) return;
+  openRow(row);
 }
 
 function openRow(row: ObjectBrowserRow) {
@@ -1177,7 +1188,7 @@ watch(
                   'bg-primary/5': selectedTableIds.has(item.id),
                 }"
                 :style="{ gridTemplateColumns }"
-                @click="openRow(item)"
+                @click="onRowClick(item, $event)"
               >
                 <button
                   class="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
