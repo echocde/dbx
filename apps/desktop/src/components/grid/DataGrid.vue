@@ -4272,7 +4272,6 @@ defineExpose({
                               </span>
                             </span>
                             <button
-                              v-if="!compactColumnHeaderActions"
                               type="button"
                               class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                               :class="
@@ -4310,12 +4309,10 @@ defineExpose({
                                   type="button"
                                   class="flex h-4 w-4 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                                   :class="
-                                    sortCol === col && sortColIndex === actualColumnIndex(colIdx)
-                                      ? 'text-primary opacity-100'
-                                      : columnHasFormatter(actualColumnIndex(colIdx)) ||
-                                          localFilterActive(actualColumnIndex(colIdx))
-                                        ? 'text-primary opacity-90'
-                                        : 'opacity-80'
+                                    columnHasFormatter(actualColumnIndex(colIdx)) ||
+                                    localFilterActive(actualColumnIndex(colIdx))
+                                      ? 'text-primary opacity-90'
+                                      : 'opacity-80'
                                   "
                                   :title="t('grid.columnActions')"
                                   @click.stop
@@ -4329,29 +4326,6 @@ defineExpose({
                                 @click.stop
                                 @keydown.stop
                               >
-                                <DropdownMenuItem
-                                  class="gap-1 px-1.5 py-0.5 text-xs"
-                                  @click="applyHeaderSort(col, actualColumnIndex(colIdx), 'asc')"
-                                >
-                                  <ArrowUp class="h-3 w-3" />
-                                  {{ t("grid.sortAscending") }}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  class="gap-1 px-1.5 py-0.5 text-xs"
-                                  @click="applyHeaderSort(col, actualColumnIndex(colIdx), 'desc')"
-                                >
-                                  <ArrowDown class="h-3 w-3" />
-                                  {{ t("grid.sortDescending") }}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  class="gap-1 px-1.5 py-0.5 text-xs"
-                                  :disabled="!sortCol"
-                                  @click="applyHeaderSort(col, actualColumnIndex(colIdx), null)"
-                                >
-                                  <ArrowUpDown class="h-3 w-3" />
-                                  {{ t("grid.clearSort") }}
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   class="gap-1 px-1.5 py-0.5 text-xs"
                                   :disabled="!formatterKeyForColumn(col)"
