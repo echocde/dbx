@@ -1,6 +1,6 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use futures::StreamExt;
-use mysql_async::consts::{ColumnFlags, ColumnType};
+use mysql_async::consts::ColumnType;
 use mysql_async::prelude::*;
 use rust_decimal::Decimal;
 use std::borrow::Cow;
@@ -84,26 +84,72 @@ fn is_lossless_integer_column(column: &mysql_async::Column) -> bool {
     matches!(column.column_type(), ColumnType::MYSQL_TYPE_LONGLONG | ColumnType::MYSQL_TYPE_NEWDECIMAL)
 }
 
-fn is_binary_column(column: &mysql_async::Column) -> bool {
-    let binary_flag = column.flags().contains(ColumnFlags::BINARY_FLAG);
-    let binary_charset = column.character_set() == 63;
-    matches!(column.column_type(), ColumnType::MYSQL_TYPE_GEOMETRY)
-        || ((binary_flag || binary_charset)
-            && matches!(
-                column.column_type(),
-                ColumnType::MYSQL_TYPE_BLOB
-                    | ColumnType::MYSQL_TYPE_LONG_BLOB
-                    | ColumnType::MYSQL_TYPE_MEDIUM_BLOB
-                    | ColumnType::MYSQL_TYPE_TINY_BLOB
-                    | ColumnType::MYSQL_TYPE_STRING
-                    | ColumnType::MYSQL_TYPE_VAR_STRING
-                    | ColumnType::MYSQL_TYPE_VARCHAR
-            ))
+fn is_mysql_binary_charset(column: &mysql_async::Column) -> bool {
+    column.character_set() == 63
+}
+
+fn is_mysql_blob_column(column: &mysql_async::Column) -> bool {
+    is_mysql_binary_charset(column)
+        && matches!(
+            column.column_type(),
+            ColumnType::MYSQL_TYPE_BLOB
+                | ColumnType::MYSQL_TYPE_LONG_BLOB
+                | ColumnType::MYSQL_TYPE_MEDIUM_BLOB
+                | ColumnType::MYSQL_TYPE_TINY_BLOB
+        )
+}
+
+fn is_mysql_binary_string_column(column: &mysql_async::Column) -> bool {
+    is_mysql_binary_charset(column)
+        && matches!(
+            column.column_type(),
+            ColumnType::MYSQL_TYPE_STRING | ColumnType::MYSQL_TYPE_VAR_STRING | ColumnType::MYSQL_TYPE_VARCHAR
+        )
+}
+
+fn mysql_printable_binary_preview(bytes: &[u8]) -> Option<String> {
+    let trimmed = bytes.strip_suffix(&[0]).map_or(bytes, |mut value| {
+        while let Some(rest) = value.strip_suffix(&[0]) {
+            value = rest;
+        }
+        value
+    });
+    if trimmed.is_empty() {
+        return Some(String::new());
+    }
+
+    let text = std::str::from_utf8(trimmed).ok()?;
+    text.chars().all(|ch| !ch.is_control() || matches!(ch, '\t' | '\n' | '\r')).then(|| text.to_string())
+}
+
+fn mysql_blob_preview(bytes: &[u8], label: &str) -> serde_json::Value {
+    serde_json::Value::String(format!("({label}) {} bytes", bytes.len()))
+}
+
+fn mysql_bit_value_to_string(bytes: &[u8], column: &mysql_async::Column) -> String {
+    let bit_len = column.column_length();
+    if bit_len > 1 {
+        let total_bits = bytes.len() * 8;
+        let mut bits = String::with_capacity(total_bits);
+        for byte in bytes {
+            bits.push_str(&format!("{byte:08b}"));
+        }
+        let start = bits.len().saturating_sub(bit_len as usize);
+        return bits[start..].to_string();
+    }
+
+    let val = bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
+    val.to_string()
 }
 
 fn mysql_bytes_to_json(bytes: Vec<u8>, column: &mysql_async::Column) -> serde_json::Value {
-    if is_binary_column(column) {
-        return super::binary_value_to_json(&bytes);
+    if is_mysql_blob_column(column) {
+        return mysql_blob_preview(&bytes, "BLOB");
+    }
+    if is_mysql_binary_string_column(column) {
+        return mysql_printable_binary_preview(&bytes)
+            .map(serde_json::Value::String)
+            .unwrap_or_else(|| super::binary_value_to_json(&bytes));
     }
     serde_json::Value::String(String::from_utf8_lossy(&bytes).to_string())
 }
@@ -120,9 +166,9 @@ fn mysql_value_to_json(row: &mysql_async::Row, idx: usize) -> serde_json::Value 
         return serde_json::Value::Null;
     }
 
-    if is_binary_column(column) {
+    if is_mysql_binary_string_column(column) {
         return row_get::<Vec<u8>, _>(row, idx)
-            .map(|bytes| super::binary_value_to_json(&bytes))
+            .map(|bytes| mysql_bytes_to_json(bytes, column))
             .unwrap_or(serde_json::Value::Null);
     }
 
@@ -154,10 +200,7 @@ fn mysql_value_to_json(row: &mysql_async::Row, idx: usize) -> serde_json::Value 
         }
         ColumnType::MYSQL_TYPE_BIT => {
             return row_get::<Vec<u8>, _>(row, idx)
-                .map(|bytes| {
-                    let val = bytes.iter().fold(0u64, |acc, &b| (acc << 8) | b as u64);
-                    serde_json::Value::String(val.to_string())
-                })
+                .map(|bytes| serde_json::Value::String(mysql_bit_value_to_string(&bytes, column)))
                 .unwrap_or(serde_json::Value::Null);
         }
         ColumnType::MYSQL_TYPE_BLOB
@@ -166,7 +209,13 @@ fn mysql_value_to_json(row: &mysql_async::Row, idx: usize) -> serde_json::Value 
         | ColumnType::MYSQL_TYPE_TINY_BLOB
         | ColumnType::MYSQL_TYPE_GEOMETRY => {
             return row_get::<Vec<u8>, _>(row, idx)
-                .map(|bytes| mysql_bytes_to_json(bytes, column))
+                .map(|bytes| {
+                    if matches!(column.column_type(), ColumnType::MYSQL_TYPE_GEOMETRY) {
+                        mysql_blob_preview(&bytes, "GEOMETRY")
+                    } else {
+                        mysql_bytes_to_json(bytes, column)
+                    }
+                })
                 .unwrap_or(serde_json::Value::Null);
         }
         ColumnType::MYSQL_TYPE_TIMESTAMP
@@ -787,6 +836,7 @@ pub async fn list_triggers(pool: &MySqlPool, database: &str, table: &str) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mysql_async::consts::ColumnFlags;
 
     #[test]
     fn mysql_with_queries_are_treated_as_result_sets() {
@@ -857,6 +907,67 @@ mod tests {
     #[test]
     fn mysql_largeint_uses_lossless_integer_decoding() {
         assert!(is_mysql_lossless_integer_type("LARGEINT"));
+    }
+
+    fn mysql_test_column(
+        column_type: ColumnType,
+        character_set: u16,
+        flags: ColumnFlags,
+        column_length: u32,
+    ) -> mysql_async::Column {
+        mysql_async::Column::new(column_type)
+            .with_character_set(character_set)
+            .with_flags(flags)
+            .with_column_length(column_length)
+    }
+
+    #[test]
+    fn mysql_binary_preview_keeps_binary_collation_varchar_as_text() {
+        let column = mysql_test_column(ColumnType::MYSQL_TYPE_VAR_STRING, 45, ColumnFlags::BINARY_FLAG, 64);
+
+        assert_eq!(mysql_bytes_to_json(b"SN-A0001".to_vec(), &column), serde_json::json!("SN-A0001"));
+    }
+
+    #[test]
+    fn mysql_binary_preview_renders_binary_and_varbinary_like_navicat_text_preview() {
+        let binary_column = mysql_test_column(ColumnType::MYSQL_TYPE_STRING, 63, ColumnFlags::BINARY_FLAG, 8);
+        let varbinary_column = mysql_test_column(ColumnType::MYSQL_TYPE_VAR_STRING, 63, ColumnFlags::BINARY_FLAG, 8);
+
+        assert_eq!(mysql_bytes_to_json(b"150010\0\0".to_vec(), &binary_column), serde_json::json!("150010"));
+        assert_eq!(mysql_bytes_to_json(b"150010".to_vec(), &varbinary_column), serde_json::json!("150010"));
+    }
+
+    #[test]
+    fn mysql_binary_preview_falls_back_to_hex_for_unprintable_bytes() {
+        let binary_column = mysql_test_column(ColumnType::MYSQL_TYPE_STRING, 63, ColumnFlags::BINARY_FLAG, 8);
+        let varbinary_column = mysql_test_column(ColumnType::MYSQL_TYPE_VAR_STRING, 63, ColumnFlags::BINARY_FLAG, 8);
+
+        assert_eq!(mysql_bytes_to_json(vec![0x01, 0x02, 0x03, 0x04], &binary_column), serde_json::json!("0x01020304"));
+        assert_eq!(
+            mysql_bytes_to_json(vec![0xde, 0xad, 0xbe, 0xef], &varbinary_column),
+            serde_json::json!("0xdeadbeef")
+        );
+    }
+
+    #[test]
+    fn mysql_binary_preview_uses_charset_to_separate_blob_from_text() {
+        let text_column = mysql_test_column(ColumnType::MYSQL_TYPE_BLOB, 45, ColumnFlags::empty(), 65_535);
+        let blob_column = mysql_test_column(ColumnType::MYSQL_TYPE_BLOB, 63, ColumnFlags::BLOB_FLAG, 65_535);
+
+        assert_eq!(mysql_bytes_to_json(b"hello".to_vec(), &text_column), serde_json::json!("hello"));
+        assert_eq!(
+            mysql_bytes_to_json(vec![0x00, 0x01, 0xab, 0xff], &blob_column),
+            serde_json::json!("(BLOB) 4 bytes")
+        );
+    }
+
+    #[test]
+    fn mysql_bit_preview_uses_boolean_or_bit_string_text() {
+        let bit_one = mysql_test_column(ColumnType::MYSQL_TYPE_BIT, 63, ColumnFlags::UNSIGNED_FLAG, 1);
+        let bit_eight = mysql_test_column(ColumnType::MYSQL_TYPE_BIT, 63, ColumnFlags::UNSIGNED_FLAG, 8);
+
+        assert_eq!(mysql_bit_value_to_string(&[1], &bit_one), "1");
+        assert_eq!(mysql_bit_value_to_string(&[0b1010_1010], &bit_eight), "10101010");
     }
 
     #[test]
