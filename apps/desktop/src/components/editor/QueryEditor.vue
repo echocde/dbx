@@ -393,6 +393,7 @@ async function ensureColumnsForTable(table: { name: string; schema?: string | nu
     table.name,
     table.schema ?? undefined,
   );
+  if (columns.length === 0) return;
   cachedColumnsByTable.set(cacheKey, columns);
 }
 
@@ -754,10 +755,12 @@ async function provideSqlCompletions(
           completionContext.insertSchema,
         );
         if (epoch !== completionEpoch) return null;
-        const insertKey = completionContext.insertSchema
-          ? `${completionContext.insertSchema}.${completionContext.insertTable}`
-          : completionContext.insertTable;
-        insertColumnsByTable.set(insertKey, insertCols);
+        if (insertCols.length > 0) {
+          const insertKey = completionContext.insertSchema
+            ? `${completionContext.insertSchema}.${completionContext.insertTable}`
+            : completionContext.insertTable;
+          insertColumnsByTable.set(insertKey, insertCols);
+        }
       } catch {
         // ignore
       }
@@ -865,6 +868,7 @@ async function provideSqlCompletions(
             refTable.schema,
           );
           if (epoch !== completionEpoch) return;
+          if (columns.length === 0) return;
           cachedColumnsByTable.set(cacheKey, columns);
         } catch (e) {
           console.error(`[DBX] Failed to load columns for ${cacheKey}:`, e);

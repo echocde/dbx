@@ -1419,6 +1419,9 @@ export const useConnectionStore = defineStore("connection", () => {
     table: string,
     schema?: string,
   ): Promise<SqlCompletionColumn[]> {
+    if (isSchemaAwareDatabase(connectionId) && !schema) {
+      return [];
+    }
     const cacheKey = `${connectionId}:${database}:${schema || ""}:${table}`;
     if (!completionColumnsCache.value[cacheKey]) {
       await ensureConnected(connectionId);
