@@ -464,7 +464,7 @@ watch(
       <label class="shrink-0 text-[11px] font-medium text-muted-foreground">{{ t("structureEditor.comment") }}</label>
       <Input
         v-model="tableComment"
-        :placeholder="t('structureEditor.commentPlaceholder')"
+        :placeholder="t('structureEditor.tableCommentPlaceholder')"
         class="h-6 max-w-[320px] text-[11px]"
       />
     </div>

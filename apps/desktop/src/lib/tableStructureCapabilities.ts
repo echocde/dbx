@@ -139,12 +139,19 @@ const sqlserverCapabilities = capabilities({
   createTable: true,
   addColumn: true,
   dropColumn: true,
+  renameColumn: true,
+  alterExistingColumn: true,
+  alterType: true,
+  alterNullability: true,
+  alterDefault: true,
+  comment: true,
   createIndex: true,
   dropIndex: true,
   rebuildIndex: true,
   indexType: true,
   indexInclude: true,
   indexFilter: true,
+  indexComment: true,
 });
 
 const oracleCapabilities = capabilities({

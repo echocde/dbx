@@ -293,16 +293,18 @@ pub async fn list_tables(
         .filter(|value| !value.trim().is_empty())
         .map(|value| format!(" AND o.name LIKE '%{}%' ESCAPE '\\' ", escape_like_literal(value.trim())))
         .unwrap_or_default();
+    let schema_escaped = schema.replace('\'', "''");
     let sql = format!(
-        "SELECT {top}o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END \
+        "SELECT {top}o.name, CASE WHEN o.type = 'V' THEN 'VIEW' ELSE 'BASE TABLE' END, \
+         ep.value AS TABLE_COMMENT \
          FROM sys.objects o \
          JOIN sys.schemas s ON s.schema_id = o.schema_id \
-         WHERE s.name = '{}' \
+         OUTER APPLY (SELECT CAST(ep.value AS NVARCHAR(MAX)) AS value FROM sys.extended_properties ep WHERE ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = N'MS_Description') ep \
+         WHERE s.name = '{schema_escaped}' \
            AND o.type IN ('U','V') \
            AND o.is_ms_shipped = 0 \
            {filter_clause}\
-         ORDER BY o.name",
-        schema.replace('\'', "''")
+         ORDER BY o.name"
     );
     let stream = client.query(&*sql, &[]).await.map_err(|e| e.to_string())?;
     let rows = stream.into_first_result().await.map_err(|e| e.to_string())?;
@@ -311,7 +313,7 @@ pub async fn list_tables(
         .map(|row| TableInfo {
             name: row.get::<&str, _>(0).unwrap_or("").to_string(),
             table_type: row.get::<&str, _>(1).unwrap_or("BASE TABLE").to_string(),
-            comment: None,
+            comment: row.get::<&str, _>(2).filter(|s: &&str| !s.is_empty()).map(|s: &str| s.to_string()),
         })
         .collect())
 }
@@ -330,7 +332,7 @@ pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<
             name: row.get::<&str, _>(0).unwrap_or("").to_string(),
             object_type: row.get::<&str, _>(1).unwrap_or("TABLE").to_string(),
             schema: Some(schema.to_string()),
-            comment: None,
+            comment: row.get::<&str, _>(4).filter(|s: &&str| !s.is_empty()).map(|s: &str| s.to_string()),
             created_at: row.get::<chrono::NaiveDateTime, _>(2).map(|value| value.to_string()),
             updated_at: row.get::<chrono::NaiveDateTime, _>(3).map(|value| value.to_string()),
         })
@@ -338,6 +340,7 @@ pub async fn list_objects(client: &mut SqlServerClient, schema: &str) -> Result<
 }
 
 fn sqlserver_list_objects_sql(schema: &str) -> String {
+    let s = schema.replace('\'', "''");
     format!(
         "SELECT o.name, \
          CASE o.type \
@@ -352,10 +355,12 @@ fn sqlserver_list_objects_sql(schema: &str) -> String {
            ELSE o.type_desc \
          END AS object_type, \
          o.create_date, \
-         o.modify_date \
+         o.modify_date, \
+         ep.value AS object_comment \
          FROM sys.objects o \
          JOIN sys.schemas s ON s.schema_id = o.schema_id \
-         WHERE s.name = '{}' \
+         OUTER APPLY (SELECT CAST(ep.value AS NVARCHAR(MAX)) AS value FROM sys.extended_properties ep WHERE ep.major_id = o.object_id AND ep.minor_id = 0 AND ep.name = N'MS_Description') ep \
+         WHERE s.name = '{s}' \
            AND o.type IN ('U','V','P','FN','IF','TF','FS','FT') \
            AND o.is_ms_shipped = 0 \
          ORDER BY CASE o.type \
@@ -363,8 +368,7 @@ fn sqlserver_list_objects_sql(schema: &str) -> String {
            WHEN 'V' THEN 1 \
            WHEN 'P' THEN 2 \
            ELSE 3 \
-         END, o.name",
-        schema.replace('\'', "''")
+         END, o.name"
     )
 }
 
@@ -433,7 +437,7 @@ pub async fn get_columns(client: &mut SqlServerClient, schema: &str, table: &str
                 column_default: row.get::<&str, _>(3).map(|s| s.to_string()),
                 is_primary_key: row.get::<i32, _>(4).unwrap_or(0) == 1,
                 extra: None,
-                comment: None,
+                comment: row.get::<&str, _>(9).filter(|s: &&str| !s.is_empty()).map(|s: &str| s.to_string()),
                 numeric_precision: num_prec,
                 numeric_scale: num_scale,
                 character_maximum_length: max_len,
@@ -443,17 +447,20 @@ pub async fn get_columns(client: &mut SqlServerClient, schema: &str, table: &str
 }
 
 fn sqlserver_columns_sql(schema: &str, table: &str) -> String {
+    let s = schema.replace('\'', "''");
+    let t = table.replace('\'', "''");
     format!(
         "SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, \
          CASE WHEN kcu.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK, \
-         c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH, c.DATETIME_PRECISION \
+         c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH, c.DATETIME_PRECISION, \
+         ep.value AS COLUMN_COMMENT \
          FROM INFORMATION_SCHEMA.COLUMNS c \
          LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu \
            ON c.TABLE_SCHEMA = kcu.TABLE_SCHEMA AND c.TABLE_NAME = kcu.TABLE_NAME AND c.COLUMN_NAME = kcu.COLUMN_NAME \
            AND kcu.CONSTRAINT_NAME IN (SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_TYPE = 'PRIMARY KEY' AND TABLE_SCHEMA = '{s}' AND TABLE_NAME = '{t}') \
+         OUTER APPLY (SELECT CAST(ep.value AS NVARCHAR(MAX)) AS value FROM sys.extended_properties ep WHERE ep.major_id = OBJECT_ID(QUOTENAME('{s}') + '.' + QUOTENAME('{t}')) AND ep.minor_id = COLUMNPROPERTY(OBJECT_ID(QUOTENAME('{s}') + '.' + QUOTENAME('{t}')), c.COLUMN_NAME, 'ColumnId') AND ep.name = N'MS_Description') ep \
          WHERE c.TABLE_SCHEMA = '{s}' AND c.TABLE_NAME = '{t}' \
-         ORDER BY c.ORDINAL_POSITION",
-        s = schema.replace('\'', "''"), t = table.replace('\'', "''")
+         ORDER BY c.ORDINAL_POSITION"
     )
 }
 

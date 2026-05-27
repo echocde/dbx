@@ -951,6 +951,7 @@ export default {
     comment: "注释",
     editComment: "编辑注释",
     commentPlaceholder: "输入字段注释...",
+    tableCommentPlaceholder: "输入表注释...",
     actions: "操作",
     indexName: "索引名",
     indexColumns: "字段列表",

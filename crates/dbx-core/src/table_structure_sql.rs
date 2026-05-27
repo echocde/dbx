@@ -242,12 +242,16 @@ fn capabilities_for(database_type: Option<DatabaseType>) -> TableStructureCapabi
             dialect: StructureDialect::SqlServer,
             add_column: true,
             drop_column: true,
+            rename_column: true,
+            alter_existing_column: true,
+            comment: true,
             create_index: true,
             drop_index: true,
             rebuild_index: true,
             index_type: true,
             index_include: true,
             index_filter: true,
+            index_comment: true,
             ..base
         },
         Some(DatabaseType::Oracle | DatabaseType::Dameng | DatabaseType::OceanbaseOracle) => {
@@ -322,7 +326,15 @@ fn build_table_comment_sql(options: &TableStructureSqlOptions, warnings: &mut Ve
         StructureDialect::ClickHouse => {
             vec![format!("ALTER TABLE {table} MODIFY COMMENT {quoted};")]
         }
-        StructureDialect::SqlServer | StructureDialect::Sqlite | StructureDialect::DuckDb | _ => {
+        StructureDialect::SqlServer => {
+            build_sqlserver_table_comment_sql(
+                &table,
+                options.schema.as_deref(),
+                &options.table_name,
+                new_comment,
+            )
+        }
+        StructureDialect::Sqlite | StructureDialect::DuckDb | _ => {
             if !clean(new_comment).is_empty() {
                 warnings
                     .push(format!("Table comments are not supported for {} from this editor.", dialect_label(dialect)));
@@ -387,6 +399,13 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
                 statements.push(format!("COMMENT ON TABLE {table} IS {};", quote_string(&table_comment)));
             } else if dialect == StructureDialect::ClickHouse {
                 statements.push(format!("ALTER TABLE {table} MODIFY COMMENT {};", quote_string(&table_comment)));
+            } else if dialect == StructureDialect::SqlServer {
+                statements.extend(build_sqlserver_table_comment_sql(
+                    &table,
+                    options.schema.as_deref(),
+                    &options.table_name,
+                    &table_comment,
+                ));
             }
         }
     }
@@ -415,6 +434,19 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
             }
         }
     }
+    if capabilities.comment && dialect == StructureDialect::SqlServer {
+        for column in &active_columns {
+            if !clean(&column.comment).is_empty() {
+                statements.extend(build_sqlserver_column_comment_sql(
+                    &table,
+                    options.schema.as_deref(),
+                    &options.table_name,
+                    &column.name,
+                    &column.comment,
+                ));
+            }
+        }
+    }
 
     for index in options.indexes.iter().filter(|index| !index.marked_for_drop && !index.is_primary) {
         if !capabilities.create_index {
@@ -424,7 +456,14 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
             ));
             continue;
         }
-        statements.extend(build_create_index_statements(dialect, &table, index, &mut warnings));
+        statements.extend(build_create_index_statements(
+            dialect,
+            &table,
+            index,
+            &mut warnings,
+            options.schema.as_deref(),
+            &options.table_name,
+        ));
     }
 
     TableStructureSqlResult { statements, warnings }
@@ -472,7 +511,14 @@ fn build_column_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<Strin
                 warnings.push(format!("Adding columns is not supported for {database_label} from this editor."));
                 continue;
             }
-            statements.extend(build_add_column_sql(dialect, &table, column, &position_clause));
+            statements.extend(build_add_column_sql(
+                dialect,
+                &table,
+                column,
+                &position_clause,
+                options.schema.as_deref(),
+                &options.table_name,
+            ));
             continue;
         }
 
@@ -517,6 +563,14 @@ fn build_column_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<Strin
                 column,
                 if has_position_change { &position_clause } else { "" },
             )),
+            StructureDialect::SqlServer => {
+                statements.extend(build_sqlserver_existing_column_sql(
+                    &table,
+                    column,
+                    options.schema.as_deref(),
+                    &options.table_name,
+                ))
+            }
             StructureDialect::Sqlite => statements.extend(build_sqlite_existing_column_sql(&table, column, warnings)),
             _ => warnings.push(format!("Editing existing columns is not supported for {database_label} yet.")),
         }
@@ -620,7 +674,14 @@ fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<String
                 continue;
             }
             statements.push(build_drop_index_sql(dialect, &table, options.schema.as_deref(), &original.name));
-            statements.extend(build_create_index_statements(dialect, &table, index, warnings));
+            statements.extend(build_create_index_statements(
+                dialect,
+                &table,
+                index,
+                warnings,
+                options.schema.as_deref(),
+                &options.table_name,
+            ));
             continue;
         }
 
@@ -628,7 +689,14 @@ fn build_index_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<String
             warnings.push(format!("Creating indexes is not supported for {database_label} from this editor."));
             continue;
         }
-        statements.extend(build_create_index_statements(dialect, &table, index, warnings));
+        statements.extend(build_create_index_statements(
+            dialect,
+            &table,
+            index,
+            warnings,
+            options.schema.as_deref(),
+            &options.table_name,
+        ));
     }
 
     statements
@@ -639,6 +707,8 @@ fn build_add_column_sql(
     table: &str,
     column: &EditableStructureColumn,
     position_clause: &str,
+    schema: Option<&str>,
+    table_name: &str,
 ) -> Vec<String> {
     let add_keyword = if dialect == StructureDialect::SqlServer { "ADD" } else { "ADD COLUMN" };
     let definition = column_definition(dialect, column);
@@ -659,6 +729,15 @@ fn build_add_column_sql(
             "ALTER TABLE {table} COMMENT COLUMN {} {};",
             quote_ident(dialect, &column.name),
             quote_string(&clean(&column.comment))
+        ));
+    }
+    if dialect == StructureDialect::SqlServer && !clean(&column.comment).is_empty() {
+        statements.extend(build_sqlserver_column_comment_sql(
+            table,
+            schema,
+            table_name,
+            &column.name,
+            &column.comment,
         ));
     }
     statements
@@ -772,6 +851,85 @@ fn build_oracle_like_existing_column_sql(
         statements
             .push(format!("COMMENT ON COLUMN {table}.{} IS {comment_value};", quote_ident(dialect, &current_name)));
     }
+    statements
+}
+
+fn build_sqlserver_existing_column_sql(
+    table: &str,
+    column: &EditableStructureColumn,
+    schema: Option<&str>,
+    table_name: &str,
+) -> Vec<String> {
+    let Some(original) = &column.original else {
+        return Vec::new();
+    };
+    let dialect = StructureDialect::SqlServer;
+    let mut statements = Vec::new();
+    let mut current_name = original.name.clone();
+
+    // Rename column via sp_rename
+    if column.name != original.name {
+        let full_obj_path = format!("{table}.{}", quote_ident(dialect, &original.name));
+        statements.push(format!(
+            "EXEC sp_rename '{full_obj_path}', '{new_name}', 'COLUMN';",
+            full_obj_path = full_obj_path.replace('\'', "''"),
+            new_name = column.name.replace('\'', "''")
+        ));
+        current_name = column.name.clone();
+    }
+
+    // Build the ALTER COLUMN clause for type + nullability changes
+    if column.data_type.trim() != original.data_type.trim()
+        || column.is_nullable != original.is_nullable
+    {
+        let null_clause = if column.is_nullable { "NULL" } else { "NOT NULL" };
+        statements.push(format!(
+            "ALTER TABLE {table} ALTER COLUMN {} {} {null_clause};",
+            quote_ident(dialect, &current_name),
+            column_data_type(dialect, column)
+        ));
+    }
+
+    // Default value changes via ADD/DROP CONSTRAINT
+    if normalize_default(Some(&column.default_value)) != original_default(column) {
+        let default_value = normalize_default(Some(&column.default_value));
+        let has_old_default =
+            !column.original.as_ref().and_then(|o| o.column_default.as_ref()).unwrap_or(&String::new()).trim().is_empty()
+                && !column.original.as_ref().and_then(|o| o.column_default.as_ref()).map(|d| d.trim().eq_ignore_ascii_case("null")).unwrap_or(false);
+
+        if has_old_default {
+            statements.push(format!(
+                "DECLARE @sql NVARCHAR(MAX);\
+                 SELECT @sql = 'ALTER TABLE {table} DROP CONSTRAINT [' + name + ']'\
+                 FROM sys.default_constraints\
+                 WHERE parent_object_id = OBJECT_ID('{table}') AND parent_column_id = COLUMNPROPERTY(OBJECT_ID('{table}'), '{col_name}', 'ColumnId');\
+                 EXEC sp_executesql @sql;",
+                table = table.replace('\'', "''"),
+                col_name = current_name.replace('\'', "''")
+            ));
+        }
+        if !default_value.is_empty() {
+            let short_table = table.split('.').last().unwrap_or(table).trim_matches(|c: char| c == '[' || c == ']');
+            let constraint_name =
+                format!("DF_{short_table}_{col_name}", short_table = short_table, col_name = current_name.trim_matches(|c: char| c == '[' || c == ']'));
+            statements.push(format!(
+                "ALTER TABLE {table} ADD CONSTRAINT [{constraint_name}] DEFAULT {default_value} FOR {};",
+                quote_ident(dialect, &current_name)
+            ));
+        }
+    }
+
+    // Column comment changes via extended properties
+    if clean(&column.comment) != original_comment(column) {
+        statements.extend(build_sqlserver_column_comment_sql(
+            table,
+            schema,
+            table_name,
+            &current_name,
+            &column.comment,
+        ));
+    }
+
     statements
 }
 
@@ -930,6 +1088,8 @@ fn build_create_index_statements(
     table: &str,
     index: &EditableStructureIndex,
     warnings: &mut Vec<String>,
+    schema: Option<&str>,
+    table_name: &str,
 ) -> Vec<String> {
     let capabilities = capabilities_for(database_type_for_dialect(dialect));
     let name = clean(&index.name);
@@ -992,6 +1152,14 @@ fn build_create_index_statements(
     let comment = clean(&index.comment);
     if !comment.is_empty() && capabilities.index_comment && dialect == StructureDialect::Postgres {
         statements.push(format!("COMMENT ON INDEX {} IS {};", quote_ident(dialect, &name), quote_string(&comment)));
+    } else if !comment.is_empty() && capabilities.index_comment && dialect == StructureDialect::SqlServer {
+        statements.extend(build_sqlserver_index_comment_sql(
+            table,
+            schema,
+            table_name,
+            &name,
+            &comment,
+        ));
     } else if !comment.is_empty() && capabilities.index_comment {
         warnings.push(format!("Index comments are not supported for {} from this editor.", dialect_label(dialect)));
     }
@@ -1316,6 +1484,92 @@ fn database_type_for_dialect(dialect: StructureDialect) -> Option<DatabaseType> 
         StructureDialect::ClickHouse => Some(DatabaseType::ClickHouse),
         StructureDialect::Unsupported => None,
     }
+}
+
+fn sqlserver_schema_name(schema: Option<&str>) -> String {
+    schema.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_string()).unwrap_or_else(|| "dbo".to_string())
+}
+
+fn build_sqlserver_table_comment_sql(
+    qualified_table: &str,
+    schema: Option<&str>,
+    table_name: &str,
+    new_comment: &str,
+) -> Vec<String> {
+    let mut statements = Vec::new();
+    let schema_name = sqlserver_schema_name(schema);
+    let escaped_qualified = qualified_table.replace('\'', "''");
+    let escaped_schema = schema_name.replace('\'', "''");
+    let escaped_table = table_name.replace('\'', "''");
+
+    statements.push(format!(
+        "IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID(N'{escaped_qualified}') AND minor_id = 0 AND name = N'MS_Description') EXEC sys.sp_dropextendedproperty @name=N'MS_Description', @level0type=N'SCHEMA', @level0name=N'{escaped_schema}', @level1type=N'TABLE', @level1name=N'{escaped_table}';"
+    ));
+
+    if !clean(new_comment).is_empty() {
+        let quoted_comment = clean(new_comment).replace('\'', "''");
+        statements.push(format!(
+            "EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'{quoted_comment}', @level0type=N'SCHEMA', @level0name=N'{escaped_schema}', @level1type=N'TABLE', @level1name=N'{escaped_table}';"
+        ));
+    }
+
+    statements
+}
+
+fn build_sqlserver_index_comment_sql(
+    qualified_table: &str,
+    schema: Option<&str>,
+    table_name: &str,
+    index_name: &str,
+    new_comment: &str,
+) -> Vec<String> {
+    let mut statements = Vec::new();
+    let schema_name = sqlserver_schema_name(schema);
+    let escaped_qualified = qualified_table.replace('\'', "''");
+    let escaped_schema = schema_name.replace('\'', "''");
+    let escaped_table = table_name.replace('\'', "''");
+    let escaped_idx = index_name.replace('\'', "''");
+
+    statements.push(format!(
+        "IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID(N'{escaped_qualified}') AND minor_id = 0 AND name = N'MS_Description' AND class_desc = 'INDEX') EXEC sys.sp_dropextendedproperty @name=N'MS_Description', @level0type=N'SCHEMA', @level0name=N'{escaped_schema}', @level1type=N'TABLE', @level1name=N'{escaped_table}', @level2type=N'INDEX', @level2name=N'{escaped_idx}';"
+    ));
+
+    if !clean(new_comment).is_empty() {
+        let quoted_comment = clean(new_comment).replace('\'', "''");
+        statements.push(format!(
+            "EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'{quoted_comment}', @level0type=N'SCHEMA', @level0name=N'{escaped_schema}', @level1type=N'TABLE', @level1name=N'{escaped_table}', @level2type=N'INDEX', @level2name=N'{escaped_idx}';"
+        ));
+    }
+
+    statements
+}
+
+fn build_sqlserver_column_comment_sql(
+    qualified_table: &str,
+    schema: Option<&str>,
+    table_name: &str,
+    column_name: &str,
+    new_comment: &str,
+) -> Vec<String> {
+    let mut statements = Vec::new();
+    let schema_name = sqlserver_schema_name(schema);
+    let escaped_qualified = qualified_table.replace('\'', "''");
+    let escaped_schema = schema_name.replace('\'', "''");
+    let escaped_table = table_name.replace('\'', "''");
+    let escaped_col = column_name.replace('\'', "''");
+
+    statements.push(format!(
+        "IF EXISTS (SELECT 1 FROM sys.extended_properties WHERE major_id = OBJECT_ID(N'{escaped_qualified}') AND minor_id = COLUMNPROPERTY(OBJECT_ID(N'{escaped_qualified}'), N'{escaped_col}', 'ColumnId') AND name = N'MS_Description') EXEC sys.sp_dropextendedproperty @name=N'MS_Description', @level0type=N'SCHEMA', @level0name=N'{escaped_schema}', @level1type=N'TABLE', @level1name=N'{escaped_table}', @level2type=N'COLUMN', @level2name=N'{escaped_col}';"
+    ));
+
+    if !clean(new_comment).is_empty() {
+        let quoted_comment = clean(new_comment).replace('\'', "''");
+        statements.push(format!(
+            "EXEC sys.sp_addextendedproperty @name=N'MS_Description', @value=N'{quoted_comment}', @level0type=N'SCHEMA', @level0name=N'{escaped_schema}', @level1type=N'TABLE', @level1name=N'{escaped_table}', @level2type=N'COLUMN', @level2name=N'{escaped_col}';"
+        ));
+    }
+
+    statements
 }
 
 #[cfg(test)]

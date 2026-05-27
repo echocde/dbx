@@ -867,6 +867,7 @@ export default {
     comment: "Comentario",
     editComment: "Editar comentario",
     commentPlaceholder: "Ingresar comentario de columna...",
+    tableCommentPlaceholder: "Ingresar comentario de tabla...",
     actions: "Acciones",
     indexName: "Índice",
     indexColumns: "Columnas",
