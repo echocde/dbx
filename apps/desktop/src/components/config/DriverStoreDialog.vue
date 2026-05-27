@@ -106,6 +106,9 @@ function updateAgentDrivers(nextDrivers: AgentDriverInfo[]) {
   emitDriverUpdateCount();
 }
 
+const agentTabUpdateCount = computed(() => drivers.value.filter((d) => d.update_available).length);
+const jdbcTabUpdateCount = computed(() => (jdbcPluginStatus.value?.update_available ? 1 : 0));
+
 function emitDriverUpdateCount() {
   emit("update-count-change", countAvailableDriverUpdates(drivers.value, jdbcPluginStatus.value));
 }
@@ -613,8 +616,14 @@ onUnmounted(() => {
 
           <div class="flex items-center justify-between">
             <TabsList class="w-fit">
-              <TabsTrigger value="agent">内置驱动</TabsTrigger>
-              <TabsTrigger value="jdbc">JDBC 驱动</TabsTrigger>
+              <TabsTrigger value="agent" class="gap-1.5 relative">
+                内置驱动
+                <span v-if="agentTabUpdateCount > 0" class="inline-block h-2 w-2 rounded-full bg-red-500" />
+              </TabsTrigger>
+              <TabsTrigger value="jdbc" class="gap-1.5 relative">
+                JDBC 驱动
+                <span v-if="jdbcTabUpdateCount > 0" class="inline-block h-2 w-2 rounded-full bg-red-500" />
+              </TabsTrigger>
             </TabsList>
             <div class="flex items-center gap-2">
               <Button
