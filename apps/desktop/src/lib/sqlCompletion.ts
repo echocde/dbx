@@ -610,7 +610,7 @@ export interface SqlCompletionColumn {
 
 export interface SqlCompletionItem {
   label: string;
-  type: "keyword" | "table" | "column" | "snippet" | "schema";
+  type: "keyword" | "table" | "column" | "snippet" | "function" | "schema";
   detail?: string;
   apply?: string;
   boost: number;
@@ -1934,16 +1934,20 @@ export function buildSnippetItemsForTest(prefix: string, snippets: SqlSnippet[])
 function buildSnippetItems(prefix: string, snippets: SqlSnippet[]): SqlCompletionItem[] {
   if (!prefix) return [];
   return snippets
-    .filter((snippet) => matchesPrefix(snippet.prefix, prefix) || matchesPrefix(snippet.label, prefix))
+    .filter((snippet) => {
+      const matchesSnippetPrefix = matchesPrefix(snippet.prefix, prefix);
+      const matchesSnippetLabel = prefix.length > snippet.prefix.length && matchesPrefix(snippet.label, prefix);
+      return matchesSnippetPrefix || matchesSnippetLabel;
+    })
     .map((snippet) => {
       const boostByPrefix = computeBoost(snippet.prefix, prefix);
       const boostByLabel = computeBoost(snippet.label, prefix);
       return {
         label: snippet.label,
         type: "snippet" as const,
-        detail: snippet.label,
+        detail: snippet.body,
         apply: snippet.body,
-        boost: Math.max(boostByPrefix, boostByLabel) - 1100,
+        boost: Math.max(boostByPrefix, boostByLabel) + 4000,
       };
     });
 }
@@ -1956,7 +1960,7 @@ function buildFunctionSnippetItems(prefix: string, functionDescriptions: Map<str
     const paramStr = parameters.length > 0 ? parameters.map((p) => `\${${p}}`).join(", ") : "";
     items.push({
       label: name,
-      type: "snippet" as const,
+      type: "function" as const,
       detail: functionDescriptions.get(name) ?? "function",
       apply: `${name}(${paramStr})`,
       boost: computeBoost(name, prefix) + 300,
@@ -1968,7 +1972,7 @@ function buildFunctionSnippetItems(prefix: string, functionDescriptions: Map<str
     if (!matchesPrefix(name, prefix)) continue;
     items.push({
       label: name,
-      type: "snippet" as const,
+      type: "function" as const,
       detail: "window function",
       apply: `${name}() OVER (PARTITION BY \${col} ORDER BY \${col})`,
       boost: computeBoost(name, prefix) + 250,

@@ -145,12 +145,15 @@ let codeMirrorTheme: import("@codemirror/state").Compartment | null = null;
 let wordWrapComp: import("@codemirror/state").Compartment | null = null;
 let readOnlyComp: import("@codemirror/state").Compartment | null = null;
 let runKeymapComp: import("@codemirror/state").Compartment | null = null;
+let completionComp: import("@codemirror/state").Compartment | null = null;
 let diagnosticComp: import("@codemirror/state").Compartment | null = null;
 let buildSqlDiagnosticExtension: (() => import("@codemirror/state").Extension) | null = null;
 let buildSqlSignatureExtension: (() => import("@codemirror/state").Extension) | null = null;
+let buildSqlCompletionExtension: (() => import("@codemirror/state").Extension) | null = null;
 let codeMirrorSnippetCompletion: typeof import("@codemirror/autocomplete").snippetCompletion;
 let codeMirrorCompletionStatus: typeof import("@codemirror/autocomplete").completionStatus | null = null;
 let codeMirrorAcceptCompletion: typeof import("@codemirror/autocomplete").acceptCompletion | null = null;
+let codeMirrorStartCompletion: typeof import("@codemirror/autocomplete").startCompletion | null = null;
 let codeMirrorIndentMore: typeof import("@codemirror/commands").indentMore | null = null;
 let codeMirrorInsertNewlineKeepIndent: typeof import("@codemirror/commands").insertNewlineKeepIndent | null = null;
 let setSqlDiagnosticsEffect: import("@codemirror/state").StateEffectType<SqlSemanticDiagnostic[]> | null = null;
@@ -698,7 +701,8 @@ async function provideSqlCompletions(
   position: number,
   explicit: boolean,
 ) {
-  if (!props.connectionId || props.database == null) return null;
+  if (!props.connectionId) return null;
+  const hasDatabase = props.database != null;
 
   const epoch = ++completionEpoch;
 
@@ -707,6 +711,37 @@ async function provideSqlCompletions(
     if (!explicit && !shouldAutoOpenSqlCompletion(fullDoc, position)) return null;
 
     const completionContext = getSqlCompletionContext(fullDoc, position);
+
+    if (!hasDatabase) {
+      const items = buildSqlCompletionItemsFromContext(completionContext, {
+        tables: [],
+        columnsByTable: new Map(),
+        schemas: [],
+        translations: completionTranslations.value,
+        snippets: settingsStore.editorSettings.snippets,
+      });
+      if (items.length === 0) return null;
+      return {
+        from: position - completionContext.prefix.length,
+        filter: false,
+        options: items.map((item) =>
+          (item.type === "snippet" || item.type === "function") && item.apply
+            ? codeMirrorSnippetCompletion(item.apply, {
+                label: item.label,
+                type: item.type,
+                detail: item.detail,
+                boost: item.boost,
+              })
+            : {
+                label: item.label,
+                type: item.type,
+                detail: item.detail,
+                boost: item.boost,
+              },
+        ),
+        validFor: getSqlCompletionResultValidFor(fullDoc, position),
+      };
+    }
 
     // Handle INSERT column list: fetch columns for the target table
     let insertColumnsByTable = new Map<string, SqlCompletionColumn[]>();
@@ -889,8 +924,9 @@ async function provideSqlCompletions(
 
     return {
       from: position - completionContext.prefix.length,
+      filter: false,
       options: items.map((item) =>
-        item.type === "snippet" && item.apply
+        (item.type === "snippet" || item.type === "function") && item.apply
           ? codeMirrorSnippetCompletion(item.apply, {
               label: item.label,
               type: item.type,
@@ -968,10 +1004,12 @@ onMounted(async () => {
   wordWrapComp = new Compartment();
   readOnlyComp = new Compartment();
   runKeymapComp = new Compartment();
+  completionComp = new Compartment();
   diagnosticComp = new Compartment();
   setSqlDiagnosticsEffect = StateEffect.define<SqlSemanticDiagnostic[]>();
   codeMirrorCompletionStatus = completionStatus;
   codeMirrorAcceptCompletion = acceptCompletion;
+  codeMirrorStartCompletion = startCompletion;
   codeMirrorIndentMore = indentMore;
   codeMirrorInsertNewlineKeepIndent = insertNewlineKeepIndent;
 
@@ -1027,6 +1065,14 @@ onMounted(async () => {
         clip: false,
         create: () => ({ dom: createSignatureDom(signature) }),
       };
+    });
+
+  buildSqlCompletionExtension = () =>
+    autocompletion({
+      activateOnTyping: true,
+      override: [
+        async (context: CompletionContext) => provideSqlCompletions(context.state, context.pos, context.explicit),
+      ],
     });
 
   const ss = settingsStore.editorSettings;
@@ -1095,12 +1141,7 @@ onMounted(async () => {
       keymap.of([...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap]),
       sql({ dialect }),
       tooltips({ parent: document.body }),
-      autocompletion({
-        activateOnTyping: true,
-        override: [
-          async (context: CompletionContext) => provideSqlCompletions(context.state, context.pos, context.explicit),
-        ],
-      }),
+      completionComp.of(buildSqlCompletionExtension()),
       sqlCompletionTheme(EditorView),
       codeMirrorTheme.of(theme),
       closeBrackets(),
@@ -1369,6 +1410,21 @@ watch(
         runKeymapComp.reconfigure(runKeymapExtension(editorViewModule.keymap)),
       ],
     });
+  },
+  { deep: true },
+);
+
+watch(
+  () => settingsStore.editorSettings.snippets,
+  () => {
+    completionEpoch++;
+    if (!view.value || !completionComp || !buildSqlCompletionExtension) return;
+    view.value.dispatch({
+      effects: completionComp.reconfigure(buildSqlCompletionExtension()),
+    });
+    if (codeMirrorCompletionStatus?.(view.value.state) === "active") {
+      codeMirrorStartCompletion?.(view.value);
+    }
   },
   { deep: true },
 );
