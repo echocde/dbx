@@ -109,8 +109,15 @@ export function buildEditorFontThemeRules(
       padding: "0 2px !important",
     },
     ".cm-selectionLayer .cm-selectionBackground": {
-      transform: "scaleY(1.55)",
-      transformOrigin: "center",
+      display: "none",
+    },
+    ".cm-cursor": {
+      height: "1.6em !important",
+      transform: "translateY(-0.3em)",
+    },
+    ".cm-vscodeSelection": {
+      opacity: "0.38",
+      background: "rgb(148, 163, 184)",
     },
     ".cm-gutters": {
       borderRight: "0 !important",
