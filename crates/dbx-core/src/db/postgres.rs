@@ -880,7 +880,7 @@ pub async fn execute_query_with_max_rows(
         execute_select_query(&client, sql, start, row_limit).await
     } else {
         let client = pool.get().await.map_err(|e| e.to_string())?;
-        let affected = client.execute(sql, &[]).await.map_err(|e| e.to_string())?;
+        let affected = client.execute(sql, &[]).await.map_err(pg_error_to_string)?;
 
         Ok(QueryResult {
             columns: vec![],
@@ -908,7 +908,7 @@ pub async fn execute_query_with_schema_and_max_rows(
     client
         .execute(&format!("SET search_path TO {}, public", pg_quote_ident(schema)), &[])
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(pg_error_to_string)?;
 
     let result = execute_query_with_max_rows_inner(&client, sql, max_rows).await;
 
@@ -929,7 +929,7 @@ async fn execute_query_with_max_rows_inner(
     if starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "EXPLAIN", "WITH", "TABLE"]) {
         execute_select_query(client, sql, start, row_limit).await
     } else {
-        let affected = client.execute(sql, &[]).await.map_err(|e| e.to_string())?;
+        let affected = client.execute(sql, &[]).await.map_err(pg_error_to_string)?;
 
         Ok(QueryResult {
             columns: vec![],
@@ -1055,7 +1055,7 @@ pub async fn execute_batch(pool: &Pool, statements: &[String]) -> Result<(), Str
         return Ok(());
     }
     let client = pool.get().await.map_err(|e| e.to_string())?;
-    client.batch_execute(&combined).await.map_err(|e| e.to_string())
+    client.batch_execute(&combined).await.map_err(pg_error_to_string)
 }
 
 /// Export data via COPY TO STDOUT. `sql` must be a complete COPY statement, e.g.
@@ -1063,11 +1063,11 @@ pub async fn execute_batch(pool: &Pool, statements: &[String]) -> Result<(), Str
 /// Returns the raw COPY output bytes.
 pub async fn copy_out(pool: &Pool, sql: &str) -> Result<Vec<u8>, String> {
     let client = pool.get().await.map_err(|e| e.to_string())?;
-    let stream = client.copy_out(sql).await.map_err(|e| e.to_string())?;
+    let stream = client.copy_out(sql).await.map_err(pg_error_to_string)?;
     tokio::pin!(stream);
     let mut result = Vec::new();
     while let Some(chunk) = stream.next().await {
-        result.extend_from_slice(&chunk.map_err(|e| e.to_string())?);
+        result.extend_from_slice(&chunk.map_err(pg_error_to_string)?);
     }
     Ok(result)
 }
@@ -1077,10 +1077,10 @@ pub async fn copy_out(pool: &Pool, sql: &str) -> Result<Vec<u8>, String> {
 /// `data` is the raw input in the format specified by the COPY command.
 pub async fn copy_in(pool: &Pool, sql: &str, data: &[u8]) -> Result<(), String> {
     let client = pool.get().await.map_err(|e| e.to_string())?;
-    let sink = client.copy_in::<str, bytes::Bytes>(sql).await.map_err(|e: tokio_postgres::Error| e.to_string())?;
+    let sink = client.copy_in::<str, bytes::Bytes>(sql).await.map_err(pg_error_to_string)?;
     let mut sink = Box::pin(sink);
-    sink.as_mut().send(bytes::Bytes::copy_from_slice(data)).await.map_err(|e| e.to_string())?;
-    sink.as_mut().close().await.map_err(|e| e.to_string())
+    sink.as_mut().send(bytes::Bytes::copy_from_slice(data)).await.map_err(pg_error_to_string)?;
+    sink.as_mut().close().await.map_err(pg_error_to_string)
 }
 
 #[cfg(test)]

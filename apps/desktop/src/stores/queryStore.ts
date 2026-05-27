@@ -403,9 +403,10 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   function toErrorResult(e: any): NonNullable<QueryTab["result"]> {
+    const message = e instanceof Error ? e.message : String(e);
     return {
       columns: ["Error"],
-      rows: [[String(e)]],
+      rows: [[message]],
       affected_rows: 0,
       execution_time_ms: 0,
     };
