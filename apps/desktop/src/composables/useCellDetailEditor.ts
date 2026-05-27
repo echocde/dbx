@@ -1,4 +1,4 @@
-import { shallowRef, onBeforeUnmount, type ShallowRef } from "vue";
+import { shallowRef, onBeforeUnmount, type ShallowRef, createApp } from "vue";
 import { EditorState, Compartment } from "@codemirror/state";
 import {
   EditorView,
@@ -11,9 +11,12 @@ import {
 import { json } from "@codemirror/lang-json";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
-import { searchKeymap, search as cmSearch } from "@codemirror/search";
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
+import { shortcutToCodeMirrorKey } from "@/lib/shortcutRegistry";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { isJsonColumnType } from "@/lib/cellDetailPresentation";
+import i18n from "@/i18n";
+import EditorSearchPanel from "@/components/editor/EditorSearchPanel.vue";
 import type { EditorTheme } from "@/stores/settingsStore";
 import type { AppThemeAppearance } from "@/lib/appTheme";
 
@@ -32,6 +35,8 @@ export interface UseCellDetailEditorReturn {
   create: (parent: HTMLElement, initialValue: string, columnType?: string) => Promise<void>;
   setValue: (value: string, columnType?: string) => void;
   getValue: () => string;
+  openSearch: () => boolean;
+  openReplace: () => boolean;
   destroy: () => void;
   view: Readonly<ShallowRef<EditorView | null>>;
 }
@@ -55,6 +60,9 @@ export function useCellDetailEditor(options: UseCellDetailEditorOptions): UseCel
 
   let destroyed = false;
   let currentIsJson = false;
+  let searchApp: ReturnType<typeof createApp> | null = null;
+  let searchInstance: InstanceType<typeof EditorSearchPanel> | null = null;
+  let wrapperEl: HTMLDivElement | null = null;
 
   async function create(parent: HTMLElement, initialValue: string, columnType?: string): Promise<void> {
     if (destroyed) return;
@@ -64,6 +72,7 @@ export function useCellDetailEditor(options: UseCellDetailEditorOptions): UseCel
 
     const theme = await loadEditorTheme(options.editorTheme(), options.appAppearance());
     const fontTheme = editorFontTheme(EditorView, options.fontSize(), options.fontFamily(), { scrollable: false });
+    const shortcuts = useSettingsStore().editorSettings.shortcuts;
 
     const state = EditorState.create({
       doc,
@@ -81,9 +90,20 @@ export function useCellDetailEditor(options: UseCellDetailEditorOptions): UseCel
         }),
         EditorState.allowMultipleSelections.of(true),
         bracketMatching(),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
-        // Feature extensions
-        cmSearch({ top: true }),
+        keymap.of([
+          ...defaultKeymap,
+          ...historyKeymap,
+          {
+            key: shortcutToCodeMirrorKey(shortcuts.find),
+            preventDefault: true,
+            run: () => openSearch(),
+          },
+          {
+            key: shortcutToCodeMirrorKey(shortcuts.replace),
+            preventDefault: true,
+            run: () => openReplace(),
+          },
+        ]),
         EditorView.lineWrapping,
         languageComp.of(currentIsJson ? json() : []),
         themeComp.of(theme),
@@ -92,6 +112,7 @@ export function useCellDetailEditor(options: UseCellDetailEditorOptions): UseCel
           {
             key: "Escape",
             run: () => {
+              if (searchInstance && (searchInstance as any).closeSearch()) return true;
               options.onEscape?.();
               return true;
             },
@@ -112,7 +133,18 @@ export function useCellDetailEditor(options: UseCellDetailEditorOptions): UseCel
       ],
     });
 
-    view.value = new EditorView({ state, parent });
+    wrapperEl = document.createElement("div");
+    wrapperEl.style.cssText = "position: relative; width: 100%; height: 100%;";
+    parent.appendChild(wrapperEl);
+
+    view.value = new EditorView({ state, parent: wrapperEl });
+
+    // Mount search panel component
+    const searchMount = document.createElement("div");
+    wrapperEl.appendChild(searchMount);
+    searchApp = createApp(EditorSearchPanel, { view: view.value });
+    searchApp.use(i18n);
+    searchInstance = searchApp.mount(searchMount) as any;
   }
 
   function setValue(value: string, columnType?: string) {
@@ -138,16 +170,31 @@ export function useCellDetailEditor(options: UseCellDetailEditorOptions): UseCel
     return view.value?.state.doc.toString() ?? "";
   }
 
+  function openSearch(): boolean {
+    return (searchInstance as any)?.openSearch?.() ?? false;
+  }
+
+  function openReplace(): boolean {
+    return (searchInstance as any)?.openReplace?.() ?? false;
+  }
+
   function destroy() {
     if (destroyed) return;
     destroyed = true;
+    searchApp?.unmount();
+    searchApp = null;
+    searchInstance = null;
     view.value?.destroy();
     view.value = null;
+    if (wrapperEl?.parentNode) {
+      wrapperEl.parentNode.removeChild(wrapperEl);
+    }
+    wrapperEl = null;
   }
 
   onBeforeUnmount(() => {
     destroy();
   });
 
-  return { create, setValue, getValue, destroy, view };
+  return { create, setValue, getValue, openSearch, openReplace, destroy, view };
 }
