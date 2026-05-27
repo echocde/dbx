@@ -303,6 +303,12 @@ export default {
         JSON_ARRAY: "Crea un array JSON",
       },
     },
+    contextMenu: {
+      executeSelection: "Ejecutar seleccion",
+      executeCurrent: "Ejecutar SQL",
+      copySelection: "Copiar seleccion",
+      selectAll: "Seleccionar todo",
+    },
     search: {
       find: "Buscar",
       replace: "Reemplazar",

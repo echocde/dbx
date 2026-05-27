@@ -306,6 +306,12 @@ export default {
         JSON_ARRAY: "创建 JSON 数组",
       },
     },
+    contextMenu: {
+      executeSelection: "执行选中 SQL",
+      executeCurrent: "执行 SQL",
+      copySelection: "复制选中内容",
+      selectAll: "全选",
+    },
     search: {
       find: "查找",
       replace: "替换",

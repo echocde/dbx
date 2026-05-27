@@ -5,11 +5,20 @@ import type { CompletionContext } from "@codemirror/autocomplete";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { search as cmSearch } from "@codemirror/search";
 import EditorSearchPanel from "./EditorSearchPanel.vue";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { copyToClipboard } from "@/lib/clipboard";
 import { resolveExecutableSql } from "@/lib/sqlExecutionTarget";
 import { formatSqlText, type SqlFormatDialect } from "@/lib/sqlFormatter";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTheme } from "@/composables/useTheme";
+import { useToast } from "@/composables/useToast";
 import {
   buildSqlCompletionItemsFromContext,
   getSqlFunctionSignatureHelp,
@@ -76,6 +85,7 @@ const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
 const { isDark } = useTheme();
 const { t } = useI18n();
+const { toast } = useToast();
 
 const SQL_FUNCTION_NAMES = [
   "COUNT",
@@ -133,6 +143,15 @@ const gestureStartFontSize = ref(settingsStore.editorSettings.fontSize);
 const isGestureZooming = ref(false);
 
 const searchPanelRef = ref<InstanceType<typeof EditorSearchPanel>>();
+const selectedSql = ref("");
+const executableSql = ref("");
+
+const hasSelectedSql = computed(() => selectedSql.value.trim().length > 0);
+const canCopySelectedSql = computed(() => selectedSql.value.length > 0);
+const canExecuteContextSql = computed(() => executableSql.value.trim().length > 0);
+const executeContextMenuLabel = computed(() =>
+  t(hasSelectedSql.value ? "editor.contextMenu.executeSelection" : "editor.contextMenu.executeCurrent"),
+);
 
 interface EditorGestureEvent extends Event {
   scale?: number;
@@ -277,6 +296,42 @@ function handleTab(view: EditorViewType): boolean {
 function executeCurrentSql() {
   if (view.value) emit("execute", executableSqlFromView(view.value));
   return true;
+}
+
+function syncContextMenuState(currentView: EditorViewType) {
+  selectedSql.value = selectedSqlFromView(currentView);
+  executableSql.value = executableSqlFromView(currentView);
+}
+
+function focusEditor() {
+  view.value?.focus();
+}
+
+function executeFromContextMenu() {
+  if (!canExecuteContextSql.value) return;
+  executeCurrentSql();
+  focusEditor();
+}
+
+async function copySelectedSqlFromContextMenu() {
+  if (!canCopySelectedSql.value) return;
+  try {
+    await copyToClipboard(selectedSql.value);
+    toast(t("grid.copied"));
+    focusEditor();
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+function selectAllSqlFromContextMenu() {
+  const currentView = view.value;
+  if (!currentView) return;
+  currentView.dispatch({
+    selection: { anchor: 0, head: currentView.state.doc.length },
+    scrollIntoView: true,
+  });
+  focusEditor();
 }
 
 function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view"))["keymap"]) {
@@ -1182,6 +1237,7 @@ onMounted(async () => {
           }
         }
         if (update.selectionSet || update.docChanged) {
+          syncContextMenuState(update.view);
           emit("selectionChange", selectedSqlFromView(update.view));
           emit("cursorChange", update.state.selection.main.head);
         }
@@ -1336,6 +1392,7 @@ onMounted(async () => {
   });
 
   view.value = new EditorView({ state, parent: editorRef.value });
+  syncContextMenuState(view.value);
   syncEditorFontCssVars(liveFontSize.value, ss.fontFamily);
 
   cachedTables = [];
@@ -1457,7 +1514,23 @@ defineExpose({ openSearch, openReplace });
     @gesturechange="onEditorGestureChange"
     @gestureend="onEditorGestureEnd"
   >
-    <div ref="editorRef" data-query-editor-root class="h-full w-full overflow-hidden" />
+    <ContextMenu>
+      <ContextMenuTrigger as-child>
+        <div ref="editorRef" data-query-editor-root data-context-menu class="h-full w-full overflow-hidden" />
+      </ContextMenuTrigger>
+      <ContextMenuContent class="w-52">
+        <ContextMenuItem :disabled="!canExecuteContextSql" @click="executeFromContextMenu">
+          {{ executeContextMenuLabel }}
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem :disabled="!canCopySelectedSql" @click="copySelectedSqlFromContextMenu">
+          {{ t("editor.contextMenu.copySelection") }}
+        </ContextMenuItem>
+        <ContextMenuItem @click="selectAllSqlFromContextMenu">
+          {{ t("editor.contextMenu.selectAll") }}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
     <EditorSearchPanel ref="searchPanelRef" :view="view" />
   </div>
 </template>

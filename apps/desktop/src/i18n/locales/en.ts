@@ -310,6 +310,12 @@ export default {
         JSON_ARRAY: "Creates a JSON array",
       },
     },
+    contextMenu: {
+      executeSelection: "Execute selection",
+      executeCurrent: "Execute SQL",
+      copySelection: "Copy selection",
+      selectAll: "Select all",
+    },
     search: {
       find: "Find",
       replace: "Replace",

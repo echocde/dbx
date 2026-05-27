@@ -25,6 +25,16 @@ test("query editor localizes the replace all button", () => {
   assert.doesNotMatch(searchPanelSource, />\s*全部\s*</);
 });
 
+test("query editor exposes a context menu for executing selected SQL", () => {
+  assert.match(source, /ContextMenuContent/);
+  assert.match(source, /data-context-menu/);
+  assert.match(source, /syncContextMenuState\(update\.view\)/);
+  assert.match(source, /executeSelection/);
+  assert.match(source, /copySelection/);
+  assert.match(source, /selectAllSqlFromContextMenu/);
+  assert.match(appSource, /\[data-context-menu\]/);
+});
+
 test("query editor does not apply custom search match highlight styles", () => {
   assert.doesNotMatch(editorThemeSource, /"\.cm-searchMatch"/);
   assert.doesNotMatch(editorThemeSource, /"\.cm-searchMatch-selected"/);
