@@ -57,7 +57,7 @@ test("sql completion theme styles the autocomplete popup", () => {
   );
   assert.equal(
     rules[".cm-completionIcon-snippet"]?.color,
-    "color-mix(in oklch, var(--emerald-500, #10b981) 92%, var(--popover-foreground))",
+    "color-mix(in oklch, var(--violet-500, #8b5cf6) 92%, var(--popover-foreground))",
   );
   assert.deepEqual(rules[".cm-completionLabel"], {
     color: "inherit",

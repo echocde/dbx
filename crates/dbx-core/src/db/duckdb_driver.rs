@@ -61,16 +61,14 @@ pub fn is_memory_database_path(path: &str) -> bool {
 /// On Windows this prevents "file already in use" errors when reconnecting.
 pub fn close_connection(con: Arc<Mutex<duckdb::Connection>>) {
     match Arc::try_unwrap(con) {
-        Ok(mutex) => {
-            match mutex.into_inner() {
-                Ok(conn) => {
-                    let _ = conn.close();
-                }
-                Err(poisoned) => {
-                    let _ = poisoned.into_inner().close();
-                }
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(conn) => {
+                let _ = conn.close();
             }
-        }
+            Err(poisoned) => {
+                let _ = poisoned.into_inner().close();
+            }
+        },
         Err(_) => {
             // Arc still referenced elsewhere (e.g. running queries);
             // the last holder will drop and close the connection.
