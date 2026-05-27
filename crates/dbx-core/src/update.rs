@@ -82,9 +82,20 @@ fn system_proxy_url_from_platform() -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn system_proxy_url_from_platform() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+
     let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
-    let proxy_enable = std::process::Command::new("reg").args(["query", key, "/v", "ProxyEnable"]).output().ok()?;
-    let proxy_server = std::process::Command::new("reg").args(["query", key, "/v", "ProxyServer"]).output().ok()?;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    let proxy_enable = std::process::Command::new("reg")
+        .args(["query", key, "/v", "ProxyEnable"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    let proxy_server = std::process::Command::new("reg")
+        .args(["query", key, "/v", "ProxyServer"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
     if !proxy_enable.status.success() || !proxy_server.status.success() {
         return None;
     }
