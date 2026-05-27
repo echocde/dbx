@@ -1342,6 +1342,8 @@ export default {
     redisScanPageSizeDescription: "Claves solicitadas por página SCAN al explorar claves Redis.",
     redisScanPageSizeOption: "{count} claves",
     shortcutExecuteSql: "Ejecutar SQL",
+    shortcutFind: "Buscar",
+    shortcutReplace: "Reemplazar",
     shortcutSaveSql: "Guardar SQL",
     shortcutAcceptCompletion: "Aceptar completado",
     shortcutCopyCurrentRow: "Copiar fila de datos actual",

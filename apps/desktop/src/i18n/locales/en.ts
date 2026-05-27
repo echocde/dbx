@@ -1447,6 +1447,8 @@ export default {
     redisScanPageSizeDescription: "Keys requested per Redis SCAN page when browsing keys.",
     redisScanPageSizeOption: "{count} keys",
     shortcutExecuteSql: "Execute SQL",
+    shortcutFind: "Find",
+    shortcutReplace: "Replace",
     shortcutSaveSql: "Save SQL",
     shortcutAcceptCompletion: "Accept completion",
     shortcutCopyCurrentRow: "Copy current data row",

@@ -1413,6 +1413,8 @@ export default {
     redisScanPageSizeDescription: "浏览 Redis Key 时每次 SCAN 请求的 Key 数量。",
     redisScanPageSizeOption: "{count} 个 Key",
     shortcutExecuteSql: "执行 SQL",
+    shortcutFind: "查找",
+    shortcutReplace: "替换",
     shortcutSaveSql: "保存 SQL",
     shortcutAcceptCompletion: "接受补全",
     shortcutCopyCurrentRow: "复制当前数据行",

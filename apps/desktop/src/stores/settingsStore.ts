@@ -425,20 +425,36 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   function updateEditorSettings(partial: Partial<EditorSettings>) {
-    const normalizedPartial = {
-      ...partial,
-      ...(partial.pageSize !== undefined ? { pageSize: normalizeResultPageSize(partial.pageSize) } : {}),
-      ...(partial.queryTimeoutSecs !== undefined
-        ? { queryTimeoutSecs: normalizeQueryTimeoutSecs(partial.queryTimeoutSecs) }
-        : {}),
-      ...(partial.sidebarHiddenTablePrefixes !== undefined
-        ? { sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(partial.sidebarHiddenTablePrefixes) }
-        : {}),
-      ...(partial.sidebarHideTableComments !== undefined
-        ? { sidebarHideTableComments: partial.sidebarHideTableComments }
-        : {}),
-    };
-    Object.assign(editorSettings.value, normalizedPartial);
+    if (partial.fontFamily !== undefined) editorSettings.value.fontFamily = partial.fontFamily;
+    if (partial.fontSize !== undefined) editorSettings.value.fontSize = partial.fontSize;
+    if (partial.theme !== undefined) editorSettings.value.theme = partial.theme;
+    if (partial.executeMode !== undefined) editorSettings.value.executeMode = partial.executeMode;
+    if (partial.wordWrap !== undefined) editorSettings.value.wordWrap = partial.wordWrap;
+    if (partial.compactTabTitle !== undefined) editorSettings.value.compactTabTitle = partial.compactTabTitle;
+    if (partial.appLayout !== undefined) editorSettings.value.appLayout = partial.appLayout;
+    if (partial.pageSize !== undefined) editorSettings.value.pageSize = normalizeResultPageSize(partial.pageSize);
+    if (partial.redisScanPageSize !== undefined) editorSettings.value.redisScanPageSize = partial.redisScanPageSize;
+    if (partial.mongoViewMode !== undefined) editorSettings.value.mongoViewMode = partial.mongoViewMode;
+    if (partial.showColumnCommentsInHeader !== undefined)
+      editorSettings.value.showColumnCommentsInHeader = partial.showColumnCommentsInHeader;
+    if (partial.compactColumnHeaderActions !== undefined)
+      editorSettings.value.compactColumnHeaderActions = partial.compactColumnHeaderActions;
+    if (partial.shortcuts !== undefined) editorSettings.value.shortcuts = normalizeShortcutSettings(partial.shortcuts);
+    if (partial.sidebarActivation !== undefined) editorSettings.value.sidebarActivation = partial.sidebarActivation;
+    if (partial.autoSelectActiveSidebarNode !== undefined)
+      editorSettings.value.autoSelectActiveSidebarNode = partial.autoSelectActiveSidebarNode;
+    if (partial.sidebarHiddenTablePrefixes !== undefined)
+      editorSettings.value.sidebarHiddenTablePrefixes = normalizeSidebarHiddenTablePrefixes(
+        partial.sidebarHiddenTablePrefixes,
+      );
+    if (partial.sidebarHideTableComments !== undefined)
+      editorSettings.value.sidebarHideTableComments = partial.sidebarHideTableComments;
+    if (partial.columnFormatters !== undefined) editorSettings.value.columnFormatters = partial.columnFormatters;
+    if (partial.customColumnFormatters !== undefined)
+      editorSettings.value.customColumnFormatters = partial.customColumnFormatters;
+    if (partial.snippets !== undefined) editorSettings.value.snippets = normalizeSqlSnippets(partial.snippets);
+    if (partial.queryTimeoutSecs !== undefined)
+      editorSettings.value.queryTimeoutSecs = normalizeQueryTimeoutSecs(partial.queryTimeoutSecs);
     saveEditorSettings(editorSettings.value);
   }
 

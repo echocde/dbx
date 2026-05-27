@@ -240,14 +240,6 @@ watch(
   { immediate: true },
 );
 
-watch(
-  () => settingsStore.editorSettings.snippets,
-  (snippets) => {
-    editSnippets.value = snippets.map((s) => ({ ...s }));
-  },
-  { deep: true },
-);
-
 const shortcutConflicts = computed(() =>
   SHORTCUT_DEFINITIONS.flatMap((definition) => {
     const conflict = findShortcutConflict(definition.id, editShortcuts.value[definition.id], editShortcuts.value);
@@ -1334,9 +1326,15 @@ watch(
                 <table class="w-full text-sm">
                   <thead>
                     <tr class="border-b bg-muted/50">
-                      <th class="px-3 py-2 text-left font-medium">{{ t("settings.snippetsLabel") }}</th>
-                      <th class="px-3 py-2 text-left font-medium">{{ t("settings.snippetsPrefix") }}</th>
-                      <th class="px-3 py-2 text-left font-medium">{{ t("settings.snippetsBody") }}</th>
+                      <th class="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        {{ t("settings.snippetsLabel") }}
+                      </th>
+                      <th class="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        {{ t("settings.snippetsPrefix") }}
+                      </th>
+                      <th class="px-3 py-2 text-left font-medium whitespace-nowrap">
+                        {{ t("settings.snippetsBody") }}
+                      </th>
                       <th class="px-3 py-2 w-20"></th>
                     </tr>
                   </thead>
@@ -1347,7 +1345,14 @@ watch(
                       class="border-b last:border-b-0 hover:bg-muted/30"
                     >
                       <td class="px-3 py-2">{{ snippet.label }}</td>
-                      <td class="px-3 py-2 font-mono text-xs">{{ snippet.prefix }}</td>
+                      <td class="px-3 py-2">
+                        <Badge
+                          variant="outline"
+                          class="h-5 rounded-md px-1.5 text-[11px] font-mono text-muted-foreground"
+                        >
+                          {{ snippet.prefix }}
+                        </Badge>
+                      </td>
                       <td class="px-3 py-2 font-mono text-xs text-muted-foreground max-w-[300px] truncate">
                         {{ snippet.body }}
                       </td>
