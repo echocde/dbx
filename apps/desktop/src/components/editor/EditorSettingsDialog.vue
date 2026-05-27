@@ -100,6 +100,7 @@ const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings
 const editSidebarActivation = ref(settingsStore.editorSettings.sidebarActivation);
 const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSelectActiveSidebarNode);
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
+const editSidebarHideTableComments = ref(settingsStore.editorSettings.sidebarHideTableComments);
 const redisScanPageSizeOptions = [200, 1000, 5000, 10000];
 const systemFonts = ref<string[]>([]);
 const systemFontsLoading = ref(false);
@@ -231,6 +232,7 @@ watch(
       editSidebarActivation.value = settingsStore.editorSettings.sidebarActivation;
       editAutoSelectActiveSidebarNode.value = settingsStore.editorSettings.autoSelectActiveSidebarNode;
       editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
+      editSidebarHideTableComments.value = settingsStore.editorSettings.sidebarHideTableComments;
       editSnippets.value = settingsStore.editorSettings.snippets.map((s) => ({ ...s }));
       void loadSystemFontOptions();
     }
@@ -274,6 +276,7 @@ function hasChanges(): boolean {
     JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts) ||
     editSidebarActivation.value !== settingsStore.editorSettings.sidebarActivation ||
     editAutoSelectActiveSidebarNode.value !== settingsStore.editorSettings.autoSelectActiveSidebarNode ||
+    editSidebarHideTableComments.value !== settingsStore.editorSettings.sidebarHideTableComments ||
     JSON.stringify(normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value)) !==
       JSON.stringify(settingsStore.editorSettings.sidebarHiddenTablePrefixes) ||
     JSON.stringify(editSnippets.value) !== JSON.stringify(settingsStore.editorSettings.snippets)
@@ -296,6 +299,7 @@ async function applySettings() {
     shortcuts: editShortcuts.value,
     sidebarActivation: editSidebarActivation.value,
     autoSelectActiveSidebarNode: editAutoSelectActiveSidebarNode.value,
+    sidebarHideTableComments: editSidebarHideTableComments.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
     snippets: editSnippets.value,
   });
@@ -320,6 +324,7 @@ function resetDefaults() {
   editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
   editSidebarActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarActivation;
   editAutoSelectActiveSidebarNode.value = DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode;
+  editSidebarHideTableComments.value = DEFAULT_EDITOR_SETTINGS.sidebarHideTableComments;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
   editSnippets.value = DEFAULT_SQL_SNIPPETS.map((s) => ({ ...s }));
 }
@@ -1225,6 +1230,20 @@ watch(
                   </Tooltip>
                 </div>
                 <Switch id="auto-select-active-sidebar-node" v-model="editAutoSelectActiveSidebarNode" />
+              </div>
+              <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="flex items-center gap-2">
+                  <Label for="sidebar-hide-table-comments">{{ t("settings.sidebarHideTableComments") }}</Label>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <CircleHelp class="h-3.5 w-3.5 cursor-help text-muted-foreground hover:text-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent class="max-w-[320px] text-xs leading-relaxed" side="top" align="start">
+                      {{ t("settings.sidebarHideTableCommentsDescription") }}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Switch id="sidebar-hide-table-comments" v-model="editSidebarHideTableComments" />
               </div>
               <div class="space-y-2">
                 <Label for="sidebar-hidden-table-prefixes">{{ t("settings.sidebarHiddenTablePrefixes") }}</Label>

@@ -1902,7 +1902,7 @@ const isDragging = computed(() => dragState.active && dragState.draggedId === pr
             columnComment
           }}</span>
           <span
-            v-if="tableComment"
+            v-if="tableComment && !settingsStore.editorSettings.sidebarHideTableComments"
             class="truncate text-muted-foreground/60 text-[10px] max-w-[25%] group-hover:hidden"
             :title="tableComment"
             >{{ tableComment }}</span

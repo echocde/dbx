@@ -1391,6 +1391,9 @@ export default {
     sidebarHiddenTablePrefixesDescription:
       "One prefix per line. Only sidebar table, view, and collection labels are shortened; tooltips and actions still use the full name.",
     sidebarHiddenTablePrefixesPlaceholder: "Example:\nODS_\nT8Y2_LONG_",
+    sidebarHideTableComments: "Hide table comments in sidebar",
+    sidebarHideTableCommentsDescription:
+      "Hide the inline table/view comments shown next to names in the sidebar tree to save horizontal space.",
     snippetsDescription: "Customize SQL snippet templates triggered in the editor.",
     snippetsAdd: "Add Snippet",
     snippetsLabel: "Label",

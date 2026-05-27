@@ -186,6 +186,7 @@ export interface EditorSettings {
   sidebarActivation: SidebarActivation;
   autoSelectActiveSidebarNode: boolean;
   sidebarHiddenTablePrefixes: string[];
+  sidebarHideTableComments: boolean;
   columnFormatters: Record<string, ColumnFormatterConfig>;
   customColumnFormatters: Record<string, CustomColumnFormatterConfig>;
   snippets: SqlSnippet[];
@@ -235,6 +236,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   sidebarActivation: "single",
   autoSelectActiveSidebarNode: false,
   sidebarHiddenTablePrefixes: [],
+  sidebarHideTableComments: false,
   columnFormatters: {},
   customColumnFormatters: {},
   snippets: DEFAULT_SQL_SNIPPETS,
@@ -319,6 +321,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     autoSelectActiveSidebarNode:
       settings.autoSelectActiveSidebarNode ?? DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(settings.sidebarHiddenTablePrefixes),
+    sidebarHideTableComments: settings.sidebarHideTableComments ?? DEFAULT_EDITOR_SETTINGS.sidebarHideTableComments,
     columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
     customColumnFormatters: normalizeCustomColumnFormatters(settings.customColumnFormatters),
     snippets: normalizeSqlSnippets(settings.snippets, existing?.snippets),
@@ -430,6 +433,9 @@ export const useSettingsStore = defineStore("settings", () => {
         : {}),
       ...(partial.sidebarHiddenTablePrefixes !== undefined
         ? { sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(partial.sidebarHiddenTablePrefixes) }
+        : {}),
+      ...(partial.sidebarHideTableComments !== undefined
+        ? { sidebarHideTableComments: partial.sidebarHideTableComments }
         : {}),
     };
     Object.assign(editorSettings.value, normalizedPartial);

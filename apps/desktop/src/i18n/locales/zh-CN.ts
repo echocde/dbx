@@ -1362,6 +1362,8 @@ export default {
     sidebarHiddenTablePrefixesDescription:
       "每行一个前缀，仅影响侧边栏表、视图和集合的显示名称，悬浮提示和实际操作仍使用完整名称。",
     sidebarHiddenTablePrefixesPlaceholder: "例如：\nODS_\nT8Y2_LONG_",
+    sidebarHideTableComments: "隐藏侧边栏表注释",
+    sidebarHideTableCommentsDescription: "隐藏侧边栏中表名旁边显示的表/视图注释，以节省横向空间。",
     snippetsDescription: "自定义编辑器中触发的 SQL 代码片段模板。",
     snippetsAdd: "添加片段",
     snippetsLabel: "显示名",

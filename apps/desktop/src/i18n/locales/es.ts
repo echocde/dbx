@@ -1287,6 +1287,9 @@ export default {
     sidebarHiddenTablePrefixesDescription:
       "Un prefijo por linea. Solo acorta etiquetas de tablas, vistas y colecciones en la barra lateral; las acciones y ayudas usan el nombre completo.",
     sidebarHiddenTablePrefixesPlaceholder: "Ejemplo:\nODS_\nT8Y2_LONG_",
+    sidebarHideTableComments: "Ocultar comentarios de tablas en la barra lateral",
+    sidebarHideTableCommentsDescription:
+      "Oculta los comentarios de tablas/vistas junto a los nombres en el árbol de la barra lateral para ahorrar espacio horizontal.",
     snippetsDescription: "Personaliza plantillas SQL activadas en el editor.",
     snippetsAdd: "Agregar fragmento",
     snippetsLabel: "Etiqueta",
