@@ -1,6 +1,6 @@
-name: 问题反馈
-description: 程序崩溃、连接失败、查询异常、界面显示错误或其他可复现问题。
-title: "[Bug] "
+name: "🐞 Bug Report / 问题反馈"
+description: Crashes, connection failures, query errors, display bugs, or other reproducible issues. / 程序崩溃、连接失败、查询异常、界面显示错误或其他可复现问题。
+title: "[🐞 Bug] "
 labels: ["bug"]
 body:
   - type: markdown
