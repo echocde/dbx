@@ -4,8 +4,12 @@ use futures::{SinkExt, StreamExt};
 use percent_encoding::percent_decode_str;
 use rust_decimal::Decimal;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::client::verify_server_cert_signed_by_trust_anchor;
 use rustls::crypto::{verify_tls12_signature, verify_tls13_signature, CryptoProvider};
-use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+use rustls::server::ParsedCertificate;
+use std::fs::File;
+use std::io::BufReader;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -319,17 +323,22 @@ async fn execute_select_query(
 }
 
 pub async fn connect(url: &str) -> Result<Pool, String> {
-    validate_postgres_ssl_paths(url)?;
+    let postgres_url = postgres_connection_url(url)?;
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     let tz = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string());
 
     super::with_connection_timeout("PostgreSQL", super::connection_timeout(), async {
-        let pg_config =
-            tokio_postgres::Config::from_str(url).map_err(|e| format!("Invalid PostgreSQL connection URL: {e}"))?;
+        let pg_config = tokio_postgres::Config::from_str(&postgres_url.url)
+            .map_err(|e| format!("Invalid PostgreSQL connection URL: {e}"))?;
 
         let mgr_config = ManagerConfig { recycling_method: RecyclingMethod::Fast };
-        let tls_config = postgres_tls_config(&pg_config);
+        let tls_config = postgres_tls_config(
+            &pg_config,
+            &postgres_url.ssl_files,
+            postgres_url.accepts_invalid_certs,
+            postgres_url.verifies_hostname,
+        )?;
         let mgr = deadpool_postgres::Manager::from_config(
             pg_config.clone(),
             tokio_postgres_rustls::MakeRustlsConnect::new(tls_config),
@@ -357,18 +366,182 @@ pub async fn connect(url: &str) -> Result<Pool, String> {
     .await
 }
 
-fn postgres_tls_config(pg_config: &tokio_postgres::Config) -> rustls::ClientConfig {
-    if postgres_sslmode_accepts_invalid_certs(pg_config.get_ssl_mode()) {
-        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-        return rustls::ClientConfig::builder()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(NoPostgresCertVerification { provider }))
-            .with_no_client_auth();
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct PostgresSslFiles {
+    sslcert: Option<String>,
+    sslkey: Option<String>,
+    sslrootcert: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PostgresConnectionUrl {
+    url: String,
+    ssl_files: PostgresSslFiles,
+    accepts_invalid_certs: bool,
+    verifies_hostname: bool,
+}
+
+fn postgres_connection_url(url: &str) -> Result<PostgresConnectionUrl, String> {
+    let Some(query_start) = url.find('?') else {
+        let pg_config =
+            tokio_postgres::Config::from_str(url).map_err(|e| format!("Invalid PostgreSQL connection URL: {e}"))?;
+        return Ok(PostgresConnectionUrl {
+            url: url.to_string(),
+            ssl_files: PostgresSslFiles::default(),
+            accepts_invalid_certs: postgres_sslmode_accepts_invalid_certs(pg_config.get_ssl_mode()),
+            verifies_hostname: false,
+        });
+    };
+
+    let prefix = &url[..query_start];
+    let suffix = &url[query_start + 1..];
+    let (query_string, fragment) = suffix.split_once('#').map_or((suffix, ""), |(query, fragment)| (query, fragment));
+    let mut ssl_files = PostgresSslFiles::default();
+    let mut kept_params = Vec::new();
+    let mut accepts_invalid_certs = true;
+    let mut verifies_hostname = false;
+
+    for param in query_string.split('&') {
+        if param.is_empty() {
+            continue;
+        }
+
+        let Some((key, value)) = param.split_once('=') else {
+            kept_params.push(param.to_string());
+            continue;
+        };
+
+        if key.eq_ignore_ascii_case("sslcert")
+            || key.eq_ignore_ascii_case("sslkey")
+            || key.eq_ignore_ascii_case("sslrootcert")
+        {
+            let decoded = percent_decode_str(value)
+                .decode_utf8()
+                .map_err(|_| format!("Invalid URL encoding in {key}"))?
+                .into_owned();
+            validate_file_path(&decoded, |_| false).map_err(|e| format!("{key}: {e}"))?;
+
+            if key.eq_ignore_ascii_case("sslcert") {
+                ssl_files.sslcert = Some(decoded);
+            } else if key.eq_ignore_ascii_case("sslkey") {
+                ssl_files.sslkey = Some(decoded);
+            } else {
+                ssl_files.sslrootcert = Some(decoded);
+            }
+        } else if key.eq_ignore_ascii_case("sslmode") {
+            match value.to_ascii_lowercase().as_str() {
+                "verify-ca" => {
+                    accepts_invalid_certs = false;
+                    kept_params.push("sslmode=require".to_string());
+                }
+                "verify-full" | "verify_identity" | "verify-identity" => {
+                    accepts_invalid_certs = false;
+                    verifies_hostname = true;
+                    kept_params.push("sslmode=require".to_string());
+                }
+                "disable" => {
+                    accepts_invalid_certs = false;
+                    kept_params.push(param.to_string());
+                }
+                "prefer" | "require" => {
+                    accepts_invalid_certs = true;
+                    kept_params.push(param.to_string());
+                }
+                _ => kept_params.push(param.to_string()),
+            }
+        } else {
+            kept_params.push(param.to_string());
+        }
     }
 
+    let mut sanitized_url = prefix.to_string();
+    if !kept_params.is_empty() {
+        sanitized_url.push('?');
+        sanitized_url.push_str(&kept_params.join("&"));
+    }
+    if !fragment.is_empty() {
+        sanitized_url.push('#');
+        sanitized_url.push_str(fragment);
+    }
+
+    Ok(PostgresConnectionUrl { url: sanitized_url, ssl_files, accepts_invalid_certs, verifies_hostname })
+}
+
+fn postgres_tls_config(
+    pg_config: &tokio_postgres::Config,
+    ssl_files: &PostgresSslFiles,
+    accepts_invalid_certs: bool,
+    verifies_hostname: bool,
+) -> Result<rustls::ClientConfig, String> {
+    if pg_config.get_ssl_mode() != SslMode::Disable && accepts_invalid_certs {
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        let builder = rustls::ClientConfig::builder()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(NoPostgresCertVerification { provider }));
+        return postgres_tls_client_auth(builder, ssl_files);
+    }
+
+    let root_store = postgres_root_cert_store(ssl_files)?;
+    let builder = if verifies_hostname {
+        rustls::ClientConfig::builder().with_root_certificates(root_store)
+    } else {
+        let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+        rustls::ClientConfig::builder().dangerous().with_custom_certificate_verifier(Arc::new(
+            PostgresCaOnlyCertVerification { provider, roots: Arc::new(root_store) },
+        ))
+    };
+    postgres_tls_client_auth(builder, ssl_files)
+}
+
+fn postgres_root_cert_store(ssl_files: &PostgresSslFiles) -> Result<rustls::RootCertStore, String> {
     let mut root_store = rustls::RootCertStore::empty();
-    root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    rustls::ClientConfig::builder().with_root_certificates(root_store).with_no_client_auth()
+    if let Some(path) = ssl_files.sslrootcert.as_deref() {
+        let certs = read_postgres_pem_certs("sslrootcert", path)?;
+        let (valid_count, _) = root_store.add_parsable_certificates(certs);
+        if valid_count == 0 {
+            return Err(format!("sslrootcert: no valid CA certificates found in {path}"));
+        }
+    } else {
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    }
+    Ok(root_store)
+}
+
+fn postgres_tls_client_auth(
+    builder: rustls::ConfigBuilder<rustls::ClientConfig, rustls::client::WantsClientCert>,
+    ssl_files: &PostgresSslFiles,
+) -> Result<rustls::ClientConfig, String> {
+    match (ssl_files.sslcert.as_deref(), ssl_files.sslkey.as_deref()) {
+        (Some(cert_path), Some(key_path)) => {
+            let certs = read_postgres_pem_certs("sslcert", cert_path)?;
+            if certs.is_empty() {
+                return Err(format!("sslcert: no certificates found in {cert_path}"));
+            }
+            let private_key = read_postgres_private_key(key_path)?;
+            builder
+                .with_client_auth_cert(certs, private_key)
+                .map_err(|e| format!("PostgreSQL client certificate/key mismatch or invalid key: {e}"))
+        }
+        (Some(_), None) => Err("PostgreSQL sslcert requires sslkey".to_string()),
+        (None, Some(_)) => Err("PostgreSQL sslkey requires sslcert".to_string()),
+        (None, None) => Ok(builder.with_no_client_auth()),
+    }
+}
+
+fn read_postgres_pem_certs(label: &str, path: &str) -> Result<Vec<CertificateDer<'static>>, String> {
+    let file = File::open(path).map_err(|e| format!("{label}: failed to open {path}: {e}"))?;
+    let mut reader = BufReader::new(file);
+    rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("{label}: failed to read PEM certificates from {path}: {e}"))
+}
+
+fn read_postgres_private_key(path: &str) -> Result<PrivateKeyDer<'static>, String> {
+    let file = File::open(path).map_err(|e| format!("sslkey: failed to open {path}: {e}"))?;
+    let mut reader = BufReader::new(file);
+    rustls_pemfile::private_key(&mut reader)
+        .map_err(|e| format!("sslkey: failed to read PEM private key from {path}: {e}"))?
+        .ok_or_else(|| format!("sslkey: no private key found in {path}"))
 }
 
 fn postgres_sslmode_accepts_invalid_certs(ssl_mode: SslMode) -> bool {
@@ -415,6 +588,55 @@ impl ServerCertVerifier for NoPostgresCertVerification {
     }
 }
 
+#[derive(Debug)]
+struct PostgresCaOnlyCertVerification {
+    provider: Arc<CryptoProvider>,
+    roots: Arc<rustls::RootCertStore>,
+}
+
+impl ServerCertVerifier for PostgresCaOnlyCertVerification {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        let cert = ParsedCertificate::try_from(end_entity)?;
+        verify_server_cert_signed_by_trust_anchor(
+            &cert,
+            &self.roots,
+            intermediates,
+            now,
+            self.provider.signature_verification_algorithms.all,
+        )?;
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls12_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        verify_tls13_signature(message, cert, dss, &self.provider.signature_verification_algorithms)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.provider.signature_verification_algorithms.supported_schemes()
+    }
+}
+
 /// Check whether the user's connection URL already specifies a timezone via
 /// the `options` parameter so we don't overwrite it with the local timezone.
 fn pg_url_has_timezone_setting(url: &str) -> bool {
@@ -431,27 +653,9 @@ fn pg_url_has_timezone_setting(url: &str) -> bool {
     false
 }
 
+#[cfg(test)]
 fn validate_postgres_ssl_paths(url: &str) -> Result<(), String> {
-    if let Some(query_start) = url.find('?') {
-        let query_string = &url[query_start + 1..];
-
-        for param in query_string.split('&') {
-            if let Some((key, value)) = param.split_once('=') {
-                match key {
-                    "sslcert" | "sslkey" | "sslrootcert" => {
-                        let decoded = percent_decode_str(value)
-                            .decode_utf8()
-                            .map_err(|_| format!("Invalid URL encoding in {key}"))?;
-
-                        validate_file_path(&decoded, |_| false).map_err(|e| format!("{key}: {e}"))?;
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    Ok(())
+    postgres_connection_url(url).map(|_| ())
 }
 
 pub async fn list_databases(pool: &Pool) -> Result<Vec<DatabaseInfo>, String> {
@@ -1021,6 +1225,60 @@ mod tests {
         let result =
             validate_postgres_ssl_paths("postgres://localhost/db?sslmode=require&sslcert=/nonexistent/cert.pem");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn postgres_connection_url_strips_ssl_file_params_before_driver_parse() {
+        let dir = std::env::temp_dir();
+        let cert = dir.join(format!("dbx-postgres-cert-{}.pem", std::process::id()));
+        let key = dir.join(format!("dbx-postgres-key-{}.pem", std::process::id()));
+        let root = dir.join(format!("dbx-postgres-root-{}.pem", std::process::id()));
+        std::fs::write(&cert, "not a real cert").unwrap();
+        std::fs::write(&key, "not a real key").unwrap();
+        std::fs::write(&root, "not a real root").unwrap();
+
+        let url = format!(
+            "postgres://localhost/db?sslmode=verify-full&sslcert={}&sslkey={}&sslrootcert={}&application_name=dbx",
+            cert.display(),
+            key.display(),
+            root.display()
+        );
+        let parsed = postgres_connection_url(&url).unwrap();
+
+        assert_eq!(parsed.url, "postgres://localhost/db?sslmode=require&application_name=dbx");
+        assert_eq!(parsed.ssl_files.sslcert.as_deref(), Some(cert.to_str().unwrap()));
+        assert_eq!(parsed.ssl_files.sslkey.as_deref(), Some(key.to_str().unwrap()));
+        assert_eq!(parsed.ssl_files.sslrootcert.as_deref(), Some(root.to_str().unwrap()));
+        assert!(!parsed.accepts_invalid_certs);
+        assert!(parsed.verifies_hostname);
+        tokio_postgres::Config::from_str(&parsed.url).unwrap();
+
+        let _ = std::fs::remove_file(cert);
+        let _ = std::fs::remove_file(key);
+        let _ = std::fs::remove_file(root);
+    }
+
+    #[test]
+    fn postgres_connection_url_keeps_verify_ca_ca_only_semantics() {
+        let parsed = postgres_connection_url("postgres://localhost/db?sslmode=verify-ca").unwrap();
+
+        assert_eq!(parsed.url, "postgres://localhost/db?sslmode=require");
+        assert!(!parsed.accepts_invalid_certs);
+        assert!(!parsed.verifies_hostname);
+    }
+
+    #[test]
+    fn postgres_tls_rejects_unpaired_client_cert_and_key() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let pg_config = tokio_postgres::Config::from_str("postgres://localhost/db?sslmode=require").unwrap();
+        let ssl_files =
+            PostgresSslFiles { sslcert: Some("/tmp/client.crt".to_string()), sslkey: None, sslrootcert: None };
+
+        let error = match postgres_tls_config(&pg_config, &ssl_files, true, false) {
+            Ok(_) => panic!("expected missing sslkey to fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("sslkey"));
     }
 
     #[test]

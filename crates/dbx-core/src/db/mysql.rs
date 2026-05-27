@@ -2,6 +2,7 @@ use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use futures::StreamExt;
 use mysql_async::consts::ColumnType;
 use mysql_async::prelude::*;
+use percent_encoding::percent_decode_str;
 use rust_decimal::Decimal;
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -13,6 +14,8 @@ use crate::sql::starts_with_executable_sql_keyword;
 use crate::types::{
     ColumnInfo, DatabaseInfo, ForeignKeyInfo, IndexInfo, ObjectInfo, QueryResult, TableInfo, TriggerInfo,
 };
+
+use super::file_validator::validate_file_path;
 
 pub type MySqlPool = mysql_async::Pool;
 
@@ -280,8 +283,17 @@ pub async fn connect_with_ca_cert(url: &str, ca_cert_path: Option<&str>) -> Resu
     result.map(|_| pool)
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct MySqlTlsFiles {
+    sslcert: Option<String>,
+    sslkey: Option<String>,
+}
+
 fn create_pool(url: &str, ca_cert_path: Option<&str>) -> Result<MySqlPool, String> {
-    let opts = mysql_async::Opts::from_url(&mysql_async_url(url)).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
+    let tls_url = mysql_tls_url(url)?;
+    let opts =
+        mysql_async::Opts::from_url(&mysql_async_url(&tls_url.url)).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
+    let base_ssl_opts = opts.ssl_opts().cloned();
     let pool_opts = mysql_async::PoolOpts::new()
         .with_constraints(mysql_async::PoolConstraints::new(1, 1).unwrap())
         .with_inactive_connection_ttl(Duration::from_secs(300));
@@ -290,15 +302,107 @@ fn create_pool(url: &str, ca_cert_path: Option<&str>) -> Result<MySqlPool, Strin
         .prefer_socket(false)
         .pool_opts(Some(pool_opts))
         .setup(mysql_setup_queries(url));
-    if let Some(ca_cert_path) =
-        ca_cert_path.map(str::trim).filter(|path| !path.is_empty()).filter(|_| mysql_url_requires_ssl(url))
-    {
-        let ssl_opts = mysql_async::SslOpts::default()
-            .with_root_certs(vec![PathBuf::from(ca_cert_path).into()])
-            .with_danger_skip_domain_validation(true);
+    if let Some(ssl_opts) = mysql_ssl_opts(base_ssl_opts, url, ca_cert_path, &tls_url.files)? {
         builder = builder.ssl_opts(ssl_opts);
     }
     Ok(MySqlPool::new(builder))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MySqlTlsUrl {
+    url: String,
+    files: MySqlTlsFiles,
+}
+
+fn mysql_tls_url(url: &str) -> Result<MySqlTlsUrl, String> {
+    let Some(query_start) = url.find('?') else {
+        return Ok(MySqlTlsUrl { url: url.to_string(), files: MySqlTlsFiles::default() });
+    };
+
+    let prefix = &url[..query_start];
+    let suffix = &url[query_start + 1..];
+    let (query_string, fragment) = suffix.split_once('#').map_or((suffix, ""), |(query, fragment)| (query, fragment));
+    let mut files = MySqlTlsFiles::default();
+    let mut kept_params = Vec::new();
+
+    for param in query_string.split('&') {
+        if param.is_empty() {
+            continue;
+        }
+
+        let Some((key, value)) = param.split_once('=') else {
+            kept_params.push(param.to_string());
+            continue;
+        };
+
+        if mysql_tls_file_param_is(key, "cert") || mysql_tls_file_param_is(key, "key") {
+            let decoded = percent_decode_str(value)
+                .decode_utf8()
+                .map_err(|_| format!("Invalid URL encoding in {key}"))?
+                .into_owned();
+            validate_file_path(&decoded, |_| false).map_err(|e| format!("{key}: {e}"))?;
+
+            if mysql_tls_file_param_is(key, "cert") {
+                files.sslcert = Some(decoded);
+            } else {
+                files.sslkey = Some(decoded);
+            }
+        } else {
+            kept_params.push(param.to_string());
+        }
+    }
+
+    let mut sanitized_url = prefix.to_string();
+    if !kept_params.is_empty() {
+        sanitized_url.push('?');
+        sanitized_url.push_str(&kept_params.join("&"));
+    }
+    if !fragment.is_empty() {
+        sanitized_url.push('#');
+        sanitized_url.push_str(fragment);
+    }
+
+    Ok(MySqlTlsUrl { url: sanitized_url, files })
+}
+
+fn mysql_tls_file_param_is(key: &str, target: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
+    normalized == format!("ssl{target}")
+}
+
+fn mysql_ssl_opts(
+    base_ssl_opts: Option<mysql_async::SslOpts>,
+    url: &str,
+    ca_cert_path: Option<&str>,
+    files: &MySqlTlsFiles,
+) -> Result<Option<mysql_async::SslOpts>, String> {
+    let ca_cert_path = ca_cert_path.map(str::trim).filter(|path| !path.is_empty());
+    let has_client_identity = files.sslcert.as_deref().is_some() || files.sslkey.as_deref().is_some();
+    if !mysql_url_requires_ssl(url) && !has_client_identity {
+        return Ok(None);
+    }
+
+    let mut ssl_opts = base_ssl_opts.unwrap_or_default();
+    if let Some(ca_cert_path) = ca_cert_path.filter(|_| mysql_url_requires_ssl(url) || has_client_identity) {
+        ssl_opts = ssl_opts.with_root_certs(vec![PathBuf::from(ca_cert_path).into()]);
+        if !mysql_url_verifies_identity(url) {
+            ssl_opts = ssl_opts.with_danger_skip_domain_validation(true);
+        }
+    }
+
+    match (files.sslcert.as_deref(), files.sslkey.as_deref()) {
+        (Some(cert_path), Some(key_path)) => {
+            ssl_opts = ssl_opts.with_client_identity(Some(mysql_async::ClientIdentity::new(
+                PathBuf::from(cert_path).into(),
+                PathBuf::from(key_path).into(),
+            )));
+        }
+        (Some(_), None) => return Err("MySQL ssl-cert requires ssl-key".to_string()),
+        (None, Some(_)) => return Err("MySQL ssl-key requires ssl-cert".to_string()),
+        (None, None) => {}
+    }
+
+    Ok(Some(ssl_opts))
 }
 
 fn mysql_setup_queries(url: &str) -> Vec<String> {
@@ -424,11 +528,29 @@ fn mysql_url_requires_ssl(url: &str) -> bool {
         let key = key.trim();
         let value = value.trim();
         (key.eq_ignore_ascii_case("require_ssl") && value.eq_ignore_ascii_case("true"))
+            || mysql_tls_file_param_is(key, "cert")
+            || mysql_tls_file_param_is(key, "key")
             || ((key.eq_ignore_ascii_case("ssl-mode") || key.eq_ignore_ascii_case("sslmode"))
                 && matches!(
                     value.to_ascii_lowercase().replace('-', "_").as_str(),
                     "required" | "require" | "verify_ca" | "verify_identity"
                 ))
+    })
+}
+
+fn mysql_url_verifies_identity(url: &str) -> bool {
+    let Some((_, query)) = url.split_once('?') else {
+        return false;
+    };
+    query.split('&').any(|segment| {
+        let Some((key, value)) = segment.split_once('=') else {
+            return false;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        (key.eq_ignore_ascii_case("verify_identity") && value.eq_ignore_ascii_case("true"))
+            || ((key.eq_ignore_ascii_case("ssl-mode") || key.eq_ignore_ascii_case("sslmode"))
+                && matches!(value.to_ascii_lowercase().replace('-', "_").as_str(), "verify_identity"))
     })
 }
 
@@ -1080,6 +1202,43 @@ mod tests {
             server closed session with no notification";
 
         assert!(mysql_error_should_retry_without_ssl(error));
+    }
+
+    #[test]
+    fn mysql_tls_url_strips_client_identity_params_before_driver_parse() {
+        let dir = std::env::temp_dir();
+        let cert = dir.join(format!("dbx-mysql-client-cert-{}.pem", std::process::id()));
+        let key = dir.join(format!("dbx-mysql-client-key-{}.pem", std::process::id()));
+        std::fs::write(&cert, "not a real cert").unwrap();
+        std::fs::write(&key, "not a real key").unwrap();
+
+        let url = format!(
+            "mysql://root:secret@localhost/test?require_ssl=true&ssl-cert={}&ssl-key={}&charset=utf8mb4",
+            cert.display(),
+            key.display()
+        );
+        let parsed = mysql_tls_url(&url).unwrap();
+
+        assert_eq!(parsed.url, "mysql://root:secret@localhost/test?require_ssl=true&charset=utf8mb4");
+        assert_eq!(parsed.files.sslcert.as_deref(), Some(cert.to_str().unwrap()));
+        assert_eq!(parsed.files.sslkey.as_deref(), Some(key.to_str().unwrap()));
+        mysql_async::Opts::from_url(&mysql_async_url(&parsed.url)).unwrap();
+
+        let _ = std::fs::remove_file(cert);
+        let _ = std::fs::remove_file(key);
+    }
+
+    #[test]
+    fn mysql_tls_rejects_unpaired_client_cert_and_key() {
+        let files = MySqlTlsFiles { sslcert: Some("/tmp/client.crt".to_string()), sslkey: None };
+
+        let error = mysql_ssl_opts(None, "mysql://root@localhost/db?require_ssl=true", None, &files).unwrap_err();
+        assert!(error.contains("ssl-key"));
+    }
+
+    #[test]
+    fn mysql_tls_client_identity_requires_ssl() {
+        assert!(mysql_url_requires_ssl("mysql://root@localhost/db?ssl-cert=/tmp/client.crt&ssl-key=/tmp/client.key"));
     }
 
     #[test]
