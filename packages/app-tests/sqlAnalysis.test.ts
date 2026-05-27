@@ -61,6 +61,16 @@ test("reports why joined query results are not editable", () => {
   assert.equal(queryEditabilityMessageKey(result.reason), "grid.queryEditUnsupportedComplexSource");
 });
 
+test("reports DuckDB external file scans as read-only external sources", () => {
+  const result = analyzeEditableQueryEditability("SELECT * FROM '/tmp/duckdb_excel_extension_test.xlsx'");
+
+  assert.deepEqual(result, {
+    editable: false,
+    reason: "external-source",
+  });
+  assert.equal(queryEditabilityMessageKey(result.reason), "grid.queryEditUnsupportedExternalSource");
+});
+
 test("reports computed result columns as unsafe to edit", () => {
   const result = analyzeEditableQueryEditability("select id, count(*) as total from users group by id");
 

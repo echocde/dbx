@@ -508,6 +508,7 @@ export default {
       cte: "包含 WITH/CTE 的查询暂不支持直接回写。请改为简单单表 SELECT。",
       "set-operation": "包含 UNION、INTERSECT 或 EXCEPT 的结果无法安全定位原表行。",
       aggregation: "包含 DISTINCT、GROUP BY、HAVING 或聚合结果，无法直接编辑原始数据。",
+      "external-source": "外部文件或表函数查询结果无法直接回写，请先导入到数据库表后再编辑。",
       "complex-source": "包含 JOIN、多个表或子查询的结果无法安全定位单个原表行。",
       "computed-columns": "结果列包含表达式或函数，无法安全回写。请查询原始列名。",
       "no-table": "未识别到可编辑的数据表。",

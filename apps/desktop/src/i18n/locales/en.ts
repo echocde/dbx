@@ -513,6 +513,8 @@ export default {
       cte: "Queries with WITH/CTE are not editable yet. Use a simple single-table SELECT.",
       "set-operation": "UNION, INTERSECT, or EXCEPT results cannot be mapped safely back to source rows.",
       aggregation: "DISTINCT, GROUP BY, HAVING, and aggregate results cannot be edited directly.",
+      "external-source":
+        "External files and table-function results cannot be written back directly. Import them into a database table before editing.",
       "complex-source": "JOINs, multiple tables, and subqueries cannot be mapped safely to one source row.",
       "computed-columns":
         "Computed expressions or function results cannot be written back. Select raw column names instead.",

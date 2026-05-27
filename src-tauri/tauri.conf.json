@@ -45,7 +45,9 @@
         "mimeType": "application/sql"
       }
     ],
-    "macOS": {},
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser",
