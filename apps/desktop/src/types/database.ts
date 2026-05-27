@@ -371,6 +371,7 @@ export interface QueryTab {
     | "cte"
     | "set-operation"
     | "aggregation"
+    | "external-source"
     | "complex-source"
     | "computed-columns"
     | "no-table"

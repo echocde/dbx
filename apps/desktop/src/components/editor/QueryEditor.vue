@@ -148,6 +148,7 @@ const useRegex = ref(false);
 const matchCount = ref(0);
 const currentMatchIndex = ref(0);
 const searchInputRef = ref<HTMLInputElement>();
+const replaceInputRef = ref<HTMLInputElement>();
 
 interface EditorGestureEvent extends Event {
   scale?: number;
@@ -314,6 +315,16 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
         resetZoom();
         return true;
       },
+    },
+    {
+      key: "Mod-h",
+      preventDefault: true,
+      run: openReplace,
+    },
+    {
+      key: "Ctrl-h",
+      preventDefault: true,
+      run: openReplace,
     },
     {
       key: shortcutToCodeMirrorKey(shortcuts.executeSql),
@@ -1365,6 +1376,16 @@ function openSearch(): boolean {
   return true;
 }
 
+function openReplace(): boolean {
+  openSearch();
+  showReplace.value = true;
+  nextTick(() => {
+    replaceInputRef.value?.focus();
+    replaceInputRef.value?.select();
+  });
+  return true;
+}
+
 function closeSearch() {
   searchVisible.value = false;
   showReplace.value = false;
@@ -1504,6 +1525,7 @@ defineExpose({ openSearch });
         </div>
         <div v-if="showReplace" class="flex items-center gap-0.5">
           <input
+            ref="replaceInputRef"
             v-model="replaceText"
             autocapitalize="off"
             autocorrect="off"
@@ -1524,7 +1546,7 @@ defineExpose({ openSearch });
             :title="t('editor.search.replaceAll')"
             @click="doReplaceAll"
           >
-            全部
+            {{ t("editor.search.replaceAll") }}
           </button>
         </div>
       </div>
