@@ -7,12 +7,12 @@ import { SITE_URL, SITE_NAME, DEFAULT_DESCRIPTION } from '@/lib/metadata';
 const LOCALE_MAP: Record<string, { locale: string; title: string; description: string }> = {
   en: {
     locale: 'en_US',
-    title: 'DBX - 15 MB to manage 35+ databases',
+    title: 'DBX - 15 MB to manage 40+ databases',
     description: DEFAULT_DESCRIPTION,
   },
   cn: {
     locale: 'zh_CN',
-    title: 'DBX - 15MB，管理35+种数据库',
+    title: 'DBX - 15MB，管理40+种数据库',
     description: '25+ 种数据库，仅 15 MB。支持桌面与 Docker 自托管，内置 AI 助手。',
   },
 };

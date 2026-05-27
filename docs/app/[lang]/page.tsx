@@ -323,7 +323,7 @@ const testimonials = {
 
 const i18nText = {
   en: {
-    heroTitle: '15 MB to manage 35+ databases!',
+    heroTitle: '15 MB to manage 40+ databases!',
     heroSubtitle:
       'DBX brings connections, SQL editing, data grids, schema tools, AI assistance, and self-hosted access into one lightweight product.',
     download: 'Download DBX',
@@ -345,7 +345,7 @@ const i18nText = {
     docker: 'Docker setup',
   },
   cn: {
-    heroTitle: '15MB，管理35+种数据库！',
+    heroTitle: '15MB，管理40+种数据库！',
     heroSubtitle: 'DBX 将连接管理、SQL 编辑、数据表格、结构工具、AI 助手和自托管访问放进一个轻量产品里。',
     download: '下载 DBX',
     downloadName: '下载 DBX',
@@ -371,12 +371,12 @@ import { buildMetadata } from '@/lib/metadata';
 
 const landingMeta = {
   en: {
-    title: 'DBX - 15 MB to manage 35+ databases!',
+    title: 'DBX - 15 MB to manage 40+ databases!',
     description:
       'DBX brings connections, SQL editing, data grids, schema tools, AI assistance, and self-hosted access into one lightweight product.',
   },
   cn: {
-    title: 'DBX - 15MB，管理35+种数据库！',
+    title: 'DBX - 15MB，管理40+种数据库！',
     description:
       'DBX 将连接管理、SQL 编辑、数据表格、结构工具、AI 助手和自托管访问放进一个轻量产品里。',
   },
