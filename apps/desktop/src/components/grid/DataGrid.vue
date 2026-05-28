@@ -4477,7 +4477,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               >
                 <div class="flex text-xs font-semibold text-foreground" :style="{ width: 'var(--header-total-w)' }">
                   <div
-                    class="shrink-0 px-2 py-1.5 border-r border-border text-center text-muted-foreground select-none cursor-pointer hover:bg-accent/60"
+                    class="shrink-0 px-2 py-1.5 border-r border-border text-center text-muted-foreground select-none cursor-pointer hover:bg-accent/60 sticky left-0 z-20 bg-[rgb(239_239_239)] dark:bg-[#2d2d2d]"
                     :style="{ width: 'var(--row-num-w)' }"
                     @click="selectAllCells"
                   >
@@ -5047,7 +5047,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     :data-row-index="item.displayIndex"
                   >
                     <div
-                      class="shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50"
+                      class="shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50 sticky left-0 z-10 bg-[rgb(255_255_255)] dark:bg-[rgb(15_15_15)]"
                       :class="[
                         rowNumberStatusClass(item),
                         {
