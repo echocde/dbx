@@ -6,9 +6,11 @@ import { z } from "zod";
 import {
   buildSchemaContext,
   createBackend,
+  evaluateMongoAggregateSafety,
   evaluateSqlSafety,
   formatSchemaContext,
   notifyReload,
+  parseMongoAggregateCommand,
   postBridge,
   sqlSafetyFromEnv,
   type Backend,
@@ -216,13 +218,24 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
     },
     async ({ connection_name, sql, database }) => {
       const config = await backend.findConnection(connection_name);
-      if (config?.db_type !== "mongodb") {
-        const safety = evaluateSqlSafety(sql, sqlSafetyFromEnv());
+      const safetyOptions = sqlSafetyFromEnv();
+      if (config?.db_type === "mongodb") {
+        const aggregate = parseMongoAggregateCommand(sql);
+        if (aggregate) {
+          const safety = evaluateMongoAggregateSafety(aggregate, safetyOptions);
+          if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
+        }
+      } else {
+        const safety = evaluateSqlSafety(sql, safetyOptions);
         if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
       }
-      // MongoDB shell commands bypass the SQL safety evaluator; the desktop
-      // app's executor applies command-aware read/write gating.
-      return bridgeRequest("/execute-query", { connection_name, sql, database }, "Query sent to DBX");
+      // MongoDB shell commands bypass the SQL safety evaluator; pass MCP
+      // safety flags to the desktop executor for command-aware gating.
+      return bridgeRequest(
+        "/execute-query",
+        { connection_name, sql, database, allow_writes: safetyOptions.allowWrites, allow_dangerous: safetyOptions.allowDangerous },
+        "Query sent to DBX",
+      );
     },
     );
   }

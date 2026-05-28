@@ -182,6 +182,7 @@ export async function executeQuery(config: ConnectionConfig, sql: string, option
           database: config.database || "",
           collection: aggregate.collection,
           pipelineJson: aggregate.pipeline,
+          maxRows: options?.maxRows ?? 100,
         }),
       });
       const result = (await res.json()) as { documents: unknown[]; total: number };
@@ -260,4 +261,3 @@ async function executeMongoWrite(config: ConnectionConfig, command: MongoWriteCo
   const result = (await res.json()) as { affected_rows: number };
   return result.affected_rows;
 }
-

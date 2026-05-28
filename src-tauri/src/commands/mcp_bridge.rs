@@ -22,6 +22,8 @@ struct ExecuteQueryRequest {
     database: Option<String>,
     sql: String,
     schema: Option<String>,
+    allow_writes: Option<bool>,
+    allow_dangerous: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -56,6 +58,7 @@ struct MongoAggregateDocumentsRequest {
     database: Option<String>,
     collection: String,
     pipeline_json: String,
+    max_rows: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +101,8 @@ pub struct McpExecuteQueryEvent {
     pub connection_id: String,
     pub database: String,
     pub sql: String,
+    pub allow_writes: bool,
+    pub allow_dangerous: bool,
 }
 
 pub fn start(app_handle: AppHandle, state: Arc<AppState>) {
@@ -282,6 +287,8 @@ async fn handle_execute_query(app: &AppHandle, state: &Arc<AppState>, body: &str
         connection_id: config.id.clone(),
         database: req.database.unwrap_or_else(|| config.database.clone().unwrap_or_default()),
         sql: req.sql,
+        allow_writes: req.allow_writes.unwrap_or(false),
+        allow_dangerous: req.allow_dangerous.unwrap_or(false),
     };
     let _ = app.emit("mcp-execute-query", &event);
     respond(stream, "200 OK", "ok").await;
@@ -398,6 +405,7 @@ async fn handle_mongo_aggregate_documents_data(state: &Arc<AppState>, body: &str
         &database,
         &req.collection,
         &req.pipeline_json,
+        req.max_rows,
     )
     .await
     {

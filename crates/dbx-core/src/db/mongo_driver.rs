@@ -83,6 +83,7 @@ pub async fn aggregate_documents(
     database: &str,
     collection: &str,
     pipeline_json: &str,
+    max_rows: Option<usize>,
 ) -> Result<MongoDocumentResult, String> {
     let json: serde_json::Value =
         serde_json::from_str(pipeline_json).map_err(|e| format!("Invalid pipeline JSON: {e}"))?;
@@ -93,12 +94,17 @@ pub async fn aggregate_documents(
         .collect::<Result<Vec<Document>, String>>()?;
     let col = client.database(database).collection::<Document>(collection);
     let mut cursor = col.aggregate(pipeline).await.map_err(|e| e.to_string())?;
+    let max_rows = max_rows.unwrap_or(100);
+    let fetch_limit = max_rows.saturating_add(1);
     let mut documents = Vec::new();
-    while cursor.advance().await.map_err(|e| e.to_string())? {
+    while documents.len() < fetch_limit && cursor.advance().await.map_err(|e| e.to_string())? {
         let doc = cursor.deserialize_current().map_err(|e| e.to_string())?;
         documents.push(bson_to_json(&Bson::Document(doc)));
     }
     let total = documents.len() as u64;
+    if documents.len() > max_rows {
+        documents.truncate(max_rows);
+    }
     Ok(MongoDocumentResult { documents, total })
 }
 

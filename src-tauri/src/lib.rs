@@ -8,11 +8,11 @@ use commands::connection::AppState;
 use dbx_core::storage::Storage;
 use std::sync::Arc;
 use std::time::Instant;
+use tauri::Manager;
 use tauri::{
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-use tauri::Manager;
 #[cfg(target_os = "macos")]
 use tauri::{Emitter, RunEvent};
 #[cfg(any(windows, target_os = "linux"))]

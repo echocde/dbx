@@ -1272,8 +1272,9 @@ export async function mongoAggregateDocuments(
   database: string,
   collection: string,
   pipelineJson: string,
+  maxRows?: number,
 ): Promise<MongoDocumentResult> {
-  return post("/api/mongo/aggregate-documents", { connectionId, database, collection, pipelineJson });
+  return post("/api/mongo/aggregate-documents", { connectionId, database, collection, pipelineJson, maxRows });
 }
 
 export async function mongoInsertDocument(

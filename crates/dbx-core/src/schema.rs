@@ -399,14 +399,7 @@ pub async fn list_tables_core(
 }
 
 fn collection_names_to_tables(names: Vec<String>, table_type: &str) -> Vec<db::TableInfo> {
-    names
-        .into_iter()
-        .map(|name| db::TableInfo {
-            name,
-            table_type: table_type.to_string(),
-            comment: None,
-        })
-        .collect()
+    names.into_iter().map(|name| db::TableInfo { name, table_type: table_type.to_string(), comment: None }).collect()
 }
 
 fn filter_table_infos(tables: Vec<db::TableInfo>, filter: Option<&str>, limit: Option<usize>) -> Vec<db::TableInfo> {

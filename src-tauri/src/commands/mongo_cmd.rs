@@ -52,9 +52,17 @@ pub async fn mongo_aggregate_documents(
     database: String,
     collection: String,
     pipeline_json: String,
+    max_rows: Option<usize>,
 ) -> Result<MongoDocumentResult, String> {
-    dbx_core::mongo_ops::mongo_aggregate_documents_core(&state, &connection_id, &database, &collection, &pipeline_json)
-        .await
+    dbx_core::mongo_ops::mongo_aggregate_documents_core(
+        &state,
+        &connection_id,
+        &database,
+        &collection,
+        &pipeline_json,
+        max_rows,
+    )
+    .await
 }
 
 #[tauri::command]

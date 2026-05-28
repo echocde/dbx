@@ -117,3 +117,32 @@ test("mongodb execute query formats shell-style find results", async () => {
   assert.match(result.content[0].text, /demo/);
   assert.match(result.content[0].text, /1 row\(s\)/);
 });
+
+test("mongodb execute-and-show blocks aggregate write stages before desktop bridge", async () => {
+  const oldAllowWrites = process.env.DBX_MCP_ALLOW_WRITES;
+  const oldAllowDangerous = process.env.DBX_MCP_ALLOW_DANGEROUS_SQL;
+  delete process.env.DBX_MCP_ALLOW_WRITES;
+  delete process.env.DBX_MCP_ALLOW_DANGEROUS_SQL;
+  const mongoConnection: ConnectionConfig = { ...connection, db_type: "mongodb" };
+  const scopedBackend: Backend = {
+    ...backend,
+    findConnection: async () => mongoConnection,
+  };
+  const server = createDbxMcpServer(scopedBackend, { isWebMode: false });
+
+  try {
+    const result = await (server as any)._registeredTools.dbx_execute_and_show.handler({
+      connection_name: "local",
+      database: "pystrument",
+      sql: 'db.projects.aggregate([{"$out":"projects_dump"}])',
+    });
+
+    assert.match(result.content[0].text, /Query blocked:/);
+    assert.match(result.content[0].text, /DBX_MCP_ALLOW_WRITES=1/);
+  } finally {
+    if (oldAllowWrites === undefined) delete process.env.DBX_MCP_ALLOW_WRITES;
+    else process.env.DBX_MCP_ALLOW_WRITES = oldAllowWrites;
+    if (oldAllowDangerous === undefined) delete process.env.DBX_MCP_ALLOW_DANGEROUS_SQL;
+    else process.env.DBX_MCP_ALLOW_DANGEROUS_SQL = oldAllowDangerous;
+  }
+});

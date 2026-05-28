@@ -39,6 +39,7 @@ pub struct MongoAggregateRequest {
     pub database: String,
     pub collection: String,
     pub pipeline_json: String,
+    pub max_rows: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -147,6 +148,7 @@ pub async fn aggregate_documents(
         &req.database,
         &req.collection,
         &req.pipeline_json,
+        req.max_rows,
     )
     .await
     .map_err(AppError)?;

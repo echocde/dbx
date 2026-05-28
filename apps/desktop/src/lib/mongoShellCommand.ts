@@ -18,6 +18,11 @@ export interface MongoAggregateCommand {
   pipeline: string;
 }
 
+export interface MongoAggregateSafetyOptions {
+  allowWrites?: boolean;
+  allowDangerous?: boolean;
+}
+
 const DEFAULT_LIMIT = 100;
 
 export function parseMongoFindCommand(input: string): MongoFindCommand | null {
@@ -100,6 +105,42 @@ export function parseMongoAggregateCommand(input: string): MongoAggregateCommand
     collection: target.collection,
     pipeline,
   };
+}
+
+export function mongoAggregateWriteStage(pipelineJson: string): "$out" | "$merge" | null {
+  try {
+    const pipeline = JSON.parse(pipelineJson);
+    if (!Array.isArray(pipeline)) return null;
+    for (const stage of pipeline) {
+      if (!isRecord(stage)) continue;
+      if (Object.prototype.hasOwnProperty.call(stage, "$out")) return "$out";
+      if (Object.prototype.hasOwnProperty.call(stage, "$merge")) return "$merge";
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function evaluateMongoAggregateSafety(
+  command: MongoAggregateCommand,
+  options: MongoAggregateSafetyOptions,
+): { allowed: boolean; reason?: string } {
+  const writeStage = mongoAggregateWriteStage(command.pipeline);
+  if (!writeStage) return { allowed: true };
+  if (!options.allowWrites) {
+    return {
+      allowed: false,
+      reason: `MongoDB aggregate stage "${writeStage}" writes data. Set DBX_MCP_ALLOW_WRITES=1 to allow write commands.`,
+    };
+  }
+  if (!options.allowDangerous) {
+    return {
+      allowed: false,
+      reason: `MongoDB aggregate stage "${writeStage}" is dangerous. Set DBX_MCP_ALLOW_DANGEROUS_SQL=1 to allow it.`,
+    };
+  }
+  return { allowed: true };
 }
 
 export function mongoDocumentsToQueryResult(documents: unknown[], executionTimeMs: number, total: number): QueryResult {

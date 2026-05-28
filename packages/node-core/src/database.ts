@@ -427,7 +427,10 @@ export async function executeQuery(config: ConnectionConfig, sql: string, option
     if (aggregate) {
       const safety = evaluateMongoAggregateSafety(aggregate, sqlSafetyFromEnv());
       if (!safety.allowed) throw new Error(safety.reason);
-      const result = await withTimeout(mongoAggregateDocuments(config, aggregate.collection, aggregate.pipeline), resolveTimeoutMs(options));
+      const result = await withTimeout(
+        mongoAggregateDocuments(config, aggregate.collection, aggregate.pipeline, resolveMaxRows(options)),
+        resolveTimeoutMs(options),
+      );
       return mongoDocumentsToQueryResult(result.documents.slice(0, resolveMaxRows(options)), result.total);
     }
     const write = parseMongoWriteCommand(sql);
@@ -599,12 +602,14 @@ async function mongoAggregateDocuments(
   config: ConnectionConfig,
   collection: string,
   pipelineJson: string,
+  maxRows: number,
 ): Promise<MongoDocumentResult> {
   return bridgeDataRequest<MongoDocumentResult>("/data/mongo/aggregate-documents", {
     connection_name: config.name,
     database: config.database || "",
     collection,
     pipeline_json: pipelineJson,
+    max_rows: maxRows,
   });
 }
 
