@@ -17,7 +17,7 @@ test("app defers cold-start side panels and modal pages behind async components"
 });
 
 test("AI assistant panel stays closed on first launch to preserve startup memory", () => {
-  assert.match(appSource, /const showAiPanel = ref\(localStorage\.getItem\("dbx-ai-panel-open"\) === "true"\)/);
+  assert.match(appSource, /const showAiPanel = ref\(safeLocalStorageGet\("dbx-ai-panel-open"\) === "true"\)/);
 });
 
 test("dock side panels layer above the editor content", () => {

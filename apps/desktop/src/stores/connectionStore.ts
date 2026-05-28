@@ -44,6 +44,7 @@ import {
 import { decodeSchemaTreeCache, encodeSchemaTreeCache } from "@/lib/schemaTreeCache";
 import { prunePinnedTreeNodeIdsForConnection } from "@/lib/pinnedTreeNodeIds";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
 type ImportSource = "dbx" | "navicat" | "dbeaver";
@@ -966,7 +967,9 @@ export const useConnectionStore = defineStore("connection", () => {
         api.listSchemas(connectionId, database),
         api.listObjects(connectionId, database, SQLSERVER_DEFAULT_SCHEMA),
       ]);
-      const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas, defaultSchemaObjects);
+      const children = buildSqlServerDatabaseTreeNodes(connectionId, database, schemas, defaultSchemaObjects, {
+        simpleObjectDisplay: useSettingsStore().editorSettings.sidebarObjectDisplay === "simple",
+      });
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);
       node.isExpanded = true;
@@ -998,13 +1001,19 @@ export const useConnectionStore = defineStore("connection", () => {
       const querySchema = schema || database;
       const config = getConfig(connectionId);
       const effectiveSchema = schema || (config?.db_type && isSchemaAware(config.db_type) ? database : undefined);
+      const simpleObjectDisplay = useSettingsStore().editorSettings.sidebarObjectDisplay === "simple";
       let children: TreeNode[];
-      try {
-        const objects = await api.listObjects(connectionId, database, querySchema);
-        children = buildGroupedObjectTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, objects });
-      } catch {
+      if (simpleObjectDisplay) {
         const tables = await api.listTables(connectionId, database, querySchema);
         children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
+      } else {
+        try {
+          const objects = await api.listObjects(connectionId, database, querySchema);
+          children = buildGroupedObjectTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, objects });
+        } catch {
+          const tables = await api.listTables(connectionId, database, querySchema);
+          children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
+        }
       }
       setChildren(node, children);
       await savePersistedTreeChildren(cacheKey, children);

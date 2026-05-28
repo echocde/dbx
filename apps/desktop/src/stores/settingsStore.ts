@@ -185,6 +185,7 @@ export interface EditorSettings {
   compactColumnHeaderActions: boolean;
   shortcuts: ShortcutSettings;
   sidebarActivation: SidebarActivation;
+  sidebarObjectDisplay: "grouped" | "simple";
   autoSelectActiveSidebarNode: boolean;
   sidebarHiddenTablePrefixes: string[];
   sidebarHideTableComments: boolean;
@@ -234,6 +235,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   compactColumnHeaderActions: true,
   shortcuts: normalizeShortcutSettings(),
   sidebarActivation: "single",
+  sidebarObjectDisplay: "grouped",
   autoSelectActiveSidebarNode: false,
   sidebarHiddenTablePrefixes: [],
   sidebarHideTableComments: false,
@@ -320,6 +322,10 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
       settings.sidebarActivation === "single" || settings.sidebarActivation === "double"
         ? settings.sidebarActivation
         : DEFAULT_EDITOR_SETTINGS.sidebarActivation,
+    sidebarObjectDisplay:
+      settings.sidebarObjectDisplay === "simple" || settings.sidebarObjectDisplay === "grouped"
+        ? settings.sidebarObjectDisplay
+        : DEFAULT_EDITOR_SETTINGS.sidebarObjectDisplay,
     autoSelectActiveSidebarNode:
       settings.autoSelectActiveSidebarNode ?? DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(settings.sidebarHiddenTablePrefixes),
@@ -443,6 +449,8 @@ export const useSettingsStore = defineStore("settings", () => {
       editorSettings.value.compactColumnHeaderActions = partial.compactColumnHeaderActions;
     if (partial.shortcuts !== undefined) editorSettings.value.shortcuts = normalizeShortcutSettings(partial.shortcuts);
     if (partial.sidebarActivation !== undefined) editorSettings.value.sidebarActivation = partial.sidebarActivation;
+    if (partial.sidebarObjectDisplay !== undefined)
+      editorSettings.value.sidebarObjectDisplay = partial.sidebarObjectDisplay;
     if (partial.autoSelectActiveSidebarNode !== undefined)
       editorSettings.value.autoSelectActiveSidebarNode = partial.autoSelectActiveSidebarNode;
     if (partial.sidebarHiddenTablePrefixes !== undefined)

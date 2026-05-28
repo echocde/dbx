@@ -18,5 +18,5 @@ test("query editor reconfigures autocompletion when snippets change", () => {
 });
 
 test("query editor disables CodeMirror label re-filtering for custom SQL completions", () => {
-  assert.match(source, /from: position - completionContext\.prefix\.length,\s*filter: false,\s*options:/s);
+  assert.match(source, /from: position - prefixLength,\s*filter: false,\s*options:/s);
 });

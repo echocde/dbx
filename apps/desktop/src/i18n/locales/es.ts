@@ -1316,6 +1316,13 @@ export default {
     sidebarActivationSingleDescription: "Abrir elementos accionables de la barra lateral con un clic.",
     sidebarActivationDouble: "Doble clic",
     sidebarActivationDoubleDescription: "Un clic selecciona la fila; doble clic abre elementos.",
+    sidebarObjectDisplay: "Diseño de objetos en la barra lateral",
+    sidebarObjectDisplayGrouped: "Vista avanzada",
+    sidebarObjectDisplayGroupedDescription:
+      "Agrupa objetos por tablas, vistas, procedimientos y funciones para bases con más tipos de objeto.",
+    sidebarObjectDisplaySimple: "Vista simple",
+    sidebarObjectDisplaySimpleDescription:
+      "Muestra tablas y vistas directamente bajo cada base de datos o esquema para reducir niveles intermedios.",
     autoSelectActiveSidebarNode: "Seleccionar siempre el elemento abierto",
     autoSelectActiveSidebarNodeDescription:
       "Al cambiar de pestaña, selecciona la tabla, colección o archivo SQL visible correspondiente en la barra lateral.",

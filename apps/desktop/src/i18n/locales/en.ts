@@ -1422,6 +1422,13 @@ export default {
     sidebarActivationSingleDescription: "Open actionable sidebar items with one click.",
     sidebarActivationDouble: "Double click",
     sidebarActivationDoubleDescription: "Single click selects rows; double click opens items.",
+    sidebarObjectDisplay: "Sidebar object layout",
+    sidebarObjectDisplayGrouped: "Advanced view",
+    sidebarObjectDisplayGroupedDescription:
+      "Group objects by tables, views, procedures, and functions for databases with more object types.",
+    sidebarObjectDisplaySimple: "Simple view",
+    sidebarObjectDisplaySimpleDescription:
+      "List tables and views directly under each database or schema to reduce intermediate levels.",
     autoSelectActiveSidebarNode: "Always select opened item",
     autoSelectActiveSidebarNodeDescription:
       "When switching tabs, select the matching visible table, collection, or SQL file in the sidebar.",

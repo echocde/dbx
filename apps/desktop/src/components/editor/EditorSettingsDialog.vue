@@ -98,6 +98,8 @@ const editCompactColumnHeaderActions = ref(settingsStore.editorSettings.compactC
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
 const editSidebarActivation = ref(settingsStore.editorSettings.sidebarActivation);
+const editSidebarObjectDisplay = ref(settingsStore.editorSettings.sidebarObjectDisplay);
+const sidebarObjectDisplayHelp = ref<"grouped" | "simple" | null>(null);
 const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSelectActiveSidebarNode);
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
 const editSidebarHideTableComments = ref(settingsStore.editorSettings.sidebarHideTableComments);
@@ -231,6 +233,7 @@ watch(
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
       editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
       editSidebarActivation.value = settingsStore.editorSettings.sidebarActivation;
+      editSidebarObjectDisplay.value = settingsStore.editorSettings.sidebarObjectDisplay;
       editAutoSelectActiveSidebarNode.value = settingsStore.editorSettings.autoSelectActiveSidebarNode;
       editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
       editSidebarHideTableComments.value = settingsStore.editorSettings.sidebarHideTableComments;
@@ -268,6 +271,7 @@ function hasChanges(): boolean {
     editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
     JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts) ||
     editSidebarActivation.value !== settingsStore.editorSettings.sidebarActivation ||
+    editSidebarObjectDisplay.value !== settingsStore.editorSettings.sidebarObjectDisplay ||
     editAutoSelectActiveSidebarNode.value !== settingsStore.editorSettings.autoSelectActiveSidebarNode ||
     editSidebarHideTableComments.value !== settingsStore.editorSettings.sidebarHideTableComments ||
     JSON.stringify(normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value)) !==
@@ -278,6 +282,8 @@ function hasChanges(): boolean {
 
 async function persistSettings() {
   if (hasBlockingShortcutConflicts.value) return;
+  const sidebarObjectDisplayChanged =
+    editSidebarObjectDisplay.value !== settingsStore.editorSettings.sidebarObjectDisplay;
   settingsStore.updateEditorSettings({
     fontFamily: editFontFamily.value,
     fontSize: editFontSize.value,
@@ -291,6 +297,7 @@ async function persistSettings() {
     redisScanPageSize: editRedisScanPageSize.value,
     shortcuts: editShortcuts.value,
     sidebarActivation: editSidebarActivation.value,
+    sidebarObjectDisplay: editSidebarObjectDisplay.value,
     autoSelectActiveSidebarNode: editAutoSelectActiveSidebarNode.value,
     sidebarHideTableComments: editSidebarHideTableComments.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
@@ -299,6 +306,9 @@ async function persistSettings() {
   await settingsStore.updateDesktopSettings({
     show_tray_icon: editShowTrayIcon.value,
   });
+  if (sidebarObjectDisplayChanged) {
+    await connectionStore.refreshAllTree();
+  }
 }
 
 async function applySettings() {
@@ -324,6 +334,7 @@ function resetDefaults() {
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
   editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
   editSidebarActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarActivation;
+  editSidebarObjectDisplay.value = DEFAULT_EDITOR_SETTINGS.sidebarObjectDisplay;
   editAutoSelectActiveSidebarNode.value = DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode;
   editSidebarHideTableComments.value = DEFAULT_EDITOR_SETTINGS.sidebarHideTableComments;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
@@ -345,6 +356,10 @@ function onThemeChange(v: any) {
 function onRedisScanPageSizeChange(v: any) {
   const value = Number(v);
   if (redisScanPageSizeOptions.includes(value)) editRedisScanPageSize.value = value;
+}
+
+function setSidebarObjectDisplay(value: "grouped" | "simple") {
+  editSidebarObjectDisplay.value = value;
 }
 
 function onShortcutChange(actionId: ShortcutActionId, value: any) {
@@ -1218,6 +1233,79 @@ watch(
                       <div class="text-sm font-medium">{{ t("settings.sidebarActivationDouble") }}</div>
                       <div class="text-xs text-muted-foreground">
                         {{ t("settings.sidebarActivationDoubleDescription") }}
+                      </div>
+                    </div>
+                  </Button>
+                </div>
+              </div>
+              <div class="space-y-2">
+                <Label>{{ t("settings.sidebarObjectDisplay") }}</Label>
+                <div class="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    class="h-auto justify-start border p-3"
+                    :class="editSidebarObjectDisplay === 'grouped' ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
+                    @click="setSidebarObjectDisplay('grouped')"
+                  >
+                    <div class="text-left">
+                      <div class="flex items-center gap-2">
+                        <div class="text-sm font-medium">{{ t("settings.sidebarObjectDisplayGrouped") }}</div>
+                        <Tooltip :open="sidebarObjectDisplayHelp === 'grouped'">
+                          <TooltipTrigger as-child>
+                            <span
+                              class="inline-flex shrink-0 cursor-help text-muted-foreground hover:text-foreground"
+                              @click.stop
+                              @pointerdown.stop
+                              @mouseenter="sidebarObjectDisplayHelp = 'grouped'"
+                              @mouseleave="sidebarObjectDisplayHelp = null"
+                            >
+                              <CircleHelp class="h-3.5 w-3.5" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            class="max-w-[320px] text-xs leading-relaxed"
+                            side="top"
+                            align="center"
+                            :side-offset="8"
+                          >
+                            {{ t("settings.sidebarObjectDisplayGroupedDescription") }}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    class="h-auto justify-start border p-3"
+                    :class="editSidebarObjectDisplay === 'simple' ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
+                    @click="setSidebarObjectDisplay('simple')"
+                  >
+                    <div class="text-left">
+                      <div class="flex items-center gap-2">
+                        <div class="text-sm font-medium">{{ t("settings.sidebarObjectDisplaySimple") }}</div>
+                        <Tooltip :open="sidebarObjectDisplayHelp === 'simple'">
+                          <TooltipTrigger as-child>
+                            <span
+                              class="inline-flex shrink-0 cursor-help text-muted-foreground hover:text-foreground"
+                              @click.stop
+                              @pointerdown.stop
+                              @mouseenter="sidebarObjectDisplayHelp = 'simple'"
+                              @mouseleave="sidebarObjectDisplayHelp = null"
+                            >
+                              <CircleHelp class="h-3.5 w-3.5" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            class="max-w-[320px] text-xs leading-relaxed"
+                            side="top"
+                            align="center"
+                            :side-offset="8"
+                          >
+                            {{ t("settings.sidebarObjectDisplaySimpleDescription") }}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                     </div>
                   </Button>
