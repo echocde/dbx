@@ -1133,6 +1133,7 @@ export default {
     restore: "Restore to editor",
     copy: "Copy SQL",
     delete: "Delete",
+    clear: "Clear History",
     viewDetails: "View details",
     analyzeWithAi: "Analyze with AI",
     aiAnalyzeNoConnection: "Cannot analyze this history entry because its connection no longer exists.",

@@ -1110,6 +1110,7 @@ export default {
     restore: "恢复到编辑器",
     copy: "复制 SQL",
     delete: "删除",
+    clear: "清空历史",
     viewDetails: "查看详情",
     analyzeWithAi: "AI 分析",
     aiAnalyzeNoConnection: "无法分析这条历史记录：对应连接已不存在。",

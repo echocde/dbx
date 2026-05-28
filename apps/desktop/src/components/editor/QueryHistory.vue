@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useToast } from "@/composables/useToast";
-import { shouldClearHistory, shouldDeleteHistoryEntry } from "@/lib/historyActions";
 import { resolveHistoryActivityKind } from "@/lib/historyActivityKind";
 import { canRollbackHistoryEntry } from "@/lib/historyAiAnalysis";
 import { HISTORY_ROW_HEIGHT, HISTORY_SCROLL_BUFFER, shouldVirtualizeHistory } from "@/lib/historyVirtualList";
@@ -34,6 +33,9 @@ const searchText = ref("");
 const activeFilter = ref<HistoryFilter>("all");
 const selectedEntry = ref<HistoryEntry | null>(null);
 const isRollingBack = ref(false);
+const showDeleteConfirm = ref(false);
+const showClearConfirm = ref(false);
+const deleteTargetId = ref<string | null>(null);
 
 const filters: HistoryFilter[] = ["all", "query", "data_change", "schema_change", "failed"];
 
@@ -70,15 +72,27 @@ async function copyText(text: string) {
 }
 
 function confirmDeleteEntry(id: string) {
-  if (shouldDeleteHistoryEntry(() => window.confirm(t("history.confirmDelete")))) {
-    store.remove(id);
+  deleteTargetId.value = id;
+  showDeleteConfirm.value = true;
+}
+
+function executeDelete() {
+  if (deleteTargetId.value) {
+    store.remove(deleteTargetId.value);
+    deleteTargetId.value = null;
   }
+  showDeleteConfirm.value = false;
 }
 
 function confirmClearHistory() {
-  if (shouldClearHistory(store.entries.length, () => window.confirm(t("history.confirmClear")))) {
-    store.clear();
+  if (store.entries.length > 0) {
+    showClearConfirm.value = true;
   }
+}
+
+function executeClear() {
+  store.clear();
+  showClearConfirm.value = false;
 }
 
 function formatTime(iso: string): string {
@@ -172,7 +186,12 @@ async function rollback(entry: HistoryEntry) {
 
 function getHistoryMenuItems(entry: HistoryEntry): ContextMenuItem[] {
   return [
-    { label: t("history.viewDetails"), action: () => (selectedEntry = entry) },
+    {
+      label: t("history.viewDetails"),
+      action: () => {
+        selectedEntry.value = entry;
+      },
+    },
     { label: t("history.restore"), action: () => restore(entry) },
     { label: t("history.analyzeWithAi"), action: () => emit("analyzeAi", entry), icon: Sparkles },
     { label: t("history.copy"), action: () => copyText(entry.sql) },
@@ -325,6 +344,32 @@ onMounted(() => store.load());
             <RotateCcw class="h-4 w-4" />
             {{ isRollingBack ? t("common.loading") : t("history.rollback") }}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="showDeleteConfirm">
+      <DialogContent class="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>{{ t("history.delete") }}</DialogTitle>
+        </DialogHeader>
+        <p class="text-sm text-muted-foreground">{{ t("history.confirmDelete") }}</p>
+        <DialogFooter>
+          <Button variant="outline" @click="showDeleteConfirm = false">{{ t("dangerDialog.cancel") }}</Button>
+          <Button variant="destructive" @click="executeDelete">{{ t("dangerDialog.confirm") }}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="showClearConfirm">
+      <DialogContent class="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>{{ t("history.clear") }}</DialogTitle>
+        </DialogHeader>
+        <p class="text-sm text-muted-foreground">{{ t("history.confirmClear") }}</p>
+        <DialogFooter>
+          <Button variant="outline" @click="showClearConfirm = false">{{ t("dangerDialog.cancel") }}</Button>
+          <Button variant="destructive" @click="executeClear">{{ t("dangerDialog.confirm") }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
