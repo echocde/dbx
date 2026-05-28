@@ -96,7 +96,6 @@ const editShowTrayIcon = ref(settingsStore.desktopSettings.show_tray_icon);
 const editShowColumnCommentsInHeader = ref(settingsStore.editorSettings.showColumnCommentsInHeader);
 const editCompactColumnHeaderActions = ref(settingsStore.editorSettings.compactColumnHeaderActions);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
-const editQueryTimeoutSecs = ref(settingsStore.editorSettings.queryTimeoutSecs);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
 const editSidebarActivation = ref(settingsStore.editorSettings.sidebarActivation);
 const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSelectActiveSidebarNode);
@@ -230,7 +229,6 @@ watch(
       editShowColumnCommentsInHeader.value = settingsStore.editorSettings.showColumnCommentsInHeader;
       editCompactColumnHeaderActions.value = settingsStore.editorSettings.compactColumnHeaderActions;
       editRedisScanPageSize.value = settingsStore.editorSettings.redisScanPageSize;
-      editQueryTimeoutSecs.value = settingsStore.editorSettings.queryTimeoutSecs;
       editShortcuts.value = normalizeShortcutSettings(settingsStore.editorSettings.shortcuts);
       editSidebarActivation.value = settingsStore.editorSettings.sidebarActivation;
       editAutoSelectActiveSidebarNode.value = settingsStore.editorSettings.autoSelectActiveSidebarNode;
@@ -268,7 +266,6 @@ function hasChanges(): boolean {
     editShowColumnCommentsInHeader.value !== settingsStore.editorSettings.showColumnCommentsInHeader ||
     editCompactColumnHeaderActions.value !== settingsStore.editorSettings.compactColumnHeaderActions ||
     editRedisScanPageSize.value !== settingsStore.editorSettings.redisScanPageSize ||
-    editQueryTimeoutSecs.value !== settingsStore.editorSettings.queryTimeoutSecs ||
     JSON.stringify(editShortcuts.value) !== JSON.stringify(settingsStore.editorSettings.shortcuts) ||
     editSidebarActivation.value !== settingsStore.editorSettings.sidebarActivation ||
     editAutoSelectActiveSidebarNode.value !== settingsStore.editorSettings.autoSelectActiveSidebarNode ||
@@ -292,7 +289,6 @@ async function applySettings() {
     showColumnCommentsInHeader: editShowColumnCommentsInHeader.value,
     compactColumnHeaderActions: editCompactColumnHeaderActions.value,
     redisScanPageSize: editRedisScanPageSize.value,
-    queryTimeoutSecs: editQueryTimeoutSecs.value,
     shortcuts: editShortcuts.value,
     sidebarActivation: editSidebarActivation.value,
     autoSelectActiveSidebarNode: editAutoSelectActiveSidebarNode.value,
@@ -318,7 +314,6 @@ function resetDefaults() {
   editShowColumnCommentsInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader;
   editCompactColumnHeaderActions.value = DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions;
   editRedisScanPageSize.value = DEFAULT_EDITOR_SETTINGS.redisScanPageSize;
-  editQueryTimeoutSecs.value = DEFAULT_EDITOR_SETTINGS.queryTimeoutSecs;
   editShortcuts.value = normalizeShortcutSettings(DEFAULT_EDITOR_SETTINGS.shortcuts);
   editSidebarActivation.value = DEFAULT_EDITOR_SETTINGS.sidebarActivation;
   editAutoSelectActiveSidebarNode.value = DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode;
@@ -1071,26 +1066,6 @@ watch(
                   </div>
                   <Switch id="editor-word-wrap" v-model="editWordWrap" class="mt-0.5" />
                 </div>
-              </div>
-
-              <Separator />
-
-              <div class="space-y-2">
-                <Label for="query-timeout-secs">{{ t("settings.queryTimeoutSecs") }}</Label>
-                <Input
-                  id="query-timeout-secs"
-                  type="number"
-                  min="0"
-                  :model-value="String(editQueryTimeoutSecs)"
-                  @update:model-value="
-                    (v: any) => {
-                      const n = Number(v);
-                      if (Number.isFinite(n) && n >= 0) editQueryTimeoutSecs = n;
-                    }
-                  "
-                  class="h-9 w-28"
-                />
-                <p class="text-xs text-muted-foreground">{{ t("settings.queryTimeoutSecsDescription") }}</p>
               </div>
 
               <Separator />

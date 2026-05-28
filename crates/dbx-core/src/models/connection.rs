@@ -43,6 +43,8 @@ pub struct ConnectionConfig {
     pub ssh_connect_timeout_secs: u64,
     #[serde(default = "default_connect_timeout_secs")]
     pub connect_timeout_secs: u64,
+    #[serde(default = "default_query_timeout_secs")]
+    pub query_timeout_secs: u64,
     #[serde(default)]
     pub proxy_enabled: bool,
     #[serde(default)]
@@ -106,6 +108,10 @@ pub fn default_ssh_connect_timeout_secs() -> u64 {
 
 pub fn default_connect_timeout_secs() -> u64 {
     5
+}
+
+pub fn default_query_timeout_secs() -> u64 {
+    30
 }
 
 fn default_proxy_port() -> u16 {
@@ -205,6 +211,14 @@ impl ConnectionConfig {
             default_connect_timeout_secs()
         } else {
             self.connect_timeout_secs.clamp(1, 300)
+        }
+    }
+
+    pub fn effective_query_timeout_secs(&self) -> u64 {
+        if self.query_timeout_secs == 0 {
+            0
+        } else {
+            self.query_timeout_secs.clamp(1, 300)
         }
     }
 
@@ -813,7 +827,7 @@ fn bracket_ipv6(host: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_ssh_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
+    use super::{default_query_timeout_secs, default_ssh_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
     use std::str::FromStr;
 
     fn mysql_config(username: &str, password: &str, database: Option<&str>) -> ConnectionConfig {
@@ -841,6 +855,7 @@ mod tests {
             ssh_key_passphrase: String::new(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: default_ssh_connect_timeout_secs(),
+            query_timeout_secs: default_query_timeout_secs(),
             proxy_enabled: false,
             proxy_type: ProxyType::Socks5,
             proxy_host: String::new(),
@@ -889,6 +904,8 @@ mod tests {
 
         assert_eq!(config.ssh_connect_timeout_secs, default_ssh_connect_timeout_secs());
         assert_eq!(config.effective_ssh_connect_timeout_secs(), default_ssh_connect_timeout_secs());
+        assert_eq!(config.query_timeout_secs, default_query_timeout_secs());
+        assert_eq!(config.effective_query_timeout_secs(), default_query_timeout_secs());
     }
 
     #[test]
@@ -962,6 +979,14 @@ mod tests {
         config.ssh_connect_timeout_secs = 0;
 
         assert_eq!(config.effective_ssh_connect_timeout_secs(), default_ssh_connect_timeout_secs());
+    }
+
+    #[test]
+    fn query_timeout_zero_disables_timeout() {
+        let mut config = mysql_config("root", "", None);
+        config.query_timeout_secs = 0;
+
+        assert_eq!(config.effective_query_timeout_secs(), 0);
     }
 
     #[test]

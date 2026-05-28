@@ -1251,6 +1251,7 @@ mod tests {
             ssh_key_passphrase: String::new(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: 5,
+            query_timeout_secs: 30,
             proxy_enabled: false,
             proxy_type: crate::models::connection::ProxyType::Socks5,
             proxy_host: String::new(),

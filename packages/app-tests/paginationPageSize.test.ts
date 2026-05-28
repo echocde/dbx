@@ -60,7 +60,9 @@ assert.match(source, /fetchSize: pageLimit/);
 assert.match(source, /pageSize: pageLimit/);
 assert.match(source, /resultSessionId: options\?\.pagination\?\.sessionId/);
 assert.match(source, /clientSessionId: tab\.id/);
-assert.match(source, /timeoutSecs: settingsStore\.editorSettings\.queryTimeoutSecs/);
+assert.match(source, /const queryTimeoutSecs =/);
+assert.match(source, /conn\?\.query_timeout_secs/);
+assert.match(source, /timeoutSecs: queryTimeoutSecs/);
   assert.doesNotMatch(source, /maxRows: 10000,\s*fetchSize: pageLimit,\s*pageSize: pageLimit/s);
 });
 
@@ -108,4 +110,6 @@ test("editor settings dialog does not duplicate result page size controls", () =
   assert.doesNotMatch(source, /editPageSize/);
   assert.doesNotMatch(source, /settings\.resultPageSize/);
   assert.doesNotMatch(source, /pageSize: normalizeResultPageSize/);
+  assert.doesNotMatch(source, /query-timeout-secs/);
+  assert.doesNotMatch(source, /settings\.queryTimeoutSecs/);
 });

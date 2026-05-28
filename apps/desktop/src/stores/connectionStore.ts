@@ -243,6 +243,7 @@ export const useConnectionStore = defineStore("connection", () => {
         : [],
       ssh_connect_timeout_secs: config.ssh_connect_timeout_secs || 5,
       connect_timeout_secs: config.connect_timeout_secs || 5,
+      query_timeout_secs: config.query_timeout_secs ?? 30,
       proxy_type: config.proxy_type || "socks5",
       proxy_port: config.proxy_port || 1080,
     };

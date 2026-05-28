@@ -75,6 +75,7 @@ export interface ConnectionConfig {
   ssh_expose_lan?: boolean;
   ssh_connect_timeout_secs?: number;
   connect_timeout_secs?: number;
+  query_timeout_secs?: number;
   proxy_enabled?: boolean;
   proxy_type?: "socks5" | "http";
   proxy_host?: string;

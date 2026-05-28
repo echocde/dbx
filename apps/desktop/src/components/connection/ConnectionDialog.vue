@@ -40,7 +40,7 @@ type DbOption = { value: string; label: string };
 type DbCategory = { key: string; title: string; options: DbOption[] };
 type DialogStep = "select" | "config";
 type DbPickerView = "icon" | "list";
-type ConfigTab = "connection" | "tls" | "ssh" | "proxy";
+type ConfigTab = "connection" | "advanced" | "tls" | "ssh" | "proxy";
 
 const { t } = useI18n();
 const { toast } = useToast();
@@ -88,6 +88,7 @@ const defaultForm = (): Omit<ConnectionConfig, "id"> => ({
   ssh_expose_lan: false,
   ssh_connect_timeout_secs: 5,
   connect_timeout_secs: 5,
+  query_timeout_secs: 30,
   proxy_enabled: false,
   proxy_type: "socks5",
   proxy_host: "",
@@ -347,6 +348,7 @@ watch(
         ssh_expose_lan: config.ssh_expose_lan || false,
         ssh_connect_timeout_secs: config.ssh_connect_timeout_secs || 5,
         connect_timeout_secs: config.connect_timeout_secs || 5,
+        query_timeout_secs: config.query_timeout_secs ?? 30,
         proxy_enabled: config.proxy_enabled || false,
         proxy_type: config.proxy_type || "socks5",
         proxy_host: config.proxy_host || "",
@@ -741,6 +743,8 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
   config.ssh_connect_timeout_secs = Number.isFinite(sshTimeout) && sshTimeout > 0 ? sshTimeout : 5;
   const connectTimeout = Number(config.connect_timeout_secs);
   config.connect_timeout_secs = Number.isFinite(connectTimeout) && connectTimeout > 0 ? connectTimeout : 5;
+  const queryTimeout = Number(config.query_timeout_secs);
+  config.query_timeout_secs = Number.isFinite(queryTimeout) && queryTimeout >= 0 ? queryTimeout : 30;
   const proxyPort = Number(config.proxy_port);
   config.proxy_port = Number.isFinite(proxyPort) && proxyPort > 0 ? proxyPort : 1080;
   if (!config.one_time) config.one_time = undefined;
@@ -1440,15 +1444,13 @@ function openExternalUrl(url: string) {
       <template v-else>
         <div class="space-y-3">
           <Tabs v-model="configTab" class="min-h-0">
-            <div
-              v-if="supportsTlsToggle || canUseSsh || canUseProxy"
-              class="flex items-center justify-between border-b pb-2"
-            >
+            <div class="flex items-center justify-between border-b pb-2">
               <TabsList>
                 <TabsTrigger value="connection">{{ t("connection.basicTab") }}</TabsTrigger>
                 <TabsTrigger v-if="supportsTlsToggle" value="tls">{{ t("connection.tlsTab") }}</TabsTrigger>
                 <TabsTrigger v-if="canUseSsh" value="ssh">{{ t("connection.sshTunnel") }}</TabsTrigger>
                 <TabsTrigger v-if="canUseProxy" value="proxy">{{ t("connection.proxy") }}</TabsTrigger>
+                <TabsTrigger value="advanced">{{ t("connection.advancedTab") }}</TabsTrigger>
               </TabsList>
             </div>
 
@@ -2223,6 +2225,33 @@ function openExternalUrl(url: string) {
               </div>
             </TabsContent>
 
+            <TabsContent value="advanced" class="m-0">
+              <div class="grid gap-4 py-4 pr-2 max-h-[65vh] overflow-y-auto">
+                <div class="grid grid-cols-4 items-center gap-4">
+                  <Label class="text-right text-xs">{{ t("connection.connectTimeout") }}</Label>
+                  <Input
+                    v-model.number="form.connect_timeout_secs"
+                    type="number"
+                    min="1"
+                    max="300"
+                    step="1"
+                    class="col-span-3"
+                  />
+                </div>
+                <div class="grid grid-cols-4 items-center gap-4">
+                  <Label class="text-right text-xs">{{ t("connection.queryTimeout") }}</Label>
+                  <Input
+                    v-model.number="form.query_timeout_secs"
+                    type="number"
+                    min="0"
+                    max="300"
+                    step="1"
+                    class="col-span-3"
+                  />
+                </div>
+              </div>
+            </TabsContent>
+
             <TabsContent v-if="canUseSsh" value="ssh" class="m-0">
               <div class="grid gap-4 py-4 pr-2 max-h-[65vh] overflow-y-auto">
                 <div class="grid grid-cols-4 items-center gap-4">
@@ -2316,17 +2345,6 @@ function openExternalUrl(url: string) {
                     step="1"
                     class="col-span-3"
                     :disabled="!form.ssh_enabled"
-                  />
-                </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.connectTimeout") }}</Label>
-                  <Input
-                    v-model.number="form.connect_timeout_secs"
-                    type="number"
-                    min="1"
-                    max="300"
-                    step="1"
-                    class="col-span-3"
                   />
                 </div>
               </div>

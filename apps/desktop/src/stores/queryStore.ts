@@ -560,6 +560,12 @@ export const useQueryStore = defineStore("query", () => {
       const connStore = useConnectionStore();
       const conn = connStore.getConfig(tab.connectionId);
       const useAgentCursor = !!conn?.db_type && AGENT_DRIVER_TYPES.has(conn.db_type);
+      const queryTimeoutSecs =
+        typeof conn?.query_timeout_secs === "number" &&
+        Number.isFinite(conn.query_timeout_secs) &&
+        conn.query_timeout_secs >= 0
+          ? conn.query_timeout_secs
+          : 30;
       const settingsStore = useSettingsStore();
       await closeResultSession(tab, options?.pagination?.sessionId);
       if (tab.mode === "query") {
@@ -656,7 +662,7 @@ export const useQueryStore = defineStore("query", () => {
             : { maxRows: pageLimit, fetchSize: pageLimit }
           : {}),
         clientSessionId: tab.id,
-        timeoutSecs: settingsStore.editorSettings.queryTimeoutSecs,
+        timeoutSecs: queryTimeoutSecs,
       };
       const results = await api.executeMulti(
         tab.connectionId,
@@ -741,6 +747,13 @@ export const useQueryStore = defineStore("query", () => {
   async function explainTabSql(id: string, sql: string, databaseType?: DatabaseType) {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab) return { ok: false as const, reason: "empty" as const };
+    const conn = useConnectionStore().getConfig(tab.connectionId);
+    const queryTimeoutSecs =
+      typeof conn?.query_timeout_secs === "number" &&
+      Number.isFinite(conn.query_timeout_secs) &&
+      conn.query_timeout_secs >= 0
+        ? conn.query_timeout_secs
+        : 30;
 
     const built = await buildExplainSql(databaseType, sql);
     if (!built.ok) {
@@ -758,7 +771,7 @@ export const useQueryStore = defineStore("query", () => {
     try {
       const result = await api.executeQuery(tab.connectionId, tab.database, built.sql, tab.schema, executionId, {
         clientSessionId: tab.id,
-        timeoutSecs: useSettingsStore().editorSettings.queryTimeoutSecs,
+        timeoutSecs: queryTimeoutSecs,
       });
       const current = tabs.value.find((t) => t.id === id);
       if (current?.explainExecutionId === executionId) {
