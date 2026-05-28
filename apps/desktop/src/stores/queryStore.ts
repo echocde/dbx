@@ -558,6 +558,7 @@ export const useQueryStore = defineStore("query", () => {
     let useAgentResultSession = false;
     try {
       const connStore = useConnectionStore();
+      await connStore.ensureConnected(tab.connectionId);
       const conn = connStore.getConfig(tab.connectionId);
       const useAgentCursor = !!conn?.db_type && AGENT_DRIVER_TYPES.has(conn.db_type);
       const queryTimeoutSecs =

@@ -128,6 +128,7 @@ export const useConnectionStore = defineStore("connection", () => {
   let layoutPersistTimer: ReturnType<typeof setTimeout> | null = null;
   const staleTreeRefreshIds = new Set<string>();
   let beforeConnectHandler: BeforeConnectHandler | null = null;
+  let initFromDiskPromise: Promise<void> | null = null;
 
   function startEditing(id: string) {
     editingConnectionId.value = id;
@@ -660,7 +661,11 @@ export const useConnectionStore = defineStore("connection", () => {
 
   async function ensureConnected(connectionId: string) {
     if (connectedIds.value.has(connectionId)) return;
-    const config = getConfig(connectionId);
+    let config = getConfig(connectionId);
+    if (!config) {
+      await initFromDisk();
+      config = getConfig(connectionId);
+    }
     if (!config) {
       const error = new Error("Connection config not found");
       recordConnectionError(connectionId, error);
@@ -1737,15 +1742,22 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   async function initFromDisk() {
-    pinnedTreeNodeIds.value = await loadPinnedTreeNodeIds();
-    const saved = await api.loadConnections();
-    connections.value = saved.map(normalizeConnection);
-    const savedLayout = await api.loadSidebarLayout();
-    sidebarLayout.value = reconcileLayout(
-      connections.value.map((c) => c.id),
-      savedLayout,
-    );
-    rebuildTreeNodes();
+    if (!initFromDiskPromise) {
+      initFromDiskPromise = (async () => {
+        pinnedTreeNodeIds.value = await loadPinnedTreeNodeIds();
+        const saved = await api.loadConnections();
+        connections.value = saved.map(normalizeConnection);
+        const savedLayout = await api.loadSidebarLayout();
+        sidebarLayout.value = reconcileLayout(
+          connections.value.map((c) => c.id),
+          savedLayout,
+        );
+        rebuildTreeNodes();
+      })().finally(() => {
+        initFromDiskPromise = null;
+      });
+    }
+    await initFromDiskPromise;
   }
 
   function addEphemeralConnection(config: ConnectionConfig) {
