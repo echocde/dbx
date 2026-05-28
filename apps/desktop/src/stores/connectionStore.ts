@@ -313,8 +313,13 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
-  function buildSavedSqlRootNode(connectionId: string, existingRoot?: TreeNode): TreeNode {
+  function buildSavedSqlRootNode(connectionId: string, existingRoot?: TreeNode): TreeNode | undefined {
     const savedSqlStore = useSavedSqlStore();
+    const folders = savedSqlStore.listFolders(connectionId);
+    const files = savedSqlStore.listFiles(connectionId);
+
+    if (folders.length === 0 && files.length === 0) return undefined;
+
     const existingById = new Map<string, TreeNode>();
     const collectExisting = (node?: TreeNode) => {
       if (!node) return;
@@ -333,7 +338,7 @@ export const useConnectionStore = defineStore("connection", () => {
       savedSqlId: file.id,
     });
 
-    const folderNodes = savedSqlStore.listFolders(connectionId).map((folder) => {
+    const folderNodes = folders.map((folder) => {
       const id = `${connectionId}:__saved_sql:folder:${folder.id}`;
       const existing = existingById.get(id);
       return {
@@ -354,14 +359,15 @@ export const useConnectionStore = defineStore("connection", () => {
       type: "saved-sql-root",
       connectionId,
       isExpanded: existingRoot?.isExpanded ?? true,
-      children: [...folderNodes, ...savedSqlStore.listFiles(connectionId).map(fileNode)],
+      children: [...folderNodes, ...files.map(fileNode)],
     };
   }
 
   function withSavedSqlRoot(connectionId: string, children: TreeNode[], existingConnectionNode?: TreeNode): TreeNode[] {
     const existingRoot = existingConnectionNode?.children?.find((child) => child.type === "saved-sql-root");
     const nonSavedChildren = children.filter((child) => child.type !== "saved-sql-root");
-    return [buildSavedSqlRootNode(connectionId, existingRoot), ...nonSavedChildren];
+    const savedSqlRoot = buildSavedSqlRootNode(connectionId, existingRoot);
+    return savedSqlRoot ? [savedSqlRoot, ...nonSavedChildren] : nonSavedChildren;
   }
 
   function refreshSavedSqlTree(connectionId?: string) {
