@@ -1430,6 +1430,7 @@ export default {
     syncSecretsSkipped: "远端包含加密敏感信息，但本次未恢复。",
     syncDownloadConfirm: "要下载并应用远端 DBX 快照吗？本地元信息和保存的 SQL 会被替换。",
     apply: "应用",
+    applyAndClose: "应用并关闭",
     reset: "重置",
     resetDefaults: "恢复默认",
     save: "保存",

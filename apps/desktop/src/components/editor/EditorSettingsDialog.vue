@@ -276,7 +276,7 @@ function hasChanges(): boolean {
   );
 }
 
-async function applySettings() {
+async function persistSettings() {
   if (hasBlockingShortcutConflicts.value) return;
   settingsStore.updateEditorSettings({
     fontFamily: editFontFamily.value,
@@ -299,6 +299,14 @@ async function applySettings() {
   await settingsStore.updateDesktopSettings({
     show_tray_icon: editShowTrayIcon.value,
   });
+}
+
+async function applySettings() {
+  await persistSettings();
+}
+
+async function applySettingsAndClose() {
+  await persistSettings();
   emit("update:open", false);
 }
 
@@ -1795,6 +1803,9 @@ watch(
             </Button>
             <Button :disabled="!hasChanges() || hasBlockingShortcutConflicts" @click="applySettings">
               {{ t("settings.apply") }}
+            </Button>
+            <Button :disabled="!hasChanges() || hasBlockingShortcutConflicts" @click="applySettingsAndClose">
+              {{ t("settings.applyAndClose") }}
             </Button>
           </DialogFooter>
 

@@ -1359,6 +1359,7 @@ export default {
     syncDownloadConfirm:
       "¿Descargar y aplicar la instantánea remota de DBX? Se reemplazarán metadatos locales y SQL guardado.",
     apply: "Aplicar",
+    applyAndClose: "Aplicar y cerrar",
     reset: "Restablecer",
     resetDefaults: "Restablecer valores por defecto",
     executeMode: "Modo de ejecución (Cmd+Enter)",

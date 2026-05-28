@@ -1464,6 +1464,7 @@ export default {
     syncSecretsSkipped: "Encrypted secrets were present but were not restored.",
     syncDownloadConfirm: "Download and apply the remote DBX snapshot? Local metadata and saved SQL will be replaced.",
     apply: "Apply",
+    applyAndClose: "Apply and Close",
     reset: "Reset",
     resetDefaults: "Reset Defaults",
     save: "Save",

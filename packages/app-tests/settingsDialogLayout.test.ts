@@ -60,6 +60,14 @@ test("shortcut conflicts only block applying changed shortcut settings", () => {
   assert.match(source, /:disabled="!hasChanges\(\) \|\| hasBlockingShortcutConflicts"/);
 });
 
+test("settings dialog exposes separate apply and apply-and-close actions", () => {
+  assert.match(source, /async function persistSettings\(\)/);
+  assert.match(source, /async function applySettings\(\)/);
+  assert.match(source, /async function applySettingsAndClose\(\)/);
+  assert.match(source, /await persistSettings\(\);[\s\S]*emit\("update:open", false\)/);
+  assert.match(source, /t\("settings\.applyAndClose"\)/);
+});
+
 test("settings dialog exposes sidebar activation in navigation settings", () => {
   assert.match(source, /value: "navigation"/);
   assert.match(source, /activeSettingsTab === ['"]navigation['"]/);
