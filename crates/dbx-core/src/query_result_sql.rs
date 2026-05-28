@@ -1,8 +1,14 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 use crate::models::connection::DatabaseType;
 use crate::sql::find_statement_at_cursor;
 use crate::sql_dialect::{quote_table_identifier, uses_fetch_first};
+
+static LIMIT_OFFSET_STRIP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?|\s+OFFSET\s+\d+(\s+LIMIT\s+\d+)?|\s+OFFSET\s+\d+\s+ROWS?\s+FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY|\s+FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY)\s*$").unwrap()
+});
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +188,8 @@ pub fn build_count_query_sql(options: CountQuerySqlOptions) -> QuerySqlBuildResu
     if unsupported_pagination_type(options.database_type) {
         return err("unsupported");
     }
+
+    let statement = LIMIT_OFFSET_STRIP_RE.replace(&statement, "").to_string();
 
     let alias = quote_table_identifier(options.database_type, "dbx_count");
     let wrapped_sql = if options.database_type == Some(DatabaseType::SqlServer) {

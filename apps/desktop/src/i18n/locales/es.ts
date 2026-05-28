@@ -354,6 +354,7 @@ export default {
   grid: {
     rows: "{count} filas",
     totalRows: "Total {count} filas",
+    totalRowCount: "({count} en total)",
     rowsAffected: "{count} filas afectadas",
     querySuccess: "Consulta ejecutada exitosamente",
     noRows: "Sin datos",

@@ -424,6 +424,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 :page-offset="activeTab.resultPageOffset"
                 :page-limit="activeTab.resultPageLimit"
                 :count-sql="activeTab.resultCountSql"
+                :total-row-count="activeTab.resultTotalRowCount"
                 :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
                 @reload="
                   (

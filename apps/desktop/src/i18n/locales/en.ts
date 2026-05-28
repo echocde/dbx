@@ -361,6 +361,7 @@ export default {
   grid: {
     rows: "{count} rows",
     totalRows: "Total {count} rows",
+    totalRowCount: "({count} total)",
     rowsAffected: "{count} rows affected",
     querySuccess: "Query executed successfully",
     noRows: "No data",

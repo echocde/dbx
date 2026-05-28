@@ -357,6 +357,7 @@ export default {
   grid: {
     rows: "{count} 行",
     totalRows: "共 {count} 行",
+    totalRowCount: "（总计 {count} 行）",
     rowsAffected: "影响 {count} 行",
     querySuccess: "查询执行成功",
     noRows: "暂无数据",

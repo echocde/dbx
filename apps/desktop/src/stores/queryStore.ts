@@ -544,6 +544,7 @@ export const useQueryStore = defineStore("query", () => {
     tab.isCancelling = false;
     tab.executionId = executionId;
     tab.lastExecutedSql = sql;
+    tab.resultTotalRowCount = undefined;
     console.info("[DBX][executeTabSql:start]", {
       traceId,
       tabId: id,
@@ -740,6 +741,28 @@ export const useQueryStore = defineStore("query", () => {
         current.resultPageOffset = pageOffset;
         current.resultCountSql = countSql;
         current.resultSessionId = current.result?.session_id ?? undefined;
+        if (countSql && current.result?.rows.length) {
+          const capturedExecutionId = executionId;
+          const capturedTabId = id;
+          const capturedCountSql = countSql;
+          const capturedConnectionId = tab.connectionId;
+          const capturedDatabase = tab.database;
+          const capturedSchema = tab.schema;
+          api
+            .executeQuery(capturedConnectionId, capturedDatabase ?? "", capturedCountSql, capturedSchema)
+            .then((countResult) => {
+              const tabAfterCount = tabs.value.find((t) => t.id === capturedTabId);
+              if (tabAfterCount?.executionId === capturedExecutionId) {
+                const total = Number(countResult.rows?.[0]?.[0] ?? 0);
+                if (total > 0) {
+                  tabAfterCount.resultTotalRowCount = total;
+                }
+              }
+            })
+            .catch(() => {
+              // COUNT query failed — silently ignore
+            });
+        }
         console.info("[DBX][executeTabSql:metadata:start]", { traceId, elapsed: elapsed() });
         await analyzeQueryMetadata(current, queryBaseSql);
         console.info("[DBX][executeTabSql:metadata:done]", { traceId, elapsed: elapsed() });

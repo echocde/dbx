@@ -188,6 +188,7 @@ const props = defineProps<{
   pageOffset?: number;
   pageLimit?: number;
   countSql?: string;
+  totalRowCount?: number;
   loading?: boolean;
   cacheKey?: string;
   onExecuteSql?: (sql: string) => Promise<void>;
@@ -5605,7 +5606,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
     <!-- Bottom status bar -->
     <div class="flex items-center gap-2 px-3 py-1 border-t text-xs text-muted-foreground bg-muted/30 shrink-0">
-      <span v-if="hasData">{{ t("grid.totalRows", { count: result.rows.length }) }}</span>
+      <span v-if="hasData">
+        {{ t("grid.totalRows", { count: result.rows.length }) }}
+        <span v-if="typeof totalRowCount === 'number' && totalRowCount > 0" class="text-muted-foreground/70">{{
+          t("grid.totalRowCount", { count: totalRowCount })
+        }}</span>
+      </span>
       <span v-if="showTruncationWarning" class="text-amber-500 text-xs ml-1">(truncated)</span>
       <span v-if="!hasData">{{ t("grid.rowsAffected", { count: result.affected_rows }) }}</span>
       <span>{{ result.execution_time_ms }}ms</span>
