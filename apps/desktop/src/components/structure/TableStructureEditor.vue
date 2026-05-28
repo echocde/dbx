@@ -92,8 +92,27 @@ const warnings = ref<string[]>([]);
 const foreignKeys = ref<ForeignKeyInfo[]>([]);
 const triggers = ref<TriggerInfo[]>([]);
 
+const colWidths = ref([28, 128, 144, 96, 64, 56, 112, 128, 128]);
+const colResizing = ref<{ col: number; startX: number; startW: number } | null>(null);
 const indexColWidths = ref([132, 200, 64, 96, 132, 160, 132, 76]);
 const resizing = ref<{ col: number; startX: number; startW: number } | null>(null);
+
+function onColResize(e: MouseEvent, col: number) {
+  e.preventDefault();
+  colResizing.value = { col, startX: e.clientX, startW: colWidths.value[col] };
+  const onMove = (ev: MouseEvent) => {
+    if (!colResizing.value) return;
+    const delta = ev.clientX - colResizing.value.startX;
+    colWidths.value[col] = Math.max(28, colResizing.value.startW + delta);
+  };
+  const onUp = () => {
+    colResizing.value = null;
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
 
 function onIndexColResize(e: MouseEvent, col: number) {
   e.preventDefault();
@@ -128,6 +147,17 @@ const indexTypeOptions = computed(() =>
   structureCapabilities.value.indexType ? (indexTypesByDb[databaseType.value ?? ""] ?? []) : [],
 );
 
+const colLabels = computed(() => [
+  "#",
+  t("structureEditor.columnName"),
+  t("structureEditor.dataType"),
+  t("structureEditor.length"),
+  t("structureEditor.nullable"),
+  t("structureEditor.primaryKey"),
+  t("structureEditor.defaultValue"),
+  t("structureEditor.comment"),
+  t("structureEditor.actions"),
+]);
 const indexColLabels = computed(() => [
   t("structureEditor.indexName"),
   t("structureEditor.indexColumns"),
@@ -508,33 +538,26 @@ watch(
           </div>
 
           <TabsContent value="columns" class="m-0 min-h-0 flex-1 overflow-auto p-0">
-            <table class="min-w-full border-separate border-spacing-0 text-[11px]">
+            <table
+              class="border-separate border-spacing-0 text-[11px]"
+              :style="{ minWidth: colWidths.reduce((a, w) => a + w, 0) + 'px' }"
+            >
               <thead class="sticky top-0 z-10 bg-background">
                 <tr>
-                  <th class="w-7 border-b border-r px-1.5 py-1.5 text-left">#</th>
-                  <th class="min-w-32 border-b border-r px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.columnName") }}
-                  </th>
-                  <th class="w-36 border-b border-r px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.dataType") }}
-                  </th>
-                  <th class="w-24 border-b border-r px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.length") }}
-                  </th>
-                  <th class="w-16 whitespace-nowrap border-b border-r px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.nullable") }}
-                  </th>
-                  <th class="w-14 whitespace-nowrap border-b border-r px-1.5 py-1.5 text-center">
-                    {{ t("structureEditor.primaryKey") }}
-                  </th>
-                  <th class="min-w-28 border-b border-r px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.defaultValue") }}
-                  </th>
-                  <th class="min-w-32 border-b border-r px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.comment") }}
-                  </th>
-                  <th class="w-32 border-b px-1.5 py-1.5 text-left">
-                    {{ t("structureEditor.actions") }}
+                  <th
+                    v-for="(label, i) in colLabels"
+                    :key="i"
+                    class="relative border-b border-r px-1.5 py-1.5 text-left"
+                    :class="{ 'text-center': i === 5 }"
+                    :style="{ width: colWidths[i] + 'px', minWidth: colWidths[i] + 'px' }"
+                  >
+                    {{ label }}
+                    <div
+                      v-if="i < colLabels.length - 1"
+                      class="absolute right-0 top-0 z-20 h-full w-1 cursor-col-resize hover:bg-primary/30"
+                      :class="colResizing?.col === i ? 'bg-primary/30' : ''"
+                      @mousedown="onColResize($event, i)"
+                    />
                   </th>
                 </tr>
               </thead>
