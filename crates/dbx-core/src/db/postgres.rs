@@ -928,10 +928,7 @@ pub async fn execute_query_with_schema_and_max_rows(
     max_rows: Option<usize>,
 ) -> Result<QueryResult, String> {
     let client = pool.get().await.map_err(|e| e.to_string())?;
-    client
-        .execute(&format!("SET search_path TO {}", pg_quote_ident(schema)), &[])
-        .await
-        .map_err(pg_error_to_string)?;
+    client.execute(&format!("SET search_path TO {}", pg_quote_ident(schema)), &[]).await.map_err(pg_error_to_string)?;
 
     let result = execute_query_with_max_rows_inner(&client, sql, max_rows).await;
 

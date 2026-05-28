@@ -827,7 +827,9 @@ fn bracket_ipv6(host: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{default_query_timeout_secs, default_ssh_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
+    use super::{
+        default_query_timeout_secs, default_ssh_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType,
+    };
     use std::str::FromStr;
 
     fn mysql_config(username: &str, password: &str, database: Option<&str>) -> ConnectionConfig {
