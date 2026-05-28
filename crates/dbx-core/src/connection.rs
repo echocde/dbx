@@ -1492,10 +1492,7 @@ mod tests {
         config.port = 0;
 
         state.configs.write().await.insert(config.id.clone(), config.clone());
-        let pool_key = state
-            .get_or_create_pool_for_session("duckdb-conn", Some("main"), Some("tab-1"))
-            .await
-            .unwrap();
+        let pool_key = state.get_or_create_pool_for_session("duckdb-conn", Some("main"), Some("tab-1")).await.unwrap();
         assert_eq!(pool_key, "duckdb-conn:session:tab-1");
 
         assert!(state.close_client_session_pool("duckdb-conn", Some("main"), "tab-1").await.unwrap());

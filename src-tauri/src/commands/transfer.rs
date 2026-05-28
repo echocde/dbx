@@ -33,6 +33,56 @@ pub async fn start_transfer(
         let total_tables = request.tables.len();
         log::info!("[transfer] starting transfer_id={} tables={}", transfer_id, total_tables);
 
+        if matches!(source_db_type, dbx_core::models::connection::DatabaseType::Postgres)
+            && matches!(target_db_type, dbx_core::models::connection::DatabaseType::Postgres)
+        {
+            match dbx_core::transfer::transfer_postgres_schema_dependencies(
+                &state,
+                &request,
+                &source_pool_key,
+                &target_pool_key,
+                |progress| emit_progress(&app, progress),
+            )
+            .await
+            {
+                Ok(()) => {}
+                Err(e) if e == "Cancelled" => {
+                    emit_progress(
+                        &app,
+                        TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            table: "schema dependencies".to_string(),
+                            table_index: 0,
+                            total_tables,
+                            rows_transferred: 0,
+                            total_rows: None,
+                            status: TransferStatus::Cancelled,
+                            error: None,
+                        },
+                    );
+                    dbx_core::transfer::clear_cancelled(&transfer_id).await;
+                    return;
+                }
+                Err(e) => {
+                    emit_progress(
+                        &app,
+                        TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            table: "schema dependencies".to_string(),
+                            table_index: 0,
+                            total_tables,
+                            rows_transferred: 0,
+                            total_rows: None,
+                            status: TransferStatus::Error,
+                            error: Some(e),
+                        },
+                    );
+                    dbx_core::transfer::clear_cancelled(&transfer_id).await;
+                    return;
+                }
+            }
+        }
+
         for (i, table) in request.tables.iter().enumerate() {
             if dbx_core::transfer::is_cancelled(&transfer_id).await {
                 emit_progress(
@@ -116,6 +166,54 @@ pub async fn start_transfer(
                             total_tables,
                             rows_transferred: last_rows_transferred,
                             total_rows: last_total_rows,
+                            status: TransferStatus::Error,
+                            error: Some(e),
+                        },
+                    );
+                }
+            }
+        }
+
+        if matches!(source_db_type, dbx_core::models::connection::DatabaseType::Postgres)
+            && matches!(target_db_type, dbx_core::models::connection::DatabaseType::Postgres)
+        {
+            match dbx_core::transfer::transfer_postgres_schema_objects(
+                &state,
+                &request,
+                &source_pool_key,
+                &target_pool_key,
+                |progress| emit_progress(&app, progress),
+            )
+            .await
+            {
+                Ok(()) => {}
+                Err(e) if e == "Cancelled" => {
+                    emit_progress(
+                        &app,
+                        TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            table: "schema objects".to_string(),
+                            table_index: total_tables,
+                            total_tables,
+                            rows_transferred: 0,
+                            total_rows: None,
+                            status: TransferStatus::Cancelled,
+                            error: None,
+                        },
+                    );
+                    dbx_core::transfer::clear_cancelled(&transfer_id).await;
+                    return;
+                }
+                Err(e) => {
+                    emit_progress(
+                        &app,
+                        TransferProgress {
+                            transfer_id: transfer_id.clone(),
+                            table: "schema objects".to_string(),
+                            table_index: total_tables,
+                            total_tables,
+                            rows_transferred: 0,
+                            total_rows: None,
                             status: TransferStatus::Error,
                             error: Some(e),
                         },

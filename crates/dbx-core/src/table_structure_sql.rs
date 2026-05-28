@@ -2227,11 +2227,7 @@ mod tests {
         col.data_type = "int".to_string();
         col.is_nullable = false;
         col.is_primary_key = true;
-        col.extra = Some(ColumnExtra {
-            auto_increment: Some(true),
-            on_update_current_timestamp: None,
-            identity: None,
-        });
+        col.extra = Some(ColumnExtra { auto_increment: Some(true), on_update_current_timestamp: None, identity: None });
 
         let result = build_create_table_sql(TableStructureSqlOptions {
             database_type: Some(DatabaseType::Mysql),
@@ -2254,11 +2250,7 @@ mod tests {
         col.data_type = "timestamp".to_string();
         col.is_nullable = false;
         col.default_value = "CURRENT_TIMESTAMP".to_string();
-        col.extra = Some(ColumnExtra {
-            auto_increment: None,
-            on_update_current_timestamp: Some(true),
-            identity: None,
-        });
+        col.extra = Some(ColumnExtra { auto_increment: None, on_update_current_timestamp: Some(true), identity: None });
 
         let result = build_create_table_sql(TableStructureSqlOptions {
             database_type: Some(DatabaseType::Mysql),
@@ -2282,11 +2274,7 @@ mod tests {
         col.extra = Some(ColumnExtra {
             auto_increment: None,
             on_update_current_timestamp: None,
-            identity: Some(ColumnIdentity {
-                generation: Some("BY DEFAULT".to_string()),
-                seed: None,
-                increment: None,
-            }),
+            identity: Some(ColumnIdentity { generation: Some("BY DEFAULT".to_string()), seed: None, increment: None }),
         });
 
         let result = build_create_table_sql(TableStructureSqlOptions {
@@ -2311,11 +2299,7 @@ mod tests {
         col.extra = Some(ColumnExtra {
             auto_increment: Some(true),
             on_update_current_timestamp: None,
-            identity: Some(ColumnIdentity {
-                generation: None,
-                seed: Some(100),
-                increment: Some(5),
-            }),
+            identity: Some(ColumnIdentity { generation: None, seed: Some(100), increment: Some(5) }),
         });
 
         let result = build_create_table_sql(TableStructureSqlOptions {
