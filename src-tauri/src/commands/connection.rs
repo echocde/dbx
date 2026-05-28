@@ -529,7 +529,6 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
         }
     }
     drop(conns);
-    state.configs.write().await.remove(&connection_id);
     state.reset_connection_transport(&connection_id).await;
     Ok(())
 }
