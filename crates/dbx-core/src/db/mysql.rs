@@ -23,6 +23,10 @@ fn quote_value(s: &str) -> String {
     format!("'{}'", s.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
+fn quote_identifier(s: &str) -> String {
+    format!("`{}`", s.replace('`', "``"))
+}
+
 fn row_get<T, I>(row: &mysql_async::Row, index: I) -> Option<T>
 where
     T: mysql_async::prelude::FromValue,
@@ -411,7 +415,12 @@ fn mysql_ssl_opts(
 
 fn mysql_setup_queries(url: &str) -> Vec<String> {
     let charset = mysql_connection_charset(url).unwrap_or("utf8mb4");
-    vec![format!("SET NAMES {charset}")]
+    let mut queries = Vec::new();
+    if let Some(database) = mysql_connection_database(url) {
+        queries.push(format!("USE {}", quote_identifier(&database)));
+    }
+    queries.push(format!("SET NAMES {charset}"));
+    queries
 }
 
 fn should_enable_explicit_timestamp_defaults(sql: &str) -> bool {
@@ -477,6 +486,17 @@ fn mysql_connection_charset(url: &str) -> Option<&str> {
         let value = value.trim();
         is_safe_mysql_charset_name(value).then_some(value)
     })
+}
+
+fn mysql_connection_database(url: &str) -> Option<String> {
+    let rest = url.strip_prefix("mysql://")?;
+    let (_, path_and_query) = rest.split_once('/')?;
+    let path = path_and_query.split(['?', '#']).next().unwrap_or(path_and_query);
+    let database = path.trim_start_matches('/').split('/').next().unwrap_or("").trim();
+    if database.is_empty() {
+        return None;
+    }
+    percent_decode_str(database).decode_utf8().ok().map(|value| value.into_owned())
 }
 
 fn is_safe_mysql_charset_name(value: &str) -> bool {
@@ -1258,6 +1278,27 @@ mod tests {
     }
 
     #[test]
+    fn mysql_setup_queries_select_requested_database_before_session_init() {
+        let queries = mysql_setup_queries("mysql://root:secret@localhost:3306/app?charset=utf8mb4");
+
+        assert_eq!(queries, vec!["USE `app`", "SET NAMES utf8mb4"]);
+    }
+
+    #[test]
+    fn mysql_setup_queries_skip_use_when_database_missing() {
+        let queries = mysql_setup_queries("mysql://root:secret@localhost:3306?charset=utf8mb4");
+
+        assert_eq!(queries, vec!["SET NAMES utf8mb4"]);
+    }
+
+    #[test]
+    fn mysql_setup_queries_decode_database_name_from_url() {
+        let queries = mysql_setup_queries("mysql://root:secret@localhost:3306/db%2Fname?charset=utf8mb4");
+
+        assert_eq!(queries, vec!["USE `db/name`", "SET NAMES utf8mb4"]);
+    }
+
+    #[test]
     fn mysql_datetime_utc_values_display_without_rfc3339_offset() {
         let value = NaiveDateTime::new(
             NaiveDate::from_ymd_opt(2026, 5, 12).unwrap(),
@@ -1331,15 +1372,18 @@ mod tests {
 
     #[test]
     fn mysql_setup_queries_default_to_utf8mb4() {
-        assert_eq!(mysql_setup_queries("mysql://host:3306/db"), vec!["SET NAMES utf8mb4"]);
+        assert_eq!(mysql_setup_queries("mysql://host:3306/db"), vec!["USE `db`", "SET NAMES utf8mb4"]);
     }
 
     #[test]
     fn mysql_setup_queries_use_safe_custom_charset() {
-        assert_eq!(mysql_setup_queries("mysql://host:3306/db?ssl-mode=preferred&charset=gbk"), vec!["SET NAMES gbk"]);
+        assert_eq!(
+            mysql_setup_queries("mysql://host:3306/db?ssl-mode=preferred&charset=gbk"),
+            vec!["USE `db`", "SET NAMES gbk"]
+        );
         assert_eq!(
             mysql_setup_queries("mysql://host:3306/db?charset=utf8mb4;DROP TABLE users"),
-            vec!["SET NAMES utf8mb4"]
+            vec!["USE `db`", "SET NAMES utf8mb4"]
         );
     }
 }
