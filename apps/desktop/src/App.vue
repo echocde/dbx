@@ -756,6 +756,7 @@ function onLoginSuccess() {
 function initApp() {
   const t0 = performance.now();
   console.log("[STARTUP] initApp begin");
+  settingsStore.initDesktopSettings().catch(() => {});
   savedSqlStore
     .initFromStorage()
     .then(() => {
