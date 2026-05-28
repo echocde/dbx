@@ -2195,8 +2195,16 @@ async function prefetchDetailSqlCondition() {
   }
 }
 
-watch(activeCellDetail, () => {
+watch(activeCellDetail, (detail) => {
   void prefetchDetailSqlCondition();
+  if (activeCellDetailTab.value !== "valueEditor") return;
+  if (!detail?.isEditable) {
+    resetDetailEdit();
+    return;
+  }
+  detailEditValue.value = cellDetailEditorText(detail.value, detail.type);
+  syncEditorFromDetailEdit();
+  isEditingDetail.value = true;
 });
 
 const detailEditValue = ref("");
@@ -2658,7 +2666,7 @@ watch([selectedRange, showCellDetail, isEditingDetail], () => {
   const selectedCell = currentSelectedCellPosition();
   const target = linkedCellDetailTarget({
     isOpen: showCellDetail.value,
-    isEditing: isEditingDetail.value,
+    isEditing: isEditingDetail.value && activeCellDetailTab.value !== "valueEditor",
     selectedCell: selectedCell ? { rowIndex: selectedCell.rowIndex, visibleColIndex: selectedCell.colIndex } : null,
     actualColumnIndex,
   });

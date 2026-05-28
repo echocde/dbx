@@ -86,6 +86,18 @@ test("cell detail action focuses the hovered cell before opening details", () =>
     /function showCellDetailsForVisibleCell\(rowIndex: number, visibleColIdx: number, actualColIdx: number\)/,
   );
   assert.match(source, /selectSingleCell\(rowIndex, visibleColIdx\)/);
-  assert.match(source, /@click\.stop="showCellDetailsForVisibleCell\(item\.displayIndex, visibleColIdx, actualColIdx\)"/);
+  assert.match(
+    source,
+    /@click\.stop="showCellDetailsForVisibleCell\(item\.displayIndex, visibleColIdx, actualColIdx\)"/,
+  );
   assert.doesNotMatch(source, /@click\.stop="showCellDetails\(item\.displayIndex, actualColIdx\)"/);
+});
+
+test("cell detail value editor follows selection and refreshes the editor content", () => {
+  const source = readFileSync("apps/desktop/src/components/grid/DataGrid.vue", "utf8");
+
+  assert.match(source, /if \(activeCellDetailTab\.value !== "valueEditor"\) return;/);
+  assert.match(source, /detailEditValue\.value = cellDetailEditorText\(detail\.value, detail\.type\)/);
+  assert.match(source, /syncEditorFromDetailEdit\(\)/);
+  assert.match(source, /isEditing: isEditingDetail\.value && activeCellDetailTab\.value !== "valueEditor"/);
 });
