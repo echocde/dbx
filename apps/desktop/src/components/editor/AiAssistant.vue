@@ -975,7 +975,7 @@ const messageRenderer = computed(() => {
                 </svg>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" class="w-40">
+            <DropdownMenuContent align="start">
               <DropdownMenuItem class="text-xs gap-1.5" :title="t('ai.modeHints.ask')" @click="assistantMode = 'ask'">
                 <Check class="h-3 w-3 shrink-0" :class="{ 'opacity-0': assistantMode !== 'ask' }" />
                 <MessageSquarePlus class="h-3 w-3 shrink-0 text-muted-foreground" />
