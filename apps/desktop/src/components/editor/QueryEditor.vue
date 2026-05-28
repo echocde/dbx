@@ -1469,7 +1469,15 @@ function openReplace(): boolean {
   return searchPanelRef.value?.openReplace() ?? false;
 }
 
-defineExpose({ openSearch, openReplace });
+function scrollCursorIntoView() {
+  if (!view.value || !editorViewModule) return;
+  const pos = view.value.state.selection.main.head;
+  view.value.dispatch({
+    effects: editorViewModule.EditorView.scrollIntoView(pos, { y: "nearest" }),
+  });
+}
+
+defineExpose({ openSearch, openReplace, scrollCursorIntoView });
 </script>
 
 <template>
