@@ -312,6 +312,7 @@ mod tests {
             ssh_key_passphrase: String::new(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: crate::models::connection::default_ssh_connect_timeout_secs(),
+            connect_timeout_secs: crate::models::connection::default_connect_timeout_secs(),
             query_timeout_secs: crate::models::connection::default_query_timeout_secs(),
             proxy_enabled: false,
             proxy_type: ProxyType::Socks5,

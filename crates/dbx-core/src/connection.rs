@@ -885,7 +885,7 @@ mod tests {
         redacted_connection_url_for_endpoint, uses_tcp_probe, AppState, PoolKind,
     };
     use crate::db;
-    use crate::models::connection::{ConnectionConfig, DatabaseType, ProxyType};
+    use crate::models::connection::{default_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
     use crate::schema;
     use crate::storage::Storage;
 
@@ -914,6 +914,7 @@ mod tests {
             ssh_key_passphrase: String::new(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: crate::models::connection::default_ssh_connect_timeout_secs(),
+            connect_timeout_secs: default_connect_timeout_secs(),
             query_timeout_secs: crate::models::connection::default_query_timeout_secs(),
             proxy_enabled: false,
             proxy_type: ProxyType::Socks5,
@@ -1175,9 +1176,11 @@ mod tests {
 
     async fn assert_live_postgres_like_query(config: ConnectionConfig) {
         let url = connection_url_for_endpoint(&config, &config.host, config.port);
-        let pool = db::postgres::connect(&url).await.unwrap_or_else(|err| {
-            panic!("failed to connect to {:?} at {}:{}: {}", config.db_type, config.host, config.port, err)
-        });
+        let pool = db::postgres::connect(&url, std::time::Duration::from_secs(config.effective_connect_timeout_secs()))
+            .await
+            .unwrap_or_else(|err| {
+                panic!("failed to connect to {:?} at {}:{}: {}", config.db_type, config.host, config.port, err)
+            });
         let result =
             db::postgres::execute_query(&pool, "SELECT current_database(), current_schema()").await.unwrap_or_else(
                 |err| panic!("failed to query {:?} at {}:{}: {}", config.db_type, config.host, config.port, err),

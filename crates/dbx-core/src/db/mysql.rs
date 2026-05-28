@@ -1271,7 +1271,7 @@ mod tests {
     #[ignore = "requires remote MariaDB with ed25519 user"]
     async fn test_ed25519_auth() {
         let url = "mysql://edtest:test123@172.26.128.159:20026/testdb";
-        let pool = super::connect(url).await.expect("connect with ed25519");
+        let pool = super::connect(url, std::time::Duration::from_secs(5)).await.expect("connect with ed25519");
         let mut conn = pool.get_conn().await.expect("get connection");
         conn.ping().await.expect("ping");
         let _ = conn.disconnect().await;
