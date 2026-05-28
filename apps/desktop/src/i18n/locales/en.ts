@@ -1226,6 +1226,7 @@ export default {
     progress: "Transferring...",
     transferring: "Transferring {table}...",
     completed: "Transfer completed",
+    completedWithErrors: "Completed with {count} failed table | Completed with {count} failed tables",
     failed: "Transfer failed",
     cancelled: "Transfer cancelled",
     rowsTransferred: "{count} rows transferred",

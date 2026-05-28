@@ -54,6 +54,9 @@ pub async fn start_transfer(
 
             log::info!("[transfer] table {}/{}: {}", i + 1, total_tables, table);
 
+            let mut last_rows_transferred = 0_u64;
+            let mut last_total_rows = None;
+
             match dbx_core::transfer::transfer_table(
                 &state,
                 &request,
@@ -63,7 +66,11 @@ pub async fn start_transfer(
                 &target_db_type,
                 &source_pool_key,
                 &target_pool_key,
-                |progress| emit_progress(&app, progress),
+                |progress| {
+                    last_rows_transferred = progress.rows_transferred;
+                    last_total_rows = progress.total_rows;
+                    emit_progress(&app, progress);
+                },
             )
             .await
             {
@@ -76,12 +83,8 @@ pub async fn start_transfer(
                             table_index: i,
                             total_tables,
                             rows_transferred: rows,
-                            total_rows: Some(rows),
-                            status: if i == total_tables - 1 {
-                                TransferStatus::Done
-                            } else {
-                                TransferStatus::TableDone
-                            },
+                            total_rows: last_total_rows.or(Some(rows)),
+                            status: TransferStatus::TableDone,
                             error: None,
                         },
                     );
@@ -111,18 +114,29 @@ pub async fn start_transfer(
                             table: table.clone(),
                             table_index: i,
                             total_tables,
-                            rows_transferred: 0,
-                            total_rows: None,
+                            rows_transferred: last_rows_transferred,
+                            total_rows: last_total_rows,
                             status: TransferStatus::Error,
                             error: Some(e),
                         },
                     );
-                    dbx_core::transfer::clear_cancelled(&transfer_id).await;
-                    return;
                 }
             }
         }
 
+        emit_progress(
+            &app,
+            TransferProgress {
+                transfer_id: transfer_id.clone(),
+                table: String::new(),
+                table_index: total_tables,
+                total_tables,
+                rows_transferred: 0,
+                total_rows: None,
+                status: TransferStatus::Done,
+                error: None,
+            },
+        );
         dbx_core::transfer::clear_cancelled(&transfer_id).await;
     });
 

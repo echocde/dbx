@@ -1118,6 +1118,7 @@ export default {
     progress: "Transfiriendo...",
     transferring: "Transfiriendo {table}...",
     completed: "Transferencia completada",
+    completedWithErrors: "Completada con {count} tabla con error | Completada con {count} tablas con error",
     failed: "Error en la transferencia",
     cancelled: "Transferencia cancelada",
     rowsTransferred: "{count} filas transferidas",

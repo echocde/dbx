@@ -929,7 +929,7 @@ export async function startTransfer(
     es.onmessage = (e) => {
       const progress: TransferProgress = JSON.parse(e.data);
       onProgress(progress);
-      if (progress.status === "done" || progress.status === "error" || progress.status === "cancelled") {
+      if (progress.status === "done" || progress.status === "cancelled") {
         es.close();
         resolve();
       }

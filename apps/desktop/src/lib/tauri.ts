@@ -1246,20 +1246,24 @@ export async function startTransfer(
   request: TransferRequest,
   onProgress: (progress: TransferProgress) => void,
 ): Promise<void> {
-  const unlisten: UnlistenFn = await listen<TransferProgress>("transfer-progress", (event) => {
-    if (event.payload.transferId === request.transferId) {
-      onProgress(event.payload);
-      if (event.payload.status === "done" || event.payload.status === "error" || event.payload.status === "cancelled") {
-        unlisten();
-      }
+  return new Promise(async (resolve, reject) => {
+    let unlisten: UnlistenFn | null = null;
+    try {
+      unlisten = await listen<TransferProgress>("transfer-progress", (event) => {
+        if (event.payload.transferId !== request.transferId) return;
+        onProgress(event.payload);
+        if (event.payload.status === "done" || event.payload.status === "cancelled") {
+          unlisten?.();
+          resolve();
+        }
+      });
+
+      await invoke("start_transfer", { request });
+    } catch (e) {
+      unlisten?.();
+      reject(e);
     }
   });
-  try {
-    await invoke("start_transfer", { request });
-  } catch (e) {
-    unlisten();
-    throw e;
-  }
 }
 
 export async function cancelTransfer(transferId: string): Promise<void> {

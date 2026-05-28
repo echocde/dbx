@@ -1202,6 +1202,7 @@ export default {
     progress: "传输中...",
     transferring: "正在传输 {table}...",
     completed: "传输完成",
+    completedWithErrors: "传输完成，{count} 个表失败",
     failed: "传输失败",
     cancelled: "传输已取消",
     rowsTransferred: "已传输 {count} 行",
