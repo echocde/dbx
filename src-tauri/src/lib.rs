@@ -12,7 +12,9 @@ use tauri::{
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-use tauri::{Emitter, Manager, RunEvent};
+use tauri::Manager;
+#[cfg(target_os = "macos")]
+use tauri::{Emitter, RunEvent};
 #[cfg(any(windows, target_os = "linux"))]
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -404,6 +406,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            #[cfg(not(target_os = "macos"))]
+            let _ = (&app_handle, &event);
+
             #[cfg(target_os = "macos")]
             if let RunEvent::Opened { urls } = &event {
                 let links: Vec<String> = urls
