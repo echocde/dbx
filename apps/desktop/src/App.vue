@@ -54,6 +54,7 @@ import { supportsSqlFileExecution } from "@/lib/databaseCapabilities";
 import { classifyAiSqlExecution } from "@/lib/aiSqlExecutionPolicy";
 import { buildHistoryAiAnalysisPrompt } from "@/lib/historyAiAnalysis";
 import { countAvailableAgentDriverUpdates, type AgentDriverUpdateBadgeState } from "@/lib/agentDriverUpdateBadge";
+import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/safeStorage";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,7 +109,7 @@ const showSettingsDialog = ref(false);
 const showDriverStore = ref(false);
 const agentDriverUpdateCount = ref(0);
 const showHistory = ref(false);
-const showAiPanel = ref(localStorage.getItem("dbx-ai-panel-open") === "true");
+const showAiPanel = ref(safeLocalStorageGet("dbx-ai-panel-open") === "true");
 const aiPanelReady = ref(false);
 const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
   usePanelResize();
@@ -296,13 +297,13 @@ watch(
 
 function toggleAiPanel() {
   showAiPanel.value = !showAiPanel.value;
-  localStorage.setItem("dbx-ai-panel-open", String(showAiPanel.value));
+  safeLocalStorageSet("dbx-ai-panel-open", String(showAiPanel.value));
 }
 
 function fixWithAi(errorMessage: string) {
   if (!showAiPanel.value) {
     showAiPanel.value = true;
-    localStorage.setItem("dbx-ai-panel-open", "true");
+    safeLocalStorageSet("dbx-ai-panel-open", "true");
   }
   nextTick(() => aiAssistantRef.value?.triggerAction("fix", errorMessage));
 }
@@ -310,7 +311,7 @@ function fixWithAi(errorMessage: string) {
 function openAiPanel() {
   if (!showAiPanel.value) {
     showAiPanel.value = true;
-    localStorage.setItem("dbx-ai-panel-open", "true");
+    safeLocalStorageSet("dbx-ai-panel-open", "true");
   }
 }
 
