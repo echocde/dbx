@@ -39,8 +39,9 @@ test("transpose record headers copy selected records as rows", () => {
   assert.match(source, /handleRowClick\(rowIndex, item\.id, event\)/);
   assert.match(source, /@click="selectTransposeRecord\(recordIndex, \$event\)"/);
   assert.match(source, /@contextmenu="selectTransposeRecord\(recordIndex, \$event\)"/);
-  assert.match(source, /copyRowJsonLabel/);
-  assert.match(source, /if \(isTransposeMode\.value\)/);
-  assert.match(source, /grid\.copyColumnJson/);
-  assert.match(source, /grid\.copyColumnsJson/);
+  assert.match(source, /function copyRowLabels\(\)/);
+  assert.match(source, /const labels = copyRowLabels\(\)/);
+  assert.match(source, /items\.push\(\{ label: labels\.row, action: copyRow \}\)/);
+  assert.match(source, /t\("grid\.copyRows", \{ count \}\)/);
+  assert.match(source, /t\("grid\.copyRow"\)/);
 });

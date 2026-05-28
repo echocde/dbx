@@ -33,8 +33,8 @@ test("query editor no longer binds keyboard shortcuts for editor font zoom", () 
 });
 
 test("query editor exposes a context menu for executing selected SQL", () => {
-  assert.match(source, /ContextMenuContent/);
-  assert.match(source, /data-context-menu/);
+  assert.match(source, /CustomContextMenu/);
+  assert.match(source, /v-slot="\{ onContextMenu \}"/);
   assert.match(source, /syncContextMenuState\(update\.view\)/);
   assert.match(source, /executeSelection/);
   assert.match(source, /copySelection/);

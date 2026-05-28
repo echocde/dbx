@@ -102,7 +102,7 @@ import { buildRenameObjectSql, supportsObjectRename, type RenameableObjectType }
 import { buildRoutineRenameObjectSourceStatements, supportsSourceBackedRoutineRename } from "@/lib/objectSourceEditor";
 import { buildViewDdl } from "@/lib/viewDdl";
 import { hexToRgba } from "@/lib/color";
-import { focusSidebarRenameInput, shouldPreventRenameCloseAutoFocus } from "@/lib/sidebarRenameFocus";
+import { focusSidebarRenameInput } from "@/lib/sidebarRenameFocus";
 import { hasTreeNodeDatabaseContext } from "@/lib/treeNodeContext";
 import { sidebarDisplayTableName } from "@/lib/sidebarTableNameDisplay";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
@@ -1618,22 +1618,14 @@ function openVisibleDatabasesDialog() {
 const isRenamingGroup = ref(false);
 const renameInput = ref("");
 const renameInputRef = ref<HTMLInputElement>();
-const preventRenameCloseAutoFocus = ref(false);
 
 function startRenameGroup() {
   renameInput.value = props.node.label;
   isRenamingGroup.value = true;
-  preventRenameCloseAutoFocus.value = true;
   emit("rename-started");
   nextTick(() => {
     focusSidebarRenameInput(() => (isRenamingGroup.value ? renameInputRef.value : undefined));
   });
-}
-
-function onContextMenuCloseAutoFocus(event: Event) {
-  if (shouldPreventRenameCloseAutoFocus(preventRenameCloseAutoFocus)) {
-    event.preventDefault();
-  }
 }
 
 watch(
@@ -2093,7 +2085,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
   }
 
   // 11. Universal Copy Name (for all types except connection)
-  if (node.type !== "connection" && hasTypeMenu.value) {
+  if (hasTypeMenu.value) {
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy });
   }

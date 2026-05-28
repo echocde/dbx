@@ -235,27 +235,8 @@ function applyLiveFontSize(size: number) {
   scheduleFontThemeReconfig(next, settingsStore.editorSettings.fontFamily);
 }
 
-function commitFontSize(size: number) {
-  const next = clampEditorFontSize(size);
-  applyLiveFontSize(next);
-  if (settingsStore.editorSettings.fontSize === next) return;
-  settingsStore.updateEditorSettings({ fontSize: next });
-}
-
 function scheduleFontSizeCommit(size: number) {
   zoomCommitScheduler.schedule(size);
-}
-
-function zoomIn() {
-  commitFontSize(liveFontSize.value + 1);
-}
-
-function zoomOut() {
-  commitFontSize(liveFontSize.value - 1);
-}
-
-function resetZoom() {
-  commitFontSize(13);
 }
 
 function onEditorGestureStart(event: EditorGestureEvent) {

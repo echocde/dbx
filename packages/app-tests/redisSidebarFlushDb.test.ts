@@ -10,12 +10,15 @@ test("Redis DB flush is exposed from the sidebar DB context menu", () => {
   assert.match(source, /async function confirmFlushRedisDb\(\)/);
   assert.match(source, /await api\.redisFlushDb\(node\.connectionId, Number\(node\.database\)\)/);
   assert.match(source, /connectionStore\.updateRedisDbKeyStats\(node\.connectionId, Number\(node\.database\), \{ loaded: 0, total: 0 \}\)/);
-  assert.match(source, /node\.type === 'redis-db'/);
-  assert.match(source, /@click="flushRedisDb"/);
+  assert.match(source, /if \(node\.type === "redis-db" \|\| node\.type === "mongo-db"\) \{/);
+  assert.match(source, /if \(node\.type === "redis-db"\) \{/);
+  assert.match(source, /items\.push\(\{ label: t\("redis\.flushDb"\), action: flushRedisDb, icon: Eraser, variant: "destructive" as const \}\)/);
   assert.match(source, /t\("redis\.flushDb"\)/);
-  assert.match(source, /t\('redis\.flushDbMessage'\)/);
-  assert.match(source, /t\('redis\.flushDbDetails', \{ db: node\.database \}\)/);
-  assert.match(source, /t\('redis\.flushDbConfirm'\)/);
+  assert.match(source, /v-model:open="showFlushRedisDbConfirm"/);
+  assert.match(source, /:message="t\('redis\.flushDbMessage'\)"/);
+  assert.match(source, /:details="t\('redis\.flushDbDetails', \{ db: node\.database \}\)"/);
+  assert.match(source, /:confirm-label="t\('redis\.flushDbConfirm'\)"/);
+  assert.match(source, /@confirm="confirmFlushRedisDb"/);
 });
 
 test("Redis command panel no longer shows a flush DB button", () => {

@@ -1993,12 +1993,6 @@ const multiRowCount = computed(() => {
 });
 
 const isMultiRow = computed(() => multiRowCount.value > 1);
-const copyRowJsonLabel = computed(() => {
-  if (isTransposeMode.value) {
-    return isMultiRow.value ? t("grid.copyColumnsJson", { count: multiRowCount.value }) : t("grid.copyColumnJson");
-  }
-  return isMultiRow.value ? t("grid.copyRows", { count: multiRowCount.value }) : t("grid.copyRow");
-});
 
 function onCellMouseenter(rowIndex: number, visibleColIdx: number, actualColIdx: number) {
   hoveredDetailCell.value = { rowIndex, col: actualColIdx };
