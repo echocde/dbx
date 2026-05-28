@@ -384,34 +384,6 @@ function runKeymapExtension(codeMirrorKeymap: (typeof import("@codemirror/view")
     ) ?? [],
     codeMirrorKeymap.of([
       {
-        key: "Mod-=",
-        run: () => {
-          zoomIn();
-          return true;
-        },
-      },
-      {
-        key: "Mod-+",
-        run: () => {
-          zoomIn();
-          return true;
-        },
-      },
-      {
-        key: "Mod--",
-        run: () => {
-          zoomOut();
-          return true;
-        },
-      },
-      {
-        key: "Mod-0",
-        run: () => {
-          resetZoom();
-          return true;
-        },
-      },
-      {
         key: shortcutToCodeMirrorKey(shortcuts.acceptCompletion),
         run: (view) => codeMirrorAcceptCompletion?.(view) ?? false,
       },

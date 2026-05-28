@@ -43,8 +43,11 @@ import {
   isModRShortcut,
   isNewQueryShortcut,
   isObjectSourceSaveShortcutTarget,
+  isResetZoomShortcut,
   isRefreshDataShortcut,
   isSaveShortcut,
+  isZoomInShortcut,
+  isZoomOutShortcut,
 } from "@/lib/keyboardShortcuts";
 import { isPreviewTab } from "@/lib/tabPresentation";
 import { supportsSqlFileExecution } from "@/lib/databaseCapabilities";
@@ -224,6 +227,47 @@ const saveSqlFolders = computed(() => {
   return tab ? savedSqlStore.listFolders(tab.connectionId) : [];
 });
 
+async function applyUiScale(scale: number) {
+  if (!isDesktop) return;
+  try {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    await getCurrentWebview().setZoom(scale);
+  } catch (error) {
+    console.warn("[DBX] Failed to apply UI scale", { scale, error });
+  }
+}
+
+function setGlobalUiScale(scale: number) {
+  settingsStore.updateEditorSettings({ uiScale: scale });
+}
+
+function zoomInUi() {
+  setGlobalUiScale(settingsStore.editorSettings.uiScale + 0.1);
+}
+
+function zoomOutUi() {
+  setGlobalUiScale(settingsStore.editorSettings.uiScale - 0.1);
+}
+
+function resetUiZoom() {
+  setGlobalUiScale(1);
+}
+
+function isGlobalUiZoomTarget(target: EventTarget | null): target is Element {
+  if (!(target instanceof Element)) return false;
+  if (target.closest("[data-query-editor-root], [data-cell-detail-editor-root], [data-object-source-editor]")) {
+    return true;
+  }
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable)
+  ) {
+    return false;
+  }
+  return !target.closest("[contenteditable='true']");
+}
+
 watch(
   () => queryStore.activeTabId,
   (id) => {
@@ -240,6 +284,14 @@ watch(
   (id) => {
     if (id) newQueryContextSource.value = "sidebar";
   },
+);
+
+watch(
+  () => settingsStore.editorSettings.uiScale,
+  (scale) => {
+    void applyUiScale(scale);
+  },
+  { immediate: true },
 );
 
 function toggleAiPanel() {
@@ -667,6 +719,26 @@ function handleKeydown(e: KeyboardEvent) {
     e.stopPropagation();
     return;
   }
+  if (isDesktop && isGlobalUiZoomTarget(e.target)) {
+    if (isZoomInShortcut(e, shortcuts)) {
+      e.preventDefault();
+      e.stopPropagation();
+      zoomInUi();
+      return;
+    }
+    if (isZoomOutShortcut(e, shortcuts)) {
+      e.preventDefault();
+      e.stopPropagation();
+      zoomOutUi();
+      return;
+    }
+    if (isResetZoomShortcut(e, shortcuts)) {
+      e.preventDefault();
+      e.stopPropagation();
+      resetUiZoom();
+      return;
+    }
+  }
   if (isDesktop && isBrowserReloadShortcut(e)) {
     e.preventDefault();
     e.stopPropagation();
@@ -733,6 +805,7 @@ onMounted(async () => {
     aiPanelReady.value = true;
   });
   applyTheme();
+  void applyUiScale(settingsStore.editorSettings.uiScale);
   window.addEventListener("keydown", handleKeydown);
   window.addEventListener("dbx-open-driver-store", openDriverStoreFromEvent);
   if (isDesktop) {

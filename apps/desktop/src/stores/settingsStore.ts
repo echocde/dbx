@@ -172,6 +172,7 @@ export type EditorTheme =
 export interface EditorSettings {
   fontFamily: string;
   fontSize: number;
+  uiScale: number;
   theme: EditorTheme;
   executeMode: "all" | "current";
   wordWrap: boolean;
@@ -222,6 +223,7 @@ export const FONT_FAMILIES: { value: string; label: string }[] = [
 export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
   fontSize: 13,
+  uiScale: 1,
   theme: "app",
   executeMode: "all",
   wordWrap: false,
@@ -245,6 +247,13 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
 
 export const STORAGE_KEY = "dbx-editor-settings";
 const OLD_FONT_SIZE_KEY = "dbx-query-editor-font-size";
+const MIN_UI_SCALE = 0.75;
+const MAX_UI_SCALE = 2;
+
+function normalizeUiScale(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_EDITOR_SETTINGS.uiScale;
+  return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, Math.round(value * 100) / 100));
+}
 
 function normalizeColumnFormatters(value: unknown): Record<string, ColumnFormatterConfig> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -301,6 +310,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
   return {
     fontFamily: settings.fontFamily ?? DEFAULT_EDITOR_SETTINGS.fontFamily,
     fontSize: settings.fontSize ?? DEFAULT_EDITOR_SETTINGS.fontSize,
+    uiScale: normalizeUiScale(settings.uiScale),
     theme: settings.theme && EDITOR_THEME_VALUES.has(settings.theme) ? settings.theme : DEFAULT_EDITOR_SETTINGS.theme,
     executeMode: settings.executeMode ?? DEFAULT_EDITOR_SETTINGS.executeMode,
     wordWrap: settings.wordWrap ?? DEFAULT_EDITOR_SETTINGS.wordWrap,
@@ -427,6 +437,7 @@ export const useSettingsStore = defineStore("settings", () => {
   function updateEditorSettings(partial: Partial<EditorSettings>) {
     if (partial.fontFamily !== undefined) editorSettings.value.fontFamily = partial.fontFamily;
     if (partial.fontSize !== undefined) editorSettings.value.fontSize = partial.fontSize;
+    if (partial.uiScale !== undefined) editorSettings.value.uiScale = normalizeUiScale(partial.uiScale);
     if (partial.theme !== undefined) editorSettings.value.theme = partial.theme;
     if (partial.executeMode !== undefined) editorSettings.value.executeMode = partial.executeMode;
     if (partial.wordWrap !== undefined) editorSettings.value.wordWrap = partial.wordWrap;

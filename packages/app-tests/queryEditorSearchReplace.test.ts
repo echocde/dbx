@@ -25,6 +25,13 @@ test("query editor localizes the replace all button", () => {
   assert.doesNotMatch(searchPanelSource, />\s*全部\s*</);
 });
 
+test("query editor no longer binds keyboard shortcuts for editor font zoom", () => {
+  assert.doesNotMatch(source, /key:\s*"Mod-="/);
+  assert.doesNotMatch(source, /key:\s*"Mod-\+"/);
+  assert.doesNotMatch(source, /key:\s*"Mod--"/);
+  assert.doesNotMatch(source, /key:\s*"Mod-0"/);
+});
+
 test("query editor exposes a context menu for executing selected SQL", () => {
   assert.match(source, /ContextMenuContent/);
   assert.match(source, /data-context-menu/);
@@ -66,4 +73,14 @@ test("app keydown routes Mod-R directly before browser reload handling", () => {
   assert.match(contentAreaSource, /queryEditorRef\.value\?\.openReplace\(\)/);
   assert.match(contentAreaSource, /dataGridRef\.value\?\.openCellDetailSearch\(\)/);
   assert.match(contentAreaSource, /if \(target\.closest\("\[data-grid-root\]"\)\) return refreshData\(\)/);
+});
+
+test("app routes global UI zoom shortcuts across editor surfaces", () => {
+  assert.match(appSource, /const shortcuts = settingsStore\.editorSettings\.shortcuts;/);
+  assert.match(appSource, /isZoomInShortcut\(e, shortcuts\)/);
+  assert.match(appSource, /isZoomOutShortcut\(e, shortcuts\)/);
+  assert.match(appSource, /isResetZoomShortcut\(e, shortcuts\)/);
+  assert.match(appSource, /isGlobalUiZoomTarget\(e\.target\)/);
+  assert.match(appSource, /settingsStore\.updateEditorSettings\(\{\s*uiScale:\s*scale\s*\}\)/);
+  assert.match(appSource, /\[data-query-editor-root\], \[data-cell-detail-editor-root\], \[data-object-source-editor\]/);
 });

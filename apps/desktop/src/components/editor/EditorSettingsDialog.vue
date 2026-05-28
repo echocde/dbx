@@ -87,6 +87,7 @@ const emit = defineEmits<{
 // Local edit state
 const editFontFamily = ref(settingsStore.editorSettings.fontFamily);
 const editFontSize = ref(settingsStore.editorSettings.fontSize);
+const editUiScale = ref(settingsStore.editorSettings.uiScale);
 const editTheme = ref(settingsStore.editorSettings.theme);
 const editExecuteMode = ref(settingsStore.editorSettings.executeMode);
 const editWordWrap = ref(settingsStore.editorSettings.wordWrap);
@@ -105,6 +106,7 @@ const redisScanPageSizeOptions = [200, 1000, 5000, 10000];
 const systemFonts = ref<string[]>([]);
 const systemFontsLoading = ref(false);
 const systemFontsLoaded = ref(false);
+const uiScaleOptions = [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 
 // --- Snippet state ---
 const editSnippets = ref<SqlSnippet[]>(settingsStore.editorSettings.snippets.map((s) => ({ ...s })));
@@ -219,6 +221,7 @@ watch(
     if (open) {
       editFontFamily.value = settingsStore.editorSettings.fontFamily;
       editFontSize.value = settingsStore.editorSettings.fontSize;
+      editUiScale.value = settingsStore.editorSettings.uiScale;
       editTheme.value = settingsStore.editorSettings.theme;
       editExecuteMode.value = settingsStore.editorSettings.executeMode;
       editWordWrap.value = settingsStore.editorSettings.wordWrap;
@@ -256,6 +259,7 @@ function hasChanges(): boolean {
   return (
     editFontFamily.value !== settingsStore.editorSettings.fontFamily ||
     editFontSize.value !== settingsStore.editorSettings.fontSize ||
+    editUiScale.value !== settingsStore.editorSettings.uiScale ||
     editTheme.value !== settingsStore.editorSettings.theme ||
     editExecuteMode.value !== settingsStore.editorSettings.executeMode ||
     editWordWrap.value !== settingsStore.editorSettings.wordWrap ||
@@ -280,6 +284,7 @@ async function applySettings() {
   settingsStore.updateEditorSettings({
     fontFamily: editFontFamily.value,
     fontSize: editFontSize.value,
+    uiScale: editUiScale.value,
     theme: editTheme.value,
     executeMode: editExecuteMode.value,
     wordWrap: editWordWrap.value,
@@ -304,6 +309,7 @@ async function applySettings() {
 function resetDefaults() {
   editFontFamily.value = DEFAULT_EDITOR_SETTINGS.fontFamily;
   editFontSize.value = DEFAULT_EDITOR_SETTINGS.fontSize;
+  editUiScale.value = DEFAULT_EDITOR_SETTINGS.uiScale;
   editTheme.value = DEFAULT_EDITOR_SETTINGS.theme;
   editExecuteMode.value = DEFAULT_EDITOR_SETTINGS.executeMode;
   editWordWrap.value = DEFAULT_EDITOR_SETTINGS.wordWrap;
@@ -1106,6 +1112,31 @@ watch(
             </section>
 
             <section v-else-if="activeSettingsTab === 'appearance'" class="flex flex-col gap-5 py-2">
+              <div class="space-y-2">
+                <Label>{{ t("settings.uiScale") }}</Label>
+                <Select
+                  :model-value="String(editUiScale)"
+                  @update:model-value="
+                    (value: any) => {
+                      const next = Number(value);
+                      if (Number.isFinite(next)) editUiScale = next;
+                    }
+                  "
+                >
+                  <SelectTrigger class="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="scale in uiScaleOptions" :key="scale" :value="String(scale)">
+                      {{ Math.round(scale * 100) }}%
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p class="text-xs text-muted-foreground">{{ t("settings.uiScaleDescription") }}</p>
+              </div>
+
+              <Separator />
+
               <div class="space-y-2">
                 <Label>{{ t("settings.appLayout") }}</Label>
                 <div class="grid grid-cols-2 gap-2">
