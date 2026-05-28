@@ -2934,13 +2934,13 @@ async function onGridKeydown(event: KeyboardEvent) {
     return;
   }
   if (clipboardShortcut(event, "x")) {
-    if (!props.editable || !hasCellSelection.value) return;
+    if (!props.editable || !selectedRange.value) return;
     event.preventDefault();
     cutSelection();
     return;
   }
   if (clipboardShortcut(event, "v")) {
-    if (!props.editable || !hasCellSelection.value) return;
+    if (!props.editable || !selectedRange.value) return;
     event.preventDefault();
     await pasteClipboardIntoSelection();
   }
@@ -3153,6 +3153,23 @@ function selectTransposeRecord(rowIndex: number, event?: MouseEvent) {
     void prefetchCopyStatements();
   }
   gridRef.value?.focus({ preventScroll: true });
+}
+
+function transposeRecordIsSelected(rowIndex: number): boolean {
+  const item = displayItems.value[rowIndex];
+  return !!item && isRowSelected(item.id);
+}
+
+function transposeRecordUsesSelectionVisual(rowIndex: number): boolean {
+  return hasRowSelection.value && transposeRecordIsSelected(rowIndex);
+}
+
+function transposeRecordUsesActiveHighlight(rowIndex: number): boolean {
+  return transposeRowIndex.value === rowIndex;
+}
+
+function transposeRecordUsesFramedHeader(rowIndex: number): boolean {
+  return hasRowSelection.value && transposeRecordIsSelected(rowIndex) && !hasCellSelection.value;
 }
 
 function moveTransposeRecordSelection(delta: number): boolean {
@@ -4329,11 +4346,16 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       v-for="recordIndex in visibleTransposeRecordIndexes"
                       :key="`transpose-head-${recordIndex}`"
                       class="shrink-0 border-r border-border px-2 py-1.5 text-center tabular-nums relative"
-                      :class="
-                        recordIndex === transposeRowIndex
-                          ? 'bg-primary/15 text-primary font-semibold'
-                          : 'bg-[rgb(239_239_239)] dark:bg-muted'
-                      "
+                      :class="{
+                        'transpose-record-header-selected text-primary font-semibold':
+                          transposeRecordUsesFramedHeader(recordIndex),
+                        'transpose-record-header-active text-primary':
+                          transposeRecordUsesActiveHighlight(recordIndex) &&
+                          !transposeRecordUsesFramedHeader(recordIndex),
+                        'bg-[rgb(239_239_239)] dark:bg-muted':
+                          !transposeRecordUsesActiveHighlight(recordIndex) &&
+                          !transposeRecordUsesFramedHeader(recordIndex),
+                      }"
                       :style="{ width: `${transposeRecordWidth}px` }"
                       @click="selectTransposeRecord(recordIndex, $event)"
                       @contextmenu="selectTransposeRecord(recordIndex, $event)"
@@ -4372,12 +4394,26 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                         'cell-selected-dirty':
                           transposeCellIsSelected(cell.recordIndex, cell.valueIndex) &&
                           displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
-                        'bg-primary/10': cell.recordIndex === transposeRowIndex,
+                        'row-cell-selected':
+                          transposeRecordUsesSelectionVisual(cell.recordIndex) &&
+                          !transposeCellIsSelected(cell.recordIndex, cell.valueIndex) &&
+                          !displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
+                        'row-cell-selected-dirty':
+                          transposeRecordUsesSelectionVisual(cell.recordIndex) &&
+                          !transposeCellIsSelected(cell.recordIndex, cell.valueIndex) &&
+                          displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
+                        'bg-primary/15':
+                          transposeRecordUsesActiveHighlight(cell.recordIndex) &&
+                          !transposeRecordUsesSelectionVisual(cell.recordIndex) &&
+                          !displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex] &&
+                          !transposeCellIsSelected(cell.recordIndex, cell.valueIndex),
                         'bg-yellow-500/10 cell-dirty': displayItems[cell.recordIndex]?.isDirtyCol[cell.valueIndex],
-                        'cursor-text hover:bg-accent/50': canEditCellItem(
-                          displayItems[cell.recordIndex],
-                          cell.valueIndex,
-                        ),
+                        'cursor-text': canEditCellItem(displayItems[cell.recordIndex], cell.valueIndex),
+                        'hover:bg-accent/50':
+                          canEditCellItem(displayItems[cell.recordIndex], cell.valueIndex) &&
+                          !transposeRecordUsesSelectionVisual(cell.recordIndex) &&
+                          !transposeRecordUsesActiveHighlight(cell.recordIndex) &&
+                          !transposeCellIsSelected(cell.recordIndex, cell.valueIndex),
                       }"
                       :style="{ width: `${transposeRecordWidth}px` }"
                       :title="cell.display"
@@ -5749,6 +5785,15 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 .row-cell-selected {
   background-color: color-mix(in oklab, var(--primary) 25%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent);
+}
+
+.transpose-record-header-selected {
+  background-color: color-mix(in oklab, var(--primary) 25%, var(--background));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent);
+}
+
+.transpose-record-header-active {
+  background-color: color-mix(in oklab, var(--primary) 25%, var(--background));
 }
 
 .cell-selected-dirty {

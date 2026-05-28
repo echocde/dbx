@@ -15,6 +15,11 @@ test("data grid wires whole table, row, and column selection gestures", () => {
   assert.match(selectionSource, /function selectAllCells\(\)/);
   assert.match(selectionSource, /function selectColumn\(colIndex: number, event\?: MouseEvent\)/);
   assert.match(selectionSource, /lastClickedColumnIndex/);
+  assert.match(selectionSource, /selectedColumnIndexes/);
+  assert.match(selectionSource, /event\?\.metaKey \|\| event\?\.ctrlKey/);
+  assert.match(selectionSource, /next\.has\(colIndex\)/);
+  assert.match(selectionSource, /clearCellSelection\(\);\s+selectSingleCell\(rowIndex, colIndex\);/);
+  assert.match(selectionSource, /if \(hasColumnSelection\.value\) clearCellSelection\(\);/);
 });
 
 test("data grid intercepts copy and select-all shortcuts for grid selections", () => {
@@ -45,6 +50,18 @@ test("transpose cells reuse grid cell selection and details", () => {
 
 test("transpose record headers copy selected records as rows", () => {
   assert.match(source, /function selectTransposeRecord\(rowIndex: number, event\?: MouseEvent\)/);
+  assert.match(source, /function transposeRecordUsesSelectionVisual\(rowIndex: number\): boolean/);
+  assert.match(source, /function transposeRecordUsesActiveHighlight\(rowIndex: number\): boolean/);
+  assert.match(source, /function transposeRecordUsesFramedHeader\(rowIndex: number\): boolean/);
+  assert.match(source, /transposeRecordUsesSelectionVisual\(/);
+  assert.match(source, /transposeRecordUsesActiveHighlight\(/);
+  assert.match(source, /transposeRecordUsesFramedHeader\(/);
+  assert.match(source, /'transpose-record-header-selected text-primary font-semibold':/);
+  assert.match(source, /'transpose-record-header-active text-primary':/);
+  assert.match(source, /\.transpose-record-header-selected \{/);
+  assert.match(source, /\.transpose-record-header-active \{/);
+  assert.match(source, /'row-cell-selected':/);
+  assert.match(source, /'row-cell-selected-dirty':/);
   assert.match(source, /handleRowClick\(rowIndex, item\.id, event\)/);
   assert.match(source, /@click="selectTransposeRecord\(recordIndex, \$event\)"/);
   assert.match(source, /@contextmenu="selectTransposeRecord\(recordIndex, \$event\)"/);
