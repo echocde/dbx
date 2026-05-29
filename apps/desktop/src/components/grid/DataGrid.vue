@@ -258,7 +258,6 @@ function shortTypeName(t: string): string {
   if (s === "boolean") return "bool";
   if (s === "integer") return "int";
   if (s === "smallint") return "int2";
-  if (s === "bigint") return "int8";
   if (s === "real") return "float4";
   return t;
 }
