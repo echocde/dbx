@@ -308,7 +308,8 @@ impl ConnectionConfig {
                 format!("{scheme}://{host}:{port}/")
             }
             DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
-                format!("mysql://{host}:{port}{db_part}?{params}")
+                let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
+                format!("mysql://{host}:{port}{db_part}{suffix}")
             }
             DatabaseType::Postgres | DatabaseType::Redshift => {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
@@ -405,7 +406,8 @@ impl ConnectionConfig {
                 }
             }
             DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
-                format!("mysql://{}:{}@{host}:{port}{db_part}?{params}", username, password)
+                let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
+                format!("mysql://{}:{}@{host}:{port}{db_part}{suffix}", username, password)
             }
             DatabaseType::Postgres | DatabaseType::Redshift => {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
@@ -548,31 +550,11 @@ impl ConnectionConfig {
     fn normalized_url_params(&self) -> String {
         let value = self.url_params.as_deref().unwrap_or("").trim();
         if self.needs_bare_mysql() {
-            let v = value.trim_start_matches('?');
-            let filtered: Vec<&str> = v
-                .split('&')
-                .filter(|p| !p.is_empty() && !p.starts_with("charset=") && !p.starts_with("ssl-mode=preferred"))
-                .collect();
-            return if filtered.is_empty() {
-                "ssl-mode=disabled".to_string()
-            } else {
-                format!("ssl-mode=disabled&{}", filtered.join("&"))
-            };
+            return normalize_bare_mysql_url_params(value);
         }
         match self.db_type {
             DatabaseType::Mysql => normalize_mysql_url_params(value, self.ssl, self.ca_cert_path.trim().is_empty()),
-            DatabaseType::Doris | DatabaseType::StarRocks => {
-                let v = value.trim_start_matches('?');
-                let filtered: Vec<&str> = v
-                    .split('&')
-                    .filter(|p| !p.is_empty() && !p.starts_with("charset=") && !p.starts_with("ssl-mode=preferred"))
-                    .collect();
-                if filtered.is_empty() {
-                    "ssl-mode=disabled".to_string()
-                } else {
-                    format!("ssl-mode=disabled&{}", filtered.join("&"))
-                }
-            }
+            DatabaseType::Doris | DatabaseType::StarRocks => normalize_bare_mysql_url_params(value),
             DatabaseType::Postgres | DatabaseType::Redshift => normalize_postgres_url_params(value, self.ssl),
             DatabaseType::MongoDb => value.trim_start_matches('?').to_string(),
             _ => value.trim_start_matches('?').to_string(),
@@ -588,6 +570,23 @@ fn url_params_contains_flag(params: Option<&str>, key: &str, expected: &str) -> 
     params.unwrap_or("").trim().trim_start_matches('?').split(['&', ';']).filter_map(|part| part.split_once('=')).any(
         |(part_key, value)| part_key.trim().eq_ignore_ascii_case(key) && value.trim().eq_ignore_ascii_case(expected),
     )
+}
+
+fn normalize_bare_mysql_url_params(value: &str) -> String {
+    value
+        .trim_start_matches('?')
+        .split('&')
+        .filter(|part| {
+            !part.is_empty()
+                && !url_param_key_is(part, "charset")
+                && !url_param_key_is(part, "ssl-mode")
+                && !url_param_key_is(part, "sslmode")
+                && !url_param_key_is(part, "require_ssl")
+                && !url_param_key_is(part, "verify_ca")
+                && !url_param_key_is(part, "verify_identity")
+        })
+        .collect::<Vec<_>>()
+        .join("&")
 }
 
 fn normalize_mysql_url_params(value: &str, force_tls: bool, accept_invalid_certs: bool) -> String {
@@ -1022,7 +1021,32 @@ mod tests {
         config.driver_profile = Some("oceanbase".to_string());
 
         assert!(config.needs_bare_mysql());
-        assert_eq!(config.connection_url(), "mysql://user%40tenant%23cluster:secret@10.1.2.3:2883?ssl-mode=disabled");
+        assert_eq!(config.connection_url(), "mysql://user%40tenant%23cluster:secret@10.1.2.3:2883");
+    }
+
+    #[test]
+    fn starrocks_profile_omits_mysql_ssl_mode_param() {
+        let mut config = mysql_config("root", "secret", Some("analytics"));
+        config.driver_profile = Some("starrocks".to_string());
+        config.url_params = Some(
+            "ssl-mode=disabled&sslmode=required&require_ssl=true&verify_ca=false&verify_identity=false&charset=utf8mb4"
+                .to_string(),
+        );
+
+        assert!(config.needs_bare_mysql());
+        assert_eq!(config.connection_url(), "mysql://root:secret@10.1.2.3:2883/analytics");
+    }
+
+    #[test]
+    fn starrocks_profile_keeps_non_mysql_tls_params() {
+        let mut config = mysql_config("root", "secret", Some("analytics"));
+        config.driver_profile = Some("starrocks".to_string());
+        config.url_params = Some("connect_timeout=10&sessionVariables=query_timeout=60".to_string());
+
+        assert_eq!(
+            config.connection_url(),
+            "mysql://root:secret@10.1.2.3:2883/analytics?connect_timeout=10&sessionVariables=query_timeout=60"
+        );
     }
 
     #[test]
