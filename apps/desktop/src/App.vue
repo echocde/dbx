@@ -25,6 +25,7 @@ import { useDialogSources } from "@/composables/useDialogSources";
 import { useNavigationTargets } from "@/composables/useNavigationTargets";
 import { useDataGridActions } from "@/composables/useDataGridActions";
 import { useTauriEvents } from "@/composables/useTauriEvents";
+import { useVisibilityChange } from "@/composables/useVisibilityChange";
 import "@/i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
 import * as api from "@/lib/api";
@@ -211,6 +212,7 @@ const { setupTauriListeners, cleanupTauriListeners } = useTauriEvents({
   openSqlFilePath,
   openConnectionDeepLink,
 });
+useVisibilityChange();
 
 const appVersion = ref("");
 const isClassicLayout = computed(() => settingsStore.editorSettings.appLayout === "classic");

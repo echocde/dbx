@@ -1071,7 +1071,7 @@ async fn exec_tx_mysql_inner(
     statements: &[String],
     start: std::time::Instant,
 ) -> Result<db::QueryResult, String> {
-    let mut conn = pool.get_conn().await.map_err(|e| format!("Failed to acquire connection: {}", e))?;
+    let mut conn = db::mysql::get_conn_with_health_check(&pool).await?;
     conn.query_drop("START TRANSACTION").await.map_err(|e| format!("Failed to begin transaction: {}", e))?;
     let mut total_affected: u64 = 0;
     for (i, sql) in statements.iter().enumerate() {

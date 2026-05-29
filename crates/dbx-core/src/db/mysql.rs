@@ -798,13 +798,26 @@ fn query_result_row_limit(max_rows: Option<usize>) -> usize {
     max_rows.unwrap_or(crate::query::MAX_ROWS).max(1)
 }
 
+/// Get a connection from the pool with a health check. If the connection is dead
+/// (e.g. after app was backgrounded), it tries again with a fresh connection.
+pub async fn get_conn_with_health_check(pool: &MySqlPool) -> Result<mysql_async::Conn, String> {
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    match conn.ping().await {
+        Ok(()) => Ok(conn),
+        Err(_) => {
+            let _ = conn.disconnect().await;
+            pool.get_conn().await.map_err(|e| e.to_string())
+        }
+    }
+}
+
 async fn execute_result_set_with_text_protocol(
     pool: &MySqlPool,
     sql: &str,
     row_limit: usize,
     start: Instant,
 ) -> Result<QueryResult, String> {
-    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let mut conn = get_conn_with_health_check(pool).await?;
     let mut result = conn.query_iter(sql).await.map_err(|e| e.to_string())?;
     let columns: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().to_string()).collect();
 
@@ -846,7 +859,7 @@ async fn execute_result_set_with_prepared_protocol(
     row_limit: usize,
     start: Instant,
 ) -> Result<QueryResult, String> {
-    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let mut conn = get_conn_with_health_check(pool).await?;
     let mut result = conn.exec_iter(sql, ()).await.map_err(|e| e.to_string())?;
     let columns: Vec<String> = result.columns_ref().iter().map(|c| c.name_str().to_string()).collect();
 
@@ -908,7 +921,7 @@ pub async fn execute_query_with_max_rows(
             }
         }
     } else {
-        let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+        let mut conn = get_conn_with_health_check(pool).await?;
         let previous_explicit_timestamp_defaults = enable_explicit_timestamp_defaults_for_query(&mut conn, sql).await;
         let result = match conn.query_iter(sql).await {
             Ok(result) => result,

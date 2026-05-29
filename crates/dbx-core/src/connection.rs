@@ -541,6 +541,86 @@ impl AppState {
         self.proxy_tunnels.stop_tunnel(connection_id).await;
     }
 
+    pub async fn refresh_connections(&self) {
+        let mut dead_keys = Vec::new();
+
+        // Check health of all connection pools
+        {
+            let conns = self.connections.read().await;
+            for (key, pool) in conns.iter() {
+                let healthy = match pool {
+                    PoolKind::Mysql(p, _) => {
+                        match db::mysql::get_conn_with_health_check(p).await {
+                            Ok(_) => true,
+                            Err(e) => {
+                                log::warn!("MySQL connection pool '{key}' is unhealthy: {e}");
+                                false
+                            }
+                        }
+                    }
+                    PoolKind::Postgres(p) => {
+                        match p.get().await {
+                            Ok(client) => {
+                                match client.simple_query("SELECT 1").await {
+                                    Ok(_) => true,
+                                    Err(e) => {
+                                        log::warn!("PostgreSQL connection pool '{key}' is unhealthy: {e}");
+                                        false
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("PostgreSQL connection pool '{key}' is unhealthy: {e}");
+                                false
+                            }
+                        }
+                    }
+                    _ => true, // Skip non-SQL pools
+                };
+                if !healthy {
+                    dead_keys.push(key.clone());
+                }
+            }
+        }
+
+        // Remove dead pools
+        if !dead_keys.is_empty() {
+            let mut conns = self.connections.write().await;
+            for key in &dead_keys {
+                if let Some(pool) = conns.remove(key) {
+                    close_pool_kind(pool).await;
+                }
+            }
+        }
+
+        // Re-establish SSH tunnels that have died
+        let tunnel_connection_ids: Vec<String> = {
+            let configs = self.configs.read().await;
+            configs
+                .iter()
+                .filter(|(_, c)| c.ssh_enabled && !c.ssh_host.is_empty())
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        for connection_id in tunnel_connection_ids {
+            self.tunnels.stop_tunnel(&connection_id).await;
+            // Tunnels will be re-created on next pool access via connection_host_port
+        }
+
+        // Re-establish proxy tunnels
+        let proxy_connection_ids: Vec<String> = {
+            let configs = self.configs.read().await;
+            configs
+                .iter()
+                .filter(|(_, c)| c.proxy_enabled && !c.proxy_host.is_empty())
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+        for connection_id in proxy_connection_ids {
+            self.proxy_tunnels.stop_tunnel(&connection_id).await;
+        }
+    }
+
     pub async fn remove_connection_pools(&self, connection_id: &str) {
         let mut conns = self.connections.write().await;
         let keys_to_remove: Vec<String> = conns

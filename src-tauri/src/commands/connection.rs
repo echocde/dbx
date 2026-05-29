@@ -511,3 +511,9 @@ pub async fn disconnect_db(state: State<'_, Arc<AppState>>, connection_id: Strin
     state.reset_connection_transport(&connection_id).await;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn refresh_connections(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.refresh_connections().await;
+    Ok(())
+}

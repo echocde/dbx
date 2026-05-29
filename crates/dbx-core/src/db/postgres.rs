@@ -355,7 +355,7 @@ pub async fn connect(url: &str, fallback_timeout: Duration) -> Result<Pool, Stri
         let pg_config = tokio_postgres::Config::from_str(&postgres_url.url)
             .map_err(|e| format!("Invalid PostgreSQL connection URL: {e}"))?;
 
-        let mgr_config = ManagerConfig { recycling_method: RecyclingMethod::Fast };
+        let mgr_config = ManagerConfig { recycling_method: RecyclingMethod::Verified };
         let tls_config = postgres_tls_config(
             &pg_config,
             &postgres_url.ssl_files,
