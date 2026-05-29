@@ -218,6 +218,12 @@ pub struct AgentManager {
     daemons: Mutex<std::collections::HashMap<String, AgentDriverClient>>,
 }
 
+impl Default for AgentManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AgentManager {
     pub fn new() -> Self {
         let home =
@@ -571,7 +577,7 @@ fn is_executable_file(path: &Path) -> bool {
     {
         use std::os::unix::fs::PermissionsExt;
 
-        return path.metadata().map(|meta| meta.permissions().mode() & 0o111 != 0).unwrap_or(false);
+        path.metadata().map(|meta| meta.permissions().mode() & 0o111 != 0).unwrap_or(false)
     }
     #[cfg(not(unix))]
     {

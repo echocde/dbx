@@ -168,6 +168,7 @@ async fn forward_loop(session: &Handle<SshClient>, listener: &TcpListener, remot
 /// reconnections so the tunnel appears continuously available to clients.
 /// Uses exponential backoff for reconnect attempts and gives up after
 /// MAX_RECONNECT_ATTEMPTS to avoid log storms from permanent failures.
+#[allow(clippy::too_many_arguments)]
 async fn tunnel_reconnect_loop(
     mut session: Handle<SshClient>,
     ssh_host: String,
@@ -235,6 +236,12 @@ async fn tunnel_reconnect_loop(
 
 pub struct TunnelManager {
     tunnels: Mutex<HashMap<String, (JoinHandle<()>, u16)>>,
+}
+
+impl Default for TunnelManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TunnelManager {

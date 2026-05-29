@@ -331,7 +331,7 @@ fn add_sql_server_top(sql: &str, limit: usize) -> String {
     if has_top_level_select_top(sql) {
         return sql.to_string();
     }
-    if sql.len() >= 6 && sql[..6].to_ascii_uppercase() == "SELECT" {
+    if sql.len() >= 6 && sql[..6].eq_ignore_ascii_case("SELECT") {
         format!("SELECT TOP ({limit}){}", &sql[6..])
     } else {
         format!("SELECT TOP ({limit}) * FROM ({sql}) [dbx_page]")

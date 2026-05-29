@@ -159,7 +159,7 @@ fn redis_sentinel_nodes(config: &ConnectionConfig) -> Result<Vec<ConnectionInfo>
         vec![format!("{}:{}", config.host.trim(), config.port)]
     } else {
         raw_nodes
-            .split(|ch: char| ch == ',' || ch == ';' || ch == '\n' || ch == '\r')
+            .split([',', ';', '\n', '\r'])
             .map(str::trim)
             .filter(|node| !node.is_empty())
             .map(ToOwned::to_owned)
@@ -206,7 +206,7 @@ fn redis_node_endpoints(
         vec![format!("{fallback_host}:{}", if fallback_port == 0 { default_port } else { fallback_port })]
     } else {
         raw_nodes
-            .split(|ch: char| ch == ',' || ch == ';' || ch == '\n' || ch == '\r')
+            .split([',', ';', '\n', '\r'])
             .map(str::trim)
             .filter(|node| !node.is_empty())
             .map(ToOwned::to_owned)
@@ -1395,7 +1395,7 @@ fn parse_scan_members(raw: RedisRawValue) -> Result<(u64, Vec<serde_json::Value>
     };
 
     let items =
-        entries.iter().filter_map(|v| redis_value_to_string(v.clone())).map(|s| serde_json::Value::String(s)).collect();
+        entries.iter().filter_map(|v| redis_value_to_string(v.clone())).map(serde_json::Value::String).collect();
 
     Ok((cursor, items))
 }

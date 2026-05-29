@@ -353,7 +353,7 @@ fn build_table_comment_sql(options: &TableStructureSqlOptions, warnings: &mut Ve
         StructureDialect::SqlServer => {
             build_sqlserver_table_comment_sql(&table, options.schema.as_deref(), &options.table_name, new_comment)
         }
-        StructureDialect::Sqlite | StructureDialect::DuckDb | _ => {
+        _ => {
             if !clean(new_comment).is_empty() {
                 warnings
                     .push(format!("Table comments are not supported for {} from this editor.", dialect_label(dialect)));
@@ -757,7 +757,7 @@ fn build_primary_key_sql(
     if !old_pk_names.is_empty() {
         match dialect {
             StructureDialect::Postgres => {
-                let raw_table = options.table_name.split('.').last().unwrap_or(&options.table_name);
+                let raw_table = options.table_name.split('.').next_back().unwrap_or(&options.table_name);
                 let pk_name = format!("{}_pkey", clean(raw_table));
                 statements.push(format!("ALTER TABLE {table} DROP CONSTRAINT {};", quote_ident(dialect, &pk_name)));
             }
@@ -1051,7 +1051,8 @@ fn build_sqlserver_existing_column_sql(
             ));
         }
         if !default_value.is_empty() {
-            let short_table = table.split('.').last().unwrap_or(table).trim_matches(|c: char| c == '[' || c == ']');
+            let short_table =
+                table.split('.').next_back().unwrap_or(table).trim_matches(|c: char| c == '[' || c == ']');
             let constraint_name = format!(
                 "DF_{short_table}_{col_name}",
                 short_table = short_table,
@@ -1503,7 +1504,7 @@ fn column_position_clause(dialect: StructureDialect, columns: &[&EditableStructu
     if index == 0 {
         return " FIRST".to_string();
     }
-    format!(" AFTER {}", quote_ident(dialect, &columns.get(index - 1).map(|column| column.name.as_str()).unwrap_or("")))
+    format!(" AFTER {}", quote_ident(dialect, columns.get(index - 1).map(|column| column.name.as_str()).unwrap_or("")))
 }
 
 fn mysql_column_position_changed(columns: &[&EditableStructureColumn], index: usize) -> bool {

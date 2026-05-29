@@ -909,6 +909,10 @@ export async function pendingOpenSqlFiles(): Promise<string[]> {
   return [];
 }
 
+export async function pendingOpenDbFiles(): Promise<string[]> {
+  return [];
+}
+
 export async function pendingOpenConnectionLinks(): Promise<string[]> {
   return [];
 }

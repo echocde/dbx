@@ -33,8 +33,10 @@ import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { findTreeNodeById, resolveNewQueryTarget } from "@/lib/newQueryContext";
 import { buildExecutableObjectSourceStatements, objectSourceSaveExecutionMode } from "@/lib/objectSourceEditor";
 import { resolveExecutableSql, resolveExecutableSqlWithBackend } from "@/lib/sqlExecutionTarget";
+import { uuid } from "@/lib/utils";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { sqlFileTitleFromPath } from "@/lib/sqlFileOpen";
+import type { ConnectionConfig } from "@/types/database";
 import { parseConnectionDeepLink, type ConnectionDeepLinkDraft } from "@/lib/connectionDeepLink";
 import {
   isBrowserReloadShortcut,
@@ -210,6 +212,7 @@ const { onExecuteSql, onReloadData, onPaginate, onSort } = useDataGridActions(ac
 const { setupTauriListeners, cleanupTauriListeners } = useTauriEvents({
   openTableTarget,
   openSqlFilePath,
+  openDbFilePath,
   openConnectionDeepLink,
 });
 useVisibilityChange();
@@ -482,6 +485,73 @@ async function openPendingSqlFiles() {
     const paths = await api.pendingOpenSqlFiles();
     for (const path of paths) {
       await openSqlFilePath(path);
+    }
+  } catch {
+    /* ignore startup file-open probing errors */
+  }
+}
+
+const DB_EXTENSIONS = [".db", ".sqlite", ".sqlite3", ".duckdb"];
+
+function getDbTypeFromPath(path: string): "sqlite" | "duckdb" | null {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".duckdb")) return "duckdb";
+  if (DB_EXTENSIONS.some((ext) => lower.endsWith(ext))) return "sqlite";
+  return null;
+}
+
+async function openDbFilePath(path: string) {
+  if (!isTauriRuntime()) return;
+  try {
+    const name = path.split("/").pop()?.split("\\").pop() || path;
+    const dbType = getDbTypeFromPath(path);
+    if (!dbType) return;
+
+    // Check for existing connection with the same file path
+    const existing = connectionStore.connections.find((c) => c.host === path);
+    if (existing) {
+      const { ask } = await import("@tauri-apps/plugin-dialog");
+      const switchTo = await ask(`A connection to "${path}" already exists. Switch to it?`, {
+        title: "Database Already Open",
+        kind: "info",
+      });
+      if (switchTo) {
+        connectionStore.activeConnectionId = existing.id;
+        connectionStore.ensureConnected(existing.id).catch(() => {});
+        const node = connectionStore.treeNodes.find((n) => n.id === existing.id);
+        if (node && !node.isExpanded) {
+          connectionStore.loadDatabases(existing.id);
+        }
+      }
+      return;
+    }
+
+    const config: ConnectionConfig = {
+      id: uuid(),
+      name,
+      db_type: dbType,
+      driver_profile: dbType,
+      driver_label: dbType === "duckdb" ? "DuckDB" : "SQLite",
+      url_params: "",
+      host: path,
+      port: 0,
+      username: "",
+      password: "",
+    };
+    await connectionStore.addConnection(config);
+    void connectionStore.connect(config);
+    toast(t("welcome.fileOpened", { name }));
+  } catch (e: any) {
+    toast(t("toolbar.sqlOpenFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function openPendingDbFiles() {
+  if (!isTauriRuntime()) return;
+  try {
+    const paths = await api.pendingOpenDbFiles();
+    for (const path of paths) {
+      await openDbFilePath(path);
     }
   } catch {
     /* ignore startup file-open probing errors */
@@ -856,6 +926,7 @@ onMounted(async () => {
     .catch(() => {});
   setupTauriListeners();
   void openPendingSqlFiles();
+  void openPendingDbFiles();
   void openPendingConnectionLinks();
   console.log(`[STARTUP] onMounted sync done: ${(performance.now() - mountStart).toFixed(0)}ms`);
 });

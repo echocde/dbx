@@ -805,8 +805,7 @@ pub fn generate_create_table_ddl(
         });
     }
 
-    let mut pks = Vec::new();
-    pks.reserve(columns.iter().filter(|c| c.is_primary_key).count());
+    let mut pks = Vec::with_capacity(columns.iter().filter(|c| c.is_primary_key).count());
     for c in columns {
         if c.is_primary_key {
             let qname = quote_identifier(&c.name, target_db);
@@ -843,7 +842,7 @@ pub fn generate_create_table_ddl(
     ddl.push_str("\n)");
 
     if is_mysql_family {
-        if let Some(ref comment) = table_comment {
+        if let Some(comment) = table_comment {
             let trimmed = comment.trim();
             if !trimmed.is_empty() {
                 ddl.push_str(&format!(" COMMENT='{}'", trimmed.replace('\'', "''")));
@@ -877,7 +876,7 @@ pub fn generate_comment_ddl(
 
     // Table-level comment first (PostgreSQL/Oracle only; ClickHouse doesn't support COMMENT ON TABLE)
     if matches!(target_db, DatabaseType::Postgres | DatabaseType::Oracle) {
-        if let Some(ref comment) = table_comment {
+        if let Some(comment) = table_comment {
             let trimmed = comment.trim();
             if !trimmed.is_empty() {
                 let escaped = trimmed.replace('\'', "''");
@@ -1301,10 +1300,7 @@ fn database_from_pool_key(pool_key: &str) -> Option<&str> {
 
 pub async fn get_db_type(state: &AppState, connection_id: &str) -> Result<DatabaseType, String> {
     let configs = state.configs.read().await;
-    configs
-        .get(connection_id)
-        .map(|c| c.db_type.clone())
-        .ok_or_else(|| format!("Connection config not found: {connection_id}"))
+    configs.get(connection_id).map(|c| c.db_type).ok_or_else(|| format!("Connection config not found: {connection_id}"))
 }
 
 pub async fn get_columns_for_transfer(
@@ -1811,6 +1807,7 @@ pub async fn clear_cancelled(transfer_id: &str) {
 
 /// Transfer a single table. Returns rows transferred.
 /// `progress_callback` is invoked for progress updates.
+#[allow(clippy::too_many_arguments)]
 pub async fn transfer_table<F>(
     state: &AppState,
     request: &TransferRequest,

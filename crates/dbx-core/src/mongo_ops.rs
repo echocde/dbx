@@ -34,6 +34,7 @@ pub async fn mongo_list_collections_core(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn mongo_find_documents_core(
     state: &AppState,
     connection_id: &str,

@@ -30,7 +30,7 @@ pub fn connection_timeout() -> Duration {
 const JS_MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 
 pub fn safe_i64_to_json(v: i64) -> serde_json::Value {
-    if v > JS_MAX_SAFE_INTEGER || v < -JS_MAX_SAFE_INTEGER {
+    if !(-JS_MAX_SAFE_INTEGER..=JS_MAX_SAFE_INTEGER).contains(&v) {
         serde_json::Value::String(v.to_string())
     } else {
         serde_json::Value::Number(v.into())
@@ -86,7 +86,7 @@ pub fn parse_connect_timeout_with_fallback(url: &str, fallback: Duration) -> Dur
             || key.eq_ignore_ascii_case("connectionTimeout")
         {
             if let Ok(v) = value.parse::<u64>() {
-                if v >= 1 && v <= 300 {
+                if (1..=300).contains(&v) {
                     return Duration::from_secs(v);
                 }
             }

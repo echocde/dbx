@@ -650,9 +650,7 @@ fn is_transaction_control(sql: &str) -> bool {
         return true;
     }
     if first.eq_ignore_ascii_case("BEGIN") {
-        return tokens
-            .get(1)
-            .map_or(false, |t| t.eq_ignore_ascii_case("TRANSACTION") || t.eq_ignore_ascii_case("TRAN"));
+        return tokens.get(1).is_some_and(|t| t.eq_ignore_ascii_case("TRANSACTION") || t.eq_ignore_ascii_case("TRAN"));
     }
     false
 }

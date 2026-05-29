@@ -510,6 +510,7 @@ fn build_data_compare_select_sql(
     format!("SELECT {select_columns} FROM {table}{order_by} LIMIT {row_limit}{offset_sql};")
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_compare_rows(
     state: &AppState,
     connection_id: &str,
@@ -618,7 +619,7 @@ fn literal_text(text: &str, database_type: Option<DatabaseType>) -> String {
 
 fn format_tdengine_timestamp_literal_text(text: &str) -> String {
     // Keep non-timestamp text unchanged; TDengine timestamp normalization is UI-parity best effort in Rust.
-    if text.len() < 19 || !text.as_bytes().get(10).is_some_and(|ch| *ch == b' ') {
+    if text.len() < 19 || text.as_bytes().get(10).is_none_or(|ch| *ch != b' ') {
         return text.to_string();
     }
     text.replacen(' ', "T", 1)

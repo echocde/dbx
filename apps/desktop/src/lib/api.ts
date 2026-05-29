@@ -164,6 +164,7 @@ export const executeSqlFile = forward("executeSqlFile");
 export const cancelSqlFileExecution = forward("cancelSqlFileExecution");
 export const listenSqlFileProgress = forward("listenSqlFileProgress");
 export const pendingOpenSqlFiles = forward("pendingOpenSqlFiles");
+export const pendingOpenDbFiles = forward("pendingOpenDbFiles");
 export const pendingOpenConnectionLinks = forward("pendingOpenConnectionLinks");
 export const readExternalSqlFile = forward("readExternalSqlFile");
 

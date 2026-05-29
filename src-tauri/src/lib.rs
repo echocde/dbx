@@ -154,12 +154,20 @@ pub fn run() {
             let links = commands::deep_link::connection_deep_links_from_args(args.clone());
             open_connection_deep_links(app, links);
 
-            let paths = commands::external_sql::sql_file_paths_from_args(args, std::path::Path::new(&cwd));
+            let paths = commands::external_sql::sql_file_paths_from_args(args.clone(), std::path::Path::new(&cwd));
             if !paths.is_empty() {
                 if let Some(state) = app.try_state::<commands::external_sql::ExternalSqlOpenState>() {
                     state.push(paths.clone());
                 }
                 let _ = app.emit("dbx-open-sql-files", paths);
+            }
+
+            let db_paths = commands::external_db::db_file_paths_from_args(args, std::path::Path::new(&cwd));
+            if !db_paths.is_empty() {
+                if let Some(state) = app.try_state::<commands::external_db::ExternalDbOpenState>() {
+                    state.push(db_paths.clone());
+                }
+                let _ = app.emit("dbx-open-db-files", db_paths);
             }
             show_main_window(app);
         }))
@@ -200,6 +208,7 @@ pub fn run() {
             ));
             app.manage(state.clone());
             app.manage(commands::external_sql::ExternalSqlOpenState::default());
+            app.manage(commands::external_db::ExternalDbOpenState::default());
             app.manage(commands::deep_link::DeepLinkOpenState::default());
             let startup_links = commands::deep_link::connection_deep_links_from_args(std::env::args().skip(1));
             open_connection_deep_links(app.handle(), startup_links);
@@ -340,6 +349,7 @@ pub fn run() {
             commands::sql_file::cancel_sql_file_execution,
             commands::external_sql::pending_open_sql_files,
             commands::external_sql::read_external_sql_file,
+            commands::external_db::pending_open_db_files,
             commands::deep_link::pending_open_connection_links,
             commands::table_import::preview_table_import_file,
             commands::table_import::import_table_file,
@@ -432,6 +442,23 @@ pub fn run() {
                         state.push(paths.clone());
                     }
                     let _ = app_handle.emit("dbx-open-sql-files", paths);
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+
+                let db_paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|path| commands::external_db::is_db_file_path(path))
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect();
+                if !db_paths.is_empty() {
+                    if let Some(state) = app_handle.try_state::<commands::external_db::ExternalDbOpenState>() {
+                        state.push(db_paths.clone());
+                    }
+                    let _ = app_handle.emit("dbx-open-db-files", db_paths);
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();

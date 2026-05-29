@@ -124,15 +124,11 @@ fn is_false(value: &bool) -> bool {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ProxyType {
+    #[default]
     Socks5,
     Http,
-}
-
-impl Default for ProxyType {
-    fn default() -> Self {
-        Self::Socks5
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

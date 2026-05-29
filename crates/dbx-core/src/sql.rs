@@ -284,7 +284,7 @@ impl SqlStatementSplitter {
         let trimmed = self.buffer.trim();
         let last_line = trimmed.rsplit('\n').next().unwrap_or(trimmed).trim();
         if parse_delimiter_command(last_line).is_some() {
-            let before = trimmed.rsplitn(2, '\n').nth(1).unwrap_or("").trim();
+            let before = trimmed.rsplit_once('\n').map(|x| x.0).unwrap_or("").trim();
             if has_executable_sql_with_options(before, self.options) {
                 statements.push(before.to_string());
             }
@@ -634,9 +634,9 @@ pub fn split_sql_batches(sql: &str) -> Vec<String> {
 
 fn parse_delimiter_command(line: &str) -> Option<&str> {
     let bytes = line.as_bytes();
-    let rest = if bytes.len() > 10 && bytes[..10].eq_ignore_ascii_case(b"delimiter ") {
-        Some(&line[10..])
-    } else if bytes.len() > 10 && bytes[..10].eq_ignore_ascii_case(b"delimiter\t") {
+    let rest = if bytes.len() > 10
+        && (bytes[..10].eq_ignore_ascii_case(b"delimiter ") || bytes[..10].eq_ignore_ascii_case(b"delimiter\t"))
+    {
         Some(&line[10..])
     } else {
         None
