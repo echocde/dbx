@@ -630,6 +630,7 @@ fn mysql_async_url(url: &str) -> Cow<'_, str> {
 
     let original_count = query.split('&').filter(|segment| !segment.trim().is_empty()).count();
     let mut filtered: Vec<String> = Vec::new();
+    let mut changed = false;
     for segment in query.split('&') {
         let segment = segment.trim();
         if segment.is_empty()
@@ -639,6 +640,7 @@ fn mysql_async_url(url: &str) -> Cow<'_, str> {
             || segment.to_ascii_lowercase().starts_with("connect_timeout=")
             || segment.to_ascii_lowercase().starts_with("connecttimeout=")
         {
+            changed = true;
             continue;
         }
 
@@ -647,6 +649,7 @@ fn mysql_async_url(url: &str) -> Cow<'_, str> {
             continue;
         };
         if key.eq_ignore_ascii_case("ssl-mode") || key.eq_ignore_ascii_case("sslmode") {
+            changed = true;
             match value.to_ascii_lowercase().replace('-', "_").as_str() {
                 "disabled" | "disable" => filtered.push("require_ssl=false".to_string()),
                 "required" | "require" => {
@@ -664,12 +667,13 @@ fn mysql_async_url(url: &str) -> Cow<'_, str> {
             continue;
         }
         if is_jdbc_param(key) {
+            changed = true;
             continue;
         }
         filtered.push(segment.to_string());
     }
 
-    if filtered.len() == original_count {
+    if !changed && filtered.len() == original_count {
         Cow::Borrowed(url)
     } else if filtered.is_empty() {
         Cow::Owned(base.to_string())
@@ -1395,6 +1399,20 @@ mod tests {
             mysql_async_url(url).as_ref(),
             "mysql://host:3306/db?require_ssl=true&verify_ca=false&verify_identity=false"
         );
+    }
+
+    #[test]
+    fn mysql_async_url_translates_disabled_ssl_mode_even_when_param_count_matches() {
+        let url = "mysql://host:3306/db?ssl-mode=disabled";
+
+        assert_eq!(mysql_async_url(url).as_ref(), "mysql://host:3306/db?require_ssl=false");
+    }
+
+    #[test]
+    fn mysql_async_url_translates_verify_identity_ssl_mode_even_when_param_count_matches() {
+        let url = "mysql://host:3306/db?sslmode=verify_identity";
+
+        assert_eq!(mysql_async_url(url).as_ref(), "mysql://host:3306/db?require_ssl=true");
     }
 
     #[test]
