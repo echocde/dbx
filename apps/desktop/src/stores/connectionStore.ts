@@ -655,7 +655,7 @@ export const useConnectionStore = defineStore("connection", () => {
     const shouldRemoveOneTimeConnection = getConfig(connectionId)?.one_time === true;
     await api.disconnectDb(connectionId);
     connectedIds.value.delete(connectionId);
-    const node = treeNodes.value.find((n) => n.connectionId === connectionId);
+    const node = findNode(treeNodes.value, connectionId);
     if (node) {
       node.isExpanded = false;
       node.children = [];
