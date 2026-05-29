@@ -1918,23 +1918,7 @@ function openExternalUrl(url: string) {
                     </label>
                   </div>
 
-                  <div
-                    v-if="
-                      form.db_type === 'mysql' ||
-                      form.db_type === 'postgres' ||
-                      form.db_type === 'redshift' ||
-                      form.db_type === 'informix' ||
-                      form.db_type === 'kingbase' ||
-                      form.db_type === 'highgo' ||
-                      form.db_type === 'yashandb' ||
-                      form.db_type === 'vastbase' ||
-                      form.db_type === 'goldendb' ||
-                      form.db_type === 'clickhouse' ||
-                      form.db_type === 'saphana' ||
-                      form.db_type === 'bigquery'
-                    "
-                    class="grid grid-cols-4 items-center gap-4"
-                  >
+                  <div class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right">{{ t("connection.urlParams") }}</Label>
                     <Input
                       v-model="form.url_params"

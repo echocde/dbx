@@ -353,7 +353,10 @@ impl ConnectionConfig {
             DatabaseType::Firebird => format!("firebird://{host}:{port}{db_part}"),
             DatabaseType::Exasol => format!("exasol://{host}:{port}{db_part}"),
             DatabaseType::OpenGauss => format!("opengauss://{host}:{port}{db_part}"),
-            DatabaseType::OceanbaseOracle => format!("oceanbase-oracle://{host}:{port}{db_part}"),
+            DatabaseType::OceanbaseOracle => {
+                let base = format!("oceanbase-oracle://{host}:{port}{db_part}");
+                if params.is_empty() { base } else { format!("{base}?{params}") }
+            }
             DatabaseType::Gbase => format!("gbase://{host}:{port}{db_part}"),
             DatabaseType::H2 => format!("h2://{host}:{port}{db_part}"),
             DatabaseType::Snowflake => format!("snowflake://{host}/{db_part}"),
@@ -480,7 +483,8 @@ impl ConnectionConfig {
                 format!("opengauss://{}:{}@{host}:{port}{db_part}", username, password)
             }
             DatabaseType::OceanbaseOracle => {
-                format!("oceanbase-oracle://{}:{}@{host}:{port}{db_part}", username, password)
+                let base = format!("oceanbase-oracle://{}:{}@{host}:{port}{db_part}", username, password);
+                if params.is_empty() { base } else { format!("{base}?{params}") }
             }
             DatabaseType::Gbase => {
                 format!("gbase://{}:{}@{host}:{port}{db_part}", username, password)
