@@ -1,4 +1,7 @@
+pub mod agent_catalog;
+pub mod agent_connection;
 pub mod agent_manager;
+pub mod agent_runtime;
 pub mod agent_service;
 pub mod ai;
 pub mod cloud_sync;

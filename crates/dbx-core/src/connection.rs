@@ -1,4 +1,3 @@
-use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -7,6 +6,10 @@ use tokio::sync::RwLock;
 use mysql_async::prelude::Queryable;
 use mysql_async::Row as MysqlRow;
 
+use crate::agent_connection::{
+    agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
+    should_retry_oracle_with_10g_driver,
+};
 use crate::database_capabilities;
 use crate::db;
 use crate::db::agent_driver::AgentMethod;
@@ -769,162 +772,6 @@ fn native_postgres_url_config(config: &ConnectionConfig) -> Option<ConnectionCon
     }
 }
 
-pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> serde_json::Value {
-    let agent_database = if config.db_type == DatabaseType::MongoDb {
-        mongo_agent_database(config, database)
-    } else {
-        database.to_string()
-    };
-    let connection_string = if config.db_type == DatabaseType::MongoDb {
-        config.connection_url_with_host(host, port)
-    } else if config.db_type == DatabaseType::Oracle {
-        oracle_jdbc_connection_string(config, host, port, database)
-    } else if matches!(config.db_type, DatabaseType::Kingbase | DatabaseType::Highgo | DatabaseType::Vastbase) {
-        postgres_like_agent_jdbc_connection_string(config, host, port, database)
-    } else if config.db_type == DatabaseType::SapHana {
-        sap_hana_jdbc_connection_string(config, host, port, database)
-    } else {
-        config.connection_string.as_deref().unwrap_or("").to_string()
-    };
-
-    serde_json::json!({
-        "host": host,
-        "port": port,
-        "database": agent_database,
-        "username": config.username,
-        "password": config.password,
-        "url_params": config.url_params.as_deref().unwrap_or(""),
-        "connection_string": connection_string,
-    })
-}
-
-fn mongo_agent_database(config: &ConnectionConfig, database: &str) -> String {
-    if let Some(database) = non_empty_database(database) {
-        return database.to_string();
-    }
-    if let Some(database) = config.database.as_deref().and_then(non_empty_database) {
-        return database.to_string();
-    }
-    if let Some(database) = config.connection_string.as_deref().and_then(mongo_uri_database) {
-        return database;
-    }
-    "admin".to_string()
-}
-
-fn non_empty_database(database: &str) -> Option<&str> {
-    let database = database.trim();
-    (!database.is_empty()).then_some(database)
-}
-
-fn mongo_uri_database(uri: &str) -> Option<String> {
-    let rest = uri.strip_prefix("mongodb://").or_else(|| uri.strip_prefix("mongodb+srv://"))?;
-    let (_, after_hosts) = rest.split_once('/')?;
-    let database = after_hosts.split(['?', '#']).next()?.trim();
-    if database.is_empty() {
-        return None;
-    }
-    Some(percent_decode_str(database).decode_utf8_lossy().into_owned())
-}
-
-pub fn mongo_legacy_error_with_auth_hint(err: &str) -> String {
-    let Some(source_start) = err.find("source='") else {
-        return err.to_string();
-    };
-    if !err.contains("Exception authenticating MongoCredential") || err.contains("Current authentication database:") {
-        return err.to_string();
-    }
-    let source = &err[source_start + "source='".len()..];
-    let Some(source_end) = source.find('\'') else {
-        return err.to_string();
-    };
-    let source = &source[..source_end];
-    format!(
-        "{err}\n\nCurrent authentication database: {source}. If this user was created in admin, set Authentication database to admin or add authSource=admin to URL params."
-    )
-}
-
-fn oracle_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> String {
-    let database = database.trim();
-    if database.is_empty() {
-        return config.connection_string.as_deref().unwrap_or("").to_string();
-    }
-
-    if config.oracle_connection_type.as_deref() == Some("sid") {
-        format!("jdbc:oracle:thin:@{host}:{port}:{database}")
-    } else {
-        format!("jdbc:oracle:thin:@//{host}:{port}/{database}")
-    }
-}
-
-fn postgres_like_agent_jdbc_connection_string(
-    config: &ConnectionConfig,
-    host: &str,
-    port: u16,
-    database: &str,
-) -> String {
-    let scheme = match config.db_type {
-        DatabaseType::Kingbase => "kingbase8",
-        DatabaseType::Highgo => "highgo",
-        DatabaseType::Vastbase => "vastbase",
-        _ => unreachable!("postgres-like agent JDBC URL requested for {:?}", config.db_type),
-    };
-    let base = format!("jdbc:{scheme}://{host}:{port}/{}", database.trim());
-    append_agent_url_params(base, config.url_params.as_deref())
-}
-
-pub fn should_retry_oracle_with_10g_driver(config: &ConnectionConfig, err: &str) -> bool {
-    if config.db_type != DatabaseType::Oracle {
-        return false;
-    }
-    if config.driver_profile.as_deref() == Some("oracle-10g") {
-        return false;
-    }
-    let normalized = err.to_lowercase();
-    normalized.contains("ora-12541") || normalized.contains("no listener") || err.contains("没有监听程序")
-}
-
-pub fn oracle_alternate_connect_config(config: &ConnectionConfig, err: &str) -> Option<ConnectionConfig> {
-    if !should_retry_oracle_with_10g_driver(config, err) {
-        return None;
-    }
-
-    let mut retry = config.clone();
-    retry.oracle_connection_type =
-        Some(if config.oracle_connection_type.as_deref() == Some("sid") { "service_name" } else { "sid" }.to_string());
-    Some(retry)
-}
-
-fn sap_hana_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> String {
-    let database = database.trim();
-    let params = config.url_params.as_deref().unwrap_or("").trim().trim_start_matches('?');
-    let has_database_name = params
-        .split(['&', ';'])
-        .any(|part| part.split_once('=').map(|(key, _)| key.eq_ignore_ascii_case("databaseName")).unwrap_or(false));
-
-    let mut query_parts = Vec::new();
-    if !database.is_empty() && !has_database_name {
-        query_parts.push(format!("databaseName={}", utf8_percent_encode(database, NON_ALPHANUMERIC)));
-    }
-    if !params.is_empty() {
-        query_parts.push(params.to_string());
-    }
-
-    if query_parts.is_empty() {
-        format!("jdbc:sap://{host}:{port}")
-    } else {
-        format!("jdbc:sap://{host}:{port}/?{}", query_parts.join("&"))
-    }
-}
-
-fn append_agent_url_params(base: String, params: Option<&str>) -> String {
-    let params = params.unwrap_or("").trim().trim_start_matches(['?', '&']);
-    if params.is_empty() {
-        return base;
-    }
-    let separator = if base.contains('?') { '&' } else { '?' };
-    format!("{base}{separator}{params}")
-}
-
 fn duckdb_paths_match(left: &str, right: &str) -> bool {
     let left = expand_tilde(left);
     let right = expand_tilde(right);
@@ -1004,8 +851,12 @@ async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &db::mysql::MySq
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_connect_params, connection_url_for_endpoint, database_connection_config, metadata_connection_config,
+        connection_url_for_endpoint, database_connection_config, metadata_connection_config,
         redacted_connection_url_for_endpoint, uses_tcp_probe, AppState, PoolKind,
+    };
+    use crate::agent_connection::{
+        agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
+        should_retry_oracle_with_10g_driver,
     };
     use crate::db;
     use crate::models::connection::{default_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
@@ -1113,7 +964,7 @@ mod tests {
         let err = "Agent RPC error: Exception authenticating MongoCredential{mechanism=SCRAM-SHA-1, userName='rwuser', source='gray_lite_twin_fat'}";
 
         assert_eq!(
-            super::mongo_legacy_error_with_auth_hint(err),
+            mongo_legacy_error_with_auth_hint(err),
             "Agent RPC error: Exception authenticating MongoCredential{mechanism=SCRAM-SHA-1, userName='rwuser', source='gray_lite_twin_fat'}\n\nCurrent authentication database: gray_lite_twin_fat. If this user was created in admin, set Authentication database to admin or add authSource=admin to URL params."
         );
     }
@@ -1205,20 +1056,14 @@ mod tests {
         config.db_type = DatabaseType::Oracle;
         config.driver_profile = Some("oracle".to_string());
 
-        assert!(super::should_retry_oracle_with_10g_driver(
-            &config,
-            "Agent RPC error (-1): ORA-12541: TNS:no listener"
-        ));
-        assert!(super::should_retry_oracle_with_10g_driver(&config, "host xxx port 1521 中没有监听程序"));
+        assert!(should_retry_oracle_with_10g_driver(&config, "Agent RPC error (-1): ORA-12541: TNS:no listener"));
+        assert!(should_retry_oracle_with_10g_driver(&config, "host xxx port 1521 中没有监听程序"));
 
         config.driver_profile = Some("oracle-10g".to_string());
-        assert!(!super::should_retry_oracle_with_10g_driver(
-            &config,
-            "Agent RPC error (-1): ORA-12541: TNS:no listener"
-        ));
+        assert!(!should_retry_oracle_with_10g_driver(&config, "Agent RPC error (-1): ORA-12541: TNS:no listener"));
 
         config.driver_profile = Some("oracle".to_string());
-        assert!(!super::should_retry_oracle_with_10g_driver(
+        assert!(!should_retry_oracle_with_10g_driver(
             &config,
             "Agent RPC error (-1): ORA-01017: invalid username/password"
         ));
@@ -1231,12 +1076,12 @@ mod tests {
         config.driver_profile = Some("oracle".to_string());
         config.oracle_connection_type = Some("service_name".to_string());
 
-        let retry = super::oracle_alternate_connect_config(&config, "Agent RPC error (-1): ORA-12541: TNS:no listener")
+        let retry = oracle_alternate_connect_config(&config, "Agent RPC error (-1): ORA-12541: TNS:no listener")
             .expect("listener errors should allow alternate descriptor retry");
         assert_eq!(retry.driver_profile.as_deref(), Some("oracle"));
         assert_eq!(retry.oracle_connection_type.as_deref(), Some("sid"));
 
-        let service_retry = super::oracle_alternate_connect_config(
+        let service_retry = oracle_alternate_connect_config(
             &retry,
             "Agent RPC error (-1): ORA-12541: host xxx port 1521 中没有监听程序",
         )
@@ -1250,10 +1095,10 @@ mod tests {
         config.db_type = DatabaseType::Oracle;
         config.driver_profile = Some("oracle".to_string());
 
-        assert!(super::oracle_alternate_connect_config(&config, "ORA-01017: invalid username/password").is_none());
+        assert!(oracle_alternate_connect_config(&config, "ORA-01017: invalid username/password").is_none());
 
         config.driver_profile = Some("oracle-10g".to_string());
-        assert!(super::oracle_alternate_connect_config(&config, "ORA-12541: TNS:no listener").is_none());
+        assert!(oracle_alternate_connect_config(&config, "ORA-12541: TNS:no listener").is_none());
     }
 
     #[test]

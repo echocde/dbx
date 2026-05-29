@@ -1,10 +1,13 @@
 use std::sync::Arc;
 use tauri::State;
 
+pub use dbx_core::agent_connection::{
+    agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
+    should_retry_oracle_with_10g_driver,
+};
 pub use dbx_core::connection::{
-    agent_connect_params, connection_url_for_endpoint, expand_tilde, metadata_connection_config,
-    mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config, probe_connection_endpoint,
-    redacted_connection_url_for_endpoint, should_retry_oracle_with_10g_driver, AppState, MysqlMode, PoolKind,
+    connection_url_for_endpoint, expand_tilde, metadata_connection_config, probe_connection_endpoint,
+    redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
 };
 use dbx_core::database_capabilities;
 use dbx_core::db;
