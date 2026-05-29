@@ -355,7 +355,11 @@ impl ConnectionConfig {
             DatabaseType::OpenGauss => format!("opengauss://{host}:{port}{db_part}"),
             DatabaseType::OceanbaseOracle => {
                 let base = format!("oceanbase-oracle://{host}:{port}{db_part}");
-                if params.is_empty() { base } else { format!("{base}?{params}") }
+                if params.is_empty() {
+                    base
+                } else {
+                    format!("{base}?{params}")
+                }
             }
             DatabaseType::Gbase => format!("gbase://{host}:{port}{db_part}"),
             DatabaseType::H2 => format!("h2://{host}:{port}{db_part}"),
@@ -484,7 +488,11 @@ impl ConnectionConfig {
             }
             DatabaseType::OceanbaseOracle => {
                 let base = format!("oceanbase-oracle://{}:{}@{host}:{port}{db_part}", username, password);
-                if params.is_empty() { base } else { format!("{base}?{params}") }
+                if params.is_empty() {
+                    base
+                } else {
+                    format!("{base}?{params}")
+                }
             }
             DatabaseType::Gbase => {
                 format!("gbase://{}:{}@{host}:{port}{db_part}", username, password)
