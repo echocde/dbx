@@ -54,3 +54,10 @@ export interface TableStructureChangeSql {
   statements: string[];
   warnings: string[];
 }
+
+export interface BuildSingleColumnAlterSqlOptions {
+  databaseType?: DatabaseType;
+  schema?: string;
+  tableName: string;
+  column: EditableStructureColumn;
+}

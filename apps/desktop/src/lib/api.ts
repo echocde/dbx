@@ -34,6 +34,7 @@ function forward<K extends keyof Backend>(name: K): Backend[K] {
 export const testConnection = forward("testConnection");
 export const connectDb = forward("connectDb");
 export const disconnectDb = forward("disconnectDb");
+export const refreshConnections = forward("refreshConnections");
 export const saveConnections = forward("saveConnections");
 export const loadConnections = forward("loadConnections");
 export const listPlugins = forward("listPlugins");
@@ -116,6 +117,7 @@ export const buildRoutineRenameObjectSourceStatements = forward("buildRoutineRen
 export const buildViewDdlSql = forward("buildViewDdlSql");
 export const buildTableStructureChangeSql = forward("buildTableStructureChangeSql");
 export const buildCreateTableSql = forward("buildCreateTableSql");
+export const buildSingleColumnAlterSql = forward("buildSingleColumnAlterSql");
 export const analyzeEditableQueryEditability = forward("analyzeEditableQueryEditability");
 export const prepareDataGridSave = forward("prepareDataGridSave");
 export const buildDataGridCopyUpdateStatements = forward("buildDataGridCopyUpdateStatements");

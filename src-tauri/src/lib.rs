@@ -258,6 +258,7 @@ pub fn run() {
             commands::connection::test_connection,
             commands::connection::connect_db,
             commands::connection::disconnect_db,
+            commands::connection::refresh_connections,
             commands::connection::save_connections,
             commands::connection::load_connections,
             commands::connection::save_sidebar_layout,
@@ -319,6 +320,7 @@ pub fn run() {
             commands::query::build_view_ddl_sql,
             commands::query::build_table_structure_change_sql,
             commands::query::build_create_table_sql,
+            commands::query::build_single_column_alter_sql,
             commands::query::analyze_editable_query_editability,
             commands::query::prepare_data_grid_save,
             commands::query::build_data_grid_copy_update_statements,
@@ -442,6 +444,12 @@ pub fn run() {
                 if !has_visible_windows {
                     show_main_window(app_handle);
                 }
+                let app_handle = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Some(state) = app_handle.try_state::<AppState>() {
+                        state.refresh_connections().await;
+                    }
+                });
             }
         });
 }

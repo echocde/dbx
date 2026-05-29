@@ -41,7 +41,11 @@ import type {
   DataComparePreparationOptions,
 } from "@/lib/dataCompare";
 import type { SchemaDiffPreparation, SchemaDiffPreparationOptions, TableDiff } from "@/lib/schemaDiff";
-import type { BuildTableStructureChangeSqlOptions, TableStructureChangeSql } from "@/lib/tableStructureEditorSql";
+import type {
+  BuildTableStructureChangeSqlOptions,
+  BuildSingleColumnAlterSqlOptions,
+  TableStructureChangeSql,
+} from "@/lib/tableStructureEditorSql";
 import type { BuildTableSelectSqlOptions } from "@/lib/tableSelectSql";
 import type { DatabaseSearchSql, DatabaseSearchSqlOptions, SearchResultWhereOptions } from "@/lib/databaseSearch";
 import type { BuildEditableObjectSourceSqlInput, BuildRoutineRenameObjectSourceInput } from "@/lib/objectSourceEditor";
@@ -452,6 +456,10 @@ export async function executeMulti(
   return invoke("execute_multi", { connectionId, database, sql, schema, executionId, ...options });
 }
 
+export async function refreshConnections(): Promise<void> {
+  return invoke("refresh_connections");
+}
+
 export async function cancelQuery(executionId: string): Promise<boolean> {
   return invoke("cancel_query", { executionId });
 }
@@ -617,6 +625,12 @@ export async function buildCreateTableSql(
   options: BuildTableStructureChangeSqlOptions,
 ): Promise<TableStructureChangeSql> {
   return invoke("build_create_table_sql", { options });
+}
+
+export async function buildSingleColumnAlterSql(
+  options: BuildSingleColumnAlterSqlOptions,
+): Promise<TableStructureChangeSql> {
+  return invoke("build_single_column_alter_sql", { options });
 }
 
 export async function analyzeEditableQueryEditability(sql: string): Promise<QueryEditability> {

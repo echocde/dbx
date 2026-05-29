@@ -168,6 +168,10 @@ async fn main() {
         .route("/query/build-view-ddl-sql", post(routes::query::build_view_ddl_sql))
         .route("/query/build-table-structure-change-sql", post(routes::query::build_table_structure_change_sql))
         .route("/query/build-create-table-sql", post(routes::query::build_create_table_sql))
+        .route(
+            "/query/build-single-column-alter-sql",
+            post(routes::query::build_single_column_alter_sql),
+        )
         .route("/query/analyze-editability", post(routes::query::analyze_editable_query_editability))
         .route("/query/prepare-data-grid-save", post(routes::query::prepare_data_grid_save))
         .route(

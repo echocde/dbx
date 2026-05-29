@@ -496,6 +496,119 @@ pub fn build_create_table_sql(options: TableStructureSqlOptions) -> TableStructu
     TableStructureSqlResult { statements, warnings }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SingleColumnAlterSqlOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_type: Option<DatabaseType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    pub table_name: String,
+    pub column: EditableStructureColumn,
+}
+
+pub fn build_single_column_alter_sql(options: SingleColumnAlterSqlOptions) -> TableStructureSqlResult {
+    let capabilities = capabilities_for(options.database_type);
+    let dialect = capabilities.dialect;
+    let table = qualified_table(dialect, options.schema.as_deref(), &options.table_name);
+    let database_label = database_label(options.database_type);
+    let mut warnings = Vec::new();
+    let mut statements = Vec::new();
+
+    if options.column.marked_for_drop {
+        let Some(original) = &options.column.original else {
+            warnings.push("No original column info available.".to_string());
+            return TableStructureSqlResult { statements, warnings };
+        };
+        if !capabilities.drop_column {
+            warnings.push(format!("Dropping columns is not supported for {database_label} from this editor."));
+            return TableStructureSqlResult { statements, warnings };
+        }
+        if original.is_primary_key {
+            warnings.push(format!("Primary key column \"{}\" cannot be dropped from this editor.", original.name));
+            return TableStructureSqlResult { statements, warnings };
+        }
+        statements.push(format!("ALTER TABLE {table} DROP COLUMN {};", quote_ident(dialect, &original.name)));
+        return TableStructureSqlResult { statements, warnings };
+    }
+
+    let Some(original) = &options.column.original else {
+        warnings.push("This column has no original state — ALTER statements are only available for existing columns.".to_string());
+        return TableStructureSqlResult { statements, warnings };
+    };
+
+    if !has_existing_column_attribute_change(&options.column) && !has_column_extra_change(&options.column) {
+        warnings.push("No changes detected for this column.".to_string());
+        return TableStructureSqlResult { statements, warnings };
+    }
+
+    let has_rename = options.column.name != original.name;
+    let has_attribute_change = options.column.data_type.trim() != original.data_type.trim()
+        || options.column.is_nullable != original.is_nullable
+        || normalize_default(Some(&options.column.default_value)) != original_default(&options.column)
+        || clean(&options.column.comment) != original_comment(&options.column);
+
+    if has_rename && !capabilities.rename_column {
+        warnings.push(format!("Renaming columns is not supported for {database_label} from this editor."));
+    }
+    if has_attribute_change && !capabilities.alter_existing_column && dialect != StructureDialect::Sqlite {
+        warnings.push(format!("Editing existing columns is not supported for {database_label} yet."));
+    }
+
+    if (has_rename && !capabilities.rename_column)
+        || (has_attribute_change && !capabilities.alter_existing_column && dialect != StructureDialect::Sqlite)
+    {
+        return TableStructureSqlResult { statements, warnings };
+    }
+
+    match dialect {
+        StructureDialect::Mysql => statements.extend(build_mysql_existing_column_sql(&table, &options.column, "")),
+        StructureDialect::Postgres => statements.extend(build_postgres_existing_column_sql(&table, &options.column)),
+        StructureDialect::Oracle => {
+            statements.extend(build_oracle_like_existing_column_sql(dialect, &table, &options.column))
+        }
+        StructureDialect::H2 => statements.extend(build_h2_existing_column_sql(&table, &options.column)),
+        StructureDialect::ClickHouse => {
+            statements.extend(build_clickhouse_existing_column_sql(&table, &options.column, ""))
+        }
+        StructureDialect::SqlServer => statements.extend(build_sqlserver_existing_column_sql(
+            &table,
+            &options.column,
+            options.schema.as_deref(),
+            &options.table_name,
+        )),
+        StructureDialect::Sqlite => {
+            statements.extend(build_sqlite_existing_column_sql(&table, &options.column, &mut warnings))
+        }
+        _ => warnings.push(format!("Editing existing columns is not supported for {database_label} yet.")),
+    }
+
+    TableStructureSqlResult { statements, warnings }
+}
+
+fn has_column_extra_change(column: &EditableStructureColumn) -> bool {
+    let Some(original) = &column.original else { return false };
+    let current_extra = column.extra.as_ref();
+    match (current_extra, original.extra.as_deref()) {
+        // Neither has extra → no change
+        (None, None | Some("")) => false,
+        // Extra added or removed
+        (Some(_), None | Some("")) => true,
+        (None, Some(_)) => true,
+        // Both have extra → check auto_increment and on_update_current_timestamp flags
+        (Some(curr), Some(orig)) => {
+            let orig_lower = orig.to_lowercase();
+            let curr_has_ai = curr.auto_increment.unwrap_or(false);
+            let orig_has_ai = orig_lower.contains("auto_increment");
+            let curr_has_on_update = curr.on_update_current_timestamp.unwrap_or(false);
+            let orig_has_on_update = orig_lower.contains("on update");
+            let curr_has_identity = curr.identity.is_some();
+            // identity is harder to detect in free-form original.extra, so treat it as changed if present
+            curr_has_ai != orig_has_ai || curr_has_on_update != orig_has_on_update || curr_has_identity
+        }
+    }
+}
+
 fn build_column_sql(options: &TableStructureSqlOptions, warnings: &mut Vec<String>) -> Vec<String> {
     let capabilities = capabilities_for(options.database_type);
     let dialect = capabilities.dialect;

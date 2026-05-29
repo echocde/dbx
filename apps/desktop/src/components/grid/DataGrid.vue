@@ -65,6 +65,8 @@ import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
 import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database";
 import * as api from "@/lib/api";
+import { createColumnDrafts } from "@/lib/tableStructureEditorState";
+import type { BuildSingleColumnAlterSqlOptions } from "@/lib/tableStructureEditorSql";
 import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { uuid } from "@/lib/utils";
 import {
@@ -3224,6 +3226,54 @@ async function copyHeaderColumn() {
   if (!contextHeaderColumn.value) return;
   await copyText(contextHeaderColumn.value);
 }
+
+const canCopyAlterColumnSql = computed(() => {
+  if (!contextHeaderColumn.value || !props.tableMeta?.columns) return false;
+  return props.tableMeta.columns.some((c) => c.name.toLowerCase() === contextHeaderColumn.value!.toLowerCase());
+});
+
+async function copyAlterColumnSql() {
+  if (!contextHeaderColumn.value) return;
+  const colName = contextHeaderColumn.value;
+  const columnInfo = props.tableMeta?.columns.find((c) => c.name.toLowerCase() === colName.toLowerCase());
+  if (!columnInfo) return;
+
+  const [draft] = createColumnDrafts([columnInfo], props.databaseType);
+  draft.original = { ...columnInfo };
+  draft.original.data_type = "";
+  draft.original.is_nullable = !columnInfo.is_nullable;
+  draft.original.column_default = null;
+  draft.original.comment = null;
+  draft.original.extra = null;
+
+  const options: BuildSingleColumnAlterSqlOptions = {
+    databaseType: props.databaseType,
+    schema: props.tableMeta?.schema,
+    tableName: props.tableMeta!.tableName,
+    column: draft,
+  };
+
+  const sqlPromise = api.buildSingleColumnAlterSql(options).then((result) => {
+    const sql = result.statements.join("\n");
+    if (!sql) throw new Error(t("grid.noAlterSqlAvailable"));
+    return { sql, warnings: result.warnings };
+  });
+
+  try {
+    const item = new ClipboardItem({
+      "text/plain": sqlPromise.then(({ sql }) => new Blob([sql], { type: "text/plain" })),
+    });
+    await navigator.clipboard.write([item]);
+    const { warnings } = await sqlPromise;
+    if (warnings.length > 0) {
+      toast(t("grid.alterSqlCopiedWithWarnings", { count: warnings.length }), 3000);
+    } else {
+      toast(t("grid.alterSqlCopied"), 2000);
+    }
+  } catch (e: any) {
+    toast(t("grid.copyAlterSqlFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
 function onCellContext(rowId: number, rowIndex: number, colIdx: number, visibleColIdx: number) {
   contextHeaderColumn.value = null;
   contextCell.value = { rowId, rowIndex, col: colIdx };
@@ -3731,6 +3781,9 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
   // 1. Copy column name
   if (contextHeaderColumn.value) {
     items.push({ label: t("grid.copyColumnName"), action: copyHeaderColumn, icon: Copy });
+    if (canCopyAlterColumnSql.value) {
+      items.push({ label: t("grid.copyAlterColumnSql"), action: copyAlterColumnSql, icon: Copy });
+    }
   }
 
   // 2. Column sort & filter
