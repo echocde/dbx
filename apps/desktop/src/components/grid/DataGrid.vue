@@ -2975,7 +2975,48 @@ async function copyDetailSqlCondition() {
 const TRANSPOSE_RECORD_DEFAULT_WIDTH = 168;
 const TRANSPOSE_RECORD_MIN_WIDTH = 96;
 const TRANSPOSE_PINNED_MIN_WIDTH = 104;
-const transposeRecordWidth = ref(TRANSPOSE_RECORD_DEFAULT_WIDTH);
+const transposeRecordWidths = ref<number[]>([]);
+
+function calcTransposeRecordWidth(recordIndex: number): number {
+  const item = displayItems.value[recordIndex];
+  if (!item) return TRANSPOSE_RECORD_DEFAULT_WIDTH;
+  let maxWidth = TRANSPOSE_RECORD_MIN_WIDTH;
+  const charWidth = 8;
+  const padding = 28;
+  for (const value of item.data) {
+    const text = value === null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+    const displayLen = Math.min(text.length, 60);
+    const width = displayLen * charWidth + padding;
+    if (width > maxWidth) maxWidth = width;
+  }
+  return Math.max(TRANSPOSE_RECORD_MIN_WIDTH, Math.min(400, Math.round(maxWidth)));
+}
+
+function getTransposeRecordWidth(recordIndex: number): number {
+  return transposeRecordWidths.value[recordIndex] ?? TRANSPOSE_RECORD_DEFAULT_WIDTH;
+}
+
+function ensureTransposeRecordWidths(count: number) {
+  if (transposeRecordWidths.value.length !== count) {
+    const prev = transposeRecordWidths.value;
+    const next = new Array(count);
+    for (let i = 0; i < count; i++) {
+      next[i] = i < prev.length ? prev[i] : calcTransposeRecordWidth(i);
+    }
+    transposeRecordWidths.value = next;
+  }
+}
+
+function estimatedTransposeRecordWidth(): number {
+  const widths = transposeRecordWidths.value;
+  if (widths.length === 0) return TRANSPOSE_RECORD_DEFAULT_WIDTH;
+  return widths.reduce((sum, w) => sum + w, 0) / widths.length;
+}
+
+watch(
+  () => displayItems.value.length,
+  (count) => ensureTransposeRecordWidths(count),
+);
 const transposePinnedWidthOverride = ref<number | null>(null);
 const transposePinnedWidth = computed(
   () => transposePinnedWidthOverride.value ?? transposeFieldWidth(visibleColumns.value),
@@ -2987,7 +3028,7 @@ const transposeRecordWindow = computed(() =>
     scrollLeft: transposeScrollLeft.value,
     viewportWidth: transposeViewportWidth.value,
     pinnedWidth: transposePinnedWidth.value,
-    recordWidth: transposeRecordWidth.value,
+    recordWidth: estimatedTransposeRecordWidth(),
     overscan: 2,
   }),
 );
@@ -3007,7 +3048,7 @@ const transposeRows = computed(() => {
 });
 const isTransposeMode = computed(() => showTranspose.value && transposeRows.value.length > 0);
 const transposeTotalWidth = computed(
-  () => transposePinnedWidth.value + displayItems.value.length * transposeRecordWidth.value,
+  () => transposePinnedWidth.value + displayItems.value.reduce((sum, _, i) => sum + getTransposeRecordWidth(i), 0),
 );
 
 function transposeScrollElement(): HTMLElement | undefined {
@@ -3036,7 +3077,7 @@ function scrollTransposeRecordIntoView(rowIndex: number) {
       totalRecords: displayItems.value.length,
       viewportWidth: el.clientWidth,
       pinnedWidth: transposePinnedWidth.value,
-      recordWidth: transposeRecordWidth.value,
+      recordWidth: estimatedTransposeRecordWidth(),
     });
     updateTransposeViewport();
   });
@@ -3074,12 +3115,15 @@ function onTransposePinnedResizeStart(event: MouseEvent) {
   document.addEventListener("mouseup", onUp);
 }
 
-function onTransposeRecordResizeStart(event: MouseEvent) {
+function onTransposeRecordResizeStart(recordIndex: number, event: MouseEvent) {
   event.preventDefault();
+  ensureTransposeRecordWidths(displayItems.value.length);
   const startX = event.clientX;
-  const startWidth = transposeRecordWidth.value;
+  const startWidth = getTransposeRecordWidth(recordIndex);
   const onMove = (e: MouseEvent) => {
-    transposeRecordWidth.value = Math.max(TRANSPOSE_RECORD_MIN_WIDTH, startWidth + e.clientX - startX);
+    const next = [...transposeRecordWidths.value];
+    next[recordIndex] = Math.max(TRANSPOSE_RECORD_MIN_WIDTH, startWidth + e.clientX - startX);
+    transposeRecordWidths.value = next;
     updateTransposeViewport();
   };
   const onUp = () => {
@@ -3088,6 +3132,13 @@ function onTransposeRecordResizeStart(event: MouseEvent) {
   };
   document.addEventListener("mousemove", onMove);
   document.addEventListener("mouseup", onUp);
+}
+
+function autoFitTransposeRecord(recordIndex: number) {
+  ensureTransposeRecordWidths(displayItems.value.length);
+  const next = [...transposeRecordWidths.value];
+  next[recordIndex] = calcTransposeRecordWidth(recordIndex);
+  transposeRecordWidths.value = next;
 }
 
 function currentTransposeViewportRowIndex(): number {
@@ -4372,7 +4423,6 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 :style="{
                   '--transpose-total-w': `${transposeTotalWidth}px`,
                   '--transpose-field-w': `${transposePinnedWidth}px`,
-                  '--transpose-record-w': `${transposeRecordWidth}px`,
                 }"
                 :items="transposeRows"
                 :item-size="30"
@@ -4410,14 +4460,15 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           !transposeRecordUsesActiveHighlight(recordIndex) &&
                           !transposeRecordUsesFramedHeader(recordIndex),
                       }"
-                      :style="{ width: `${transposeRecordWidth}px` }"
+                      :style="{ width: `${getTransposeRecordWidth(recordIndex)}px` }"
                       @click="selectTransposeRecord(recordIndex, $event)"
                       @contextmenu="selectTransposeRecord(recordIndex, $event)"
                     >
                       {{ recordIndex + 1 }}
                       <div
                         class="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30"
-                        @mousedown.stop="onTransposeRecordResizeStart"
+                        @mousedown.stop="onTransposeRecordResizeStart(recordIndex, $event)"
+                        @dblclick.stop="autoFitTransposeRecord(recordIndex)"
                       />
                     </div>
                     <div class="shrink-0" :style="{ width: `${transposeRecordWindow.afterWidth}px` }" />
@@ -4469,7 +4520,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           !transposeRecordUsesActiveHighlight(cell.recordIndex) &&
                           !transposeCellIsSelected(cell.recordIndex, cell.valueIndex),
                       }"
-                      :style="{ width: `${transposeRecordWidth}px` }"
+                      :style="{ width: `${getTransposeRecordWidth(cell.recordIndex)}px` }"
                       :title="cell.display"
                       @click="selectTransposeCell(cell.recordIndex, cell.valueIndex, $event)"
                       @mouseenter="onTransposeCellMouseenter(cell.recordIndex, cell.valueIndex)"
