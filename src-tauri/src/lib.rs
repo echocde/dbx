@@ -19,6 +19,8 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 const DESKTOP_TRAY_ID: &str = "main-tray";
+#[cfg(target_os = "macos")]
+const MACOS_TRAY_ICON: tauri::image::Image<'_> = tauri::include_image!("icons/tray-macos-template.png");
 
 fn should_hide_window_on_close(target_os: &str) -> bool {
     matches!(target_os, "macos" | "windows")
@@ -56,8 +58,15 @@ fn setup_desktop_tray<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::R
     let menu = MenuBuilder::new(manager).text("show", "Show DBX").separator().text("quit", "Quit DBX").build()?;
     let mut tray =
         TrayIconBuilder::<R>::with_id(DESKTOP_TRAY_ID).tooltip("DBX").menu(&menu).show_menu_on_left_click(false);
-    if let Some(icon) = manager.app_handle().default_window_icon().cloned() {
-        tray = tray.icon(icon);
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.icon(MACOS_TRAY_ICON).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(icon) = manager.app_handle().default_window_icon().cloned() {
+            tray = tray.icon(icon);
+        }
     }
 
     tray.on_menu_event(|app, event| {
