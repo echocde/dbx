@@ -167,7 +167,7 @@ Download the latest release from the [Releases](https://github.com/t8y2/dbx/rele
 **Homebrew (macOS):**
 
 ```bash
-brew install --cask dbx
+brew install --cask t8y2/tap/dbx
 ```
 
 **Scoop (Windows):**
