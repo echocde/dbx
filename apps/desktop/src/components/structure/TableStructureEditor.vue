@@ -43,7 +43,7 @@ import {
   combineDataTypeForDatabase,
   createColumnDrafts,
   createIndexDrafts,
-  DATA_TYPE_OPTIONS,
+  getDataTypeOptions,
   getDefaultLengthForType,
   splitDataType,
   toColumnNames,
@@ -137,7 +137,7 @@ const connection = computed(() => (props.connectionId ? store.getConfig(props.co
 const databaseType = computed(() => connection.value?.db_type);
 const structureCapabilities = computed(() => getTableStructureCapabilities(databaseType.value));
 const isTableCommentDisabled = computed(() => !structureCapabilities.value.comment);
-const dataTypeOptions = computed(() => DATA_TYPE_OPTIONS[databaseType.value ?? ""] ?? []);
+const dataTypeOptions = computed(() => getDataTypeOptions(databaseType.value));
 
 const indexTypesByDb: Record<string, string[]> = {
   postgres: ["BTREE", "HASH", "GIST", "SPGIST", "GIN", "BRIN"],
