@@ -848,6 +848,7 @@ export default {
     procedures: "Procedimientos",
     functions: "Funciones",
     table: "Tabla",
+    partitions: "{count} particiones",
     view: "Vista",
     procedure: "Procedimiento",
     function: "Función",

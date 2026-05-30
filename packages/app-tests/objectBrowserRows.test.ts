@@ -74,6 +74,28 @@ test("object browser rows preserve table timestamps and sort recent updates firs
   assert.equal(formatObjectBrowserTimestamp(rows[0].created_at), "2026-05-20 09:30:00");
 });
 
+test("object browser rows mark partition-like tables when their parent table exists", () => {
+  const rows = buildObjectBrowserRows({
+    objects: [
+      { name: "order_data", object_type: "TABLE", schema: "public" },
+      { name: "order_data_p20220802", object_type: "TABLE", schema: "public" },
+      { name: "order_data_p20220803", object_type: "TABLE", schema: "public" },
+      { name: "audit_p20220802", object_type: "TABLE", schema: "public" },
+    ],
+    database: "app",
+    fallbackSchema: "public",
+    needsSchema: true,
+  });
+
+  const parent = rows.find((row) => row.name === "order_data");
+  assert.equal(parent?.partitionCount, 2);
+  assert.deepEqual(
+    rows.filter((row) => row.partitionParentId === parent?.id).map((row) => row.name),
+    ["order_data_p20220802", "order_data_p20220803"],
+  );
+  assert.equal(rows.find((row) => row.name === "audit_p20220802")?.partitionParentId, undefined);
+});
+
 test("object browser timestamp display strips timezone suffixes", () => {
   assert.equal(formatObjectBrowserTimestamp("2026-05-22 10:18:24+08"), "2026-05-22 10:18:24");
   assert.equal(formatObjectBrowserTimestamp("2026-05-22 10:18:24.123456+08:00"), "2026-05-22 10:18:24");

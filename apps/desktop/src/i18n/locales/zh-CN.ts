@@ -933,6 +933,7 @@ export default {
     procedures: "存储过程",
     functions: "函数",
     table: "表",
+    partitions: "{count} 个分区",
     view: "视图",
     procedure: "存储过程",
     function: "函数",

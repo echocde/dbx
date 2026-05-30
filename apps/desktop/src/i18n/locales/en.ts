@@ -955,6 +955,7 @@ export default {
     procedures: "Procedures",
     functions: "Functions",
     table: "Table",
+    partitions: "{count} partitions",
     view: "View",
     procedure: "Procedure",
     function: "Function",
