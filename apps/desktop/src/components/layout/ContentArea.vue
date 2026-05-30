@@ -293,6 +293,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
               :model-value="activeTab.sql"
               :connection-id="activeTab.connectionId"
               :database="activeTab.database"
+              :database-type="activeConnection?.db_type"
               :dialect="editorDialect"
               :format-dialect="activeSqlFormatDialect"
               :format-request-id="formatSqlRequestId"

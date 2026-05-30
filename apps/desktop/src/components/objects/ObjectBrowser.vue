@@ -1391,6 +1391,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
             class="min-h-0 flex-1"
             :connection-id="props.connection.id"
             :database="props.database"
+            :database-type="props.connection.db_type"
             :dialect="sourceDialect"
             :format-dialect="sourceFormatDialect"
             force-word-wrap
@@ -1407,6 +1408,7 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
           class="min-h-0 flex-1"
           :connection-id="props.connection.id"
           :database="props.database"
+          :database-type="props.connection.db_type"
           :dialect="sourceDialect"
           :format-dialect="sourceFormatDialect"
           force-word-wrap

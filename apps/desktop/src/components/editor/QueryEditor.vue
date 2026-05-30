@@ -25,6 +25,11 @@ import {
 import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigation";
 import { lineColumnToOffset, parseSqlErrorLocation } from "@/lib/sqlDiagnostics";
 import {
+  DBX_TABLE_REFERENCE_MIME,
+  parseTableReferencePayload,
+  tableReferenceInsertText,
+} from "@/lib/queryEditorTableDrop";
+import {
   EDITOR_FONT_FAMILY_CSS_VAR,
   EDITOR_FONT_SIZE_CSS_VAR,
   loadEditorTheme,
@@ -47,13 +52,14 @@ import {
   type SqlSemanticDiagnostic,
 } from "@/lib/sqlSemanticDiagnostics";
 import type { SqlCompletionColumn } from "@/lib/sqlCompletion";
-import type { SqlReferenceAnalysis, SqlTableReference, SqlTextSpan } from "@/types/database";
+import type { DatabaseType, SqlReferenceAnalysis, SqlTableReference, SqlTextSpan } from "@/types/database";
 import { vscodeSelectionLayer } from "@/lib/codemirrorVscodeSelectionLayer";
 
 const props = defineProps<{
   modelValue: string;
   connectionId?: string;
   database?: string;
+  databaseType?: DatabaseType;
   dialect?: "mysql" | "postgres" | "sqlserver";
   formatDialect?: SqlFormatDialect;
   formatRequestId?: number;
@@ -715,6 +721,33 @@ async function formatCurrentSql() {
   }
 }
 
+function droppedTableReference(event: DragEvent) {
+  return parseTableReferencePayload(event.dataTransfer?.getData(DBX_TABLE_REFERENCE_MIME));
+}
+
+function insertDroppedTableReference(currentView: EditorViewType, event: DragEvent): boolean {
+  if (props.readOnly) return false;
+  const payload = droppedTableReference(event);
+  if (!payload) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const insertText = tableReferenceInsertText(payload, props.databaseType);
+  const dropPos = currentView.posAtCoords({ x: event.clientX, y: event.clientY });
+  const selection = currentView.state.selection.main;
+  const from = dropPos ?? selection.from;
+  const to = dropPos == null && !selection.empty ? selection.to : from;
+  currentView.dispatch({
+    changes: { from, to, insert: insertText },
+    selection: { anchor: from + insertText.length },
+    scrollIntoView: true,
+    userEvent: "input.drop",
+  });
+  currentView.focus();
+  return true;
+}
+
 let completionEpoch = 0;
 let completionDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1249,6 +1282,15 @@ onMounted(async () => {
         }),
       ),
       EditorView.domEventHandlers({
+        dragover(event) {
+          if (props.readOnly || !droppedTableReference(event)) return false;
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+          return true;
+        },
+        drop(event, currentView) {
+          return insertDroppedTableReference(currentView, event);
+        },
         wheel(event) {
           if (!event.metaKey && !event.ctrlKey) return false;
           event.preventDefault();

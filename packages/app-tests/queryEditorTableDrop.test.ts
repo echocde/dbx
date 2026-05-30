@@ -1,0 +1,78 @@
+import { strict as assert } from "node:assert";
+import test from "node:test";
+import {
+  createTableReferencePayload,
+  parseTableReferencePayload,
+  serializeTableReferencePayload,
+  tableReferenceInsertText,
+} from "../../apps/desktop/src/lib/queryEditorTableDrop.ts";
+
+test("creates table drag payload only when table context is complete", () => {
+  assert.equal(createTableReferencePayload({ connectionId: "c1", database: "db" }), null);
+  assert.deepEqual(
+    createTableReferencePayload({
+      connectionId: "c1",
+      database: "db",
+      schema: "public",
+      tableName: "very long table",
+      databaseType: "postgres",
+    }),
+    {
+      kind: "dbx-table-reference",
+      connectionId: "c1",
+      database: "db",
+      schema: "public",
+      tableName: "very long table",
+      databaseType: "postgres",
+    },
+  );
+});
+
+test("round trips table drag payload and rejects unrelated data", () => {
+  const payload = createTableReferencePayload({
+    connectionId: "c1",
+    database: "db",
+    tableName: "orders",
+    databaseType: "mysql",
+  });
+  assert.ok(payload);
+  assert.deepEqual(parseTableReferencePayload(serializeTableReferencePayload(payload)), payload);
+  assert.equal(parseTableReferencePayload("not json"), null);
+  assert.equal(parseTableReferencePayload(JSON.stringify({ kind: "dbx-table-reference", tableName: "orders" })), null);
+});
+
+test("formats dropped table reference for the source database type", () => {
+  assert.equal(
+    tableReferenceInsertText({
+      kind: "dbx-table-reference",
+      connectionId: "c1",
+      database: "db",
+      schema: "sales",
+      tableName: "customer order",
+      databaseType: "postgres",
+    }),
+    '"sales"."customer order"',
+  );
+  assert.equal(
+    tableReferenceInsertText({
+      kind: "dbx-table-reference",
+      connectionId: "c1",
+      database: "db",
+      schema: "dbo",
+      tableName: "Order Detail",
+      databaseType: "sqlserver",
+    }),
+    "[dbo].[Order Detail]",
+  );
+  assert.equal(
+    tableReferenceInsertText({
+      kind: "dbx-table-reference",
+      connectionId: "c1",
+      database: "db",
+      schema: "ignored",
+      tableName: "order-detail",
+      databaseType: "mysql",
+    }),
+    "`order-detail`",
+  );
+});
