@@ -522,6 +522,7 @@ fn mysql_error_should_retry_without_ssl(error: &str) -> bool {
 fn mysql_error_should_retry_with_text_protocol(error: &str) -> bool {
     let lower = error.to_ascii_lowercase();
     (lower.contains("1105") && lower.contains("hy000"))
+        || lower.contains("com_stmt_prepare")
         || lower.contains("prepared statement protocol")
         || lower.contains("this command is not supported in the prepared statement protocol yet")
 }
@@ -1310,6 +1311,13 @@ mod tests {
     #[test]
     fn mysql_unknown_error_can_retry_with_text_protocol() {
         let error = "error returned from database: 1105 (HY000): Unknown error";
+
+        assert!(mysql_error_should_retry_with_text_protocol(error));
+    }
+
+    #[test]
+    fn mysql_unsupported_prepare_command_can_retry_with_text_protocol() {
+        let error = "ERROR PX000 (3000): [a2jupsonbbv6zai1gomo5whu36ndqy] Unsupported command: COM_STMT_PREPARE";
 
         assert!(mysql_error_should_retry_with_text_protocol(error));
     }
