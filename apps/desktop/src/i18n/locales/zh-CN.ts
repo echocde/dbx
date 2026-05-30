@@ -385,6 +385,7 @@ export default {
     noFilteredRows: "没有符合条件的行",
     noFilteredRowsDescription: "调整搜索词或状态筛选试试。",
     copy: "复制",
+    copyDdl: "复制 DDL",
     copyCell: "复制单元格",
     copyRow: "复制行 (JSON)",
     copyColumnJson: "复制列 (JSON)",

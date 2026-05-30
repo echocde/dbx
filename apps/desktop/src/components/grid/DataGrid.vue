@@ -332,7 +332,7 @@ const rowDetailDialogOpen = ref(false);
 const rowDetailDialogRowId = ref<number | null>(null);
 const columnDetailDialogOpen = ref(false);
 const columnDetailDialogColumnIndex = ref<number | null>(null);
-const detailWidth = ref(320);
+const detailWidth = ref(settingsStore.editorSettings.cellDetailDrawerWidth);
 const isResizingDetail = ref(false);
 const imagePreviewOpen = ref(false);
 const imagePreviewSrc = ref("");
@@ -2845,9 +2845,23 @@ function openImagePreview(src: string, title: string) {
   imagePreviewOpen.value = true;
 }
 
+function selectionNodeElement(node: Node | null): Element | null {
+  if (!node) return null;
+  return node instanceof Element ? node : node.parentElement;
+}
+
+function hasNativeClipboardSelection(): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) return false;
+  const anchorRegion = selectionNodeElement(selection.anchorNode)?.closest("[data-native-clipboard]");
+  const focusRegion = selectionNodeElement(selection.focusNode)?.closest("[data-native-clipboard]");
+  return !!anchorRegion && anchorRegion === focusRegion;
+}
+
 function eventTargetAllowsNativeClipboard(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null;
-  return !!target?.closest("input, textarea, [contenteditable='true'], [role='textbox']");
+  if (target?.closest("input, textarea, [contenteditable='true'], [role='textbox']")) return true;
+  return clipboardShortcut(event, "c") && hasNativeClipboardSelection();
 }
 
 function clipboardShortcut(event: KeyboardEvent, key: string): boolean {
@@ -3590,11 +3604,14 @@ const sqlOneLiner = computed(() => props.sql?.replace(/\s+/g, " ").trim() || "")
 
 type TableInfoTab = "columns" | "indexes" | "foreignKeys" | "triggers" | "ddl";
 
+const TABLE_INFO_DRAWER_MIN_WIDTH = 240;
+const CELL_DETAIL_DRAWER_MIN_WIDTH = 260;
+const DRAWER_MAX_WIDTH = 900;
 const showTableInfo = globalDdlOpen;
 const activeTableInfoTab = ref<TableInfoTab>("columns");
 const ddlContent = ref("");
 const ddlLoading = ref(false);
-const ddlWidth = ref(320);
+const ddlWidth = ref(settingsStore.editorSettings.tableInfoDrawerWidth);
 const ddlWrap = ref(true);
 const isResizingDdl = ref(false);
 let ddlResizeStartX = 0;
@@ -3618,6 +3635,20 @@ const searchQuery = ref("");
 watch(activeTableInfoTab, () => {
   searchQuery.value = "";
 });
+
+watch(
+  () => settingsStore.editorSettings.tableInfoDrawerWidth,
+  (width) => {
+    if (!isResizingDdl.value) ddlWidth.value = width;
+  },
+);
+
+watch(
+  () => settingsStore.editorSettings.cellDetailDrawerWidth,
+  (width) => {
+    if (!isResizingDetail.value) detailWidth.value = width;
+  },
+);
 
 const ddlDrawerStyle = computed(() => ({
   width: `${ddlWidth.value}px`,
@@ -3823,10 +3854,13 @@ function onDdlResizeStart(event: MouseEvent) {
 function onDdlResizeMove(event: MouseEvent) {
   if (!isResizingDdl.value) return;
   const nextWidth = ddlResizeStartWidth + ddlResizeStartX - event.clientX;
-  ddlWidth.value = Math.min(Math.max(nextWidth, 240), 900);
+  ddlWidth.value = Math.min(Math.max(nextWidth, TABLE_INFO_DRAWER_MIN_WIDTH), DRAWER_MAX_WIDTH);
 }
 
 function onDdlResizeEnd() {
+  if (isResizingDdl.value) {
+    settingsStore.updateEditorSettings({ tableInfoDrawerWidth: ddlWidth.value });
+  }
   isResizingDdl.value = false;
   document.body.classList.remove("select-none", "cursor-col-resize");
   window.removeEventListener("mousemove", onDdlResizeMove);
@@ -3845,10 +3879,13 @@ function onDetailResizeStart(event: MouseEvent) {
 function onDetailResizeMove(event: MouseEvent) {
   if (!isResizingDetail.value) return;
   const nextWidth = detailResizeStartWidth + detailResizeStartX - event.clientX;
-  detailWidth.value = Math.min(Math.max(nextWidth, 260), 900);
+  detailWidth.value = Math.min(Math.max(nextWidth, CELL_DETAIL_DRAWER_MIN_WIDTH), DRAWER_MAX_WIDTH);
 }
 
 function onDetailResizeEnd() {
+  if (isResizingDetail.value) {
+    settingsStore.updateEditorSettings({ cellDetailDrawerWidth: detailWidth.value });
+  }
   isResizingDetail.value = false;
   document.body.classList.remove("select-none", "cursor-col-resize");
   window.removeEventListener("mousemove", onDetailResizeMove);
@@ -5515,8 +5552,17 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             <div class="flex items-center gap-2 px-3 py-1.5 border-b shrink-0 bg-muted/20">
               <TableProperties class="w-3.5 h-3.5 text-muted-foreground" />
               <span class="text-xs font-medium flex-1 min-w-0 truncate">{{ tableMeta?.tableName }}</span>
-              <Button v-if="activeTableInfoTab === 'ddl'" variant="ghost" size="icon" class="h-5 w-5" @click="copyDdl">
+              <Button
+                v-if="activeTableInfoTab === 'ddl'"
+                variant="ghost"
+                size="sm"
+                class="h-6 px-2 text-xs"
+                :title="t('grid.copyDdl')"
+                :aria-label="t('grid.copyDdl')"
+                @click="copyDdl"
+              >
                 <Copy class="w-3 h-3" />
+                <span>{{ t("grid.copyDdl") }}</span>
               </Button>
               <Button
                 v-if="activeTableInfoTab === 'ddl'"
@@ -5689,6 +5735,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
             <pre
               v-else-if="activeTableInfoTab === 'ddl' && !ddlLoading"
+              data-native-clipboard
               class="flex-1 min-w-0 text-xs font-mono p-3 overflow-auto ddl-code leading-5 select-text"
               :class="ddlWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'"
               v-html="filteredDdlContent"

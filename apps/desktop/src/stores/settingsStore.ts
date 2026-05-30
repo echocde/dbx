@@ -183,6 +183,8 @@ export interface EditorSettings {
   mongoViewMode: "document" | "table";
   showColumnCommentsInHeader: boolean;
   compactColumnHeaderActions: boolean;
+  tableInfoDrawerWidth: number;
+  cellDetailDrawerWidth: number;
   shortcuts: ShortcutSettings;
   sidebarActivation: SidebarActivation;
   sidebarObjectDisplay: "grouped" | "simple";
@@ -233,6 +235,8 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   mongoViewMode: "document",
   showColumnCommentsInHeader: false,
   compactColumnHeaderActions: true,
+  tableInfoDrawerWidth: 320,
+  cellDetailDrawerWidth: 320,
   shortcuts: normalizeShortcutSettings(),
   sidebarActivation: "single",
   sidebarObjectDisplay: "grouped",
@@ -252,6 +256,11 @@ const MAX_UI_SCALE = 2;
 function normalizeUiScale(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_EDITOR_SETTINGS.uiScale;
   return Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, Math.round(value * 100) / 100));
+}
+
+function normalizeDrawerWidth(value: unknown, min: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(900, Math.max(min, Math.round(value)));
 }
 
 function normalizeColumnFormatters(value: unknown): Record<string, ColumnFormatterConfig> {
@@ -317,6 +326,16 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
       settings.showColumnCommentsInHeader ?? DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader,
     compactColumnHeaderActions:
       settings.compactColumnHeaderActions ?? DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions,
+    tableInfoDrawerWidth: normalizeDrawerWidth(
+      settings.tableInfoDrawerWidth,
+      240,
+      DEFAULT_EDITOR_SETTINGS.tableInfoDrawerWidth,
+    ),
+    cellDetailDrawerWidth: normalizeDrawerWidth(
+      settings.cellDetailDrawerWidth,
+      260,
+      DEFAULT_EDITOR_SETTINGS.cellDetailDrawerWidth,
+    ),
     shortcuts: normalizeShortcutSettings(settings.shortcuts),
     sidebarActivation:
       settings.sidebarActivation === "single" || settings.sidebarActivation === "double"
@@ -447,6 +466,10 @@ export const useSettingsStore = defineStore("settings", () => {
       editorSettings.value.showColumnCommentsInHeader = partial.showColumnCommentsInHeader;
     if (partial.compactColumnHeaderActions !== undefined)
       editorSettings.value.compactColumnHeaderActions = partial.compactColumnHeaderActions;
+    if (partial.tableInfoDrawerWidth !== undefined)
+      editorSettings.value.tableInfoDrawerWidth = normalizeDrawerWidth(partial.tableInfoDrawerWidth, 240, 320);
+    if (partial.cellDetailDrawerWidth !== undefined)
+      editorSettings.value.cellDetailDrawerWidth = normalizeDrawerWidth(partial.cellDetailDrawerWidth, 260, 320);
     if (partial.shortcuts !== undefined) editorSettings.value.shortcuts = normalizeShortcutSettings(partial.shortcuts);
     if (partial.sidebarActivation !== undefined) editorSettings.value.sidebarActivation = partial.sidebarActivation;
     if (partial.sidebarObjectDisplay !== undefined)

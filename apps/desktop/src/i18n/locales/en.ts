@@ -389,6 +389,7 @@ export default {
     noFilteredRows: "No rows match the filter",
     noFilteredRowsDescription: "Adjust the search text or row status filter.",
     copy: "Copy",
+    copyDdl: "Copy DDL",
     copyCell: "Copy Cell",
     copyRow: "Copy Row (JSON)",
     copyColumnJson: "Copy Column (JSON)",

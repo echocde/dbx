@@ -387,6 +387,7 @@ export default {
     noFilteredRows: "Ninguna fila coincide con el filtro",
     noFilteredRowsDescription: "Ajusta el texto de búsqueda o el filtro de estado de filas.",
     copy: "Copiar",
+    copyDdl: "Copiar DDL",
     copyCell: "Copiar celda",
     copyRow: "Copiar fila (JSON)",
     copyColumnJson: "Copiar columna (JSON)",
