@@ -2,6 +2,7 @@ import type { DatabaseType } from "@/types/database";
 import { qualifiedTableName } from "@/lib/tableSelectSql";
 
 export const DBX_TABLE_REFERENCE_MIME = "application/x-dbx-table-reference";
+export const DBX_TABLE_REFERENCE_DROP_EVENT = "dbx-table-reference-drop";
 
 export interface QueryEditorTableReferencePayload {
   kind: "dbx-table-reference";
@@ -10,6 +11,12 @@ export interface QueryEditorTableReferencePayload {
   schema?: string;
   tableName: string;
   databaseType?: DatabaseType;
+}
+
+export interface QueryEditorTableReferenceDropDetail {
+  payload: QueryEditorTableReferencePayload;
+  clientX: number;
+  clientY: number;
 }
 
 let activeTableReferencePayload: QueryEditorTableReferencePayload | null = null;
@@ -85,6 +92,10 @@ export function clearActiveTableReferencePayload(payload?: QueryEditorTableRefer
   if (!payload || activeTableReferencePayload === payload) {
     activeTableReferencePayload = null;
   }
+}
+
+export function createTableReferenceDropEvent(detail: QueryEditorTableReferenceDropDetail) {
+  return new CustomEvent<QueryEditorTableReferenceDropDetail>(DBX_TABLE_REFERENCE_DROP_EVENT, { detail });
 }
 
 export function tableReferenceInsertText(

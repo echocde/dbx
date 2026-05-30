@@ -26,11 +26,14 @@ import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigati
 import { lineColumnToOffset, parseSqlErrorLocation } from "@/lib/sqlDiagnostics";
 import {
   DBX_TABLE_REFERENCE_MIME,
+  DBX_TABLE_REFERENCE_DROP_EVENT,
   activeTableReferencePayloadValue,
   clearActiveTableReferencePayload,
   hasTableReferencePayloadType,
   parseTableReferencePayload,
   tableReferenceInsertText,
+  type QueryEditorTableReferenceDropDetail,
+  type QueryEditorTableReferencePayload,
 } from "@/lib/queryEditorTableDrop";
 import {
   EDITOR_FONT_FAMILY_CSS_VAR,
@@ -735,16 +738,14 @@ function hasDroppedTableReference(event: DragEvent) {
   return !!activeTableReferencePayloadValue() || hasTableReferencePayloadType(event.dataTransfer?.types);
 }
 
-function insertDroppedTableReference(currentView: EditorViewType, event: DragEvent): boolean {
+function insertTableReferencePayload(
+  currentView: EditorViewType,
+  payload: QueryEditorTableReferencePayload,
+  coords?: { clientX: number; clientY: number },
+): boolean {
   if (props.readOnly) return false;
-  const payload = droppedTableReference(event);
-  if (!payload) return false;
-
-  event.preventDefault();
-  event.stopPropagation();
-
   const insertText = tableReferenceInsertText(payload, props.databaseType);
-  const dropPos = currentView.posAtCoords({ x: event.clientX, y: event.clientY });
+  const dropPos = coords ? currentView.posAtCoords({ x: coords.clientX, y: coords.clientY }) : null;
   const selection = currentView.state.selection.main;
   const from = dropPos ?? selection.from;
   const to = dropPos == null && !selection.empty ? selection.to : from;
@@ -757,6 +758,26 @@ function insertDroppedTableReference(currentView: EditorViewType, event: DragEve
   clearActiveTableReferencePayload(payload);
   currentView.focus();
   return true;
+}
+
+function insertDroppedTableReference(currentView: EditorViewType, event: DragEvent): boolean {
+  const payload = droppedTableReference(event);
+  if (!payload) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  return insertTableReferencePayload(currentView, payload, { clientX: event.clientX, clientY: event.clientY });
+}
+
+function onTableReferenceDropEvent(event: Event) {
+  const currentView = view.value;
+  if (!currentView || props.readOnly || !(event instanceof CustomEvent)) return;
+  const detail = event.detail as QueryEditorTableReferenceDropDetail | undefined;
+  if (!detail?.payload) return;
+  const target = document.elementFromPoint(detail.clientX, detail.clientY);
+  if (target instanceof Element && editorRef.value?.contains(target)) {
+    insertTableReferencePayload(currentView, detail.payload, detail);
+  }
 }
 
 let completionEpoch = 0;
@@ -1447,6 +1468,7 @@ onMounted(async () => {
   view.value = new EditorView({ state, parent: editorRef.value });
   syncContextMenuState(view.value);
   syncEditorFontCssVars(liveFontSize.value, ss.fontFamily);
+  window.addEventListener(DBX_TABLE_REFERENCE_DROP_EVENT, onTableReferenceDropEvent);
 
   cachedTables = [];
   scheduleSemanticDiagnostics();
@@ -1546,6 +1568,7 @@ watch(
 onBeforeUnmount(() => {
   zoomCommitScheduler.dispose();
   if (semanticDiagnosticTimer) clearTimeout(semanticDiagnosticTimer);
+  window.removeEventListener(DBX_TABLE_REFERENCE_DROP_EVENT, onTableReferenceDropEvent);
   view.value?.destroy();
 });
 
