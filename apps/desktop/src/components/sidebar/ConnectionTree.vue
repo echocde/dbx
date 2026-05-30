@@ -163,9 +163,36 @@ const activeTab = computed(() => queryStore.tabs.find((tab) => tab.id === queryS
 
 const pendingRenameGroupId = ref<string | null>(null);
 
-function createNewGroup() {
+async function scrollToSidebarNode(nodeId: string) {
+  await nextTick();
+
+  const index = flatNodes.value.findIndex((item) => item.id === nodeId);
+  const scroller = currentTreeScroller();
+  if (!scroller || index < 0) return;
+
+  const nextScrollTop = scrollTopForSidebarNode({
+    index,
+    currentScrollTop: scroller.scrollTop,
+    viewportHeight: scroller.clientHeight,
+  });
+  if (nextScrollTop !== scroller.scrollTop) {
+    scroller.scrollTop = nextScrollTop;
+  }
+}
+
+async function createNewGroup() {
   const groupId = store.createConnectionGroup(t("connectionGroup.newGroupDefault"));
   pendingRenameGroupId.value = groupId;
+  store.selectedTreeNodeId = groupId;
+
+  if (isFiltering.value) {
+    searchQuery.value = "";
+    deferredSearchQuery.value = "";
+    clearSearchScopeFilter();
+  }
+
+  await scrollToSidebarNode(groupId);
+  store.selectedTreeNodeId = groupId;
 }
 
 function onSearchToggle(node: TreeNode) {
