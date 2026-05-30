@@ -46,7 +46,7 @@ pub async fn preview_sql_file(file_path: String) -> Result<SqlFilePreview, Strin
     let path = PathBuf::from(&file_path);
     let metadata = tokio::fs::metadata(&path).await.map_err(|e| e.to_string())?;
     let bytes = tokio::fs::read(&path).await.map_err(|e| e.to_string())?;
-    let preview = decode_sql_file_bytes(&bytes)?.chars().take(5000).collect();
+    let preview = decode_sql_file_bytes(&bytes)?.chars().take(20_000).collect();
 
     Ok(SqlFilePreview {
         file_name: path.file_name().and_then(|name| name.to_str()).unwrap_or("script.sql").to_string(),

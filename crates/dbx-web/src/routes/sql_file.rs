@@ -51,7 +51,7 @@ pub async fn preview_sql_file(
 
         let size_bytes = data.len() as u64;
         let content = sql::decode_sql_file_bytes(&data).map_err(AppError)?;
-        let preview: String = content.chars().take(5000).collect();
+        let preview: String = content.chars().take(20_000).collect();
 
         return Ok(Json(serde_json::json!({
             "fileName": file_name,

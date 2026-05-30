@@ -1292,6 +1292,8 @@ export default {
     file: "File",
     selectSqlFile: "Select SQL file",
     browse: "Browse",
+    previewingLines: "Previewing {count} lines",
+    previewingFirstLines: "Previewing first {count} lines",
     target: "Target",
     connection: "Connection",
     selectConnection: "Select connection",

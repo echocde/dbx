@@ -1268,6 +1268,8 @@ export default {
     file: "文件",
     selectSqlFile: "选择 SQL 文件",
     browse: "浏览",
+    previewingLines: "预览 {count} 行",
+    previewingFirstLines: "预览前 {count} 行",
     target: "目标",
     connection: "连接",
     selectConnection: "选择连接",

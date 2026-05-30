@@ -1184,6 +1184,8 @@ export default {
     file: "Archivo",
     selectSqlFile: "Seleccionar archivo SQL",
     browse: "Examinar",
+    previewingLines: "Vista previa de {count} líneas",
+    previewingFirstLines: "Vista previa de las primeras {count} líneas",
     target: "Destino",
     connection: "Conexión",
     selectConnection: "Seleccionar conexión",
