@@ -51,11 +51,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import LightDropdown from "@/components/ui/LightDropdown.vue";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -2622,6 +2621,46 @@ const {
   selectedRowIds,
   hasRowSelection,
 });
+
+const pageSizeMenuItems = computed(() =>
+  pageSizeOptions.value.map((size) => ({
+    value: String(size),
+    label: `${size} ${t("grid.rowsPerPageShort")}`,
+  })),
+);
+
+const exportMenuItems = computed(() => [
+  { value: "csv", label: t("grid.exportCsv") },
+  { value: "xlsx", label: t("grid.exportXlsx") },
+  { value: "json", label: t("grid.exportJson") },
+  { value: "markdown", label: t("grid.exportMarkdown") },
+  ...(isMultiRow.value
+    ? [
+        { value: "selected-csv", label: t("grid.exportSelectedRowsCsv"), separatorBefore: true },
+        { value: "selected-xlsx", label: t("grid.exportSelectedRowsXlsx") },
+        { value: "selected-json", label: t("grid.exportSelectedRowsJson") },
+        { value: "selected-markdown", label: t("grid.exportSelectedRowsMarkdown") },
+      ]
+    : []),
+]);
+
+function selectPageSizeMenuItem(value: string) {
+  changePageSize(Number(value));
+}
+
+function selectExportMenuItem(value: string) {
+  const actions: Record<string, () => void> = {
+    csv: exportCsv,
+    xlsx: exportXlsx,
+    json: exportJson,
+    markdown: exportMarkdown,
+    "selected-csv": exportSelectedRowsCsv,
+    "selected-xlsx": exportSelectedRowsXlsx,
+    "selected-json": exportSelectedRowsJson,
+    "selected-markdown": exportSelectedRowsMarkdown,
+  };
+  actions[value]?.();
+}
 
 // --- Cell selection and detail ---
 function showCellDetails(rowIndex: number, colIndex: number) {
@@ -5728,45 +5767,45 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
       <span class="ml-auto flex items-center gap-1">
         <Loader2 v-if="loading" class="w-3 h-3 animate-spin text-muted-foreground" />
-        <DropdownMenu>
-          <DropdownMenuTrigger as-child>
-            <Button variant="ghost" size="sm" class="h-5 text-xs px-1.5">
-              {{ pageSize }}{{ t("grid.rowsPerPageShort") }}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-36">
-            <DropdownMenuItem v-for="s in pageSizeOptions" :key="s" @click="changePageSize(s)">
-              {{ s }} {{ t("grid.rowsPerPageShort") }}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel class="text-xs">{{ t("grid.customRowsPerPage") }}</DropdownMenuLabel>
-            <div class="flex items-center gap-1 px-2 pb-2" @click.stop @keydown.stop>
-              <Input
-                v-model="customPageSizeInput"
-                type="number"
-                inputmode="numeric"
-                :min="MIN_RESULT_PAGE_SIZE"
-                :max="MAX_RESULT_PAGE_SIZE"
-                class="h-7 w-24 text-xs tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                @keydown.enter.prevent.stop="applyCustomPageSize"
-              />
-              <Tooltip>
-                <TooltipTrigger as-child>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    class="h-7 w-7 shrink-0"
-                    :aria-label="t('grid.applyPageSize')"
-                    @click.stop="applyCustomPageSize"
-                  >
-                    <Check class="h-3.5 w-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">{{ t("grid.applyPageSize") }}</TooltipContent>
-              </Tooltip>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <LightDropdown
+          :model-value="String(pageSize)"
+          :items="pageSizeMenuItems"
+          :trigger-label="`${pageSize}${t('grid.rowsPerPageShort')}`"
+          trigger-class="inline-flex h-5 items-center justify-center rounded-md px-1.5 text-xs hover:bg-accent hover:text-accent-foreground"
+          content-class="w-36"
+          :highlight-selected="false"
+          check-position="none"
+          align="end"
+          @update:model-value="selectPageSizeMenuItem"
+        >
+          <div class="bg-border -mx-1 my-1 h-px" />
+          <div class="text-muted-foreground px-1.5 py-1 text-xs">{{ t("grid.customRowsPerPage") }}</div>
+          <div class="flex items-center gap-1 px-1.5 pb-1" @click.stop @keydown.stop>
+            <Input
+              v-model="customPageSizeInput"
+              type="number"
+              inputmode="numeric"
+              :min="MIN_RESULT_PAGE_SIZE"
+              :max="MAX_RESULT_PAGE_SIZE"
+              class="h-6 w-20 px-1.5 text-xs tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              @keydown.enter.prevent.stop="applyCustomPageSize"
+            />
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  class="h-6 w-6 shrink-0"
+                  :aria-label="t('grid.applyPageSize')"
+                  @click.stop="applyCustomPageSize"
+                >
+                  <Check class="h-3 w-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{{ t("grid.applyPageSize") }}</TooltipContent>
+            </Tooltip>
+          </div>
+        </LightDropdown>
         <Button variant="ghost" size="icon" class="h-5 w-5" :disabled="currentPage <= 1" @click="firstPage">
           <ChevronsLeft class="h-3 w-3" />
         </Button>
@@ -5782,28 +5821,20 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         </Button>
       </span>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger as-child>
-          <Button variant="ghost" size="icon" class="h-5 w-5">
-            <Download class="h-3 w-3" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuItem @click="exportCsv">{{ t("grid.exportCsv") }}</DropdownMenuItem>
-          <DropdownMenuItem @click="exportXlsx">{{ t("grid.exportXlsx") }}</DropdownMenuItem>
-          <DropdownMenuItem @click="exportJson">{{ t("grid.exportJson") }}</DropdownMenuItem>
-          <DropdownMenuItem @click="exportMarkdown">{{ t("grid.exportMarkdown") }}</DropdownMenuItem>
-          <template v-if="isMultiRow">
-            <DropdownMenuSeparator />
-            <DropdownMenuItem @click="exportSelectedRowsCsv">{{ t("grid.exportSelectedRowsCsv") }}</DropdownMenuItem>
-            <DropdownMenuItem @click="exportSelectedRowsXlsx">{{ t("grid.exportSelectedRowsXlsx") }}</DropdownMenuItem>
-            <DropdownMenuItem @click="exportSelectedRowsJson">{{ t("grid.exportSelectedRowsJson") }}</DropdownMenuItem>
-            <DropdownMenuItem @click="exportSelectedRowsMarkdown">{{
-              t("grid.exportSelectedRowsMarkdown")
-            }}</DropdownMenuItem>
-          </template>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <LightDropdown
+        model-value=""
+        :items="exportMenuItems"
+        :aria-label="t('grid.export')"
+        :trigger-icon="Download"
+        trigger-class="inline-flex h-5 w-5 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+        trigger-icon-class="h-3 w-3"
+        :show-trigger-label="false"
+        :show-chevron="false"
+        :highlight-selected="false"
+        check-position="none"
+        align="end"
+        @update:model-value="selectExportMenuItem"
+      />
 
       <Tooltip v-if="sqlOneLiner">
         <TooltipTrigger as-child>

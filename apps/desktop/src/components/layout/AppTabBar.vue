@@ -4,12 +4,7 @@ import type { CSSProperties } from "vue";
 import { useI18n } from "vue-i18n";
 import { X, Pin, ChevronDown, Table2, Code2, TableProperties, PencilRuler, Package, Check } from "lucide-vue-next";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import LightDropdown from "@/components/ui/LightDropdown.vue";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -155,6 +150,15 @@ const dataTabs = computed(() => queryStore.tabs.filter((tab) => tab.mode === "da
 const showPinnedDataTabsMenu = computed(
   () => dataTabs.value.length > 0 && (canScrollLeft.value || canScrollRight.value),
 );
+const dataTabMenuItems = computed(() =>
+  dataTabs.value.map((tab) => ({
+    value: tab.id,
+    label: tabDisplayTitle(tab),
+    title: tabDisplayTitle(tab),
+    icon: Table2,
+    iconClass: "text-emerald-600 dark:text-emerald-400",
+  })),
+);
 
 function activateDataTab(tabId: string) {
   tabScrollBehavior.value = "auto";
@@ -166,12 +170,16 @@ const tabsContainerStyle = computed<CSSProperties>(() => ({
   msOverflowStyle: "none",
   scrollbarWidth: "none",
   WebkitOverflowScrolling: "touch",
-  paddingRight: showPinnedDataTabsMenu.value ? "36px" : "0px",
+  paddingRight: showPinnedDataTabsMenu.value && settingsStore.editorSettings.appLayout !== "classic" ? "28px" : "0px",
 }));
+
+const tabTailDragRegionClass = computed(() =>
+  showPinnedDataTabsMenu.value ? "w-0 flex-none self-stretch" : "min-w-8 flex-1 self-stretch",
+);
 
 const dataTabsMenuContainerClass = computed(() =>
   settingsStore.editorSettings.appLayout === "classic"
-    ? "absolute inset-y-0 right-0 z-30 flex items-stretch"
+    ? "relative z-30 flex shrink-0 items-stretch"
     : "absolute inset-y-0 -right-2 z-30 flex items-stretch",
 );
 </script>
@@ -301,7 +309,7 @@ const dataTabsMenuContainerClass = computed(() =>
           <X class="h-3 w-3" />
         </button>
       </div>
-      <div class="min-w-8 flex-1 self-stretch" data-tauri-drag-region />
+      <div :class="tabTailDragRegionClass" data-tauri-drag-region />
     </div>
     <div
       v-if="canScrollRight"
@@ -309,27 +317,24 @@ const dataTabsMenuContainerClass = computed(() =>
       aria-hidden="true"
     />
     <div v-if="showPinnedDataTabsMenu" :class="dataTabsMenuContainerClass">
-      <DropdownMenu>
-        <DropdownMenuTrigger as-child>
-          <button
-            class="h-full w-7 rounded-none text-foreground/70 hover:text-foreground inline-flex items-center justify-center bg-background"
-            :aria-label="t('tabs.openDataTabs')"
-          >
-            <ChevronDown class="h-4 w-4" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" class="w-auto min-w-36 max-w-60">
-          <DropdownMenuItem
-            v-for="tab in dataTabs"
-            :key="tab.id"
-            class="text-xs max-w-full"
-            @click="activateDataTab(tab.id)"
-          >
-            <Table2 class="w-3.5 h-3.5 mr-2 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            <span class="truncate flex-1">{{ tabDisplayTitle(tab) }}</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <LightDropdown
+        :model-value="queryStore.activeTabId || ''"
+        :items="dataTabMenuItems"
+        :aria-label="t('tabs.openDataTabs')"
+        :trigger-icon="ChevronDown"
+        trigger-class="h-full w-7 rounded-none text-foreground/70 hover:text-foreground inline-flex items-center justify-center bg-background"
+        trigger-icon-class="h-4 w-4"
+        item-icon-class="w-3.5 h-3.5 mr-2"
+        item-class="max-w-full"
+        content-class="w-auto min-w-36 max-w-60"
+        :show-trigger-label="false"
+        :show-chevron="false"
+        :highlight-selected="false"
+        :match-trigger-width="false"
+        check-position="none"
+        align="end"
+        @update:model-value="activateDataTab"
+      />
     </div>
   </div>
 </template>

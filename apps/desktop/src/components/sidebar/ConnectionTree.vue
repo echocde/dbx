@@ -1,7 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from "vue";
+import { ref, computed, nextTick, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
-import { Search, X, ListFilter, Check, FolderPlus } from "lucide-vue-next";
+import {
+  Search,
+  X,
+  ListFilter,
+  FolderPlus,
+  Server,
+  Database,
+  FolderTree,
+  Table2,
+  Eye,
+  RotateCcw,
+} from "lucide-vue-next";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -26,14 +37,7 @@ import {
 import TreeItem from "./TreeItem.vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+import LightDropdown from "@/components/ui/LightDropdown.vue";
 
 const { t } = useI18n();
 const store = useConnectionStore();
@@ -80,13 +84,30 @@ const SEARCH_SCOPE_TO_NODE_TYPES: Record<SearchScope, TreeNodeType[]> = {
 
 const searchScopeOptions = computed(() => {
   return [
-    { scope: "connection", label: t("sidebar.searchScopeConnection") },
-    { scope: "database", label: t("sidebar.searchScopeDatabase") },
-    { scope: "schema", label: t("sidebar.searchScopeSchema") },
-    { scope: "table", label: t("sidebar.searchScopeTable") },
-    { scope: "view", label: t("sidebar.searchScopeView") },
-  ] as const satisfies ReadonlyArray<{ scope: SearchScope; label: string }>;
+    { scope: "connection", label: t("sidebar.searchScopeConnection"), icon: Server },
+    { scope: "database", label: t("sidebar.searchScopeDatabase"), icon: Database },
+    { scope: "schema", label: t("sidebar.searchScopeSchema"), icon: FolderTree },
+    { scope: "table", label: t("sidebar.searchScopeTable"), icon: Table2 },
+    { scope: "view", label: t("sidebar.searchScopeView"), icon: Eye },
+  ] as const satisfies ReadonlyArray<{ scope: SearchScope; label: string; icon: Component }>;
 });
+const searchScopeMenuItems = computed(() => [
+  ...searchScopeOptions.value.map((item) => ({
+    value: item.scope,
+    label: item.label,
+    icon: item.icon,
+  })),
+  ...(hasSearchScopeFilter.value
+    ? [
+        {
+          value: "__clear",
+          label: t("sidebar.clearFilter"),
+          icon: RotateCcw,
+          separatorBefore: true,
+        },
+      ]
+    : []),
+]);
 
 const hasSearchScopeFilter = computed(() => selectedSearchScopes.value.length > 0);
 const searchableNodeTypes = computed<Set<TreeNodeType> | undefined>(() => {
@@ -100,10 +121,6 @@ const searchableNodeTypes = computed<Set<TreeNodeType> | undefined>(() => {
   return types;
 });
 
-function isSearchScopeSelected(scope: SearchScope) {
-  return selectedSearchScopes.value.includes(scope);
-}
-
 function toggleSearchScope(scope: SearchScope) {
   const idx = selectedSearchScopes.value.indexOf(scope);
   if (idx >= 0) {
@@ -111,6 +128,14 @@ function toggleSearchScope(scope: SearchScope) {
   } else {
     selectedSearchScopes.value.push(scope);
   }
+}
+
+function selectSearchScopeMenuItem(value: string) {
+  if (value === "__clear") {
+    clearSearchScopeFilter();
+    return;
+  }
+  toggleSearchScope(value as SearchScope);
 }
 
 function clearSearchScopeFilter() {
@@ -268,38 +293,32 @@ defineExpose({ focusSearch });
         >
           <FolderPlus class="h-3.5 w-3.5" />
         </button>
-        <DropdownMenu v-if="searchScopeOptions.length > 0">
-          <DropdownMenuTrigger as-child>
-            <button
-              class="shrink-0 h-6 w-6 flex items-center justify-center rounded border border-border hover:bg-accent"
-              :class="hasSearchScopeFilter ? 'text-primary bg-primary/10 border-primary/30' : 'text-muted-foreground'"
-              :title="t('sidebar.filterByType')"
-            >
-              <ListFilter class="h-3.5 w-3.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-48">
-            <DropdownMenuLabel class="text-xs">{{ t("sidebar.filterByType") }}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              v-for="item in searchScopeOptions"
-              :key="item.scope"
-              class="gap-2"
-              :class="isSearchScopeSelected(item.scope) ? 'bg-primary/10 text-primary' : ''"
-              @select.prevent="toggleSearchScope(item.scope)"
-            >
-              <Check v-if="isSearchScopeSelected(item.scope)" class="h-3.5 w-3.5 shrink-0 text-primary" />
-              <span v-else class="h-3.5 w-3.5 shrink-0" />
-              <span class="flex-1 truncate">{{ item.label }}</span>
-            </DropdownMenuItem>
-            <template v-if="hasSearchScopeFilter">
-              <DropdownMenuSeparator />
-              <DropdownMenuItem @select.prevent="clearSearchScopeFilter">
-                <span class="text-xs text-muted-foreground">{{ t("sidebar.clearFilter") }}</span>
-              </DropdownMenuItem>
-            </template>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <LightDropdown
+          v-if="searchScopeOptions.length > 0"
+          model-value=""
+          :items="searchScopeMenuItems"
+          :selected-values="selectedSearchScopes"
+          :aria-label="t('sidebar.filterByType')"
+          :label="t('sidebar.filterByType')"
+          :trigger-title="t('sidebar.filterByType')"
+          :trigger-icon="ListFilter"
+          :trigger-class="
+            [
+              'shrink-0 h-6 w-6 flex items-center justify-center rounded border border-border hover:bg-accent',
+              hasSearchScopeFilter ? 'text-primary bg-primary/10 border-primary/30' : 'text-muted-foreground',
+            ].join(' ')
+          "
+          trigger-icon-class="h-3.5 w-3.5"
+          item-icon-class="h-3.5 w-3.5"
+          content-class="w-max min-w-0"
+          selected-item-class="bg-primary/10 text-primary"
+          selected-check-class="text-primary"
+          :show-trigger-label="false"
+          :show-chevron="false"
+          :close-on-select="false"
+          align="end"
+          @update:model-value="selectSearchScopeMenuItem"
+        />
       </div>
     </div>
     <RecycleScroller

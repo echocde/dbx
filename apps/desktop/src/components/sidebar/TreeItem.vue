@@ -2629,10 +2629,10 @@ function treeItemMenuItems(): ContextMenuItem[] {
 }
 
 /* Focused: soft blue */
-.sidebar-tree:focus-within .tree-item-active {
+.tree-item-active:focus {
   background-color: oklch(0.91 0.03 250) !important;
 }
-:root.dark .sidebar-tree:focus-within .tree-item-active {
+:root.dark .tree-item-active:focus {
   background-color: oklch(0.35 0.06 250) !important;
 }
 </style>
