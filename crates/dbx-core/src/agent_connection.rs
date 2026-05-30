@@ -110,14 +110,22 @@ fn postgres_like_agent_jdbc_connection_string(
 }
 
 pub fn should_retry_oracle_with_10g_driver(config: &ConnectionConfig, err: &str) -> bool {
+    !oracle_auth_fallback_profiles(config, err).is_empty()
+}
+
+pub fn oracle_auth_fallback_profiles(config: &ConnectionConfig, err: &str) -> Vec<&'static str> {
     if config.db_type != DatabaseType::Oracle {
-        return false;
-    }
-    if config.driver_profile.as_deref() == Some("oracle-10g") {
-        return false;
+        return Vec::new();
     }
     let normalized = err.to_lowercase();
-    normalized.contains("ora-28040") || normalized.contains("no matching authentication protocol")
+    if !normalized.contains("ora-28040") && !normalized.contains("no matching authentication protocol") {
+        return Vec::new();
+    }
+    match config.driver_profile.as_deref() {
+        Some("oracle-10g") => Vec::new(),
+        Some("oracle-legacy") => vec!["oracle-10g"],
+        _ => vec!["oracle-legacy", "oracle-10g"],
+    }
 }
 
 pub fn oracle_alternate_connect_config(config: &ConnectionConfig, err: &str) -> Option<ConnectionConfig> {
@@ -293,6 +301,26 @@ mod tests {
         assert_eq!(retry.oracle_connection_type.as_deref(), Some("sid"));
         assert!(oracle_alternate_connect_config(&retry, "ORA-01017: invalid username/password").is_none());
         assert!(oracle_alternate_connect_config(&cfg, "ORA-12541: TNS:no listener").is_none());
+    }
+
+    #[test]
+    fn oracle_auth_errors_use_legacy_then_10g_fallbacks() {
+        let mut cfg = config(DatabaseType::Oracle, Some("ORCL"));
+        cfg.driver_profile = Some("oracle".to_string());
+
+        assert_eq!(
+            oracle_auth_fallback_profiles(&cfg, "ORA-28040: No matching authentication protocol"),
+            vec!["oracle-legacy", "oracle-10g"]
+        );
+
+        cfg.driver_profile = Some("oracle-legacy".to_string());
+        assert_eq!(
+            oracle_auth_fallback_profiles(&cfg, "ORA-28040: No matching authentication protocol"),
+            vec!["oracle-10g"]
+        );
+
+        cfg.driver_profile = Some("oracle-10g".to_string());
+        assert!(oracle_auth_fallback_profiles(&cfg, "ORA-28040: No matching authentication protocol").is_empty());
     }
 
     #[test]

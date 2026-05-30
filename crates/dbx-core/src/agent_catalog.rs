@@ -17,8 +17,10 @@ pub struct AgentDriverProfile {
     pub store_visible: bool,
 }
 
-const ORACLE_PROFILES: &[AgentDriverProfile] =
-    &[AgentDriverProfile { profile: "oracle-10g", key: "oracle-10g", label: "Oracle 10g", store_visible: true }];
+const ORACLE_PROFILES: &[AgentDriverProfile] = &[
+    AgentDriverProfile { profile: "oracle-legacy", key: "oracle-legacy", label: "Oracle Legacy", store_visible: true },
+    AgentDriverProfile { profile: "oracle-10g", key: "oracle-10g", label: "Oracle 10g", store_visible: true },
+];
 
 const AGENT_CATALOG: &[AgentCatalogEntry] = &[
     AgentCatalogEntry {

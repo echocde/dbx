@@ -8,7 +8,7 @@ use mysql_async::Row as MysqlRow;
 
 use crate::agent_connection::{
     agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
-    should_retry_oracle_with_10g_driver,
+    oracle_auth_fallback_profiles, should_retry_oracle_with_10g_driver,
 };
 use crate::database_capabilities;
 use crate::db;
@@ -333,19 +333,39 @@ impl AppState {
                             })?;
                     } else if should_retry_oracle_with_10g_driver(&db_config, &err) {
                         log::warn!(
-                            "Oracle connect failed with profile {:?}: {}. Retrying with oracle-10g profile.",
+                            "Oracle connect failed with profile {:?}: {}. Retrying with legacy Oracle profiles.",
                             db_config.driver_profile,
                             err
                         );
-                        let mut fallback_client =
-                            self.agent_manager.spawn(&db_config.db_type, Some("oracle-10g")).await?;
-                        fallback_client
-                            .call_method::<serde_json::Value>(AgentMethod::Connect, connect_params)
-                            .await
-                            .map_err(|fallback_err| {
-                                format!("{err}\n\nFallback with oracle-10g driver failed: {fallback_err}")
-                            })?;
-                        client = fallback_client;
+                        let mut fallback_errors = Vec::new();
+                        let mut connected_client = None;
+                        for profile in oracle_auth_fallback_profiles(&db_config, &err) {
+                            match self.agent_manager.spawn(&db_config.db_type, Some(profile)).await {
+                                Ok(mut fallback_client) => {
+                                    match fallback_client
+                                        .call_method::<serde_json::Value>(AgentMethod::Connect, connect_params.clone())
+                                        .await
+                                    {
+                                        Ok(_) => {
+                                            connected_client = Some(fallback_client);
+                                            break;
+                                        }
+                                        Err(fallback_err) => {
+                                            fallback_errors.push(format!("{profile}: {fallback_err}"));
+                                        }
+                                    }
+                                }
+                                Err(fallback_err) => {
+                                    fallback_errors.push(format!("{profile}: {fallback_err}"));
+                                }
+                            }
+                        }
+                        client = connected_client.ok_or_else(|| {
+                            format!(
+                                "{err}\n\nFallback with legacy Oracle drivers failed: {}",
+                                fallback_errors.join("\n")
+                            )
+                        })?;
                     } else {
                         return Err(err);
                     }
@@ -1090,6 +1110,10 @@ mod tests {
 
         config.driver_profile = Some("oracle-10g".to_string());
         assert!(!should_retry_oracle_with_10g_driver(&config, "Agent RPC error (-1): ORA-12541: TNS:no listener"));
+        assert!(!should_retry_oracle_with_10g_driver(
+            &config,
+            "Agent RPC error (-1): ORA-28040: No matching authentication protocol"
+        ));
 
         config.driver_profile = Some("oracle".to_string());
         assert!(!should_retry_oracle_with_10g_driver(
