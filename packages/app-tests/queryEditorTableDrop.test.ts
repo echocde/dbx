@@ -1,7 +1,9 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
+  DBX_TABLE_REFERENCE_MIME,
   createTableReferencePayload,
+  hasTableReferencePayloadType,
   parseTableReferencePayload,
   serializeTableReferencePayload,
   tableReferenceInsertText,
@@ -39,6 +41,12 @@ test("round trips table drag payload and rejects unrelated data", () => {
   assert.deepEqual(parseTableReferencePayload(serializeTableReferencePayload(payload)), payload);
   assert.equal(parseTableReferencePayload("not json"), null);
   assert.equal(parseTableReferencePayload(JSON.stringify({ kind: "dbx-table-reference", tableName: "orders" })), null);
+});
+
+test("detects table drag payload type without reading drag data", () => {
+  assert.equal(hasTableReferencePayloadType(undefined), false);
+  assert.equal(hasTableReferencePayloadType(["text/plain"]), false);
+  assert.equal(hasTableReferencePayloadType(["text/plain", DBX_TABLE_REFERENCE_MIME]), true);
 });
 
 test("formats dropped table reference for the source database type", () => {

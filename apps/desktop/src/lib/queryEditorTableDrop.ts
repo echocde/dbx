@@ -62,6 +62,14 @@ export function parseTableReferencePayload(value: string | undefined | null): Qu
   }
 }
 
+export function hasTableReferencePayloadType(types: Iterable<string> | undefined | null): boolean {
+  if (!types) return false;
+  for (const type of types) {
+    if (type === DBX_TABLE_REFERENCE_MIME) return true;
+  }
+  return false;
+}
+
 export function tableReferenceInsertText(
   payload: QueryEditorTableReferencePayload,
   fallbackDatabaseType?: DatabaseType,

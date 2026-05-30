@@ -26,6 +26,7 @@ import { extractIdentifierAt, isSqlKeyword, matchTable } from "@/lib/sqlNavigati
 import { lineColumnToOffset, parseSqlErrorLocation } from "@/lib/sqlDiagnostics";
 import {
   DBX_TABLE_REFERENCE_MIME,
+  hasTableReferencePayloadType,
   parseTableReferencePayload,
   tableReferenceInsertText,
 } from "@/lib/queryEditorTableDrop";
@@ -725,6 +726,10 @@ function droppedTableReference(event: DragEvent) {
   return parseTableReferencePayload(event.dataTransfer?.getData(DBX_TABLE_REFERENCE_MIME));
 }
 
+function hasDroppedTableReference(event: DragEvent) {
+  return hasTableReferencePayloadType(event.dataTransfer?.types);
+}
+
 function insertDroppedTableReference(currentView: EditorViewType, event: DragEvent): boolean {
   if (props.readOnly) return false;
   const payload = droppedTableReference(event);
@@ -1283,7 +1288,7 @@ onMounted(async () => {
       ),
       EditorView.domEventHandlers({
         dragover(event) {
-          if (props.readOnly || !droppedTableReference(event)) return false;
+          if (props.readOnly || !hasDroppedTableReference(event)) return false;
           event.preventDefault();
           if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
           return true;
