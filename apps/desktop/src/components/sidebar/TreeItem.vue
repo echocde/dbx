@@ -122,15 +122,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import LightTooltip from "@/components/ui/LightTooltip.vue";
 
 const { t } = useI18n();
 const labelRef = ref<HTMLElement>();
 const rowRef = ref<HTMLElement>();
-const isTruncated = computed(() => {
+function isLabelTruncated(): boolean {
   const el = labelRef.value;
   return !!el && el.scrollWidth > el.clientWidth;
-});
+}
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
 const savedSqlStore = useSavedSqlStore();
@@ -263,7 +263,7 @@ function visibleLabel(node: TreeNode): string {
 }
 
 function isTooltipDisabled(node: TreeNode): boolean {
-  return !isTruncated.value && visibleLabel(node) === displayLabel(node);
+  return !isLabelTruncated() && visibleLabel(node) === displayLabel(node);
 }
 
 async function toggle() {
@@ -1955,14 +1955,12 @@ function treeItemMenuItems(): ContextMenuItem[] {
     }
     items.push({ label: "", separator: true });
     if (availableGroups.value.length > 0 || currentGroupId.value) {
-      const groupChildren: ContextMenuItem[] = [
-        ...availableGroups.value.map((group: { id: string; name: string }) => ({
-          label: group.name,
-          action: () => moveToGroup(group.id),
-          icon: FolderOpen,
-          disabled: group.id === currentGroupId.value,
-        })),
-      ];
+      const groupChildren: ContextMenuItem[] = availableGroups.value.map((group: { id: string; name: string }) => ({
+        label: group.name,
+        action: () => moveToGroup(group.id),
+        icon: FolderOpen,
+        disabled: group.id === currentGroupId.value,
+      }));
       if (currentGroupId.value) {
         groupChildren.push({ label: "", separator: true });
         groupChildren.push({ label: t("connectionGroup.ungrouped"), action: () => moveToGroup(null) });
@@ -2273,12 +2271,15 @@ function treeItemMenuItems(): ContextMenuItem[] {
           @keydown.escape.prevent="isRenamingGroup = false"
           @click.stop
         />
-        <Tooltip v-else :disabled="isTooltipDisabled(node)">
-          <TooltipTrigger as-child>
-            <span ref="labelRef" class="min-w-0 flex-1 truncate">{{ visibleLabel(node) }}</span>
-          </TooltipTrigger>
-          <TooltipContent side="right" :side-offset="8">{{ displayLabel(node) }}</TooltipContent>
-        </Tooltip>
+        <LightTooltip
+          v-else
+          :text="displayLabel(node)"
+          :disabled="isTooltipDisabled(node)"
+          side="right"
+          :side-offset="8"
+        >
+          <span ref="labelRef" class="min-w-0 flex-1 truncate">{{ visibleLabel(node) }}</span>
+        </LightTooltip>
         <span
           v-if="
             (node.type === 'group-tables' ||
