@@ -1447,6 +1447,8 @@ export default {
     aboutDescription: "Una herramienta de administración de bases de datos liviana y de código abierto.",
     community: "Comunidad",
     qqGroup: "Grupo QQ",
+    wechatGroup: "Grupo WeChat",
+    wechatGroupInvite: "Invitación de Tencent Docs",
     project: "Proyecto",
     openSource: "Repositorio de código abierto",
     officialDocs: "Documentación oficial",

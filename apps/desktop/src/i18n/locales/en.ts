@@ -1554,6 +1554,8 @@ export default {
     aboutDescription: "An open-source, lightweight database management tool.",
     community: "Community",
     qqGroup: "QQ Group",
+    wechatGroup: "WeChat Group",
+    wechatGroupInvite: "Tencent Docs invite",
     project: "Project",
     openSource: "Open-source repository",
     officialDocs: "Official docs",

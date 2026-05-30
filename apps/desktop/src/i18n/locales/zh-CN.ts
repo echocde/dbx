@@ -1518,6 +1518,8 @@ export default {
     aboutDescription: "开源、轻量的数据库管理工具。",
     community: "社区",
     qqGroup: "QQ 群",
+    wechatGroup: "微信交流群",
+    wechatGroupInvite: "腾讯文档邀请",
     project: "项目",
     openSource: "开源仓库",
     officialDocs: "官方文档",
