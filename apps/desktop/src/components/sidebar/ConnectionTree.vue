@@ -546,6 +546,8 @@ defineExpose({ focusSearch });
 }
 
 .connection-tree-scroller :deep(.vue-recycle-scroller__item-view) {
-  contain: layout style paint;
+  width: max-content;
+  min-width: 100%;
+  contain: style;
 }
 </style>

@@ -56,7 +56,7 @@ import type { DatabaseType, TreeNode, TreeNodeType } from "@/types/database";
 import * as api from "@/lib/api";
 import { uuid } from "@/lib/utils";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
-import { canTreeNodeShowExpander, treeItemPaddingLeft } from "@/lib/sidebarTreeItemLayout";
+import { canTreeNodeShowExpander, treeItemPaddingLeft, usesFullWidthTreeLabel } from "@/lib/sidebarTreeItemLayout";
 import { buildTableSelectSql } from "@/lib/tableSelectSql";
 import {
   clearActiveTableReferencePayload,
@@ -156,6 +156,12 @@ const emit = defineEmits<{
   "node-toggled": [node: TreeNode, wasExpanded: boolean];
   "search-toggle": [node: TreeNode];
 }>();
+
+const usesFullWidthLabel = computed(() => usesFullWidthTreeLabel(props.node.type));
+const rowWidthClass = computed(() => (usesFullWidthLabel.value ? "w-max min-w-full" : "w-full min-w-0"));
+const labelWidthClass = computed(() =>
+  usesFullWidthLabel.value ? "shrink-0 whitespace-nowrap" : "min-w-0 flex-1 truncate",
+);
 
 function currentDatabaseType(): DatabaseType | undefined {
   return props.node.connectionId ? connectionStore.getConfig(props.node.connectionId)?.db_type : undefined;
@@ -2245,16 +2251,19 @@ function treeItemMenuItems(): ContextMenuItem[] {
     <div @contextmenu="onContextMenu">
       <div
         ref="rowRef"
-        class="group flex min-w-0 items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
+        class="group flex items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
         style="contain: layout style paint"
-        :class="{
-          'ring-1 ring-primary/50 bg-primary/5': showDropInside,
-          'opacity-50': isDragging,
-          'rounded-none': connectionColor && !isSelected,
-          'rounded-sm': !connectionColor && !isSelected,
-          'tree-item-active rounded-md': isSelected,
-          'tree-item-highlight': highlighted,
-        }"
+        :class="[
+          rowWidthClass,
+          {
+            'ring-1 ring-primary/50 bg-primary/5': showDropInside,
+            'opacity-50': isDragging,
+            'rounded-none': connectionColor && !isSelected,
+            'rounded-sm': !connectionColor && !isSelected,
+            'tree-item-active rounded-md': isSelected,
+            'tree-item-highlight': highlighted,
+          },
+        ]"
         :tabindex="isSelected ? 0 : -1"
         :style="rowStyle"
         @click="onClick"
@@ -2308,7 +2317,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
           @click.stop
         />
         <LightTooltip v-else :text="displayLabel(node)" :disabled="isTooltipDisabled" side="right" :side-offset="8">
-          <span ref="labelRef" class="min-w-0 flex-1 truncate">{{ visibleLabel(node) }}</span>
+          <span ref="labelRef" :class="labelWidthClass">{{ visibleLabel(node) }}</span>
         </LightTooltip>
         <span
           v-if="

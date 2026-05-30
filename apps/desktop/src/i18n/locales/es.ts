@@ -364,6 +364,7 @@ export default {
     resultN: "Resultado {n}",
     scrollLeft: "Desplazar pestañas a la izquierda",
     scrollRight: "Desplazar pestañas a la derecha",
+    openTabs: "Pestañas abiertas",
     openDataTabs: "Tablas abiertas",
   },
   chart: {

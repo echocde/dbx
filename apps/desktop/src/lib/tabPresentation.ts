@@ -3,6 +3,19 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import type { QueryTab } from "@/types/database";
 
+const tabGroupPalette = [
+  "#2563eb",
+  "#059669",
+  "#d97706",
+  "#dc2626",
+  "#7c3aed",
+  "#0891b2",
+  "#c2410c",
+  "#4f46e5",
+  "#be185d",
+  "#16a34a",
+];
+
 export function connectionDisplayName(connectionId: string): string {
   const connectionStore = useConnectionStore();
   return connectionStore.getConfig(connectionId)?.name || connectionId;
@@ -19,6 +32,28 @@ export function databaseDisplayNameForTab(connectionId: string, database: string
   const connection = connectionStore.getConfig(connectionId);
   if (connection?.db_type === "redis" && database !== "") return `db${database}`;
   return database || t("editor.noDatabase");
+}
+
+export function tabGroupKey(tab: Pick<QueryTab, "connectionId" | "database">): string {
+  return `${tab.connectionId}::${tab.database || ""}`;
+}
+
+export function colorForTabGroupKey(groupKey: string): string {
+  let hash = 0;
+  for (let i = 0; i < groupKey.length; i += 1) {
+    hash = (hash * 31 + groupKey.charCodeAt(i)) | 0;
+  }
+  return tabGroupPalette[Math.abs(hash) % tabGroupPalette.length];
+}
+
+export function tabGroupColor(tab: Pick<QueryTab, "connectionId" | "database">): string {
+  return colorForTabGroupKey(tabGroupKey(tab));
+}
+
+export function tabGroupLabel(tab: Pick<QueryTab, "connectionId" | "database">): string {
+  const connection = connectionDisplayName(tab.connectionId);
+  const database = databaseDisplayNameForTab(tab.connectionId, tab.database);
+  return database ? `${connection} / ${database}` : connection;
 }
 
 export function isPreviewTab(tab: QueryTab): boolean {
@@ -78,6 +113,15 @@ export function tabTooltipLines(tab: QueryTab): { label: string; value: string }
     lines.push({ label: t("tabs.tooltipSchema"), value: tab.objectBrowser.schema });
   }
   return lines;
+}
+
+export function shouldShowTabOverflowControls(
+  tabCount: number,
+  hasTabOverflow: boolean,
+  canScrollLeft: boolean,
+  canScrollRight: boolean,
+): boolean {
+  return tabCount > 0 && (hasTabOverflow || canScrollLeft || canScrollRight);
 }
 
 export function tabModeLabel(tab: QueryTab): string {
