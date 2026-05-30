@@ -80,6 +80,7 @@ export default {
     searchScopeTable: "Tabla",
     searchScopeView: "Vista",
     clearFilter: "Limpiar filtro",
+    locateActiveTab: "Localizar en la barra lateral",
   },
   savedSql: {
     saveToLibrary: "Guardar en biblioteca SQL",

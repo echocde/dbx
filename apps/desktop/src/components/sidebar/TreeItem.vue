@@ -145,6 +145,7 @@ const props = defineProps<{
   depth: number;
   dragDisabled?: boolean;
   pendingRename?: boolean;
+  highlighted?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -2245,6 +2246,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
           'rounded-none': connectionColor && !isSelected,
           'rounded-sm': !connectionColor && !isSelected,
           'tree-item-active rounded-md': isSelected,
+          'tree-item-highlight': highlighted,
         }"
         :tabindex="isSelected ? 0 : -1"
         :style="rowStyle"
@@ -2661,5 +2663,16 @@ function treeItemMenuItems(): ContextMenuItem[] {
 }
 :root.dark .tree-item-active:focus {
   background-color: oklch(0.35 0.06 250) !important;
+}
+
+/* Locate highlight: instant amber, then fade on removal */
+.tree-item-highlight {
+  background-color: oklch(0.92 0.08 85) !important;
+  transition: background-color 0.8s ease-out 0.6s;
+}
+
+:root.dark .tree-item-highlight {
+  background-color: oklch(0.42 0.12 80) !important;
+  transition: background-color 0.8s ease-out 0.6s;
 }
 </style>

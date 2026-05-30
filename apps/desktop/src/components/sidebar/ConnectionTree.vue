@@ -6,6 +6,7 @@ import {
   X,
   ListFilter,
   FolderPlus,
+  Crosshair,
   Server,
   Database,
   FolderTree,
@@ -16,11 +17,13 @@ import {
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import type { TreeNode, TreeNodeType } from "@/types/database";
+import type { QueryTab, TreeNode, TreeNodeType } from "@/types/database";
 import { filterSidebarTree } from "@/lib/sidebarSearchTree";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
+import { usesTreeSchemaMode } from "@/lib/databaseFeatureSupport";
 import {
   findSidebarNodeForActiveTab,
+  findNodePathForActiveTab,
   scrollTopForSidebarNode,
   shouldScrollActiveSidebarSelection,
 } from "@/lib/sidebarActiveTabTarget";
@@ -162,6 +165,8 @@ const useVirtualTree = computed(() => shouldVirtualizeFlatTree(flatNodes.value.l
 const activeTab = computed(() => queryStore.tabs.find((tab) => tab.id === queryStore.activeTabId));
 
 const pendingRenameGroupId = ref<string | null>(null);
+const highlightedNodeId = ref<string | null>(null);
+let highlightTimer: number | undefined;
 
 async function scrollToSidebarNode(nodeId: string) {
   await nextTick();
@@ -193,6 +198,135 @@ async function createNewGroup() {
 
   await scrollToSidebarNode(groupId);
   store.selectedTreeNodeId = groupId;
+}
+
+async function locateActiveTabInSidebar() {
+  const tab = activeTab.value;
+  if (!tab) return;
+
+  const connId = tab.connectionId;
+
+  // Reconnect if the connection was disconnected (children are cleared on disconnect)
+  if (connId && !store.connectedIds.has(connId)) {
+    const config = store.getConfig(connId);
+    if (!config) return;
+    try {
+      await store.connect(config);
+    } catch {
+      return;
+    }
+  }
+
+  // Ensure the tree is loaded deep enough to contain the target node
+  await ensureTreeLoadedForTab(tab);
+
+  // Clear any active search filter so the node is visible
+  if (isFiltering.value) {
+    searchQuery.value = "";
+    deferredSearchQuery.value = "";
+    clearSearchScopeFilter();
+  }
+
+  const nodePath = findNodePathForActiveTab(tab, store.treeNodes);
+  if (!nodePath) return;
+
+  for (const ancestor of nodePath) {
+    if (!ancestor.isExpanded) {
+      ancestor.isExpanded = true;
+    }
+  }
+
+  await nextTick();
+
+  const match = findSidebarNodeForActiveTab(tab, flatNodes.value);
+  if (!match) return;
+
+  store.selectedTreeNodeId = match.id;
+  await nextTick();
+
+  window.clearTimeout(highlightTimer);
+  highlightedNodeId.value = match.id;
+  highlightTimer = window.setTimeout(() => {
+    highlightedNodeId.value = null;
+  }, 1800);
+
+  await scrollToSidebarNode(match.id);
+}
+
+async function ensureTreeLoadedForTab(tab: QueryTab) {
+  const connId = tab.connectionId;
+  if (!connId) return;
+
+  const config = store.getConfig(connId);
+  if (!config) return;
+
+  // Ensure databases are loaded under the connection
+  const connNode = store.treeNodes.find((n) => n.id === connId);
+  if (connNode && (!connNode.children || connNode.children.length === 0)) {
+    try {
+      if (config.db_type === "redis") {
+        await store.loadRedisDatabases(connId);
+      } else if (config.db_type === "mongodb" || config.db_type === "elasticsearch") {
+        await store.loadMongoDatabases(connId);
+      } else {
+        await store.loadDatabases(connId);
+      }
+    } catch {
+      return;
+    }
+  }
+
+  if (!tab.database) return;
+
+  // Find the database node
+  const dbNode = findDatabaseNode(store.treeNodes, connId, tab.database);
+  if (!dbNode || (dbNode.children && dbNode.children.length > 0)) return;
+
+  // Load database contents
+  try {
+    if (config.db_type === "sqlserver") {
+      await store.loadSqlServerDatabaseObjects(connId, tab.database);
+    } else if (usesTreeSchemaMode(config.db_type)) {
+      await store.loadSchemas(connId, tab.database);
+      // If we have a schema, also load tables under that schema
+      if (tab.schema) {
+        const schemaNode = findSchemaNode(store.treeNodes, connId, tab.database, tab.schema);
+        if (schemaNode && (!schemaNode.children || schemaNode.children.length === 0)) {
+          await store.loadTables(connId, tab.database, tab.schema);
+        }
+      }
+    } else {
+      await store.loadTables(connId, tab.database);
+    }
+  } catch {
+    // Node just won't have children loaded
+  }
+}
+
+function findDatabaseNode(nodes: TreeNode[], connId: string, database: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.type === "database" && node.connectionId === connId && node.database === database) {
+      return node;
+    }
+    if (node.children) {
+      const found = findDatabaseNode(node.children, connId, database);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function findSchemaNode(nodes: TreeNode[], connId: string, database: string, schema: string): TreeNode | null {
+  for (const node of nodes) {
+    if (node.type === "schema" && node.connectionId === connId && node.database === database && node.label === schema) {
+      return node;
+    }
+    if (node.children) {
+      const found = findSchemaNode(node.children, connId, database, schema);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function onSearchToggle(node: TreeNode) {
@@ -315,6 +449,13 @@ defineExpose({ focusSearch });
         </div>
         <button
           class="shrink-0 h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+          :title="t('sidebar.locateActiveTab')"
+          @click="locateActiveTabInSidebar"
+        >
+          <Crosshair class="h-3.5 w-3.5" />
+        </button>
+        <button
+          class="shrink-0 h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
           :title="t('connectionGroup.createGroup')"
           @click="createNewGroup"
         >
@@ -367,6 +508,7 @@ defineExpose({ focusSearch });
           :depth="item.depth"
           :drag-disabled="isFiltering"
           :pending-rename="pendingRenameGroupId === item.node.id"
+          :highlighted="highlightedNodeId === item.node.id"
           @node-toggled="onNodeToggled"
           @search-toggle="onSearchToggle"
           @rename-started="pendingRenameGroupId = null"
@@ -385,6 +527,7 @@ defineExpose({ focusSearch });
         :depth="item.depth"
         :drag-disabled="isFiltering"
         :pending-rename="pendingRenameGroupId === item.node.id"
+        :highlighted="highlightedNodeId === item.id"
         @node-toggled="onNodeToggled"
         @search-toggle="onSearchToggle"
         @rename-started="pendingRenameGroupId = null"

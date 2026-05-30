@@ -79,6 +79,7 @@ export default {
     searchScopeTable: "表",
     searchScopeView: "视图",
     clearFilter: "清除筛选",
+    locateActiveTab: "在侧边栏中定位",
   },
   savedSql: {
     saveToLibrary: "保存到 SQL 库",
