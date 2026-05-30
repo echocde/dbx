@@ -517,11 +517,8 @@ impl AppState {
         let base_pool_key = base_pool_key_for(db_type, connection_id, database, false);
         let session_prefix = format!("{base_pool_key}:session:");
         let mut conns = self.connections.write().await;
-        let keys_to_remove: Vec<String> = conns
-            .keys()
-            .filter(|key| *key == &base_pool_key || key.starts_with(&session_prefix))
-            .cloned()
-            .collect();
+        let keys_to_remove: Vec<String> =
+            conns.keys().filter(|key| *key == &base_pool_key || key.starts_with(&session_prefix)).cloned().collect();
         let mut removed = Vec::with_capacity(keys_to_remove.len());
         for key in keys_to_remove {
             if let Some(pool) = conns.remove(&key) {
