@@ -129,6 +129,8 @@ export default {
     caCertPath: "Certificado CA",
     caCertPathPlaceholder: "Opcional, p. ej. ~/.yandex/RootCA.crt",
     caCertPathBrowse: "Buscar certificado",
+    redisTlsInsecure: "Omitir verificación del certificado",
+    redisTlsInsecureHint: "Equivale a redis-cli --tls --insecure, para certificados autofirmados o CA privadas.",
     mysqlTlsMode: "Modo TLS",
     mysqlTlsModePreferred: "Preferido",
     mysqlTlsModeDisabled: "Deshabilitado",

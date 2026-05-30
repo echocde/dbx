@@ -285,6 +285,10 @@ impl ConnectionConfig {
             && self.redis_connection_mode.as_deref().is_some_and(|mode| mode.eq_ignore_ascii_case("cluster"))
     }
 
+    pub fn redis_tls_insecure(&self) -> bool {
+        self.db_type == DatabaseType::Redis && redis_url_params_enable_insecure(self.url_params.as_deref())
+    }
+
     pub fn connection_url(&self) -> String {
         self.connection_url_with_host(&self.host, self.port)
     }
@@ -306,7 +310,8 @@ impl ConnectionConfig {
             DatabaseType::Access => self.host.clone(),
             DatabaseType::Redis => {
                 let scheme = if self.ssl { "rediss" } else { "redis" };
-                format!("{scheme}://{host}:{port}/")
+                let fragment = self.redis_tls_insecure_fragment();
+                format!("{scheme}://{host}:{port}/{fragment}")
             }
             DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
@@ -399,12 +404,13 @@ impl ConnectionConfig {
             DatabaseType::Access => self.host.clone(),
             DatabaseType::Redis => {
                 let scheme = if self.ssl { "rediss" } else { "redis" };
+                let fragment = self.redis_tls_insecure_fragment();
                 if self.username.is_empty() && self.password.is_empty() {
-                    format!("{scheme}://{host}:{port}/")
+                    format!("{scheme}://{host}:{port}/{fragment}")
                 } else if self.username.is_empty() {
-                    format!("{scheme}://:{password}@{host}:{port}/")
+                    format!("{scheme}://:{password}@{host}:{port}/{fragment}")
                 } else {
-                    format!("{scheme}://{username}:{password}@{host}:{port}/")
+                    format!("{scheme}://{username}:{password}@{host}:{port}/{fragment}")
                 }
             }
             DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
@@ -569,6 +575,29 @@ impl ConnectionConfig {
     pub fn clickhouse_uses_tls(&self) -> bool {
         self.ssl || url_params_contains_flag(self.url_params.as_deref(), "secure", "true")
     }
+
+    fn redis_tls_insecure_fragment(&self) -> &'static str {
+        if self.ssl && self.redis_tls_insecure() {
+            "#insecure"
+        } else {
+            ""
+        }
+    }
+}
+
+fn redis_url_params_enable_insecure(params: Option<&str>) -> bool {
+    params.unwrap_or("").trim().trim_start_matches('?').split(['&', ';']).any(|part| {
+        let part = part.trim();
+        if part.is_empty() {
+            return false;
+        }
+        let Some((key, value)) = part.split_once('=') else {
+            return part.eq_ignore_ascii_case("insecure");
+        };
+        let key = key.trim();
+        matches!(key.to_ascii_lowercase().as_str(), "insecure" | "tls_insecure" | "accept_invalid_certs")
+            && matches!(value.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "insecure")
+    })
 }
 
 fn url_params_contains_flag(params: Option<&str>, key: &str, expected: &str) -> bool {
@@ -1423,6 +1452,26 @@ mod tests {
         assert_eq!(url, "rediss://10.1.2.3:2883/");
         assert!(!url.contains("default"));
         assert!(!url.contains("redis-secret"));
+    }
+
+    #[test]
+    fn redis_tls_insecure_url_params_append_insecure_fragment() {
+        let mut config = mysql_config("default", "secret", Some("0"));
+        config.db_type = DatabaseType::Redis;
+        config.ssl = true;
+        config.url_params = Some("insecure=true".to_string());
+
+        assert_eq!(config.connection_url(), "rediss://default:secret@10.1.2.3:2883/#insecure");
+        assert_eq!(config.redacted_connection_url(), "rediss://10.1.2.3:2883/#insecure");
+    }
+
+    #[test]
+    fn redis_insecure_url_params_do_not_affect_plain_tcp() {
+        let mut config = mysql_config("default", "secret", Some("0"));
+        config.db_type = DatabaseType::Redis;
+        config.url_params = Some("insecure=true".to_string());
+
+        assert_eq!(config.connection_url(), "redis://default:secret@10.1.2.3:2883/");
     }
 
     #[test]

@@ -35,6 +35,19 @@ test("parses mysql TLS URL params into the SSL switch state", () => {
   assert.equal(parseConnectionUrl("mysql://root@tidb.example.com:4000/test?require_ssl=true").ssl, true);
 });
 
+test("parses Redis insecure TLS URL fragments into URL params", () => {
+  const parsed = parseConnectionUrl("rediss://default:secret@redis.example.com:6379/0#insecure");
+
+  assert.equal(parsed.dbType, "redis");
+  assert.equal(parsed.host, "redis.example.com");
+  assert.equal(parsed.port, 6379);
+  assert.equal(parsed.username, "default");
+  assert.equal(parsed.password, "secret");
+  assert.equal(parsed.database, "0");
+  assert.equal(parsed.urlParams, "insecure=true");
+  assert.equal(parsed.ssl, true);
+});
+
 test("parses JDBC URLs by using the inner database URL", () => {
   const postgres = parseConnectionUrl("jdbc:postgresql://alice:secret@db.example.com:5433/app?sslmode=require");
   assert.equal(postgres.dbType, "postgres");

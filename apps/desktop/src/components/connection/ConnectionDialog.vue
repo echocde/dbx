@@ -663,6 +663,12 @@ const postgresClientKeyPath = computed({
     form.value.url_params = setUrlParam(form.value.url_params, "sslkey", value);
   },
 });
+const redisTlsInsecure = computed({
+  get: () => getUrlParam(form.value.url_params, "insecure").toLowerCase() === "true",
+  set: (value: boolean) => {
+    form.value.url_params = setUrlParam(form.value.url_params, "insecure", value ? "true" : "");
+  },
+});
 const canUseSsh = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "access");
 const canUseProxy = computed(
   () => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb" && form.value.db_type !== "access",
@@ -1982,11 +1988,13 @@ function openExternalUrl(url: string) {
                             ? 'databaseName=TENANT_DB'
                             : form.db_type === 'clickhouse'
                               ? 'secure=true'
-                              : form.db_type === 'bigquery'
-                                ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
-                                : form.db_type === 'informix'
-                                  ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
-                                  : 'sslmode=disable'
+                              : form.db_type === 'redis'
+                                ? 'insecure=true'
+                                : form.db_type === 'bigquery'
+                                  ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
+                                  : form.db_type === 'informix'
+                                    ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
+                                    : 'sslmode=disable'
                       "
                     />
                   </div>
@@ -2004,6 +2012,16 @@ function openExternalUrl(url: string) {
                   <label class="col-span-3 flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" v-model="form.ssl" class="mr-0" />
                     <span class="text-xs text-muted-foreground">{{ t("connection.sslEnable") }}</span>
+                  </label>
+                </div>
+
+                <div v-if="form.db_type === 'redis'" class="grid grid-cols-4 items-start gap-4">
+                  <Label class="text-right text-xs">{{ t("connection.redisTlsInsecure") }}</Label>
+                  <label class="col-span-3 flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="redisTlsInsecure" class="mr-0 mt-0.5" :disabled="!form.ssl" />
+                    <span class="text-xs leading-5 text-muted-foreground">
+                      {{ t("connection.redisTlsInsecureHint") }}
+                    </span>
                   </label>
                 </div>
 

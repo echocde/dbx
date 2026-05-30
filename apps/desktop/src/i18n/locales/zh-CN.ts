@@ -129,6 +129,8 @@ export default {
     caCertPath: "CA 证书",
     caCertPathPlaceholder: "可选，例如 ~/.yandex/RootCA.crt",
     caCertPathBrowse: "选择证书",
+    redisTlsInsecure: "跳过证书验证",
+    redisTlsInsecureHint: "等价于 redis-cli --tls --insecure，适用于自签名证书或私有 CA。",
     mysqlTlsMode: "TLS 模式",
     mysqlTlsModePreferred: "优先使用",
     mysqlTlsModeDisabled: "禁用",

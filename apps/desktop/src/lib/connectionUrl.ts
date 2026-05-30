@@ -259,6 +259,11 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
   }
 
   const urlParams = parsed.search.replace(/^\?/, "");
+  const normalizedFragment = decodeUrlPart(parsed.hash.replace(/^#/, "")).trim().toLowerCase();
+  const parsedUrlParams =
+    profile.type === "redis" && normalizedFragment === "insecure"
+      ? [urlParams, "insecure=true"].filter(Boolean).join("&")
+      : urlParams;
   if (profile.type === "mongodb") {
     return {
       dbType: profile.type,
@@ -269,7 +274,7 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
       username: decodeUrlPart(parsed.username),
       password: decodeUrlPart(parsed.password),
       database: databaseFromPath(parsed.pathname),
-      urlParams,
+      urlParams: parsedUrlParams,
       ssl: scheme === "mongodb+srv",
       connectionString: source,
       useMongoUrl: true,
@@ -285,8 +290,8 @@ export function parseConnectionUrl(value: string, preferredProfile?: string): Pa
     username: decodeUrlPart(parsed.username),
     password: decodeUrlPart(parsed.password),
     database: databaseFromPath(parsed.pathname),
-    urlParams,
-    ssl: scheme === "rediss" || scheme === "https" || urlParamsRequireTls(profile.type, urlParams),
+    urlParams: parsedUrlParams,
+    ssl: scheme === "rediss" || scheme === "https" || urlParamsRequireTls(profile.type, parsedUrlParams),
   };
 }
 
