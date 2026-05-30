@@ -129,7 +129,10 @@ const labelRef = ref<HTMLElement>();
 const rowRef = ref<HTMLElement>();
 function isLabelTruncated(): boolean {
   const el = labelRef.value;
-  return !!el && el.scrollWidth > el.clientWidth;
+  if (!el) return false;
+  const style = window.getComputedStyle(el);
+  if (style.overflowX === "visible" || style.textOverflow !== "ellipsis") return false;
+  return el.scrollWidth - el.clientWidth > 2;
 }
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
@@ -266,8 +269,8 @@ function visibleLabel(node: TreeNode): string {
   return displayLabel(node);
 }
 
-function isTooltipDisabled(node: TreeNode): boolean {
-  return !isLabelTruncated() && visibleLabel(node) === displayLabel(node);
+function isTooltipDisabled(): boolean {
+  return !isLabelTruncated();
 }
 
 async function toggle() {
@@ -2304,13 +2307,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
           @keydown.escape.prevent="isRenamingGroup = false"
           @click.stop
         />
-        <LightTooltip
-          v-else
-          :text="displayLabel(node)"
-          :disabled="isTooltipDisabled(node)"
-          side="right"
-          :side-offset="8"
-        >
+        <LightTooltip v-else :text="displayLabel(node)" :disabled="isTooltipDisabled" side="right" :side-offset="8">
           <span ref="labelRef" class="min-w-0 flex-1 truncate">{{ visibleLabel(node) }}</span>
         </LightTooltip>
         <span

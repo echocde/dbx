@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 const props = withDefaults(
   defineProps<{
     text: string;
-    disabled?: boolean;
+    disabled?: boolean | (() => boolean);
     side?: "top" | "right" | "bottom" | "left";
     sideOffset?: number;
     delay?: number;
@@ -70,6 +70,10 @@ function isTriggerActive(): boolean {
   return el.matches(":hover") || (active instanceof Node && el.contains(active));
 }
 
+function isDisabled(): boolean {
+  return typeof props.disabled === "function" ? props.disabled() : props.disabled;
+}
+
 function updatePosition() {
   const el = triggerElement();
   if (!el) return;
@@ -127,7 +131,7 @@ function removeGlobalListeners() {
 }
 
 function open() {
-  if (props.disabled || !props.text) return;
+  if (isDisabled() || !props.text) return;
   if (!isTriggerActive()) return;
   updatePosition();
   show.value = true;
@@ -135,7 +139,7 @@ function open() {
 }
 
 function scheduleOpen() {
-  if (props.disabled || !props.text) return;
+  if (isDisabled() || !props.text) return;
   clearTimer();
   timer = setTimeout(open, props.delay);
 }
@@ -145,7 +149,7 @@ onBeforeUnmount(close);
 watch(
   () => [props.disabled, props.text] as const,
   () => {
-    if (props.disabled || !props.text) close();
+    if (isDisabled() || !props.text) close();
     else if (show.value) updatePosition();
   },
 );
