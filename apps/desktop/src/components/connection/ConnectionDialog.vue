@@ -1988,13 +1988,11 @@ function openExternalUrl(url: string) {
                             ? 'databaseName=TENANT_DB'
                             : form.db_type === 'clickhouse'
                               ? 'secure=true'
-                              : form.db_type === 'redis'
-                                ? 'insecure=true'
-                                : form.db_type === 'bigquery'
-                                  ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
-                                  : form.db_type === 'informix'
-                                    ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
-                                    : 'sslmode=disable'
+                              : form.db_type === 'bigquery'
+                                ? 'OAuthType=0;OAuthServiceAcctEmail=svc@project.iam.gserviceaccount.com;OAuthPvtKeyPath=/path/key.json'
+                                : form.db_type === 'informix'
+                                  ? 'INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8'
+                                  : 'sslmode=disable'
                       "
                     />
                   </div>
