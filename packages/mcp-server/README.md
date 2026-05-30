@@ -127,7 +127,7 @@ PostgreSQL, MySQL, SQLite, Doris, StarRocks, and Redshift queries run directly f
 ## Requirements
 
 - [DBX](https://github.com/t8y2/dbx) installed with at least one connection configured
-- Node.js 18+
+- Node.js 22.13.0 或更高版本
 
 ## License
 
@@ -242,4 +242,4 @@ PostgreSQL、MySQL、SQLite、Doris、StarRocks、Redshift 查询可由 MCP Serv
 ### 系统要求
 
 - 已安装 [DBX](https://github.com/t8y2/dbx) 并配置了至少一个数据库连接
-- Node.js 18+
+- Node.js 22.13.0 or newer

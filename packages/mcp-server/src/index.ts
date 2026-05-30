@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import {
@@ -8,7 +9,9 @@ import {
   createBackend,
   evaluateMongoAggregateSafety,
   evaluateSqlSafety,
+  formatCell,
   formatSchemaContext,
+  mdTable,
   notifyReload,
   parseMongoAggregateCommand,
   postBridge,
@@ -17,16 +20,16 @@ import {
   type ConnectionConfig,
 } from "@dbx-app/node-core";
 
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version?: string };
+export const DBX_MCP_PACKAGE_VERSION = packageJson.version ?? "0.0.0";
+
 function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
 }
 
-function mdTable(headers: string[], rows: string[][]): string {
-  const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] || "").length), 3));
-  const header = `| ${headers.map((h, i) => h.padEnd(widths[i])).join(" | ")} |`;
-  const sep = `| ${widths.map((w) => "-".repeat(w)).join(" | ")} |`;
-  const body = rows.map((r) => `| ${r.map((c, i) => (c || "").padEnd(widths[i])).join(" | ")} |`).join("\n");
-  return `${header}\n${sep}\n${body}`;
+function toolError(code: string, message: string) {
+  return { ...text(`${code}: ${message}`), isError: true };
 }
 
 function withDatabase(config: ConnectionConfig, database?: string): ConnectionConfig {
@@ -40,7 +43,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
   const isWebMode = options.isWebMode ?? !!process.env.DBX_WEB_URL;
   const server = new McpServer({
     name: "dbx",
-    version: "0.4.2",
+    version: DBX_MCP_PACKAGE_VERSION,
   });
 
   server.tool("dbx_list_connections", "List all database connections configured in DBX", {}, async () => {
@@ -60,7 +63,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
     },
     async ({ connection_name, database, schema }) => {
       const config = await backend.findConnection(connection_name);
-      if (!config) return text(`Connection "${connection_name}" not found`);
+      if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
       const tables = await backend.listTables(withDatabase(config, database), schema);
       if (tables.length === 0) return text("No tables found.");
       const rows = tables.map((t) => [t.name, t.type]);
@@ -79,7 +82,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
     },
     async ({ connection_name, table, database, schema }) => {
       const config = await backend.findConnection(connection_name);
-      if (!config) return text(`Connection "${connection_name}" not found`);
+      if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
       const columns = await backend.describeTable(withDatabase(config, database), table, schema);
       if (columns.length === 0) return text("No columns found.");
       const rows = columns.map((c) => [
@@ -103,10 +106,10 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
     },
     async ({ connection_name, database, sql }) => {
       const config = await backend.findConnection(connection_name);
-      if (!config) return text(`Connection "${connection_name}" not found`);
+      if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
       if (config.db_type !== "mongodb") {
         const safety = evaluateSqlSafety(sql, sqlSafetyFromEnv());
-        if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
+        if (!safety.allowed) return toolError("SQL_BLOCKED", safety.reason ?? "SQL blocked.");
       }
       // MongoDB shell commands don't fit the SQL safety evaluator; the backend
       // (node-core executeQuery) applies command-aware read/write gating.
@@ -117,7 +120,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
         return text(`${mdTable(result.columns, rows)}\n\n${result.row_count} row(s)`);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        return text(`Query error: ${msg}`);
+        return toolError("QUERY_ERROR", msg);
       }
     },
   );
@@ -134,7 +137,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
     },
     async ({ connection_name, database, schema, tables, max_tables }) => {
       const config = await backend.findConnection(connection_name);
-      if (!config) return text(`Connection "${connection_name}" not found`);
+      if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
       const context = await buildSchemaContext(backend, withDatabase(config, database), {
         schema,
         tables,
@@ -189,7 +192,7 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
     },
     async ({ connection_name }) => {
       const removed = await backend.removeConnection(connection_name);
-      if (!removed) return text(`Connection "${connection_name}" not found.`);
+      if (!removed) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
       await notifyReload();
       return text(`Connection "${connection_name}" removed.`);
     },
@@ -207,6 +210,8 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
         schema: z.string().optional().describe("Schema name"),
       },
       async ({ connection_name, table, database, schema }) => {
+        const config = await backend.findConnection(connection_name);
+        if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
         return bridgeRequest("/open-table", { connection_name, table, database, schema }, `Opened ${table} in DBX`);
       },
     );
@@ -221,16 +226,17 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
       },
       async ({ connection_name, sql, database }) => {
         const config = await backend.findConnection(connection_name);
+        if (!config) return toolError("CONNECTION_NOT_FOUND", `Connection "${connection_name}" not found.`);
         const safetyOptions = sqlSafetyFromEnv();
         if (config?.db_type === "mongodb") {
           const aggregate = parseMongoAggregateCommand(sql);
           if (aggregate) {
             const safety = evaluateMongoAggregateSafety(aggregate, safetyOptions);
-            if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
+            if (!safety.allowed) return toolError("SQL_BLOCKED", safety.reason ?? "Query blocked.");
           }
         } else {
           const safety = evaluateSqlSafety(sql, safetyOptions);
-          if (!safety.allowed) return text(`Query blocked: ${safety.reason}`);
+          if (!safety.allowed) return toolError("SQL_BLOCKED", safety.reason ?? "SQL blocked.");
         }
         // MongoDB shell commands bypass the SQL safety evaluator; pass MCP
         // safety flags to the desktop executor for command-aware gating.
@@ -252,16 +258,11 @@ export function createDbxMcpServer(backend: Backend, options: { isWebMode?: bool
   return server;
 }
 
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
 async function bridgeRequest(path: string, body: Record<string, unknown>, successMsg: string) {
   const res = await postBridge(path, body);
   if (res.ok) return text(successMsg);
-  return text(res.text.startsWith("DBX is not running") ? res.text : `Failed: ${res.text}`);
+  const message = res.text.startsWith("DBX is not running") ? res.text : `Failed: ${res.text}`;
+  return toolError("DBX_NOT_RUNNING", message);
 }
 
 async function main() {
