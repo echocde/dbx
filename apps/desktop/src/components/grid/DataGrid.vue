@@ -5645,6 +5645,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                   <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
                   <div class="text-xs max-w-lg break-all text-destructive/80">{{ errorMessage }}</div>
                 </div>
+                <slot name="error-actions" :error-message="errorMessage" />
               </div>
 
               <div

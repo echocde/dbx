@@ -445,19 +445,19 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                   (column: string, columnIndex: number, direction: 'asc' | 'desc' | null, whereInput?: string) =>
                     emit('sort', column, columnIndex, direction, whereInput)
                 "
-              />
-              <div
-                v-if="activeTab.result?.columns.includes('Error')"
-                class="flex items-center gap-2 px-3 py-1.5 border-t bg-destructive/5"
               >
-                <Bot class="h-3.5 w-3.5 text-destructive" />
-                <button
-                  class="text-xs text-destructive hover:underline"
-                  @click="emit('fixWithAi', String(activeTab.result?.rows?.[0]?.[0] ?? ''))"
-                >
-                  {{ t("ai.fixWithAi") }}
-                </button>
-              </div>
+                <template v-if="activeTab.result?.columns.includes('Error')" #error-actions="{ errorMessage }">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-2 h-7 gap-1.5 border-destructive/30 bg-background px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    @click="emit('fixWithAi', String(errorMessage))"
+                  >
+                    <Bot class="h-3.5 w-3.5" />
+                    {{ t("ai.fixWithAi") }}
+                  </Button>
+                </template>
+              </DataGrid>
               <div
                 v-else-if="!activeTab.result && activeTab.isExecuting"
                 class="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 text-muted-foreground text-sm"
