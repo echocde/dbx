@@ -157,7 +157,9 @@ const emit = defineEmits<{
   "search-toggle": [node: TreeNode];
 }>();
 
-const usesFullWidthLabel = computed(() => usesFullWidthTreeLabel(props.node.type));
+const usesFullWidthLabel = computed(() =>
+  usesFullWidthTreeLabel(props.node.type, settingsStore.editorSettings.sidebarAllowHorizontalScroll),
+);
 const rowWidthClass = computed(() => (usesFullWidthLabel.value ? "w-max min-w-full" : "w-full min-w-0"));
 const labelWidthClass = computed(() =>
   usesFullWidthLabel.value ? "shrink-0 whitespace-nowrap" : "min-w-0 flex-1 truncate",
@@ -1650,9 +1652,12 @@ const isActiveConnectionScope = computed(
 const isSelected = computed(() => connectionStore.selectedTreeNodeId === props.node.id);
 const rowStyle = computed(() => {
   const color = connectionColor.value;
+  const backgroundColor = hexToRgba(color, isActiveConnectionScope.value ? 0.14 : 0.08);
   return {
     paddingLeft: paddingLeft.value,
-    backgroundColor: hexToRgba(color, isActiveConnectionScope.value ? 0.14 : 0.08),
+    "--tree-connection-active-bg": hexToRgba(color, 0.18),
+    "--tree-connection-active-focus-bg": hexToRgba(color, 0.22),
+    backgroundColor,
   };
 });
 
@@ -2662,18 +2667,18 @@ function treeItemMenuItems(): ContextMenuItem[] {
 <style>
 /* Unfocused: subtle gray */
 .tree-item-active {
-  background-color: oklch(0.94 0 0) !important;
+  background-color: var(--tree-connection-active-bg, oklch(0.94 0 0)) !important;
 }
 :root.dark .tree-item-active {
-  background-color: oklch(0.26 0 0) !important;
+  background-color: var(--tree-connection-active-bg, oklch(0.26 0 0)) !important;
 }
 
 /* Focused: soft blue */
 .tree-item-active:focus {
-  background-color: oklch(0.91 0.03 250) !important;
+  background-color: var(--tree-connection-active-focus-bg, oklch(0.91 0.03 250)) !important;
 }
 :root.dark .tree-item-active:focus {
-  background-color: oklch(0.35 0.06 250) !important;
+  background-color: var(--tree-connection-active-focus-bg, oklch(0.35 0.06 250)) !important;
 }
 
 /* Locate highlight: instant amber, then fade on removal */

@@ -1382,6 +1382,9 @@ export default {
     sidebarHideTableComments: "Ocultar comentarios de tablas en la barra lateral",
     sidebarHideTableCommentsDescription:
       "Oculta los comentarios de tablas/vistas junto a los nombres en el árbol de la barra lateral para ahorrar espacio horizontal.",
+    sidebarAllowHorizontalScroll: "Permitir desplazamiento horizontal lateral",
+    sidebarAllowHorizontalScrollDescription:
+      "Muestra completos los nombres largos de tablas, vistas y colecciones permitiendo desplazamiento horizontal en la barra lateral.",
     snippetsDescription: "Personaliza plantillas SQL activadas en el editor.",
     snippetsAdd: "Agregar fragmento",
     snippetsLabel: "Etiqueta",

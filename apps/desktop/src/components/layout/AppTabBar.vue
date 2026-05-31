@@ -22,7 +22,7 @@ import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTabScroll } from "@/composables/useTabScroll";
-import { shouldShowTabOverflowControls, tabGroupColor, tabGroupKey } from "@/lib/tabPresentation";
+import { connectionColor, shouldShowTabOverflowControls } from "@/lib/tabPresentation";
 import { hexToRgba } from "@/lib/color";
 import type { QueryTab } from "@/types/database";
 
@@ -128,14 +128,24 @@ watch(
 );
 
 function tabColorStyle(tab: QueryTab) {
-  const color = tabGroupColor(tab);
+  const color = connectionColor(tab.connectionId);
   const isActive = tab.id === queryStore.activeTabId && !props.showDriverStore;
   const isClassic = settingsStore.editorSettings.appLayout === "classic";
+  if (!color) {
+    if (isClassic) {
+      return isActive ? { boxShadow: "0 1px 0 0 var(--color-background)" } : undefined;
+    }
+    return isActive
+      ? {
+          borderColor: "var(--ring)",
+        }
+      : undefined;
+  }
 
   if (isClassic) {
     return {
       backgroundColor: hexToRgba(color, isActive ? 0.16 : 0.07),
-      boxShadow: isActive ? `inset 0 -2px 0 ${color}` : `inset 0 -1px 0 ${hexToRgba(color, 0.32)}`,
+      boxShadow: isActive ? `inset 0 -2px 0 ${color}` : undefined,
     };
   }
 
@@ -159,13 +169,6 @@ const showTabOverflowControls = computed(() =>
     canScrollRight.value,
   ),
 );
-
-interface TabGroup {
-  key: string;
-  label: string;
-  color: string;
-  tabs: QueryTab[];
-}
 
 const connectionSummariesById = computed(
   () =>
@@ -239,45 +242,14 @@ function tabTooltipRows(tab: QueryTab): { label: string; value: string }[] {
   return rows;
 }
 
-function groupLabelForTab(tab: Pick<QueryTab, "connectionId" | "database">): string {
-  return `${connectionNameForTab(tab)} / ${databaseNameForTab(tab)}`;
-}
-
-const tabGroups = computed<TabGroup[]>(() => {
-  const groups: TabGroup[] = [];
-  const byKey = new Map<string, TabGroup>();
-  for (const tab of queryStore.tabs) {
-    const key = tabGroupKey(tab);
-    let group = byKey.get(key);
-    if (!group) {
-      group = {
-        key,
-        label: groupLabelForTab(tab),
-        color: tabGroupColor(tab),
-        tabs: [],
-      };
-      byKey.set(key, group);
-      groups.push(group);
-    }
-    group.tabs.push(tab);
-  }
-  return groups;
-});
-
-const showTabGroupLabels = computed(() => tabGroups.value.length > 1);
 const openTabMenuItems = computed(() =>
-  tabGroups.value.flatMap((group, groupIndex) =>
-    group.tabs.map((tab, tabIndex) => ({
-      value: tab.id,
-      label: tabTitle(tab),
-      title: tabTitle(tab),
-      sectionLabel: tabIndex === 0 ? group.label : undefined,
-      sectionColor: tabIndex === 0 ? group.color : undefined,
-      separatorBefore: groupIndex > 0 && tabIndex === 0,
-      icon: tabMenuIcon(tab),
-      iconClass: tabIconClass(tab),
-    })),
-  ),
+  queryStore.tabs.map((tab) => ({
+    value: tab.id,
+    label: tabTitle(tab),
+    title: tabTitle(tab),
+    icon: tabMenuIcon(tab),
+    iconClass: tabIconClass(tab),
+  })),
 );
 
 function tabMenuIcon(tab: QueryTab) {
@@ -307,12 +279,6 @@ const tabOverflowControlClass = computed(() =>
   settingsStore.editorSettings.appLayout === "classic"
     ? "h-full w-8 border-r border-border/80 dark:border-border/45 bg-background/80 text-foreground/75 hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-40"
     : "h-7 w-7 rounded-md border border-border/60 bg-background text-foreground/70 hover:border-border hover:text-foreground",
-);
-
-const tabGroupLabelClass = computed(() =>
-  settingsStore.editorSettings.appLayout === "classic"
-    ? "h-full border-r border-border/80 dark:border-border/45 bg-muted/55 px-2"
-    : "h-7 rounded-md border border-border/50 bg-muted/35 px-2",
 );
 </script>
 
@@ -346,99 +312,78 @@ const tabGroupLabelClass = computed(() =>
       @scroll="updateScrollButtons"
       @wheel="onTabsWheel"
     >
-      <div
-        v-for="group in tabGroups"
-        :key="group.key"
-        class="flex h-full shrink-0 items-center"
-        :class="settingsStore.editorSettings.appLayout === 'classic' ? '' : 'gap-1.5'"
-        :data-tab-group="group.key"
+      <CustomContextMenu
+        v-for="tab in queryStore.tabs"
+        :key="tab.id"
+        :items="getTabMenuItems(tab)"
+        v-slot="{ onContextMenu }"
       >
-        <div
-          v-if="showTabGroupLabels"
-          class="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground"
-          :class="tabGroupLabelClass"
-          :title="group.label"
-        >
-          <span class="h-2 w-2 shrink-0 rounded-full" :style="{ backgroundColor: group.color }" />
-          <span class="max-w-32 truncate">{{ group.label }}</span>
-        </div>
-        <CustomContextMenu
-          v-for="tab in group.tabs"
-          :key="tab.id"
-          :items="getTabMenuItems(tab)"
-          v-slot="{ onContextMenu }"
-        >
-          <div
-            :class="settingsStore.editorSettings.appLayout === 'classic' ? 'h-full' : ''"
-            @contextmenu="onContextMenu"
-          >
-            <Tooltip>
-              <TooltipTrigger as-child>
-                <div
-                  class="group flex items-center gap-1 px-2 text-xs cursor-pointer transition-colors whitespace-nowrap select-none"
-                  :class="
-                    settingsStore.editorSettings.appLayout === 'classic'
-                      ? [
-                          compactTabTitle ? 'min-w-24' : 'min-w-38',
-                          'h-full border-r border-border/80 dark:border-border/45',
-                          tab.id === queryStore.activeTabId && !showDriverStore
-                            ? 'bg-background text-foreground font-medium'
-                            : 'text-foreground/70 hover:text-foreground/90',
-                        ]
-                      : [
-                          compactTabTitle ? 'min-w-24' : 'min-w-38',
-                          'h-7 rounded-md border',
-                          tab.id === queryStore.activeTabId && !showDriverStore
-                            ? 'text-foreground font-medium'
-                            : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90',
-                        ]
-                  "
-                  :style="tabColorStyle(tab)"
-                  :data-active-tab="tab.id === queryStore.activeTabId && !showDriverStore"
-                  @click="
-                    queryStore.activeTabId = tab.id;
-                    emit('close-driver-store');
-                  "
-                  @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
+        <div :class="settingsStore.editorSettings.appLayout === 'classic' ? 'h-full' : ''" @contextmenu="onContextMenu">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <div
+                class="group flex items-center gap-1 px-2 text-xs cursor-pointer transition-colors whitespace-nowrap select-none"
+                :class="
+                  settingsStore.editorSettings.appLayout === 'classic'
+                    ? [
+                        compactTabTitle ? 'min-w-24' : 'min-w-38',
+                        'h-full border-r border-border/80 dark:border-border/45',
+                        tab.id === queryStore.activeTabId && !showDriverStore
+                          ? 'bg-background text-foreground font-medium'
+                          : 'text-foreground/70 hover:text-foreground/90',
+                      ]
+                    : [
+                        compactTabTitle ? 'min-w-24' : 'min-w-38',
+                        'h-7 rounded-md border',
+                        tab.id === queryStore.activeTabId && !showDriverStore
+                          ? 'text-foreground font-medium'
+                          : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90',
+                      ]
+                "
+                :style="tabColorStyle(tab)"
+                :data-active-tab="tab.id === queryStore.activeTabId && !showDriverStore"
+                @click="
+                  queryStore.activeTabId = tab.id;
+                  emit('close-driver-store');
+                "
+                @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
+              >
+                <span class="shrink-0" :class="tabIconClass(tab)">
+                  <Table2 v-if="tab.mode === 'data'" class="h-3.5 w-3.5" />
+                  <TableProperties v-else-if="tab.mode === 'objects'" class="h-3.5 w-3.5" />
+                  <PencilRuler v-else-if="tab.mode === 'structure'" class="h-3.5 w-3.5" />
+                  <Code2 v-else class="h-3.5 w-3.5" />
+                </span>
+                <span class="min-w-0 truncate flex-1">{{ tabTitle(tab) }}</span>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <button
+                      class="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground focus:opacity-100"
+                      :class="tab.pinned ? 'visible text-primary' : 'invisible group-hover:visible'"
+                      @click.stop="queryStore.togglePinnedTab(tab.id)"
+                    >
+                      <Pin class="h-3 w-3" :class="{ 'fill-current': tab.pinned }" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>{{ tab.pinned ? t("contextMenu.unpin") : t("contextMenu.pin") }}</TooltipContent>
+                </Tooltip>
+                <button
+                  class="rounded hover:bg-muted-foreground/20 p-0.5 shrink-0"
+                  @click.stop="queryStore.closeTab(tab.id)"
                 >
-                  <span class="h-2 w-2 shrink-0 rounded-full" :style="{ backgroundColor: tabGroupColor(tab) }" />
-                  <span class="shrink-0" :class="tabIconClass(tab)">
-                    <Table2 v-if="tab.mode === 'data'" class="h-3.5 w-3.5" />
-                    <TableProperties v-else-if="tab.mode === 'objects'" class="h-3.5 w-3.5" />
-                    <PencilRuler v-else-if="tab.mode === 'structure'" class="h-3.5 w-3.5" />
-                    <Code2 v-else class="h-3.5 w-3.5" />
-                  </span>
-                  <span class="min-w-0 truncate flex-1">{{ tabTitle(tab) }}</span>
-                  <Tooltip>
-                    <TooltipTrigger as-child>
-                      <button
-                        class="inline-flex rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/20 hover:text-foreground focus:opacity-100"
-                        :class="tab.pinned ? 'visible text-primary' : 'invisible group-hover:visible'"
-                        @click.stop="queryStore.togglePinnedTab(tab.id)"
-                      >
-                        <Pin class="h-3 w-3" :class="{ 'fill-current': tab.pinned }" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>{{ tab.pinned ? t("contextMenu.unpin") : t("contextMenu.pin") }}</TooltipContent>
-                  </Tooltip>
-                  <button
-                    class="rounded hover:bg-muted-foreground/20 p-0.5 shrink-0"
-                    @click.stop="queryStore.closeTab(tab.id)"
-                  >
-                    <X class="h-3 w-3" />
-                  </button>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" class="text-xs grid grid-cols-[auto_1fr] gap-x-2">
-                <template v-for="line in tabTooltipRows(tab)" :key="line.label">
-                  <span class="text-muted-foreground">{{ line.label }}</span>
-                  <span>{{ line.value }}</span>
-                </template>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </CustomContextMenu>
-      </div>
+                  <X class="h-3 w-3" />
+                </button>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" class="text-xs grid grid-cols-[auto_1fr] gap-x-2">
+              <template v-for="line in tabTooltipRows(tab)" :key="line.label">
+                <span class="text-muted-foreground">{{ line.label }}</span>
+                <span>{{ line.value }}</span>
+              </template>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      </CustomContextMenu>
 
       <!-- Driver Store Tab -->
       <div
@@ -472,7 +417,7 @@ const tabGroupLabelClass = computed(() =>
       </div>
       <div :class="tabTailDragRegionClass" data-tauri-drag-region />
     </div>
-    <div v-if="showTabOverflowControls" class="relative z-30 flex shrink-0 items-center gap-1">
+    <div v-if="showTabOverflowControls" class="relative z-30 flex shrink-0 items-center">
       <button
         v-if="showTabOverflowControls"
         type="button"

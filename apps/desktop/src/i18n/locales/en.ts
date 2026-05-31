@@ -1488,6 +1488,9 @@ export default {
     sidebarHideTableComments: "Hide table comments in sidebar",
     sidebarHideTableCommentsDescription:
       "Hide the inline table/view comments shown next to names in the sidebar tree to save horizontal space.",
+    sidebarAllowHorizontalScroll: "Allow sidebar horizontal scroll",
+    sidebarAllowHorizontalScrollDescription:
+      "Show long table, view, and collection names in full by allowing horizontal sidebar scrolling.",
     snippetsDescription: "Customize SQL snippet templates triggered in the editor.",
     snippetsAdd: "Add Snippet",
     snippetsLabel: "Label",

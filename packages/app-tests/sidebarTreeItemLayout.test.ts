@@ -37,12 +37,13 @@ test("canTreeNodeShowExpander hides empty saved SQL containers", () => {
   assert.equal(canTreeNodeShowExpander({ type: "saved-sql-folder", childCount: 1 }), true);
 });
 
-test("usesFullWidthTreeLabel only expands object names that users need to read horizontally", () => {
-  assert.equal(usesFullWidthTreeLabel("table"), true);
-  assert.equal(usesFullWidthTreeLabel("view"), true);
-  assert.equal(usesFullWidthTreeLabel("mongo-collection"), true);
+test("usesFullWidthTreeLabel only expands object names when horizontal scroll is enabled", () => {
+  assert.equal(usesFullWidthTreeLabel("table", true), true);
+  assert.equal(usesFullWidthTreeLabel("view", true), true);
+  assert.equal(usesFullWidthTreeLabel("mongo-collection", true), true);
 
-  assert.equal(usesFullWidthTreeLabel("connection"), false);
-  assert.equal(usesFullWidthTreeLabel("schema"), false);
-  assert.equal(usesFullWidthTreeLabel("column"), false);
+  assert.equal(usesFullWidthTreeLabel("table", false), false);
+  assert.equal(usesFullWidthTreeLabel("connection", true), false);
+  assert.equal(usesFullWidthTreeLabel("schema", true), false);
+  assert.equal(usesFullWidthTreeLabel("column", true), false);
 });

@@ -19,8 +19,8 @@ export function treeItemPaddingLeft(depth: number): string {
   return `${depth * 16 + 8}px`;
 }
 
-export function usesFullWidthTreeLabel(type: TreeNodeType): boolean {
-  return fullWidthLabelTypes.has(type);
+export function usesFullWidthTreeLabel(type: TreeNodeType, allowHorizontalScroll: boolean): boolean {
+  return allowHorizontalScroll && fullWidthLabelTypes.has(type);
 }
 
 export function canTreeNodeExpand(type: TreeNodeType): boolean {

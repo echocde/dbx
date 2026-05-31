@@ -9,8 +9,6 @@ export interface LightDropdownItem {
   icon?: Component;
   iconClass?: string;
   leadingText?: string;
-  sectionLabel?: string;
-  sectionColor?: string;
   disabled?: boolean;
   separatorBefore?: boolean;
 }
@@ -189,17 +187,6 @@ onBeforeUnmount(close);
       <div v-if="label" class="bg-border -mx-1 my-1 h-px" />
       <template v-for="item in items" :key="item.value">
         <div v-if="item.separatorBefore" class="bg-border -mx-1 my-1 h-px" />
-        <div
-          v-if="item.sectionLabel"
-          class="flex items-center gap-1.5 px-1.5 pb-1 pt-1.5 text-[11px] text-muted-foreground"
-        >
-          <span
-            v-if="item.sectionColor"
-            class="h-2 w-2 shrink-0 rounded-full"
-            :style="{ backgroundColor: item.sectionColor }"
-          />
-          <span class="min-w-0 truncate">{{ item.sectionLabel }}</span>
-        </div>
         <button
           type="button"
           class="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm outline-hidden hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
