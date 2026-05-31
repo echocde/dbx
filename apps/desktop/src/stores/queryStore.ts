@@ -266,20 +266,28 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   function closeOtherTabs(id: string) {
-    tabs.value.filter((tab) => tab.id !== id && tab.isExecuting).forEach((tab) => void cancelTabExecution(tab.id));
-    tabs.value.filter((tab) => tab.id !== id && tab.isExplaining).forEach((tab) => void cancelTabExplain(tab.id));
-    tabs.value.filter((tab) => tab.id !== id).forEach((tab) => void closeResultSession(tab));
-    tabs.value.filter((tab) => tab.id !== id).forEach((tab) => void closeClientConnectionSession(tab));
+    tabs.value
+      .filter((tab) => tab.id !== id)
+      .forEach((tab) => {
+        if (tab.isExecuting) void cancelTabExecution(tab.id);
+        if (tab.isExplaining) void cancelTabExplain(tab.id);
+        void closeResultSession(tab);
+        void closeClientConnectionSession(tab);
+        clearResultPayload(tab);
+      });
     const next = closeOtherTabsState(tabs.value, activeTabId.value, id);
     tabs.value = next.tabs;
     activeTabId.value = next.activeTabId;
   }
 
   function closeAllTabs() {
-    tabs.value.filter((tab) => tab.isExecuting).forEach((tab) => void cancelTabExecution(tab.id));
-    tabs.value.filter((tab) => tab.isExplaining).forEach((tab) => void cancelTabExplain(tab.id));
-    tabs.value.forEach((tab) => void closeResultSession(tab));
-    tabs.value.forEach((tab) => void closeClientConnectionSession(tab));
+    tabs.value.forEach((tab) => {
+      if (tab.isExecuting) void cancelTabExecution(tab.id);
+      if (tab.isExplaining) void cancelTabExplain(tab.id);
+      void closeResultSession(tab);
+      void closeClientConnectionSession(tab);
+      clearResultPayload(tab);
+    });
     const next = closeAllTabsState(tabs.value, activeTabId.value);
     tabs.value = next.tabs;
     activeTabId.value = next.activeTabId;
@@ -545,6 +553,8 @@ export const useQueryStore = defineStore("query", () => {
     tab.executionId = executionId;
     tab.lastExecutedSql = sql;
     tab.resultTotalRowCount = undefined;
+    const previousResultSessionClose = closeResultSession(tab, options?.pagination?.sessionId);
+    clearResultPayload(tab);
     console.info("[DBX][executeTabSql:start]", {
       traceId,
       tabId: id,
@@ -573,7 +583,7 @@ export const useQueryStore = defineStore("query", () => {
           ? conn.query_timeout_secs
           : 30;
       const settingsStore = useSettingsStore();
-      await closeResultSession(tab, options?.pagination?.sessionId);
+      await previousResultSessionClose;
       if (tab.mode === "query") {
         const pagination = options?.pagination ?? { limit: settingsStore.editorSettings.pageSize, offset: 0 };
         const plan = await api.prepareQueryPaginationExecutionPlan({
