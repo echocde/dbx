@@ -12,8 +12,9 @@ use crate::commands::query::execute_sql_statement;
 use dbx_core::models::connection::DatabaseType;
 
 pub use dbx_core::sql::{
-    decode_sql_file_bytes, prepare_sql_file_statement, statement_summary, SqlFilePreview, SqlFileProgress,
-    SqlFileRequest, SqlFileStatementAction, SqlFileStatus, SqlParsingOptions, SqlStatementSplitter,
+    decode_sql_file_bytes, optimize_sql_file_import_statements, statement_summary, SqlFileImportStatement,
+    SqlFileImportStatementKind, SqlFilePreview, SqlFileProgress, SqlFileRequest, SqlFileStatus, SqlParsingOptions,
+    SqlStatementSplitter,
 };
 
 static SQL_FILE_EXECUTIONS: std::sync::LazyLock<RwLock<HashMap<String, CancellationToken>>> =
@@ -142,7 +143,13 @@ async fn execute_sql_file_inner(
     let mut statements = splitter.push_chunk(&file_content);
     statements.extend(splitter.finish());
 
-    for statement in statements {
+    let planned_statements = optimize_sql_file_import_statements(
+        &statements,
+        import_target.as_ref().map(|target| target.db_type),
+        import_target.as_ref().and_then(|target| target.driver_profile.as_deref()),
+    );
+
+    for planned_statement in planned_statements {
         if token.is_cancelled() {
             emit_progress(
                 app,
@@ -159,16 +166,15 @@ async fn execute_sql_file_inner(
             return Ok(());
         }
 
-        statement_index += 1;
+        let next_statement_index = statement_index + planned_statement.source_statement_count;
         if execute_statement_with_progress(
             app,
             state,
             request,
             &token,
             started_at,
-            statement_index,
-            &statement,
-            import_target.as_ref(),
+            next_statement_index,
+            &planned_statement,
             &mut success_count,
             &mut failure_count,
             &mut affected_rows,
@@ -177,6 +183,7 @@ async fn execute_sql_file_inner(
         {
             return Ok(());
         }
+        statement_index = next_statement_index;
     }
 
     emit_progress(
@@ -208,14 +215,13 @@ async fn execute_statement_with_progress(
     token: &CancellationToken,
     started_at: Instant,
     statement_index: usize,
-    statement: &str,
-    import_target: Option<&SqlFileImportTarget>,
+    statement: &SqlFileImportStatement,
     success_count: &mut usize,
     failure_count: &mut usize,
     affected_rows: &mut u64,
 ) -> Result<bool, String> {
     if token.is_cancelled() {
-        let summary = statement_summary(statement);
+        let summary = statement_summary(&statement.sql);
         emit_progress(
             app,
             &request.execution_id,
@@ -231,42 +237,37 @@ async fn execute_statement_with_progress(
         return Ok(true);
     }
 
-    let statement_action = import_target
-        .map(|target| prepare_sql_file_statement(statement, &target.db_type, target.driver_profile.as_deref()))
-        .unwrap_or_else(|| SqlFileStatementAction::Execute(statement.to_string()));
-    let executable_statement = match statement_action {
-        SqlFileStatementAction::Execute(statement) => statement,
-        SqlFileStatementAction::Skip => {
-            let summary = statement_summary(statement);
-            emit_progress(
-                app,
-                &request.execution_id,
-                SqlFileStatus::Running,
-                statement_index,
-                *success_count,
-                *failure_count,
-                *affected_rows,
-                started_at,
-                &summary,
-                None,
-            );
-            *success_count += 1;
-            emit_progress(
-                app,
-                &request.execution_id,
-                SqlFileStatus::StatementDone,
-                statement_index,
-                *success_count,
-                *failure_count,
-                *affected_rows,
-                started_at,
-                &summary,
-                None,
-            );
-            return Ok(false);
-        }
-    };
-    let summary = statement_summary(&executable_statement);
+    if statement.kind == SqlFileImportStatementKind::Skip {
+        let summary = statement_summary(&statement.sql);
+        emit_progress(
+            app,
+            &request.execution_id,
+            SqlFileStatus::Running,
+            statement_index,
+            *success_count,
+            *failure_count,
+            *affected_rows,
+            started_at,
+            &summary,
+            None,
+        );
+        *success_count += statement.source_statement_count;
+        emit_progress(
+            app,
+            &request.execution_id,
+            SqlFileStatus::StatementDone,
+            statement_index,
+            *success_count,
+            *failure_count,
+            *affected_rows,
+            started_at,
+            &summary,
+            None,
+        );
+        return Ok(false);
+    }
+
+    let summary = statement_summary(&statement.sql);
 
     emit_progress(
         app,
@@ -285,14 +286,14 @@ async fn execute_statement_with_progress(
         state.inner().as_ref(),
         &request.connection_id,
         &request.database,
-        &executable_statement,
+        &statement.sql,
         None,
         Some(token.clone()),
     )
     .await
     {
         Ok(result) => {
-            *success_count += 1;
+            *success_count += statement.source_statement_count;
             *affected_rows += result.affected_rows;
             emit_progress(
                 app,
@@ -309,6 +310,22 @@ async fn execute_statement_with_progress(
             Ok(false)
         }
         Err(error) => {
+            if statement.source_statement_count > 1 && !token.is_cancelled() {
+                return execute_merged_statement_fallback_with_progress(
+                    app,
+                    state,
+                    request,
+                    token,
+                    started_at,
+                    statement_index + 1 - statement.source_statement_count,
+                    statement,
+                    success_count,
+                    failure_count,
+                    affected_rows,
+                )
+                .await;
+            }
+
             let decision = statement_error_decision(
                 &request.execution_id,
                 token,
@@ -329,6 +346,104 @@ async fn execute_statement_with_progress(
             decision.result
         }
     }
+}
+
+async fn execute_merged_statement_fallback_with_progress(
+    app: &AppHandle,
+    state: &State<'_, Arc<AppState>>,
+    request: &SqlFileRequest,
+    token: &CancellationToken,
+    started_at: Instant,
+    first_statement_index: usize,
+    statement: &SqlFileImportStatement,
+    success_count: &mut usize,
+    failure_count: &mut usize,
+    affected_rows: &mut u64,
+) -> Result<bool, String> {
+    for (offset, source_sql) in statement.source_sqls.iter().enumerate() {
+        let statement_index = first_statement_index + offset;
+        if token.is_cancelled() {
+            emit_progress(
+                app,
+                &request.execution_id,
+                SqlFileStatus::Cancelled,
+                statement_index,
+                *success_count,
+                *failure_count,
+                *affected_rows,
+                started_at,
+                &statement_summary(source_sql),
+                None,
+            );
+            return Ok(true);
+        }
+
+        let summary = statement_summary(source_sql);
+        emit_progress(
+            app,
+            &request.execution_id,
+            SqlFileStatus::Running,
+            statement_index,
+            *success_count,
+            *failure_count,
+            *affected_rows,
+            started_at,
+            &summary,
+            None,
+        );
+
+        match execute_sql_statement(
+            state.inner().as_ref(),
+            &request.connection_id,
+            &request.database,
+            source_sql,
+            None,
+            Some(token.clone()),
+        )
+        .await
+        {
+            Ok(result) => {
+                *success_count += 1;
+                *affected_rows += result.affected_rows;
+                emit_progress(
+                    app,
+                    &request.execution_id,
+                    SqlFileStatus::StatementDone,
+                    statement_index,
+                    *success_count,
+                    *failure_count,
+                    *affected_rows,
+                    started_at,
+                    &summary,
+                    None,
+                );
+            }
+            Err(error) => {
+                let decision = statement_error_decision(
+                    &request.execution_id,
+                    token,
+                    request.continue_on_error,
+                    started_at,
+                    statement_index,
+                    *success_count,
+                    *failure_count,
+                    *affected_rows,
+                    &summary,
+                    error,
+                );
+
+                *failure_count = decision.failure_count;
+                for progress in decision.progress {
+                    let _ = app.emit("sql-file-progress", progress);
+                }
+                if decision.result? {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+
+    Ok(false)
 }
 
 fn register_sql_file_execution(
