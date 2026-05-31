@@ -4453,7 +4453,19 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     tabindex="0"
     @keydown="onGridKeydown"
   >
-    <CustomContextMenu :items="gridContextMenuItems" v-slot="{ onContextMenu }">
+    <div
+      v-if="isErrorResult"
+      class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-destructive"
+    >
+      <TriangleAlert class="h-8 w-8 text-destructive/50" aria-hidden="true" />
+      <div class="space-y-1">
+        <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
+        <div class="text-xs max-w-lg break-all text-destructive/80">{{ errorMessage }}</div>
+      </div>
+      <slot name="error-actions" :error-message="errorMessage" />
+    </div>
+
+    <CustomContextMenu v-else :items="gridContextMenuItems" v-slot="{ onContextMenu }">
       <div
         v-if="hasData || canUseWhereSearch"
         class="flex-1 flex flex-col overflow-hidden"
@@ -5637,19 +5649,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               </div>
 
               <div
-                v-if="isErrorResult"
-                class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-destructive"
-              >
-                <TriangleAlert class="h-8 w-8 text-destructive/50" aria-hidden="true" />
-                <div class="space-y-1">
-                  <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
-                  <div class="text-xs max-w-lg break-all text-destructive/80">{{ errorMessage }}</div>
-                </div>
-                <slot name="error-actions" :error-message="errorMessage" />
-              </div>
-
-              <div
-                v-else-if="!hasVisibleRows"
+                v-if="!hasVisibleRows"
                 class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-muted-foreground"
               >
                 <component
@@ -6321,7 +6321,10 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     </div>
 
     <!-- Bottom status bar -->
-    <div class="flex items-center gap-2 px-3 py-1 border-t text-xs text-muted-foreground bg-muted/30 shrink-0">
+    <div
+      v-if="!isErrorResult"
+      class="flex items-center gap-2 px-3 py-1 border-t text-xs text-muted-foreground bg-muted/30 shrink-0"
+    >
       <span v-if="hasData">
         {{ t("grid.totalRows", { count: result.rows.length }) }}
         <span v-if="typeof totalRowCount === 'number' && totalRowCount > 0" class="text-muted-foreground/70">{{
