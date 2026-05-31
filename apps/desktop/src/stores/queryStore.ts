@@ -83,11 +83,16 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
+  function touchResult(tab: QueryTab | undefined, accessedAt = Date.now()) {
+    if (tab?.result || tab?.results) tab.resultAccessedAt = accessedAt;
+  }
+
   function clearResultPayload(tab: QueryTab, options: { evicted?: boolean } = {}) {
     tab.result = undefined;
     tab.results = undefined;
     tab.activeResultIndex = undefined;
     tab.resultSessionId = undefined;
+    tab.resultAccessedAt = undefined;
     tab.queryAnalysis = undefined;
     tab.querySourceColumns = undefined;
     tab.queryEditabilityReason = undefined;
@@ -695,6 +700,7 @@ export const useQueryStore = defineStore("query", () => {
           current.results = undefined;
           current.activeResultIndex = undefined;
           current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
           current.queryEditabilityReason = undefined;
@@ -726,6 +732,7 @@ export const useQueryStore = defineStore("query", () => {
           current.results = undefined;
           current.activeResultIndex = undefined;
           current.result = mongoCountToQueryResult(result.total, performance.now() - startedAt);
+          touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
           current.queryEditabilityReason = undefined;
@@ -762,6 +769,7 @@ export const useQueryStore = defineStore("query", () => {
           current.results = undefined;
           current.activeResultIndex = undefined;
           current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
           current.queryEditabilityReason = undefined;
@@ -820,6 +828,7 @@ export const useQueryStore = defineStore("query", () => {
         current.resultPageOffset = pageOffset;
         current.resultCountSql = countSql;
         current.resultSessionId = current.result?.session_id ?? undefined;
+        touchResult(current);
         console.info("[DBX][executeTabSql:result:assigned]", {
           traceId,
           activeResultIndex: current.activeResultIndex,
@@ -884,6 +893,7 @@ export const useQueryStore = defineStore("query", () => {
         current.resultPageOffset = pageOffset;
         current.resultCountSql = countSql;
         current.resultSessionId = undefined;
+        touchResult(current);
       }
     } finally {
       const current = tabs.value.find((t) => t.id === id);
@@ -1003,6 +1013,7 @@ export const useQueryStore = defineStore("query", () => {
     if (!tab?.results || index < 0 || index >= tab.results.length) return;
     tab.activeResultIndex = index;
     tab.result = tab.results[index];
+    touchResult(tab);
     tab.queryAnalysis = undefined;
     tab.querySourceColumns = undefined;
     tab.queryEditabilityReason = undefined;
@@ -1021,12 +1032,18 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   async function trimResultCache() {
-    const inactive = tabs.value.filter((t) => t.id !== activeTabId.value && (t.result || t.results));
+    const inactive = tabs.value
+      .filter((t) => t.id !== activeTabId.value && (t.result || t.results))
+      .sort((a, b) => (a.resultAccessedAt ?? 0) - (b.resultAccessedAt ?? 0));
     if (inactive.length > MAX_CACHED_RESULTS) {
       const toEvict = inactive.slice(0, inactive.length - MAX_CACHED_RESULTS);
       await Promise.all(toEvict.map((t) => evictCachedResult(t)));
     }
   }
+
+  watch(activeTabId, (id) => {
+    touchResult(tabs.value.find((tab) => tab.id === id));
+  });
 
   async function reloadEvictedTab(id: string) {
     const tab = tabs.value.find((t) => t.id === id);

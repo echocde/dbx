@@ -136,6 +136,79 @@ test("evicting cached tab results releases multi-result payloads and sessions", 
   }
 });
 
+test("result cache eviction keeps recently accessed inactive tabs", async () => {
+  const restoreStorage = installMemoryStorage();
+  setActivePinia(createPinia());
+  const connectionStore = useConnectionStore();
+  const store = useQueryStore();
+  const originalFetch = globalThis.fetch;
+  let executeCount = 0;
+
+  connectionStore.addEphemeralConnection(conn("conn-1"));
+
+  globalThis.fetch = (async (input) => {
+    const url = String(input);
+    if (url === "/api/query/execute-multi") {
+      executeCount++;
+      const results: QueryResult[] = [
+        {
+          columns: ["id"],
+          rows: [[executeCount]],
+          affected_rows: 0,
+          execution_time_ms: 1,
+          session_id: `session-${executeCount}`,
+        },
+      ];
+      return new Response(JSON.stringify(results), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (url === "/api/query/close-session") {
+      return new Response(JSON.stringify(true), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url === "/api/query/analyze-editability") {
+      return new Response(JSON.stringify({ editable: false, reason: "complex-source" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url === "/api/query/prepare-pagination-plan") {
+      return new Response(JSON.stringify({ sqlToExecute: "select 1", useAgentResultSession: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const tabIds: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const tabId = store.createTab("conn-1", "db", `Query ${i + 1}`);
+      tabIds.push(tabId);
+      await store.executeTabSql(tabId, `select ${i + 1}`);
+    }
+
+    store.activeTabId = tabIds[0];
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    const tabId = store.createTab("conn-1", "db", "Query 7");
+    tabIds.push(tabId);
+    await store.executeTabSql(tabId, "select 7");
+
+    const recentlyViewed = store.tabs.find((tab) => tab.id === tabIds[0]);
+    const leastRecentlyUsed = store.tabs.find((tab) => tab.id === tabIds[1]);
+    assert.ok(recentlyViewed?.result);
+    assert.equal(recentlyViewed?.resultEvicted, undefined);
+    assert.equal(leastRecentlyUsed?.result, undefined);
+    assert.equal(leastRecentlyUsed?.resultEvicted, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
 test("closing tabs clears removed result payloads before dropping tab references", async () => {
   const restoreStorage = installMemoryStorage();
   const originalFetch = globalThis.fetch;
