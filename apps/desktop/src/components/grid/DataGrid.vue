@@ -5797,7 +5797,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     <div
                       v-for="col in renderedGridColumns"
                       :key="col.actualColIdx"
-                      class="group/cell shrink-0 px-3 py-1 border-r border-border whitespace-nowrap overflow-hidden text-ellipsis relative select-none"
+                      class="group/cell shrink-0 px-3 py-1 border-r border-border whitespace-nowrap overflow-hidden text-ellipsis relative select-none flex items-center"
                       :style="renderedColumnStyle(col.visibleColIdx)"
                       :class="{
                         'text-muted-foreground italic': isNull(item.data[col.actualColIdx]),
