@@ -103,6 +103,15 @@ impl AppState {
         plugin_dir: PathBuf,
         app_version: impl Into<String>,
     ) -> Self {
+        Self::new_with_plugin_and_agent_dir_and_app_version(storage, plugin_dir, default_agent_dir(), app_version)
+    }
+
+    pub fn new_with_plugin_and_agent_dir_and_app_version(
+        storage: Storage,
+        plugin_dir: PathBuf,
+        agent_dir: PathBuf,
+        app_version: impl Into<String>,
+    ) -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
             configs: RwLock::new(HashMap::new()),
@@ -112,7 +121,7 @@ impl AppState {
             storage,
             plugins: PluginRegistry::new(plugin_dir),
             agent_manager: crate::agent_manager::AgentManager::new_with_base_dir_and_app_version(
-                default_agent_dir(),
+                agent_dir,
                 app_version,
             ),
         }
@@ -1204,6 +1213,24 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
         (AppState::new(storage), dir)
+    }
+
+    #[tokio::test]
+    async fn app_state_uses_explicit_agent_dir() {
+        let dir = std::env::temp_dir().join(format!("dbx-core-agent-dir-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let agent_dir = dir.join("agents");
+
+        let state = AppState::new_with_plugin_and_agent_dir_and_app_version(
+            storage,
+            dir.join("plugins"),
+            agent_dir.clone(),
+            "0.0.0-test",
+        );
+
+        assert_eq!(state.agent_manager.base_dir(), &agent_dir);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn live_postgres_like_config(

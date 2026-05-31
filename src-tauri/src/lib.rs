@@ -286,11 +286,20 @@ pub fn run() {
             let desktop_settings = tauri::async_runtime::block_on(storage.load_desktop_settings()).unwrap_or_default();
             eprintln!("[STARTUP] storage ready in {:?}", t.elapsed());
 
-            let state = Arc::new(AppState::new_with_plugin_dir_and_app_version(
-                storage,
-                data_dir.join("plugins"),
-                env!("CARGO_PKG_VERSION"),
-            ));
+            let state = if data_dir::uses_custom_data_dir() {
+                Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
+                    storage,
+                    data_dir.join("plugins"),
+                    data_dir.join("agents"),
+                    env!("CARGO_PKG_VERSION"),
+                ))
+            } else {
+                Arc::new(AppState::new_with_plugin_dir_and_app_version(
+                    storage,
+                    data_dir.join("plugins"),
+                    env!("CARGO_PKG_VERSION"),
+                ))
+            };
             app.manage(state.clone());
             app.manage(commands::external_sql::ExternalSqlOpenState::default());
             app.manage(commands::external_db::ExternalDbOpenState::default());
