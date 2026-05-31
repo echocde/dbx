@@ -5692,7 +5692,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     :data-row-index="item.displayIndex"
                   >
                     <div
-                      class="shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50 sticky left-0 z-10 bg-[rgb(255_255_255)] dark:bg-[rgb(15_15_15)]"
+                      class="data-grid-row-number shrink-0 px-2 py-1 border-r border-border text-center select-none cursor-default hover:bg-accent/50 sticky left-0 z-10 bg-[rgb(255_255_255)] dark:bg-[rgb(15_15_15)]"
                       :class="[
                         rowNumberStatusClass(item),
                         {
@@ -6879,8 +6879,28 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent);
 }
 
+.data-grid-row-number.bg-emerald-500\/15 {
+  background-color: color-mix(in oklab, rgb(16 185 129) 15%, var(--background));
+}
+
+.data-grid-row-number.bg-amber-500\/15 {
+  background-color: color-mix(in oklab, rgb(245 158 11) 15%, var(--background));
+}
+
+.data-grid-row-number.bg-destructive\/15 {
+  background-color: color-mix(in oklab, var(--destructive) 15%, var(--background));
+}
+
 .active-row > div:not(.cell-dirty) {
   background-color: color-mix(in oklab, var(--primary) 15%, transparent);
+}
+
+.active-row > .data-grid-row-number:not(.cell-dirty) {
+  background-color: color-mix(in oklab, var(--primary) 15%, var(--background));
+}
+
+.data-grid-row-number.\!bg-primary\/25 {
+  background-color: color-mix(in oklab, var(--primary) 25%, var(--background)) !important;
 }
 
 .ddl-code :deep(.ddl-kw) {
