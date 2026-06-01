@@ -72,6 +72,8 @@ export const useConnectionStore = defineStore("connection", () => {
   const isDesktop = isTauriRuntime();
   const activeConnectionId = ref<string | null>(localStorage.getItem(ACTIVE_CONNECTION_STORAGE_KEY));
   const selectedTreeNodeId = ref<string | null>(null);
+  const selectedTreeNodeIds = ref<string[]>([]);
+  const treeSelectionAnchorId = ref<string | null>(null);
 
   watch(activeConnectionId, (id) => {
     if (id) localStorage.setItem(ACTIVE_CONNECTION_STORAGE_KEY, id);
@@ -315,6 +317,9 @@ export const useConnectionStore = defineStore("connection", () => {
     if (parent?.children) {
       parent.children = parent.children.filter((c) => c.id !== nodeId);
     }
+    if (selectedTreeNodeId.value === nodeId) selectedTreeNodeId.value = null;
+    selectedTreeNodeIds.value = selectedTreeNodeIds.value.filter((id) => id !== nodeId);
+    if (treeSelectionAnchorId.value === nodeId) treeSelectionAnchorId.value = null;
   }
 
   function buildSavedSqlRootNode(connectionId: string, existingRoot?: TreeNode): TreeNode | undefined {
@@ -1888,6 +1893,8 @@ export const useConnectionStore = defineStore("connection", () => {
     connections,
     activeConnectionId,
     selectedTreeNodeId,
+    selectedTreeNodeIds,
+    treeSelectionAnchorId,
     treeNodes,
     removeTreeNode,
     refreshAllTree,

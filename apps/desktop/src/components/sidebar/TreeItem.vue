@@ -46,6 +46,7 @@ import {
   Code2,
   ListFilter,
   Package,
+  Clipboard,
 } from "lucide-vue-next";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -131,6 +132,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import LightTooltip from "@/components/ui/LightTooltip.vue";
+import { flattenTree } from "@/composables/useFlatTree";
 
 const { t } = useI18n();
 const labelRef = ref<HTMLElement>();
@@ -428,6 +430,46 @@ function runRowClickAction() {
   }
 }
 
+function visibleTreeNodes(): TreeNode[] {
+  return flattenTree(connectionStore.treeNodes).map((item) => item.node);
+}
+
+function selectedTreeNodesInVisibleOrder(): TreeNode[] {
+  const selectedIds = new Set(connectionStore.selectedTreeNodeIds);
+  if (!selectedIds.size) return [];
+  return visibleTreeNodes().filter((node) => selectedIds.has(node.id));
+}
+
+function selectSingleTreeNode(node: TreeNode) {
+  connectionStore.selectedTreeNodeId = node.id;
+  connectionStore.selectedTreeNodeIds = [node.id];
+  connectionStore.treeSelectionAnchorId = node.id;
+}
+
+function toggleTreeNodeSelection(node: TreeNode) {
+  const ids = new Set(connectionStore.selectedTreeNodeIds);
+  if (ids.has(node.id)) ids.delete(node.id);
+  else ids.add(node.id);
+  connectionStore.selectedTreeNodeIds = ids.size ? [...ids] : [node.id];
+  connectionStore.selectedTreeNodeId = node.id;
+  connectionStore.treeSelectionAnchorId = node.id;
+}
+
+function selectTreeNodeRange(node: TreeNode) {
+  const visible = visibleTreeNodes();
+  const anchorId = connectionStore.treeSelectionAnchorId || connectionStore.selectedTreeNodeId || node.id;
+  const anchorIndex = visible.findIndex((item) => item.id === anchorId);
+  const currentIndex = visible.findIndex((item) => item.id === node.id);
+  if (anchorIndex < 0 || currentIndex < 0) {
+    selectSingleTreeNode(node);
+    return;
+  }
+  const start = Math.min(anchorIndex, currentIndex);
+  const end = Math.max(anchorIndex, currentIndex);
+  connectionStore.selectedTreeNodeIds = visible.slice(start, end + 1).map((item) => item.id);
+  connectionStore.selectedTreeNodeId = node.id;
+}
+
 function onClick(event: MouseEvent) {
   if (suppressNextTableReferenceClick) {
     suppressNextTableReferenceClick = false;
@@ -435,11 +477,31 @@ function onClick(event: MouseEvent) {
     event.stopPropagation();
     return;
   }
-  connectionStore.selectedTreeNodeId = props.node.id;
+  if (event.shiftKey) {
+    selectTreeNodeRange(props.node);
+    rowRef.value?.focus({ preventScroll: true });
+    return;
+  }
+  if (event.metaKey || event.ctrlKey) {
+    toggleTreeNodeSelection(props.node);
+    rowRef.value?.focus({ preventScroll: true });
+    return;
+  }
+  selectSingleTreeNode(props.node);
   rowRef.value?.focus({ preventScroll: true });
   if (settingsStore.editorSettings.sidebarActivation === "double") return;
   if (event.detail > 1) return;
   runRowClickAction();
+}
+
+function onTreeItemContextMenu(event: MouseEvent, openContextMenu: (event: MouseEvent) => void) {
+  if (!connectionStore.selectedTreeNodeIds.includes(props.node.id)) {
+    selectSingleTreeNode(props.node);
+  } else {
+    connectionStore.selectedTreeNodeId = props.node.id;
+  }
+  rowRef.value?.focus({ preventScroll: true });
+  openContextMenu(event);
 }
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
@@ -453,9 +515,9 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (!isSelected.value || isEditableShortcutTarget(event.target)) return;
+  if ((!isSelected.value && !isMultiSelected.value) || isEditableShortcutTarget(event.target)) return;
   if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && isDeleteTreeNodeShortcut(event)) {
-    if (!requestDropSelectedNode()) return;
+    if (!requestDropSelectedNodes()) return;
     event.preventDefault();
     event.stopPropagation();
     return;
@@ -464,7 +526,7 @@ function onKeydown(event: KeyboardEvent) {
   if (action !== "copy-name") return;
   event.preventDefault();
   event.stopPropagation();
-  copyName();
+  copySelectedNames();
 }
 
 function isDeleteTreeNodeShortcut(event: KeyboardEvent): boolean {
@@ -706,6 +768,18 @@ async function copyName() {
   }
 }
 
+async function copySelectedNames() {
+  const selectedNodes = selectedTreeNodesInVisibleOrder();
+  const nodes =
+    selectedNodes.length > 1 && selectedNodes.some((node) => node.id === props.node.id) ? selectedNodes : [props.node];
+  try {
+    await copyToClipboard(nodes.map(copyNameForTreeNode).join("\n"));
+    toast(t("connection.copied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
 async function duplicateConnection() {
   const connId = props.node.connectionId;
   if (!connId) return;
@@ -719,6 +793,12 @@ async function duplicateConnection() {
 // --- Table Management Operations ---
 const showDropTableConfirm = ref(false);
 const showDropTableChildObjectConfirm = ref(false);
+const showBatchDropConfirm = ref(false);
+const showStructurePreviewDialog = ref(false);
+const structurePreviewSql = ref("");
+const structurePreviewTitle = ref("");
+const structurePreviewError = ref("");
+const isLoadingStructurePreview = ref(false);
 const showEmptyTableConfirm = ref(false);
 const showTruncateTableConfirm = ref(false);
 const showRenameObjectDialog = ref(false);
@@ -730,6 +810,7 @@ const emptyTablePreviewSql = ref("");
 const truncateTablePreviewSql = ref("");
 const dropObjectPreviewSql = ref("");
 const dropTableChildObjectPreviewSql = ref("");
+const batchDropPreviewSql = ref("");
 const dropDatabasePreviewSql = ref("");
 const dropSchemaPreviewSql = ref("");
 const showDuplicateDialog = ref(false);
@@ -750,10 +831,13 @@ const showDropObjectConfirm = ref(false);
 const showProcedureExecutionConfirm = ref(false);
 
 function dropObjectSqlOptions(): DropObjectSqlOptions | null {
-  const node = props.node;
+  return dropObjectSqlOptionsForNode(props.node);
+}
+
+function dropObjectSqlOptionsForNode(node: TreeNode): DropObjectSqlOptions | null {
   if (node.type !== "view" && node.type !== "procedure" && node.type !== "function") return null;
   return {
-    databaseType: currentDatabaseType(),
+    databaseType: node.connectionId ? connectionStore.getConfig(node.connectionId)?.db_type : undefined,
     objectType: node.type === "view" ? "VIEW" : node.type === "procedure" ? "PROCEDURE" : "FUNCTION",
     schema: node.schema,
     name: node.label,
@@ -780,13 +864,16 @@ function tableChildDropObjectName(node: TreeNode): string {
 }
 
 function dropTableChildObjectSqlOptions(): DropTableChildObjectSqlOptions | null {
-  const node = props.node;
+  return dropTableChildObjectSqlOptionsForNode(props.node);
+}
+
+function dropTableChildObjectSqlOptionsForNode(node: TreeNode): DropTableChildObjectSqlOptions | null {
   const objectType = tableChildDropObjectType(node.type);
   if (!objectType || !node.tableName) return null;
   const name = tableChildDropObjectName(node).trim();
   if (!name) return null;
   return {
-    databaseType: currentDatabaseType(),
+    databaseType: node.connectionId ? connectionStore.getConfig(node.connectionId)?.db_type : undefined,
     objectType,
     schema: node.schema,
     tableName: node.tableName,
@@ -795,13 +882,17 @@ function dropTableChildObjectSqlOptions(): DropTableChildObjectSqlOptions | null
 }
 
 const canDropTableChildObject = computed(() => {
-  const options = dropTableChildObjectSqlOptions();
+  return canDropTableChildObjectNode(props.node);
+});
+
+function canDropTableChildObjectNode(node: TreeNode): boolean {
+  const options = dropTableChildObjectSqlOptionsForNode(node);
   if (!options) return false;
-  const capabilities = getTableStructureCapabilities(currentDatabaseType());
+  const capabilities = getTableStructureCapabilities(options.databaseType);
   if (options.objectType === "COLUMN") return capabilities.dropColumn;
   if (options.objectType === "INDEX") return capabilities.dropIndex;
   return true;
-});
+}
 
 function dropObjectMenuLabel(): string {
   if (props.node.type === "view") return t("contextMenu.dropView");
@@ -941,6 +1032,82 @@ function requestDropTableChildObject() {
   if (!canDropTableChildObject.value) return;
   void refreshDropTableChildObjectPreviewSql();
   showDropTableChildObjectConfirm.value = true;
+}
+
+function canDropTreeNode(node: TreeNode): boolean {
+  if (node.type === "table") return !!node.connectionId && !!node.database;
+  if (node.type === "view" || node.type === "procedure" || node.type === "function") {
+    return !!node.connectionId && !!node.database && !!dropObjectSqlOptionsForNode(node);
+  }
+  return canDropTableChildObjectNode(node);
+}
+
+function selectedBatchDropTargets(): TreeNode[] {
+  const selected = selectedTreeNodesInVisibleOrder();
+  if (selected.length <= 1 || !selected.some((node) => node.id === props.node.id)) return [];
+  const first = selected[0];
+  if (!first?.connectionId || !first.database || !selected.every((node) => node.type === first.type)) return [];
+  if (
+    !selected.every(
+      (node) => node.connectionId === first.connectionId && node.database === first.database && canDropTreeNode(node),
+    )
+  ) {
+    return [];
+  }
+  return selected;
+}
+
+function batchDropMenuLabel(): string {
+  return t("contextMenu.batchDrop", { count: selectedBatchDropTargets().length });
+}
+
+function batchDropConfirmTitle(): string {
+  return t("contextMenu.confirmBatchDropTitle", { count: selectedBatchDropTargets().length });
+}
+
+function batchDropConfirmMessage(): string {
+  return t("contextMenu.confirmBatchDropMessage", { count: selectedBatchDropTargets().length });
+}
+
+async function dropSqlForTreeNode(node: TreeNode): Promise<string | null> {
+  if (node.type === "table" && node.connectionId && node.database) {
+    return buildDropTableSql({
+      databaseType: node.connectionId ? connectionStore.getConfig(node.connectionId)?.db_type : undefined,
+      schema: node.schema,
+      tableName: node.label,
+    });
+  }
+  const objectOptions = dropObjectSqlOptionsForNode(node);
+  if (objectOptions) return buildDropObjectSql(objectOptions);
+  const childOptions = dropTableChildObjectSqlOptionsForNode(node);
+  if (childOptions && canDropTableChildObjectNode(node)) return buildDropTableChildObjectSql(childOptions);
+  return null;
+}
+
+async function refreshBatchDropPreviewSql() {
+  const targets = selectedBatchDropTargets();
+  const statements: string[] = [];
+  for (const target of targets) {
+    const sql = await dropSqlForTreeNode(target);
+    if (sql) statements.push(sql);
+  }
+  batchDropPreviewSql.value = statements.join("\n");
+}
+
+function requestBatchDrop() {
+  if (!selectedBatchDropTargets().length) return;
+  void refreshBatchDropPreviewSql();
+  showBatchDropConfirm.value = true;
+}
+
+function requestDropSelectedNodes(): boolean {
+  const selected = selectedTreeNodesInVisibleOrder();
+  if (selected.length > 1 && selected.some((node) => node.id === props.node.id)) {
+    if (!selectedBatchDropTargets().length) return false;
+    requestBatchDrop();
+    return true;
+  }
+  return requestDropSelectedNode();
 }
 
 function requestDropSelectedNode(): boolean {
@@ -1103,6 +1270,25 @@ async function confirmDropTableChildObject() {
     await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     toast(t("contextMenu.dropTableChildObjectSuccess", { name: options.name }), 3000);
     connectionStore.removeTreeNode(node.id);
+  } catch (e: any) {
+    toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function confirmBatchDrop() {
+  const targets = selectedBatchDropTargets();
+  if (!targets.length) return;
+  try {
+    for (const target of targets) {
+      if (!target.connectionId || !target.database) continue;
+      await connectionStore.ensureConnected(target.connectionId);
+      const sql = await dropSqlForTreeNode(target);
+      if (!sql) continue;
+      await api.executeQuery(target.connectionId, target.database, sql, target.schema);
+      connectionStore.removeTreeNode(target.id);
+    }
+    toast(t("contextMenu.batchDropSuccess", { count: targets.length }), 3000);
+    showBatchDropConfirm.value = false;
   } catch (e: any) {
     toast(t("contextMenu.tableOperationFailed", { message: e?.message || String(e) }), 5000);
   }
@@ -1493,14 +1679,73 @@ async function saveFileContent(content: string, defaultFileName: string, filterN
 }
 
 async function exportStructure() {
-  const node = props.node;
-  if (!node.connectionId || !node.database) return;
+  const targets = structureExportTargets();
+  if (!targets.length) return;
+  isLoadingStructurePreview.value = true;
+  structurePreviewError.value = "";
+  structurePreviewSql.value = "";
+  structurePreviewTitle.value =
+    targets.length === 1
+      ? t("contextMenu.exportStructurePreviewTitle", { name: targets[0]!.label })
+      : t("contextMenu.exportStructurePreviewTitleMultiple", { count: targets.length });
+  showStructurePreviewDialog.value = true;
   try {
-    await connectionStore.ensureConnected(node.connectionId);
-    const ddl = await api.getTableDdl(node.connectionId, node.database, node.schema || node.database, node.label);
-    await saveFileContent(ddl + "\n", `${node.label}.sql`, "SQL", "sql");
+    const parts: string[] = [];
+    for (const target of targets) {
+      await connectionStore.ensureConnected(target.connectionId);
+      const ddl = await api.getTableDdl(
+        target.connectionId,
+        target.database,
+        target.schema || target.database,
+        target.label,
+      );
+      parts.push(ddl.trim());
+    }
+    structurePreviewSql.value = `${parts.filter(Boolean).join("\n\n")}\n`;
   } catch (e: any) {
+    structurePreviewError.value = e?.message || String(e);
     console.error("Export structure failed:", e);
+  } finally {
+    isLoadingStructurePreview.value = false;
+  }
+}
+
+function canExportStructureNode(node: TreeNode): node is TreeNode & { connectionId: string; database: string } {
+  return (node.type === "table" || node.type === "view") && !!node.connectionId && !!node.database;
+}
+
+function selectedStructureNodes(): TreeNode[] {
+  const selectedIds = new Set(connectionStore.selectedTreeNodeIds);
+  if (!selectedIds.size) return [];
+  const nodes: TreeNode[] = [];
+  const visit = (items: TreeNode[]) => {
+    for (const item of items) {
+      if (selectedIds.has(item.id) && canExportStructureNode(item)) nodes.push(item);
+      if (item.children) visit(item.children);
+    }
+  };
+  visit(connectionStore.treeNodes);
+  return nodes;
+}
+
+function structureExportTargets(): Array<TreeNode & { connectionId: string; database: string }> {
+  if (!canExportStructureNode(props.node)) return [];
+  const selected = selectedStructureNodes().filter(
+    (node): node is TreeNode & { connectionId: string; database: string } =>
+      canExportStructureNode(node) &&
+      node.connectionId === props.node.connectionId &&
+      node.database === props.node.database,
+  );
+  return selected.some((node) => node.id === props.node.id) ? selected : [props.node];
+}
+
+async function copyStructurePreview() {
+  if (!structurePreviewSql.value) return;
+  try {
+    await copyToClipboard(structurePreviewSql.value);
+    toast(t("contextMenu.exportStructureCopied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
   }
 }
 
@@ -1856,6 +2101,7 @@ const isActiveConnectionScope = computed(
   () => !!props.node.connectionId && connectionStore.activeConnectionId === props.node.connectionId,
 );
 const isSelected = computed(() => connectionStore.selectedTreeNodeId === props.node.id);
+const isMultiSelected = computed(() => connectionStore.selectedTreeNodeIds.includes(props.node.id));
 const rowStyle = computed(() => {
   const color = connectionColor.value;
   const backgroundColor = hexToRgba(color, isActiveConnectionScope.value ? 0.14 : 0.08);
@@ -2173,6 +2419,9 @@ function exportDataSubmenu(): ContextMenuItem {
 function treeItemMenuItems(): ContextMenuItem[] {
   const node = props.node;
   const items: ContextMenuItem[] = [];
+  const batchDropCount = selectedBatchDropTargets().length;
+  const deleteMenuLabel = (singleLabel: string) => (batchDropCount > 1 ? batchDropMenuLabel() : singleLabel);
+  const deleteMenuAction = (singleAction: () => void) => (batchDropCount > 1 ? requestBatchDrop : singleAction);
 
   // 1. Pin toggle
   if (canPin.value) {
@@ -2348,8 +2597,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
     }
     if (node.type === "view") {
       items.push({
-        label: t("contextMenu.dropView"),
-        action: requestDropObject,
+        label: deleteMenuLabel(t("contextMenu.dropView")),
+        action: deleteMenuAction(requestDropObject),
         icon: Trash2,
         variant: "destructive" as const,
       });
@@ -2387,8 +2636,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
         variant: "destructive" as const,
       });
       items.push({
-        label: t("contextMenu.dropTable"),
-        action: dropTable,
+        label: deleteMenuLabel(t("contextMenu.dropTable")),
+        action: deleteMenuAction(dropTable),
         icon: Trash2,
         variant: "destructive" as const,
       });
@@ -2408,8 +2657,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
     if (canDropTableChildObject.value) {
       items.push({ label: "", separator: true });
       items.push({
-        label: dropTableChildObjectMenuLabel(),
-        action: requestDropTableChildObject,
+        label: deleteMenuLabel(dropTableChildObjectMenuLabel()),
+        action: deleteMenuAction(requestDropTableChildObject),
         icon: Trash2,
         variant: "destructive" as const,
       });
@@ -2422,8 +2671,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
     if (canDropTableChildObject.value) {
       items.push({ label: "", separator: true });
       items.push({
-        label: dropTableChildObjectMenuLabel(),
-        action: requestDropTableChildObject,
+        label: deleteMenuLabel(dropTableChildObjectMenuLabel()),
+        action: deleteMenuAction(requestDropTableChildObject),
         icon: Trash2,
         variant: "destructive" as const,
       });
@@ -2442,8 +2691,10 @@ function treeItemMenuItems(): ContextMenuItem[] {
     }
     items.push({ label: "", separator: true });
     items.push({
-      label: node.type === "procedure" ? t("contextMenu.dropProcedure") : t("contextMenu.dropFunction"),
-      action: requestDropObject,
+      label: deleteMenuLabel(
+        node.type === "procedure" ? t("contextMenu.dropProcedure") : t("contextMenu.dropFunction"),
+      ),
+      action: deleteMenuAction(requestDropObject),
       icon: Trash2,
       variant: "destructive" as const,
     });
@@ -2504,7 +2755,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
 
 <template>
   <CustomContextMenu :items="treeItemMenuItems()" v-slot="{ onContextMenu }">
-    <div @contextmenu="onContextMenu">
+    <div @contextmenu="onTreeItemContextMenu($event, onContextMenu)">
       <div
         ref="rowRef"
         class="group flex items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
@@ -2515,14 +2766,14 @@ function treeItemMenuItems(): ContextMenuItem[] {
             'ring-1 ring-primary/50 bg-primary/5': showDropInside,
             'opacity-50': isDragging,
             'tree-item-connection-tint': connectionColor,
-            'rounded-none': connectionColor && !isSelected,
-            'rounded-sm': !connectionColor && !isSelected,
-            'tree-item-active rounded-none': connectionColor && isSelected,
-            'tree-item-active rounded-md': !connectionColor && isSelected,
+            'rounded-none': connectionColor && !isSelected && !isMultiSelected,
+            'rounded-sm': !connectionColor && !isSelected && !isMultiSelected,
+            'tree-item-active rounded-none': connectionColor && (isSelected || isMultiSelected),
+            'tree-item-active rounded-md': !connectionColor && (isSelected || isMultiSelected),
             'tree-item-highlight': highlighted,
           },
         ]"
-        :tabindex="isSelected ? 0 : -1"
+        :tabindex="isSelected || isMultiSelected ? 0 : -1"
         :style="rowStyle"
         @click="onClick"
         @dblclick="onDoubleClick"
@@ -2739,6 +2990,33 @@ function treeItemMenuItems(): ContextMenuItem[] {
     </DialogContent>
   </Dialog>
 
+  <Dialog v-model:open="showStructurePreviewDialog">
+    <DialogContent class="sm:max-w-[760px]">
+      <DialogHeader>
+        <DialogTitle>{{ structurePreviewTitle || t("contextMenu.exportStructure") }}</DialogTitle>
+      </DialogHeader>
+      <div class="grid gap-3">
+        <div v-if="isLoadingStructurePreview" class="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          <span>{{ t("contextMenu.exportStructureLoading") }}</span>
+        </div>
+        <p v-else-if="structurePreviewError" class="text-sm text-destructive">{{ structurePreviewError }}</p>
+        <pre
+          v-else
+          class="max-h-[56vh] min-h-64 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap"
+          v-html="highlight(structurePreviewSql)"
+        ></pre>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" @click="showStructurePreviewDialog = false">{{ t("dangerDialog.cancel") }}</Button>
+        <Button :disabled="isLoadingStructurePreview || !structurePreviewSql" @click="copyStructurePreview">
+          <Clipboard class="h-4 w-4" />
+          {{ t("contextMenu.copyStructure") }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
   <Dialog v-model:open="showDeleteSavedSqlFileConfirm">
     <DialogContent class="sm:max-w-[400px]">
       <DialogHeader>
@@ -2814,6 +3092,15 @@ function treeItemMenuItems(): ContextMenuItem[] {
     :sql="dropTableChildObjectPreviewSql"
     :confirm-label="dropTableChildObjectMenuLabel()"
     @confirm="confirmDropTableChildObject"
+  />
+
+  <DangerConfirmDialog
+    v-model:open="showBatchDropConfirm"
+    :title="batchDropConfirmTitle()"
+    :message="batchDropConfirmMessage()"
+    :sql="batchDropPreviewSql"
+    :confirm-label="batchDropMenuLabel()"
+    @confirm="confirmBatchDrop"
   />
 
   <ProcedureExecutionDialog
