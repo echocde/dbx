@@ -153,6 +153,7 @@ const { toast } = useToast();
 const { highlight } = useSqlHighlighter();
 
 type StructureCopyFormat = "tsv" | "markdown";
+type DuplicateStructureSource = TreeNode & { connectionId: string; database: string };
 const { getDatabaseOptions } = useDatabaseOptions();
 const showVisibleDatabasesDialog = ref(false);
 
@@ -519,6 +520,12 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
 
 function onKeydown(event: KeyboardEvent) {
   if ((!isSelected.value && !isMultiSelected.value) || isEditableShortcutTarget(event.target)) return;
+  if (isPasteTreeClipboardShortcut(event)) {
+    if (!requestPasteTreeClipboard()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === "F2") {
     if (!requestRenameSelectedNode()) return;
     event.preventDefault();
@@ -546,6 +553,24 @@ function onKeydown(event: KeyboardEvent) {
 
 function isDeleteTreeNodeShortcut(event: KeyboardEvent): boolean {
   return event.key === "Delete" || event.key === "Backspace";
+}
+
+function isPasteTreeClipboardShortcut(event: KeyboardEvent): boolean {
+  return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "v";
+}
+
+function requestPasteTreeClipboard(): boolean {
+  const clipboard = connectionStore.treeClipboard;
+  if (clipboard?.kind !== "table-structure") return false;
+  duplicateStructure({
+    id: `clipboard:${clipboard.connectionId}:${clipboard.database}:${clipboard.schema || ""}:${clipboard.tableName}`,
+    type: "table",
+    label: clipboard.tableName,
+    connectionId: clipboard.connectionId,
+    database: clipboard.database,
+    schema: clipboard.schema,
+  });
+  return true;
 }
 
 function requestRefreshSelectedNode(): boolean {
@@ -842,6 +867,7 @@ async function confirmDelete() {
 }
 
 async function copyName() {
+  updateTreeClipboardForNodes([props.node]);
   try {
     await copyToClipboard(copyNameForTreeNode(props.node));
     toast(t("connection.copied"), 2000);
@@ -854,12 +880,32 @@ async function copySelectedNames() {
   const selectedNodes = selectedTreeNodesInVisibleOrder();
   const nodes =
     selectedNodes.length > 1 && selectedNodes.some((node) => node.id === props.node.id) ? selectedNodes : [props.node];
+  updateTreeClipboardForNodes(nodes);
   try {
     await copyToClipboard(nodes.map(copyNameForTreeNode).join("\n"));
     toast(t("connection.copied"), 2000);
   } catch (e: any) {
     toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
   }
+}
+
+function updateTreeClipboardForNodes(nodes: TreeNode[]) {
+  const tableNodes = nodes.filter(
+    (node): node is DuplicateStructureSource =>
+      node.type === "table" && !!node.connectionId && !!node.database && typeof node.label === "string",
+  );
+  if (nodes.length !== 1 || tableNodes.length !== 1) {
+    connectionStore.treeClipboard = null;
+    return;
+  }
+  const table = tableNodes[0]!;
+  connectionStore.treeClipboard = {
+    kind: "table-structure",
+    connectionId: table.connectionId,
+    database: table.database,
+    schema: table.schema,
+    tableName: table.label,
+  };
 }
 
 async function duplicateConnection() {
@@ -901,6 +947,7 @@ const dropDatabasePreviewSql = ref("");
 const dropSchemaPreviewSql = ref("");
 const showDuplicateDialog = ref(false);
 const duplicateTableName = ref("");
+const duplicateStructureSource = ref<DuplicateStructureSource | null>(null);
 
 const showCreateDatabaseDialog = ref(false);
 const createDatabaseName = ref("");
@@ -1712,20 +1759,27 @@ async function confirmDropSchema() {
   }
 }
 
-function duplicateStructure() {
-  duplicateTableName.value = `${props.node.label}_copy`;
+function duplicateStructure(source: TreeNode = props.node) {
+  if (!isDuplicateStructureSource(source)) return;
+  duplicateStructureSource.value = source;
+  duplicateTableName.value = `${source.label}_copy`;
   showDuplicateDialog.value = true;
 }
 
+function isDuplicateStructureSource(node: TreeNode): node is DuplicateStructureSource {
+  return node.type === "table" && !!node.connectionId && !!node.database;
+}
+
 async function confirmDuplicateStructure() {
-  const node = props.node;
+  const node = duplicateStructureSource.value || (isDuplicateStructureSource(props.node) ? props.node : null);
   const newName = duplicateTableName.value.trim();
-  if (!newName || !node.connectionId || !node.database) return;
+  if (!newName || !node) return;
   showDuplicateDialog.value = false;
   try {
     await connectionStore.ensureConnected(node.connectionId);
+    const databaseType = connectionStore.getConfig(node.connectionId)?.db_type;
     const sql = await buildDuplicateTableStructureSql({
-      databaseType: currentDatabaseType(),
+      databaseType,
       schema: node.schema,
       sourceName: node.label,
       targetName: newName,

@@ -51,6 +51,14 @@ const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
 const ACTIVE_CONNECTION_STORAGE_KEY = "dbx-active-connection";
 type ImportSource = "dbx" | "navicat" | "dbeaver";
 
+interface TreeClipboardTableStructure {
+  kind: "table-structure";
+  connectionId: string;
+  database: string;
+  schema?: string;
+  tableName: string;
+}
+
 interface LoadTreeOptions {
   force?: boolean;
 }
@@ -74,6 +82,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const selectedTreeNodeId = ref<string | null>(null);
   const selectedTreeNodeIds = ref<string[]>([]);
   const treeSelectionAnchorId = ref<string | null>(null);
+  const treeClipboard = ref<TreeClipboardTableStructure | null>(null);
 
   watch(activeConnectionId, (id) => {
     if (id) localStorage.setItem(ACTIVE_CONNECTION_STORAGE_KEY, id);
@@ -1895,6 +1904,7 @@ export const useConnectionStore = defineStore("connection", () => {
     selectedTreeNodeId,
     selectedTreeNodeIds,
     treeSelectionAnchorId,
+    treeClipboard,
     treeNodes,
     removeTreeNode,
     refreshAllTree,
