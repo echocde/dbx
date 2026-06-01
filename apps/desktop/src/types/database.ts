@@ -321,6 +321,7 @@ export interface TreeNode {
 export interface QueryTab {
   id: string;
   title: string;
+  customTitle?: boolean;
   connectionId: string;
   database: string;
   schema?: string;

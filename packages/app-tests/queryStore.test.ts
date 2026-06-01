@@ -52,6 +52,18 @@ test("setErrorResult stops loading and shows the error result", () => {
   assert.deepEqual(tab?.result?.rows, [["metadata failed"]]);
 });
 
+test("renames query tab titles", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+  const tabId = store.createTab("conn-1", "db");
+
+  assert.equal(store.renameTab(tabId, " Revenue checks "), true);
+
+  const tab = store.tabs.find((item) => item.id === tabId);
+  assert.equal(tab?.title, "Revenue checks");
+  assert.equal(tab?.customTitle, true);
+});
+
 test("evicting cached tab results releases multi-result payloads and sessions", async () => {
   const restoreStorage = installMemoryStorage();
   setActivePinia(createPinia());

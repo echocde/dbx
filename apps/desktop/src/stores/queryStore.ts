@@ -171,6 +171,7 @@ export const useQueryStore = defineStore("query", () => {
     const tab: QueryTab = {
       id,
       title: title || `Query ${tabs.value.length + 1}`,
+      customTitle: mode === "query" && !!title ? true : undefined,
       connectionId,
       database,
       schema,
@@ -311,11 +312,24 @@ export const useQueryStore = defineStore("query", () => {
     }
   }
 
+  function renameTab(id: string, title: string) {
+    const trimmed = title.trim();
+    if (!trimmed) return false;
+    const tab = tabs.value.find((t) => t.id === id);
+    if (!tab || tab.mode !== "query") return false;
+    tab.title = trimmed;
+    tab.customTitle = true;
+    return true;
+  }
+
   function linkSavedSql(id: string, savedSqlId: string, title?: string) {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab) return;
     tab.savedSqlId = savedSqlId;
-    if (title) tab.title = title;
+    if (title) {
+      tab.title = title;
+      tab.customTitle = true;
+    }
   }
 
   function openSavedSql(file: SavedSqlFile) {
@@ -329,6 +343,7 @@ export const useQueryStore = defineStore("query", () => {
     const tab: QueryTab = {
       id,
       title: file.name,
+      customTitle: true,
       connectionId: file.connectionId,
       database: file.database,
       schema: file.schema,
@@ -1066,6 +1081,7 @@ export const useQueryStore = defineStore("query", () => {
     closeOtherTabs,
     closeAllTabs,
     updateSql,
+    renameTab,
     openObjectBrowser,
     openTableStructure,
     linkSavedSql,

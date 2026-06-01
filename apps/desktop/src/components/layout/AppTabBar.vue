@@ -12,6 +12,7 @@ import {
   Code2,
   TableProperties,
   PencilRuler,
+  Pencil,
   Package,
   Check,
 } from "lucide-vue-next";
@@ -43,6 +44,8 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
+const editingTabId = ref<string | null>(null);
+const editingTitle = ref("");
 const compactTabTitle = computed({
   get: () => settingsStore.editorSettings.compactTabTitle,
   set: (checked: boolean | "indeterminate") => {
@@ -54,6 +57,32 @@ function toggleCompactTabTitle() {
   compactTabTitle.value = !compactTabTitle.value;
 }
 
+function canRenameTab(tab: QueryTab) {
+  return tab.mode === "query";
+}
+
+function startRenameTab(tab: QueryTab) {
+  if (!canRenameTab(tab)) return;
+  editingTabId.value = tab.id;
+  editingTitle.value = tab.title;
+  nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>(`[data-tab-title-input="${tab.id}"]`);
+    input?.focus();
+    input?.select();
+  });
+}
+
+function commitRenameTab(tab: QueryTab) {
+  if (editingTabId.value !== tab.id) return;
+  const title = editingTitle.value.trim();
+  if (title) queryStore.renameTab(tab.id, title);
+  editingTabId.value = null;
+}
+
+function cancelRenameTab() {
+  editingTabId.value = null;
+}
+
 function getTabMenuItems(tab: QueryTab): ContextMenuItem[] {
   return [
     {
@@ -61,6 +90,12 @@ function getTabMenuItems(tab: QueryTab): ContextMenuItem[] {
       action: toggleCompactTabTitle,
       icon: Check,
       iconClass: compactTabTitle.value ? "opacity-100" : "opacity-0",
+    },
+    {
+      label: t("contextMenu.renameTab"),
+      action: () => startRenameTab(tab),
+      icon: Pencil,
+      visible: canRenameTab(tab),
     },
     { label: "", separator: true },
     {
@@ -277,6 +312,7 @@ const tabOverflowControlClass = computed(() =>
                   queryStore.activeTabId = tab.id;
                   emit('close-driver-store');
                 "
+                @dblclick.stop="startRenameTab(tab)"
                 @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
               >
                 <span class="shrink-0" :class="tabIconClass(tab)">
@@ -285,7 +321,19 @@ const tabOverflowControlClass = computed(() =>
                   <PencilRuler v-else-if="tab.mode === 'structure'" class="h-3.5 w-3.5" />
                   <Code2 v-else class="h-3.5 w-3.5" />
                 </span>
-                <span class="min-w-0 truncate flex-1">{{ tabDisplayTitle(tab, t) }}</span>
+                <input
+                  v-if="editingTabId === tab.id"
+                  v-model="editingTitle"
+                  :data-tab-title-input="tab.id"
+                  :aria-label="t('contextMenu.renameTab')"
+                  class="h-5 min-w-0 flex-1 rounded border border-ring bg-background px-1.5 text-xs font-normal text-foreground outline-none"
+                  @click.stop
+                  @mousedown.stop
+                  @keydown.enter.prevent="commitRenameTab(tab)"
+                  @keydown.escape.prevent="cancelRenameTab"
+                  @blur="commitRenameTab(tab)"
+                />
+                <span v-else class="min-w-0 truncate flex-1">{{ tabDisplayTitle(tab, t) }}</span>
                 <Tooltip>
                   <TooltipTrigger as-child>
                     <button

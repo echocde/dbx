@@ -3,6 +3,7 @@ import type { QueryTab } from "@/types/database";
 export interface SavedOpenTab {
   id: string;
   title: string;
+  customTitle?: boolean;
   connectionId: string;
   database: string;
   schema?: string;
@@ -24,6 +25,7 @@ export function serializeOpenTabs(tabs: QueryTab[]): SavedOpenTab[] {
   return tabs.map((tab) => ({
     id: tab.id,
     title: tab.title,
+    ...(tab.customTitle ? { customTitle: true } : {}),
     connectionId: tab.connectionId,
     database: tab.database,
     schema: tab.schema,

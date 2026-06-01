@@ -45,6 +45,7 @@ test("serializes object source query tabs with save context", () => {
   const saved = serializeOpenTabs([
     queryTab({
       title: "fn_add",
+      customTitle: true,
       objectSource: {
         schema: "public",
         name: "fn_add",
@@ -58,6 +59,7 @@ test("serializes object source query tabs with save context", () => {
     name: "fn_add",
     objectType: "FUNCTION",
   });
+  assert.equal(saved[0]?.customTitle, true);
 });
 
 test("restores unsaved query tabs and active tab after restart", () => {
@@ -81,6 +83,7 @@ test("restores unsaved query tabs and active tab after restart", () => {
 test("restores object source save context", () => {
   const raw = JSON.stringify([
     queryTab({
+      customTitle: true,
       objectSource: {
         schema: "public",
         name: "fn_add",
@@ -96,6 +99,7 @@ test("restores object source save context", () => {
     name: "fn_add",
     objectType: "FUNCTION",
   });
+  assert.equal(restored.tabs[0]?.customTitle, true);
 });
 
 test("desktop restore keeps legacy query tabs without a mode", () => {
