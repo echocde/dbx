@@ -467,8 +467,10 @@ function canMoveColumn(index: number, direction: -1 | 1): boolean {
   const targetIndex = index + direction;
   if (targetIndex < 0 || targetIndex >= columns.value.length) return false;
   if (columns.value[index]?.markedForDrop || columns.value[targetIndex]?.markedForDrop) return false;
-  return isCreateMode.value || structureCapabilities.value.reorderColumn;
+  return canShowColumnMoveControls.value;
 }
+
+const canShowColumnMoveControls = computed(() => isCreateMode.value || structureCapabilities.value.reorderColumn);
 
 function moveColumn(index: number, direction: -1 | 1) {
   if (!canMoveColumn(index, direction)) return;
@@ -996,28 +998,30 @@ watch(
                   </td>
                   <td :class="structureLastCellClass">
                     <div class="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        :class="structureIconButtonClass"
-                        :disabled="!canMoveColumn(index, -1)"
-                        :title="t('structureEditor.moveColumnUp')"
-                        :aria-label="t('structureEditor.moveColumnUp')"
-                        @click="moveColumn(index, -1)"
-                      >
-                        <ChevronUp :class="structureIconClass" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        :class="structureIconButtonClass"
-                        :disabled="!canMoveColumn(index, 1)"
-                        :title="t('structureEditor.moveColumnDown')"
-                        :aria-label="t('structureEditor.moveColumnDown')"
-                        @click="moveColumn(index, 1)"
-                      >
-                        <ChevronDown :class="structureIconClass" />
-                      </Button>
+                      <template v-if="canShowColumnMoveControls">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          :class="structureIconButtonClass"
+                          :disabled="!canMoveColumn(index, -1)"
+                          :title="t('structureEditor.moveColumnUp')"
+                          :aria-label="t('structureEditor.moveColumnUp')"
+                          @click="moveColumn(index, -1)"
+                        >
+                          <ChevronUp :class="structureIconClass" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          :class="structureIconButtonClass"
+                          :disabled="!canMoveColumn(index, 1)"
+                          :title="t('structureEditor.moveColumnDown')"
+                          :aria-label="t('structureEditor.moveColumnDown')"
+                          @click="moveColumn(index, 1)"
+                        >
+                          <ChevronDown :class="structureIconClass" />
+                        </Button>
+                      </template>
                       <Button
                         v-if="column.original"
                         variant="ghost"
