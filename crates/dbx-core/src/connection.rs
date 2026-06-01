@@ -10,6 +10,7 @@ use crate::agent_connection::{
     agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
     oracle_auth_fallback_profiles, should_retry_oracle_with_10g_driver,
 };
+use crate::agent_manager::{JavaRuntimeMode, DEFAULT_JRE_KEY};
 use crate::database_capabilities;
 use crate::db;
 use crate::db::agent_driver::AgentMethod;
@@ -19,7 +20,7 @@ use crate::external;
 use crate::models::connection::{
     parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host, ConnectionConfig, DatabaseType,
 };
-use crate::plugins::{PluginDriverSession, PluginRegistry};
+use crate::plugins::{PluginDriverSession, PluginRegistry, PluginRuntimeEnv};
 use crate::query_cancel::RunningQueries;
 use crate::storage::Storage;
 
@@ -137,15 +138,30 @@ impl AppState {
 
     pub async fn test_external_driver(&self, driver_id: &str, config: &ConnectionConfig) -> Result<String, String> {
         let params = serde_json::json!({ "connection": config });
-        self.plugins.invoke_driver::<serde_json::Value>(driver_id, "testConnection", params).await?;
+        let env = self.external_driver_runtime_env(driver_id)?;
+        self.plugins.invoke_driver_with_env::<serde_json::Value>(driver_id, "testConnection", params, env).await?;
         Ok("Connection successful".to_string())
     }
 
     pub async fn external_driver_pool(&self, driver_id: &str, config: &ConnectionConfig) -> Result<PoolKind, String> {
-        let session = self.plugins.start_driver_session(driver_id).await?;
+        let env = self.external_driver_runtime_env(driver_id)?;
+        let session = self.plugins.start_driver_session_with_env(driver_id, env).await?;
         let params = serde_json::json!({ "connection": config });
         session.invoke::<serde_json::Value>("connect", params).await?;
         Ok(PoolKind::ExternalDriver { driver_id: driver_id.to_string(), config: Arc::new(config.clone()), session })
+    }
+
+    fn external_driver_runtime_env(&self, driver_id: &str) -> Result<PluginRuntimeEnv, String> {
+        if driver_id != "jdbc" {
+            return Ok(PluginRuntimeEnv::default());
+        }
+        let state = self.agent_manager.load_state();
+        if state.java_runtime.mode == JavaRuntimeMode::Managed && !self.agent_manager.is_jre_installed(DEFAULT_JRE_KEY)
+        {
+            return Ok(PluginRuntimeEnv::default());
+        }
+        let java = self.agent_manager.resolve_java_runtime(&state, DEFAULT_JRE_KEY)?;
+        Ok(PluginRuntimeEnv::default().with_var("DBX_JAVA_BIN", java.to_string_lossy().to_string()))
     }
 
     pub async fn get_or_create_pool(&self, connection_id: &str, database: Option<&str>) -> Result<String, String> {
@@ -911,6 +927,7 @@ mod tests {
         agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
         should_retry_oracle_with_10g_driver,
     };
+    use crate::agent_manager::{AgentState, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY};
     use crate::db;
     use crate::models::connection::{default_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyType};
     use crate::schema;
@@ -1201,6 +1218,21 @@ mod tests {
         (AppState::new(storage), dir)
     }
 
+    fn touch_executable(path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, b"").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = std::fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(path, permissions).unwrap();
+        }
+    }
+
     #[tokio::test]
     async fn app_state_uses_explicit_agent_dir() {
         let dir = std::env::temp_dir().join(format!("dbx-core-agent-dir-test-{}", uuid::Uuid::new_v4()));
@@ -1216,6 +1248,74 @@ mod tests {
         );
 
         assert_eq!(state.agent_manager.base_dir(), &agent_dir);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn jdbc_plugin_env_uses_managed_jre_when_installed() {
+        let dir = std::env::temp_dir().join(format!("dbx-core-jdbc-managed-jre-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let state = AppState::new_with_plugin_and_agent_dir_and_app_version(
+            storage,
+            dir.join("plugins"),
+            dir.join("agents"),
+            "0.0.0-test",
+        );
+        let java = state.agent_manager.jre_java_path(DEFAULT_JRE_KEY);
+        touch_executable(&java);
+
+        let env = state.external_driver_runtime_env("jdbc").unwrap();
+
+        assert_eq!(env.get("DBX_JAVA_BIN"), Some(java.to_string_lossy().as_ref()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn jdbc_plugin_env_keeps_wrapper_fallback_when_managed_jre_is_missing() {
+        let dir = std::env::temp_dir().join(format!("dbx-core-jdbc-missing-jre-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let state = AppState::new_with_plugin_and_agent_dir_and_app_version(
+            storage,
+            dir.join("plugins"),
+            dir.join("agents"),
+            "0.0.0-test",
+        );
+
+        let env = state.external_driver_runtime_env("jdbc").unwrap();
+
+        assert_eq!(env.get("DBX_JAVA_BIN"), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn jdbc_plugin_env_uses_custom_java_runtime() {
+        let dir = std::env::temp_dir().join(format!("dbx-core-jdbc-custom-jre-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let storage = Storage::open(&dir.join("storage.db")).await.unwrap();
+        let state = AppState::new_with_plugin_and_agent_dir_and_app_version(
+            storage,
+            dir.join("plugins"),
+            dir.join("agents"),
+            "0.0.0-test",
+        );
+        let java = dir.join("custom").join("bin").join(if cfg!(windows) { "java.exe" } else { "java" });
+        touch_executable(&java);
+        state
+            .agent_manager
+            .save_state(&AgentState {
+                java_runtime: JavaRuntimeConfig {
+                    mode: JavaRuntimeMode::Custom,
+                    custom_java_path: Some(java.to_string_lossy().to_string()),
+                },
+                ..AgentState::default()
+            })
+            .unwrap();
+
+        let env = state.external_driver_runtime_env("jdbc").unwrap();
+
+        assert_eq!(env.get("DBX_JAVA_BIN"), Some(java.to_string_lossy().as_ref()));
         let _ = std::fs::remove_dir_all(dir);
     }
 
