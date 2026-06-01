@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
-import { Upload, Download, RefreshCw } from "lucide-vue-next";
+import { Upload, Download, FolderPlus, RefreshCw } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import LightDropdown from "@/components/ui/LightDropdown.vue";
@@ -39,6 +39,10 @@ async function refreshTree() {
   }
 }
 
+function createNewGroup() {
+  void connectionTreeRef.value?.createNewGroup();
+}
+
 function focusSearch(): boolean {
   return connectionTreeRef.value?.focusSearch() ?? false;
 }
@@ -61,22 +65,14 @@ defineExpose({ focusSearch });
           t("sidebar.connections")
         }}</span>
         <span class="flex-1 self-stretch" data-tauri-drag-region />
-        <Tooltip>
-          <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon" class="h-5 w-5" @click="refreshTree">
-              <RefreshCw class="h-3 w-3" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{{ t("contextMenu.refreshChildren") }}</TooltipContent>
-        </Tooltip>
         <LightDropdown
           model-value=""
           :items="importSourceItems"
           :aria-label="t('sidebar.import')"
           :trigger-title="t('sidebar.import')"
           :trigger-icon="Upload"
-          trigger-class="inline-flex h-5 w-5 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-          trigger-icon-class="h-3 w-3"
+          trigger-class="inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+          trigger-icon-class="h-3.5 w-3.5"
           content-class="w-44"
           :show-trigger-label="false"
           :show-chevron="false"
@@ -87,11 +83,27 @@ defineExpose({ focusSearch });
         />
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon" class="h-5 w-5" @click="emit('export')">
-              <Download class="h-3 w-3" />
+            <Button variant="ghost" size="icon" class="h-6 w-6" @click="emit('export')">
+              <Download class="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{{ t("sidebar.export") }}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="icon" class="h-6 w-6" @click="createNewGroup">
+              <FolderPlus class="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t("connectionGroup.createGroup") }}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="icon" class="h-6 w-6" @click="refreshTree">
+              <RefreshCw class="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t("contextMenu.refreshChildren") }}</TooltipContent>
         </Tooltip>
       </div>
       <div class="flex-1 min-h-0">

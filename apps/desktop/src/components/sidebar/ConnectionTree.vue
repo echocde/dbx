@@ -5,7 +5,6 @@ import {
   Search,
   X,
   ListFilter,
-  FolderPlus,
   Crosshair,
   Server,
   Database,
@@ -425,7 +424,7 @@ function onSearchKeydown(event: KeyboardEvent) {
   searchQuery.value = "";
 }
 
-defineExpose({ focusSearch });
+defineExpose({ focusSearch, createNewGroup });
 </script>
 
 <template>
@@ -458,13 +457,6 @@ defineExpose({ focusSearch });
           @click="locateActiveTabInSidebar"
         >
           <Crosshair class="h-3.5 w-3.5" />
-        </button>
-        <button
-          class="shrink-0 h-6 w-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-          :title="t('connectionGroup.createGroup')"
-          @click="createNewGroup"
-        >
-          <FolderPlus class="h-3.5 w-3.5" />
         </button>
         <LightDropdown
           v-if="searchScopeOptions.length > 0"
