@@ -204,10 +204,10 @@ function adjustSubPosition() {
 
 function itemButtonClass(variant?: "default" | "destructive") {
   return [
-    "w-full gap-2 rounded-md px-2 py-1 text-[13px] outline-hidden select-none text-left cursor-default flex items-center disabled:pointer-events-none disabled:opacity-50",
+    "w-full gap-2 rounded-md px-2 py-1 text-[13px] leading-4 outline-hidden select-none text-left cursor-default flex items-center disabled:pointer-events-none disabled:opacity-50 transition-colors",
     variant === "destructive"
-      ? "text-destructive hover:bg-destructive/10 hover:text-destructive"
-      : "hover:bg-accent hover:text-accent-foreground",
+      ? "text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive"
+      : "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
   ];
 }
 
@@ -244,11 +244,13 @@ onBeforeUnmount(() => {
       v-if="show"
       ref="menuRef"
       :style="{ position: 'fixed', left: x + 'px', top: y + 'px', zIndex: 9999 }"
-      class="text-popover-foreground min-w-36 rounded-xl p-1 cn-menu-translucent overflow-x-hidden overflow-y-auto"
+      class="bg-popover text-popover-foreground min-w-40 rounded-xl p-1 overflow-x-hidden overflow-y-auto ring-1 ring-foreground/10 shadow-lg"
     >
       <template v-for="(item, index) in items" :key="index">
         <template v-if="item.visible !== false">
-          <div v-if="item.separator" class="bg-foreground/6 -mx-1 my-0.5 h-px" />
+          <div v-if="item.separator" class="-mx-1 my-1 flex items-center px-1">
+            <div class="h-px flex-1 bg-border/70" />
+          </div>
           <button
             v-else
             :disabled="item.disabled"
@@ -260,17 +262,19 @@ onBeforeUnmount(() => {
             @mouseenter="(e) => onItemMouseEnter(index, e)"
             @mouseleave="onItemMouseLeave"
           >
-            <component :is="item.icon" v-if="item.icon" :class="['size-4 shrink-0', item.iconClass]" />
+            <span class="flex size-4 shrink-0 items-center justify-center">
+              <component :is="item.icon" v-if="item.icon" :class="['size-4', item.iconClass]" />
+            </span>
             <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
             <span v-if="item.shortcut" class="ml-8 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
               <kbd
                 v-for="key in shortcutKeys(item.shortcut)"
                 :key="key"
-                class="min-w-5 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs"
+                class="min-w-4 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs"
                 >{{ key }}</kbd
               >
             </span>
-            <ChevronRight v-if="item.children?.length" class="ml-auto size-4" />
+            <ChevronRight v-if="item.children?.length" class="ml-auto size-4 text-muted-foreground/80" />
           </button>
         </template>
       </template>
@@ -282,26 +286,30 @@ onBeforeUnmount(() => {
       v-if="show && activeSubIndex !== null && items[activeSubIndex]?.children?.length"
       ref="subRef"
       :style="{ position: 'fixed', left: subX + 'px', top: subY + 'px', zIndex: 10000 }"
-      class="text-popover-foreground min-w-36 rounded-xl p-1 cn-menu-translucent overflow-x-hidden overflow-y-auto"
+      class="bg-popover text-popover-foreground min-w-40 rounded-xl p-1 overflow-x-hidden overflow-y-auto ring-1 ring-foreground/10 shadow-lg"
       @mouseenter="onSubMouseEnter"
       @mouseleave="onSubMouseLeave"
     >
       <template v-for="(child, ci) in items[activeSubIndex]!.children!" :key="ci">
         <template v-if="child.visible !== false">
-          <div v-if="child.separator" class="bg-foreground/6 -mx-1 my-0.5 h-px" />
+          <div v-if="child.separator" class="-mx-1 my-1 flex items-center px-1">
+            <div class="h-px flex-1 bg-border/70" />
+          </div>
           <button
             v-else
             :disabled="child.disabled"
             :class="itemButtonClass(child.variant)"
             @click="handleSubItemClick(child)"
           >
-            <component :is="child.icon" v-if="child.icon" :class="['size-4 shrink-0', child.iconClass]" />
+            <span class="flex size-4 shrink-0 items-center justify-center">
+              <component :is="child.icon" v-if="child.icon" :class="['size-4', child.iconClass]" />
+            </span>
             <span class="min-w-0 flex-1 truncate">{{ child.label }}</span>
             <span v-if="child.shortcut" class="ml-8 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
               <kbd
                 v-for="key in shortcutKeys(child.shortcut)"
                 :key="key"
-                class="min-w-5 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs"
+                class="min-w-4 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs"
                 >{{ key }}</kbd
               >
             </span>
