@@ -1141,6 +1141,16 @@ export async function mongoInsertDocument(
   return invoke("mongo_insert_document", { connectionId, database, collection, docJson });
 }
 
+export async function mongoInsertDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  docsJson: string,
+): Promise<{ affected_rows: number }> {
+  const affectedRows = await invoke<number>("mongo_insert_documents", { connectionId, database, collection, docsJson });
+  return { affected_rows: affectedRows };
+}
+
 export async function mongoUpdateDocument(
   connectionId: string,
   database: string,
@@ -1151,6 +1161,25 @@ export async function mongoUpdateDocument(
   return invoke("mongo_update_document", { connectionId, database, collection, id, docJson });
 }
 
+export async function mongoUpdateDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  filterJson: string,
+  updateJson: string,
+  many: boolean,
+): Promise<{ affected_rows: number }> {
+  const affectedRows = await invoke<number>("mongo_update_documents", {
+    connectionId,
+    database,
+    collection,
+    filterJson,
+    updateJson,
+    many,
+  });
+  return { affected_rows: affectedRows };
+}
+
 export async function mongoDeleteDocument(
   connectionId: string,
   database: string,
@@ -1158,6 +1187,23 @@ export async function mongoDeleteDocument(
   id: string,
 ): Promise<number> {
   return invoke("mongo_delete_document", { connectionId, database, collection, id });
+}
+
+export async function mongoDeleteDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  filterJson: string,
+  many: boolean,
+): Promise<{ affected_rows: number }> {
+  const affectedRows = await invoke<number>("mongo_delete_documents", {
+    connectionId,
+    database,
+    collection,
+    filterJson,
+    many,
+  });
+  return { affected_rows: affectedRows };
 }
 
 // --- History ---

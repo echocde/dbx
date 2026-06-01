@@ -1304,6 +1304,15 @@ export async function mongoInsertDocument(
   return post("/api/mongo/insert-document", { connectionId, database, collection, docJson });
 }
 
+export async function mongoInsertDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  docsJson: string,
+): Promise<{ affected_rows: number }> {
+  return post("/api/mongo/insert-documents", { connectionId, database, collection, docsJson });
+}
+
 export async function mongoUpdateDocument(
   connectionId: string,
   database: string,
@@ -1314,6 +1323,17 @@ export async function mongoUpdateDocument(
   return post("/api/mongo/update-document", { connectionId, database, collection, id, docJson });
 }
 
+export async function mongoUpdateDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  filterJson: string,
+  updateJson: string,
+  many: boolean,
+): Promise<{ affected_rows: number }> {
+  return post("/api/mongo/update-documents", { connectionId, database, collection, filterJson, updateJson, many });
+}
+
 export async function mongoDeleteDocument(
   connectionId: string,
   database: string,
@@ -1321,6 +1341,16 @@ export async function mongoDeleteDocument(
   id: string,
 ): Promise<number> {
   return post("/api/mongo/delete-document", { connectionId, database, collection, id });
+}
+
+export async function mongoDeleteDocuments(
+  connectionId: string,
+  database: string,
+  collection: string,
+  filterJson: string,
+  many: boolean,
+): Promise<{ affected_rows: number }> {
+  return post("/api/mongo/delete-documents", { connectionId, database, collection, filterJson, many });
 }
 
 // ---------------------------------------------------------------------------

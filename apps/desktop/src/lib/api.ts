@@ -214,8 +214,11 @@ export const mongoListCollections = forward("mongoListCollections");
 export const mongoFindDocuments = forward("mongoFindDocuments");
 export const mongoAggregateDocuments = forward("mongoAggregateDocuments");
 export const mongoInsertDocument = forward("mongoInsertDocument");
+export const mongoInsertDocuments = forward("mongoInsertDocuments");
 export const mongoUpdateDocument = forward("mongoUpdateDocument");
+export const mongoUpdateDocuments = forward("mongoUpdateDocuments");
 export const mongoDeleteDocument = forward("mongoDeleteDocument");
+export const mongoDeleteDocuments = forward("mongoDeleteDocuments");
 
 // History
 export const saveHistory = forward("saveHistory");

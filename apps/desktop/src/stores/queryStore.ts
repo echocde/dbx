@@ -13,9 +13,11 @@ import {
   evaluateMongoAggregateSafety,
   mongoCountToQueryResult,
   mongoDocumentsToQueryResult,
+  mongoWriteToQueryResult,
   parseMongoAggregateCommand,
   parseMongoCountDocumentsCommand,
   parseMongoFindCommand,
+  parseMongoWriteCommand,
   type MongoAggregateSafetyOptions,
 } from "@/lib/mongoShellCommand";
 import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
@@ -786,6 +788,64 @@ export const useQueryStore = defineStore("query", () => {
           current.results = undefined;
           current.activeResultIndex = undefined;
           current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          touchResult(current);
+          current.queryAnalysis = undefined;
+          current.querySourceColumns = undefined;
+          current.queryEditabilityReason = undefined;
+          current.tableMeta = undefined;
+          current.resultBaseSql = options?.resultBaseSql ?? sql;
+          current.resultSortedSql = options?.resultSortedSql;
+        }
+        return;
+      }
+
+      const mongoWrite = conn?.db_type === "mongodb" ? parseMongoWriteCommand(sql) : null;
+      if (mongoWrite) {
+        await connStore.ensureConnected(tab.connectionId);
+        console.info("[DBX][executeTabSql:mongo-write:start]", {
+          traceId,
+          kind: mongoWrite.kind,
+          collection: mongoWrite.collection,
+        });
+        let affectedRows = 0;
+        if (mongoWrite.kind === "insert") {
+          const result = await api.mongoInsertDocuments(
+            tab.connectionId,
+            tab.database,
+            mongoWrite.collection,
+            mongoWrite.docsJson,
+          );
+          affectedRows = result.affected_rows;
+        } else if (mongoWrite.kind === "update") {
+          const result = await api.mongoUpdateDocuments(
+            tab.connectionId,
+            tab.database,
+            mongoWrite.collection,
+            mongoWrite.filter,
+            mongoWrite.update,
+            mongoWrite.many,
+          );
+          affectedRows = result.affected_rows;
+        } else {
+          const result = await api.mongoDeleteDocuments(
+            tab.connectionId,
+            tab.database,
+            mongoWrite.collection,
+            mongoWrite.filter,
+            mongoWrite.many,
+          );
+          affectedRows = result.affected_rows;
+        }
+        console.info("[DBX][executeTabSql:mongo-write:done]", {
+          traceId,
+          affectedRows,
+          elapsed: elapsed(),
+        });
+        const current = tabs.value.find((t) => t.id === id);
+        if (current?.executionId === executionId) {
+          current.results = undefined;
+          current.activeResultIndex = undefined;
+          current.result = mongoWriteToQueryResult(affectedRows, performance.now() - startedAt);
           touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
