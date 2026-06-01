@@ -413,9 +413,22 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 {{ t("chart.title") }}
               </Button>
               <Button
+                v-if="activeOutputView === 'result' && activeTab.result"
                 variant="ghost"
                 size="sm"
                 class="ml-auto h-6 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                :disabled="activeTab.isExecuting"
+                @click="refreshData"
+              >
+                <Loader2 v-if="activeTab.isExecuting" class="h-3.5 w-3.5 animate-spin" />
+                <RefreshCcw v-else class="h-3.5 w-3.5" />
+                {{ t("grid.refresh") }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                :class="{ 'ml-auto': activeOutputView !== 'result' || !activeTab.result }"
                 @click="resultsPaneOpen = false"
               >
                 <ChevronDown class="h-3.5 w-3.5" />

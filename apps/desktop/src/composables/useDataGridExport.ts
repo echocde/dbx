@@ -15,6 +15,7 @@ import { displayCellValue, type CellValue } from "@/lib/cellValue";
 import { tryStartExclusiveActivation, type ActionActivationGuard } from "@/lib/actionActivation";
 import { copyToClipboard } from "@/lib/clipboard";
 import { buildDataGridCopyInsertStatement, buildDataGridCopyUpdateStatements } from "@/lib/dataGridSql";
+import { formatSqlInsert } from "@/lib/exportFormats";
 import type { DatabaseType, QueryResult } from "@/types/database";
 
 interface RowItem {
@@ -531,9 +532,43 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     });
   }
 
+  async function exportSql(rowIds?: number[]) {
+    await runExclusiveExport(async () => {
+      try {
+        const result = await resultToExport(rowIds);
+        const exportData = sqlInsertExportData(result);
+        const content = await formatSqlInsert({
+          databaseType: databaseType.value,
+          schema: tableMeta.value?.schema,
+          tableName: tableMeta.value?.tableName || "table_name",
+          columns: exportData.columns,
+          rows: exportData.rows,
+        });
+        await saveTextFile(content, `${tableMeta.value?.tableName || "export"}.sql`, "SQL", "sql");
+        toast(t("grid.exported"));
+      } catch (e: any) {
+        toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+      }
+    });
+  }
+
   async function copySql() {
     if (!sql.value) return;
     await copyText(sql.value);
+  }
+
+  function sqlInsertExportData(result: { columns: string[]; rows: CellValue[][] }): {
+    columns: string[];
+    rows: CellValue[][];
+  } {
+    const exportColumns = tableMeta.value ? effectiveColumns(sourceColumns.value, result.columns) : result.columns;
+    const columnIndexes = exportColumns
+      .map((column, index) => ({ column, index }))
+      .filter((item): item is { column: string; index: number } => !!item.column);
+    return {
+      columns: columnIndexes.map((item) => item.column),
+      rows: result.rows.map((row) => columnIndexes.map((item) => row[item.index] ?? null)),
+    };
   }
 
   return {
@@ -561,8 +596,30 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     exportJson,
     exportMarkdown,
     exportXlsx,
+    exportSql,
     copySql,
   };
+}
+
+async function saveTextFile(content: string, defaultFileName: string, filterName: string, filterExt: string) {
+  if (isTauriRuntime()) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    const path = await save({
+      defaultPath: defaultFileName,
+      filters: [{ name: filterName, extensions: [filterExt] }],
+    });
+    if (path) await writeTextFile(path, content);
+    return;
+  }
+
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = defaultFileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function effectiveColumns(

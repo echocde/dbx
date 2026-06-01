@@ -307,11 +307,6 @@ export const useQueryStore = defineStore("query", () => {
     const tab = tabs.value.find((t) => t.id === id);
     if (tab) {
       tab.sql = sql;
-      tab.resultSortedSql = undefined;
-      tab.resultBaseSql = undefined;
-      tab.queryAnalysis = undefined;
-      tab.querySourceColumns = undefined;
-      tab.queryEditabilityReason = undefined;
     }
   }
 

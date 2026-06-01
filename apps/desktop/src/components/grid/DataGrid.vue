@@ -2270,6 +2270,10 @@ function exportSelectedRowsMarkdown() {
   return exportMarkdown(affectedRowIds());
 }
 
+function exportSelectedRowsSql() {
+  return exportSql(affectedRowIds());
+}
+
 function isRowActive(index: number): boolean {
   const item = displayItems.value[index];
   if (item && isRowSelected(item.id)) return true;
@@ -2930,6 +2934,7 @@ const {
   exportJson,
   exportMarkdown,
   exportXlsx,
+  exportSql,
   copySql,
 } = useDataGridExport({
   columns: visibleColumns,
@@ -2960,12 +2965,14 @@ const exportMenuItems = computed(() => [
   { value: "xlsx", label: t("grid.exportXlsx") },
   { value: "json", label: t("grid.exportJson") },
   { value: "markdown", label: t("grid.exportMarkdown") },
+  { value: "sql", label: t("grid.exportSql") },
   ...(isMultiRow.value
     ? [
         { value: "selected-csv", label: t("grid.exportSelectedRowsCsv"), separatorBefore: true },
         { value: "selected-xlsx", label: t("grid.exportSelectedRowsXlsx") },
         { value: "selected-json", label: t("grid.exportSelectedRowsJson") },
         { value: "selected-markdown", label: t("grid.exportSelectedRowsMarkdown") },
+        { value: "selected-sql", label: t("grid.exportSelectedRowsSql") },
       ]
     : []),
 ]);
@@ -2980,10 +2987,12 @@ function selectExportMenuItem(value: string) {
     xlsx: exportXlsx,
     json: exportJson,
     markdown: exportMarkdown,
+    sql: exportSql,
     "selected-csv": exportSelectedRowsCsv,
     "selected-xlsx": exportSelectedRowsXlsx,
     "selected-json": exportSelectedRowsJson,
     "selected-markdown": exportSelectedRowsMarkdown,
+    "selected-sql": exportSelectedRowsSql,
   };
   actions[value]?.();
 }
@@ -4425,6 +4434,7 @@ function exportSubmenu(): ContextMenuItem {
     { label: t("grid.exportXlsx"), action: exportXlsx },
     { label: t("grid.exportJson"), action: exportJson },
     { label: t("grid.exportMarkdown"), action: exportMarkdown },
+    { label: t("grid.exportSql"), action: exportSql },
   ];
   if (isMultiRow.value) {
     items.push(
@@ -4433,6 +4443,7 @@ function exportSubmenu(): ContextMenuItem {
       { label: t("grid.exportSelectedRowsXlsx"), action: exportSelectedRowsXlsx },
       { label: t("grid.exportSelectedRowsJson"), action: exportSelectedRowsJson },
       { label: t("grid.exportSelectedRowsMarkdown"), action: exportSelectedRowsMarkdown },
+      { label: t("grid.exportSelectedRowsSql"), action: exportSelectedRowsSql },
     );
   }
   return { label: t("grid.export"), icon: FileDown, children: items };
@@ -4911,6 +4922,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </TooltipContent>
               </Tooltip>
               <Button
+                v-if="props.context !== 'results'"
                 variant="ghost"
                 size="sm"
                 class="h-5 text-xs px-1.5 shrink-0"

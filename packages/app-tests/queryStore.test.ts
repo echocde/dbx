@@ -64,6 +64,57 @@ test("renames query tab titles", () => {
   assert.equal(tab?.customTitle, true);
 });
 
+test("editing query sql preserves the displayed result editability state", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+  const tabId = store.createTab("conn-1", "db");
+  const tab = store.tabs.find((item) => item.id === tabId);
+  assert.ok(tab);
+
+  tab.sql = "select id, name from users";
+  tab.lastExecutedSql = tab.sql;
+  tab.resultBaseSql = tab.sql;
+  tab.resultSortedSql = "select id, name from users order by name";
+  tab.result = {
+    columns: ["id", "name"],
+    rows: [[1, "Ada"]],
+    affected_rows: 0,
+    execution_time_ms: 1,
+  };
+  tab.tableMeta = {
+    tableName: "users",
+    columns: [
+      {
+        name: "id",
+        data_type: "integer",
+        is_nullable: false,
+        column_default: null,
+        is_primary_key: true,
+        extra: null,
+      },
+    ],
+    primaryKeys: ["id"],
+  };
+  tab.queryAnalysis = {
+    tableName: "users",
+    selectStar: false,
+    columns: [
+      { sourceName: "id", resultName: "id", expression: "id" },
+      { sourceName: "name", resultName: "name", expression: "name" },
+    ],
+  };
+  tab.querySourceColumns = ["id", "name"];
+
+  store.updateSql(tabId, "select id, name from users where active = true");
+
+  assert.equal(tab.sql, "select id, name from users where active = true");
+  assert.equal(tab.resultBaseSql, "select id, name from users");
+  assert.equal(tab.resultSortedSql, "select id, name from users order by name");
+  assert.deepEqual(tab.querySourceColumns, ["id", "name"]);
+  assert.equal(tab.queryAnalysis?.tableName, "users");
+  assert.equal(tab.tableMeta?.tableName, "users");
+});
+
 test("evicting cached tab results releases multi-result payloads and sessions", async () => {
   const restoreStorage = installMemoryStorage();
   setActivePinia(createPinia());
