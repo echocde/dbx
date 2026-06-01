@@ -110,6 +110,11 @@ export default {
     filePath: "檔案路徑",
     createDuckDbFile: "建立 DuckDB 檔案",
     memoryDatabasePathHint: "輸入 :memory: 可建立 SQLite 或 DuckDB 記憶體資料庫。",
+    sqliteExtensions: "SQLite 擴充庫",
+    sqliteExtensionsPlaceholder: "/path/to/regexp.dylib\n/path/to/text.dylib|sqlite3_text_init",
+    sqliteExtensionsHint:
+      "每行一個 .dylib/.so/.dll；需要入口函式時使用「路徑|入口函式」。連線時載入，載入後會關閉 load_extension。",
+    sqliteExtensionBrowse: "選擇 SQLite 擴充庫",
     user: "使用者名稱",
     password: "密碼",
     database: "資料庫",

@@ -298,10 +298,19 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     Err(e) => Err(e),
                 }
             }
-            DatabaseType::Sqlite => match db::sqlite::connect_path(&expand_tilde(&config.host)).await {
-                Ok(_) => Ok("Connection successful".to_string()),
-                Err(e) => Err(e),
-            },
+            DatabaseType::Sqlite => {
+                let extensions = db::sqlite::sqlite_extension_specs_from_url_params(config.url_params.as_deref())
+                    .into_iter()
+                    .map(|mut extension| {
+                        extension.path = expand_tilde(&extension.path);
+                        extension
+                    })
+                    .collect();
+                match db::sqlite::connect_path_with_extensions(&expand_tilde(&config.host), extensions).await {
+                    Ok(_) => Ok("Connection successful".to_string()),
+                    Err(e) => Err(e),
+                }
+            }
             DatabaseType::Redis => {
                 let con = if config.uses_redis_cluster() {
                     db::redis_driver::connect_cluster(&config).await?;
@@ -434,7 +443,18 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
         DatabaseType::Postgres | DatabaseType::Redshift | DatabaseType::Gaussdb | DatabaseType::OpenGauss => {
             PoolKind::Postgres(db::postgres::connect(&url, connect_timeout).await?)
         }
-        DatabaseType::Sqlite => PoolKind::Sqlite(db::sqlite::connect_path(&expand_tilde(&db_config.host)).await?),
+        DatabaseType::Sqlite => {
+            let extensions = db::sqlite::sqlite_extension_specs_from_url_params(db_config.url_params.as_deref())
+                .into_iter()
+                .map(|mut extension| {
+                    extension.path = expand_tilde(&extension.path);
+                    extension
+                })
+                .collect();
+            PoolKind::Sqlite(
+                db::sqlite::connect_path_with_extensions(&expand_tilde(&db_config.host), extensions).await?,
+            )
+        }
         DatabaseType::Redis => {
             let con = if db_config.uses_redis_cluster() {
                 PoolKind::Redis(db::redis_driver::RedisConnection::Cluster(

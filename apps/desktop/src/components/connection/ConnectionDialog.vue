@@ -684,6 +684,12 @@ const filePathPlaceholder = computed(() => {
   return "/path/to/database.db or :memory:";
 });
 const supportsMemoryDatabasePath = computed(() => form.value.db_type === "sqlite" || form.value.db_type === "duckdb");
+const sqliteExtensionPaths = computed({
+  get: () => sqliteExtensionPathsFromParams(form.value.url_params),
+  set: (value: string) => {
+    form.value.url_params = setSqliteExtensionPaths(form.value.url_params, value);
+  },
+});
 const tlsCapableDatabaseTypes = new Set<DatabaseType>([
   "mysql",
   "postgres",
@@ -954,6 +960,29 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
 function getUrlParam(params: string | undefined, key: string): string {
   const parsed = new URLSearchParams((params || "").trim().replace(/^\?/, ""));
   return parsed.get(key) || "";
+}
+
+function sqliteExtensionPathsFromParams(params: string | undefined): string {
+  const parsed = new URLSearchParams((params || "").trim().replace(/^\?/, ""));
+  return [
+    ...parsed.getAll("sqlite_extension"),
+    ...parsed.getAll("sqlite_extensions").flatMap((value) => value.split(/\r?\n/)),
+  ]
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function setSqliteExtensionPaths(params: string | undefined, paths: string): string {
+  const parsed = new URLSearchParams((params || "").trim().replace(/^\?/, ""));
+  parsed.delete("sqlite_extension");
+  parsed.delete("sqlite_extensions");
+  paths
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .forEach((value) => parsed.append("sqlite_extension", value));
+  return parsed.toString();
 }
 
 function setUrlParam(params: string | undefined, key: string, value: string): string {
@@ -1462,6 +1491,32 @@ async function browseDbFilePath() {
   }
 }
 
+async function browseSqliteExtensionPath() {
+  if (isTauriRuntime()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({
+      title: t("connection.sqliteExtensionBrowse"),
+      multiple: true,
+      filters: [
+        { name: "SQLite Extension", extensions: ["dylib", "so", "dll"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    const selectedPaths = Array.isArray(selected)
+      ? selected
+      : selected && typeof selected === "string"
+        ? [selected]
+        : [];
+    if (selectedPaths.length) {
+      const existing = sqliteExtensionPaths.value
+        .split(/\r?\n/)
+        .map((path) => path.trim())
+        .filter(Boolean);
+      sqliteExtensionPaths.value = [...existing, ...selectedPaths].join("\n");
+    }
+  }
+}
+
 function ensureDuckDbFileExtension(path: string): string {
   return /\.(duckdb|db)$/i.test(path) ? path : `${path}.duckdb`;
 }
@@ -1887,6 +1942,35 @@ function openExternalUrl(url: string) {
                       </div>
                       <p v-if="supportsMemoryDatabasePath" class="text-xs text-muted-foreground">
                         {{ t("connection.memoryDatabasePathHint") }}
+                      </p>
+                    </div>
+                  </div>
+                  <div v-if="form.db_type === 'sqlite'" class="grid grid-cols-4 items-start gap-4">
+                    <Label class="text-right mt-2">{{ t("connection.sqliteExtensions") }}</Label>
+                    <div class="col-span-3 space-y-1">
+                      <div class="flex items-start gap-1">
+                        <textarea
+                          v-model="sqliteExtensionPaths"
+                          class="flex min-h-[76px] flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          :placeholder="t('connection.sqliteExtensionsPlaceholder')"
+                          spellcheck="false"
+                        />
+                        <Tooltip v-if="isDesktop">
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              class="h-9 w-9 shrink-0"
+                              @click="browseSqliteExtensionPath"
+                            >
+                              <FolderOpen class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.sqliteExtensionBrowse") }}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("connection.sqliteExtensionsHint") }}
                       </p>
                     </div>
                   </div>

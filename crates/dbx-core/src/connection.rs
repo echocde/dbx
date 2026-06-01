@@ -215,7 +215,18 @@ impl AppState {
             DatabaseType::Postgres | DatabaseType::Redshift | DatabaseType::Gaussdb | DatabaseType::OpenGauss => {
                 PoolKind::Postgres(db::postgres::connect(&url, connect_timeout).await?)
             }
-            DatabaseType::Sqlite => PoolKind::Sqlite(db::sqlite::connect_path(&expand_tilde(&db_config.host)).await?),
+            DatabaseType::Sqlite => {
+                let extensions = db::sqlite::sqlite_extension_specs_from_url_params(db_config.url_params.as_deref())
+                    .into_iter()
+                    .map(|mut extension| {
+                        extension.path = expand_tilde(&extension.path);
+                        extension
+                    })
+                    .collect();
+                PoolKind::Sqlite(
+                    db::sqlite::connect_path_with_extensions(&expand_tilde(&db_config.host), extensions).await?,
+                )
+            }
             DatabaseType::Redis => {
                 let con = if db_config.uses_redis_cluster() {
                     db::redis_driver::RedisConnection::Cluster(db::redis_driver::connect_cluster(&db_config).await?)

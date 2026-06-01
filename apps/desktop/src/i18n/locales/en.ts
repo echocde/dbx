@@ -111,6 +111,11 @@ export default {
     filePath: "File Path",
     createDuckDbFile: "Create DuckDB file",
     memoryDatabasePathHint: "Use :memory: to create an in-memory SQLite or DuckDB database.",
+    sqliteExtensions: "SQLite Extensions",
+    sqliteExtensionsPlaceholder: "/path/to/regexp.dylib\n/path/to/text.dylib|sqlite3_text_init",
+    sqliteExtensionsHint:
+      "One .dylib/.so/.dll per line. Use “path|entry point” when an entry point is required. Loaded on connect, then load_extension is disabled.",
+    sqliteExtensionBrowse: "Select SQLite extension",
     user: "User",
     password: "Password",
     database: "Database",
