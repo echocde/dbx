@@ -1492,6 +1492,7 @@ export default {
     loadingFonts: "Loading fonts...",
     noFontsFound: "No fonts found",
     useCustomFont: "Use “{font}”",
+    languageTitle: "Language / 语言",
     fontSize: "Font Size",
     uiScale: "UI Scale",
     uiScaleDescription:

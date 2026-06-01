@@ -70,6 +70,8 @@ import AiProviderLogo from "@/components/icons/AiProviderLogo.vue";
 import AppLogo from "@/components/icons/AppLogo.vue";
 import type { AppThemeAppearance } from "@/lib/appTheme";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { currentLocale, setLocale, type Locale } from "@/i18n";
+import { LOCALE_OPTIONS } from "@/lib/localeOptions";
 
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
@@ -363,6 +365,10 @@ function onFontFamilyChange(v: any) {
 
 function onThemeChange(v: any) {
   if (typeof v === "string") editTheme.value = v as typeof DEFAULT_EDITOR_SETTINGS.theme;
+}
+
+function onLocaleChange(v: any) {
+  if (typeof v === "string") void setLocale(v as Locale);
 }
 
 function onRedisScanPageSizeChange(v: any) {
@@ -1127,6 +1133,25 @@ watch(
             </section>
 
             <section v-else-if="activeSettingsTab === 'appearance'" class="flex flex-col gap-5 py-2">
+              <div class="space-y-2">
+                <Label>{{ t("settings.languageTitle") }}</Label>
+                <Select :model-value="currentLocale()" @update:model-value="onLocaleChange">
+                  <SelectTrigger class="min-w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="locale in LOCALE_OPTIONS" :key="locale.value" :value="locale.value">
+                      <div class="flex items-center gap-2">
+                        <span>{{ locale.flag }}</span>
+                        <span>{{ locale.label }}</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
               <div class="space-y-2">
                 <Label>{{ t("settings.uiScale") }}</Label>
                 <Select

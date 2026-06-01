@@ -1,0 +1,7 @@
+import type { Locale } from "@/i18n";
+
+export const LOCALE_OPTIONS: { value: Locale; flag: string; label: string }[] = [
+  { value: "en", flag: "🇺🇸", label: "English" },
+  { value: "es", flag: "🇪🇸", label: "Español" },
+  { value: "zh-CN", flag: "🇨🇳", label: "简体中文" },
+];

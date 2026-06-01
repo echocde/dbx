@@ -1465,6 +1465,7 @@ export default {
     loadingFonts: "正在加载字体...",
     noFontsFound: "未找到字体",
     useCustomFont: "使用“{font}”",
+    languageTitle: "语言 / Language",
     fontSize: "字号",
     uiScale: "界面缩放",
     uiScaleDescription: "按比例缩放整个桌面端界面，适合高清屏；修改后立即生效，并在下次启动时恢复。",

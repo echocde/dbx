@@ -1387,6 +1387,7 @@ export default {
     loadingFonts: "Cargando fuentes...",
     noFontsFound: "No se encontraron fuentes",
     useCustomFont: "Usar “{font}”",
+    languageTitle: "Idioma / Language",
     fontSize: "Tamaño de fuente",
     uiScale: "Escala de interfaz",
     uiScaleDescription:
