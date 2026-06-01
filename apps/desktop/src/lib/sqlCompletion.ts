@@ -759,8 +759,9 @@ export function shouldAutoOpenSqlCompletion(sql: string, cursor: number): boolea
 }
 
 export function getSqlCompletionResultValidFor(sql: string, cursor: number): RegExp | undefined {
-  const context = getSqlCompletionContext(sql, cursor);
-  return context.suggestTables ? undefined : /^[\w$]*$/;
+  void sql;
+  void cursor;
+  return undefined;
 }
 
 export function getSqlFunctionSignatureHelp(sql: string, cursor: number): SqlFunctionSignatureHelp | null {
@@ -1487,13 +1488,14 @@ function unquoteIdentifier(value: string): string {
 function buildTableItems(prefix: string, tables: SqlCompletionTable[]): SqlCompletionItem[] {
   return tables
     .filter((table) => matchesPrefix(table.name, prefix))
-    .slice(0, MAX_TABLE_COMPLETION_ITEMS)
     .map((table) => ({
       label: table.name,
       type: "table" as const,
       detail: table.schema ? `${table.schema}.${table.name}` : table.type,
       boost: computeBoost(table.name, prefix) + 1000,
-    }));
+    }))
+    .sort(compareCompletionItems)
+    .slice(0, MAX_TABLE_COMPLETION_ITEMS);
 }
 
 function buildSchemaItems(prefix: string, schemas: string[]): SqlCompletionItem[] {
@@ -1773,7 +1775,8 @@ function buildColumnItems(
         detail: buildColumnDetail(column),
         boost: computeBoost(column.displayLabel, context.prefix) + keyBoost,
       };
-    });
+    })
+    .sort(compareCompletionItems);
 }
 
 function isKeyColumn(name: string): boolean {
@@ -2126,18 +2129,18 @@ function getHistoryBoost(label: string, type: string): number {
 
 function dedupeAndSort(items: SqlCompletionItem[]): SqlCompletionItem[] {
   const seen = new Set<string>();
-  return items
-    .sort((left, right) => {
-      const leftBonus = getHistoryBoost(left.label, left.type);
-      const rightBonus = getHistoryBoost(right.label, right.type);
-      return right.boost + rightBonus - (left.boost + leftBonus);
-    })
-    .filter((item) => {
-      const key = `${item.type}:${item.label}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+  return items.sort(compareCompletionItems).filter((item) => {
+    const key = `${item.type}:${item.label}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function compareCompletionItems(left: SqlCompletionItem, right: SqlCompletionItem): number {
+  const leftBonus = getHistoryBoost(left.label, left.type);
+  const rightBonus = getHistoryBoost(right.label, right.type);
+  return right.boost + rightBonus - (left.boost + leftBonus);
 }
 
 function findActiveFunctionOpenParen(sqlBeforeCursor: string): number | null {

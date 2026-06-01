@@ -239,8 +239,14 @@ test("suggests SQL Server IIF and CHOOSE scalar functions", () => {
     columnsByTable,
   });
 
-  assert.ok(iifItems.some((item) => item.label === "IIF"), "IIF should appear in completion");
-  assert.ok(chooseItems.some((item) => item.label === "CHOOSE"), "CHOOSE should appear in completion");
+  assert.ok(
+    iifItems.some((item) => item.label === "IIF"),
+    "IIF should appear in completion",
+  );
+  assert.ok(
+    chooseItems.some((item) => item.label === "CHOOSE"),
+    "CHOOSE should appear in completion",
+  );
 });
 
 test("suggests SQL Server data types in CREATE TABLE column definitions", () => {
@@ -303,8 +309,31 @@ test("suggests matching table names for partial table input", () => {
   );
 });
 
+test("ranks exact table matches above prefix and fuzzy matches", () => {
+  const items = buildSqlCompletionItems("select * from toh", "select * from toh".length, {
+    tables: [
+      { name: "to_his_rec", schema: "public", type: "table" },
+      { name: "toh", schema: "public", type: "table" },
+      { name: "toh_archive", schema: "public", type: "table" },
+    ],
+    columnsByTable,
+  });
+
+  const tableItems = items.filter((item) => item.type === "table");
+  assert.deepEqual(
+    tableItems.map((item) => item.label),
+    ["toh", "toh_archive", "to_his_rec"],
+  );
+});
+
 test("does not reuse table completion results across typed prefixes", () => {
   const validFor = getSqlCompletionResultValidFor("select * from ", "select * from ".length);
+
+  assert.equal(validFor, undefined);
+});
+
+test("does not reuse keyword completion results across typed prefixes", () => {
+  const validFor = getSqlCompletionResultValidFor("select * f", "select * f".length);
 
   assert.equal(validFor, undefined);
 });
@@ -526,10 +555,14 @@ test("suggests columns for INSERT INTO target table", () => {
 // --- Column data type in detail ---
 
 test("shows column data type in detail", () => {
-  const items = buildSqlCompletionItems("select id from public.users u where u.", "select id from public.users u where u.".length, {
-    tables,
-    columnsByTable,
-  });
+  const items = buildSqlCompletionItems(
+    "select id from public.users u where u.",
+    "select id from public.users u where u.".length,
+    {
+      tables,
+      columnsByTable,
+    },
+  );
   const emailColumn = items.find((item) => item.label === "email");
   assert.ok(emailColumn);
   assert.ok(emailColumn.detail!.includes("[varchar]"));
@@ -594,7 +627,10 @@ test("snippet boost uses label when label matches prefix better than snippet pre
   assert.ok(snippet);
   // Snippet should appear in top results even when typing full keyword
   const topFive = items.slice(0, 5);
-  assert.ok(topFive.some((item) => item.label === "select *"), "select * snippet should be in top 5");
+  assert.ok(
+    topFive.some((item) => item.label === "select *"),
+    "select * snippet should be in top 5",
+  );
 });
 
 // --- Context-aware keyword filtering ---
@@ -608,8 +644,14 @@ test("hides DDL keywords in SELECT statement context", () => {
   assert.ok(!keywords.some((item) => item.label === "CREATE"), "CREATE should not appear in SELECT context");
   assert.ok(!keywords.some((item) => item.label === "ALTER"), "ALTER should not appear in SELECT context");
   assert.ok(!keywords.some((item) => item.label === "DROP"), "DROP should not appear in SELECT context");
-  assert.ok(keywords.some((item) => item.label === "AND"), "AND should appear in SELECT context");
-  assert.ok(keywords.some((item) => item.label === "OR"), "OR should appear in SELECT context");
+  assert.ok(
+    keywords.some((item) => item.label === "AND"),
+    "AND should appear in SELECT context",
+  );
+  assert.ok(
+    keywords.some((item) => item.label === "OR"),
+    "OR should appear in SELECT context",
+  );
 });
 
 test("shows DDL keywords in CREATE TABLE context", () => {
@@ -619,7 +661,10 @@ test("shows DDL keywords in CREATE TABLE context", () => {
     columnsByTable,
   });
   // In CREATE context, data types should appear
-  assert.ok(items.some((item) => item.label === "INT" || item.label === "BIGINT"), "data types should appear in CREATE");
+  assert.ok(
+    items.some((item) => item.label === "INT" || item.label === "BIGINT"),
+    "data types should appear in CREATE",
+  );
 });
 
 test("filters data type keywords out of SELECT context", () => {
@@ -642,10 +687,22 @@ test("shows qualified column names when multiple tables share column name", () =
     columnsByTable,
   });
   const columns = items.filter((item) => item.type === "column");
-  assert.ok(columns.some((item) => item.label === "users.id"), "should show users.id");
-  assert.ok(columns.some((item) => item.label === "orders.id"), "should show orders.id");
-  assert.ok(columns.some((item) => item.label === "name"), "unique name should remain unqualified");
-  assert.ok(columns.some((item) => item.label === "user_id"), "unique user_id should remain unqualified");
+  assert.ok(
+    columns.some((item) => item.label === "users.id"),
+    "should show users.id",
+  );
+  assert.ok(
+    columns.some((item) => item.label === "orders.id"),
+    "should show orders.id",
+  );
+  assert.ok(
+    columns.some((item) => item.label === "name"),
+    "unique name should remain unqualified",
+  );
+  assert.ok(
+    columns.some((item) => item.label === "user_id"),
+    "unique user_id should remain unqualified",
+  );
 });
 
 // --- Window function OVER() ---
@@ -774,14 +831,20 @@ test("getSqlCompletionContext returns nonAggregatedSelectColumns", () => {
 
 test("suggests join condition for same FK column in both tables", () => {
   const colsWithFk = new Map<string, SqlCompletionColumn[]>([
-    ["public.authors", [
-      { name: "id", table: "authors", schema: "public", dataType: "bigint" },
-      { name: "publisher_id", table: "authors", schema: "public", dataType: "bigint" },
-    ]],
-    ["public.books", [
-      { name: "id", table: "books", schema: "public", dataType: "bigint" },
-      { name: "publisher_id", table: "books", schema: "public", dataType: "bigint" },
-    ]],
+    [
+      "public.authors",
+      [
+        { name: "id", table: "authors", schema: "public", dataType: "bigint" },
+        { name: "publisher_id", table: "authors", schema: "public", dataType: "bigint" },
+      ],
+    ],
+    [
+      "public.books",
+      [
+        { name: "id", table: "books", schema: "public", dataType: "bigint" },
+        { name: "publisher_id", table: "books", schema: "public", dataType: "bigint" },
+      ],
+    ],
   ]);
   const sql = "select * from public.authors a join public.books b on ";
   const items = buildSqlCompletionItems(sql, sql.length, {
@@ -797,34 +860,43 @@ test("suggests join condition for same FK column in both tables", () => {
 
 test("suggests join condition for parent_id self-reference", () => {
   const colsWithParent = new Map<string, SqlCompletionColumn[]>([
-    ["public.categories", [
-      { name: "id", table: "categories", schema: "public", dataType: "bigint" },
-      { name: "parent_id", table: "categories", schema: "public", dataType: "bigint" },
-      { name: "name", table: "categories", schema: "public", dataType: "varchar" },
-    ]],
+    [
+      "public.categories",
+      [
+        { name: "id", table: "categories", schema: "public", dataType: "bigint" },
+        { name: "parent_id", table: "categories", schema: "public", dataType: "bigint" },
+        { name: "name", table: "categories", schema: "public", dataType: "varchar" },
+      ],
+    ],
   ]);
   // Self-join
   const sql = "select * from public.categories c1 join public.categories c2 on ";
   const items = buildSqlCompletionItems(sql, sql.length, {
-    tables: [
-      { name: "categories", schema: "public", type: "table" },
-    ],
+    tables: [{ name: "categories", schema: "public", type: "table" }],
     columnsByTable: colsWithParent,
   });
-  const parentJoin = items.find((item) => item.label === "c1.parent_id = c2.id" || item.label === "c2.parent_id = c1.id");
+  const parentJoin = items.find(
+    (item) => item.label === "c1.parent_id = c2.id" || item.label === "c2.parent_id = c1.id",
+  );
   assert.ok(parentJoin, "should suggest parent_id = id for self-reference");
 });
 
 test("suggests join condition for created_by → id pattern", () => {
   const colsWithCreator = new Map<string, SqlCompletionColumn[]>([
-    ["public.users", [
-      { name: "id", table: "users", schema: "public", dataType: "bigint" },
-      { name: "name", table: "users", schema: "public", dataType: "varchar" },
-    ]],
-    ["public.documents", [
-      { name: "id", table: "documents", schema: "public", dataType: "bigint" },
-      { name: "created_by", table: "documents", schema: "public", dataType: "bigint" },
-    ]],
+    [
+      "public.users",
+      [
+        { name: "id", table: "users", schema: "public", dataType: "bigint" },
+        { name: "name", table: "users", schema: "public", dataType: "varchar" },
+      ],
+    ],
+    [
+      "public.documents",
+      [
+        { name: "id", table: "documents", schema: "public", dataType: "bigint" },
+        { name: "created_by", table: "documents", schema: "public", dataType: "bigint" },
+      ],
+    ],
   ]);
   const sql = "select * from public.users u join public.documents d on ";
   const items = buildSqlCompletionItems(sql, sql.length, {
@@ -847,7 +919,10 @@ test("fuzzy matches table names with character gaps", () => {
   });
   // "usrs" should fuzzy-match "users" (skip 'e')
   const tableItems = items.filter((item) => item.type === "table");
-  assert.ok(tableItems.some((item) => item.label === "users"), "should fuzzy-match users");
+  assert.ok(
+    tableItems.some((item) => item.label === "users"),
+    "should fuzzy-match users",
+  );
 });
 
 test("fuzzy matches columns with abbreviation pattern", () => {
@@ -857,7 +932,10 @@ test("fuzzy matches columns with abbreviation pattern", () => {
     columnsByTable,
   });
   // "nm" should fuzzy-match "name"
-  assert.ok(items.some((item) => item.label === "name" && item.type === "column"), "should fuzzy-match name from 'nm'");
+  assert.ok(
+    items.some((item) => item.label === "name" && item.type === "column"),
+    "should fuzzy-match name from 'nm'",
+  );
 });
 
 test("prefix matches still rank above fuzzy matches", () => {
@@ -879,8 +957,14 @@ test("suggests NULL and IS NULL after comparison operator", () => {
     tables,
     columnsByTable,
   });
-  assert.ok(items.some((item) => item.label === "NULL"), "should suggest NULL");
-  assert.ok(items.some((item) => item.label === "IS NULL"), "should suggest IS NULL");
+  assert.ok(
+    items.some((item) => item.label === "NULL"),
+    "should suggest NULL",
+  );
+  assert.ok(
+    items.some((item) => item.label === "IS NULL"),
+    "should suggest IS NULL",
+  );
 });
 
 test("suggests string snippet for varchar column after =", () => {
