@@ -76,6 +76,7 @@ export interface ConnectionConfig {
   ssh_key_passphrase?: string;
   ssh_expose_lan?: boolean;
   ssh_connect_timeout_secs?: number;
+  ssh_tunnels?: SshTunnelConfig[];
   connect_timeout_secs?: number;
   query_timeout_secs?: number;
   proxy_enabled?: boolean;
@@ -99,6 +100,20 @@ export interface ConnectionConfig {
   redis_sentinel_tls?: boolean;
   redis_cluster_nodes?: string;
   one_time?: boolean;
+}
+
+export interface SshTunnelConfig {
+  id: string;
+  name?: string;
+  enabled?: boolean;
+  host: string;
+  port: number;
+  user: string;
+  password?: string;
+  key_path?: string;
+  key_passphrase?: string;
+  connect_timeout_secs?: number;
+  expose_lan?: boolean;
 }
 
 export interface AttachedDatabaseConfig {

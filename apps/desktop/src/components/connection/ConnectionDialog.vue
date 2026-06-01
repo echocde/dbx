@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ConnectionConfig, DatabaseType, JdbcDriverInfo } from "@/types/database";
+import type { ConnectionConfig, DatabaseType, JdbcDriverInfo, SshTunnelConfig } from "@/types/database";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useToast } from "@/composables/useToast";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
@@ -23,17 +23,22 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { showAgentDriverInstallHint, type AgentDriverInstallState } from "@/lib/agentDriverInstallHint";
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
   ChevronRight,
   Copy,
   ExternalLink,
   FilePlus2,
   FolderOpen,
+  GripVertical,
   Grid3X3,
   KeyRound,
   Link2,
   List,
+  Plus,
   Search,
   ShieldCheck,
+  Trash2,
 } from "lucide-vue-next";
 
 type DbOption = { value: string; label: string };
@@ -87,6 +92,7 @@ const defaultForm = (): Omit<ConnectionConfig, "id"> => ({
   ssh_key_passphrase: "",
   ssh_expose_lan: false,
   ssh_connect_timeout_secs: 5,
+  ssh_tunnels: [],
   connect_timeout_secs: 5,
   query_timeout_secs: 30,
   proxy_enabled: false,
@@ -110,7 +116,71 @@ const defaultForm = (): Omit<ConnectionConfig, "id"> => ({
   redis_cluster_nodes: "",
 });
 
+function defaultSshTunnel(): SshTunnelConfig {
+  return {
+    id: uuid(),
+    name: "",
+    enabled: true,
+    host: "",
+    port: 22,
+    user: "",
+    password: "",
+    key_path: "",
+    key_passphrase: "",
+    connect_timeout_secs: 5,
+    expose_lan: false,
+  };
+}
+
+function normalizeSshTunnel(hop: Partial<SshTunnelConfig>): SshTunnelConfig {
+  return {
+    id: hop.id || uuid(),
+    name: hop.name || "",
+    enabled: hop.enabled !== false,
+    host: hop.host || "",
+    port: Number(hop.port) || 22,
+    user: hop.user || "",
+    password: hop.password || "",
+    key_path: hop.key_path || "",
+    key_passphrase: hop.key_passphrase || "",
+    connect_timeout_secs: Number(hop.connect_timeout_secs) || 5,
+    expose_lan: !!hop.expose_lan,
+  };
+}
+
+function sshTunnelsForConfig(config: ConnectionConfig): SshTunnelConfig[] {
+  if (config.ssh_tunnels?.length) {
+    return config.ssh_tunnels.map(normalizeSshTunnel);
+  }
+  if (
+    config.ssh_enabled ||
+    config.ssh_host ||
+    config.ssh_user ||
+    config.ssh_password ||
+    config.ssh_key_path ||
+    config.ssh_key_passphrase
+  ) {
+    return [
+      normalizeSshTunnel({
+        id: "legacy",
+        enabled: true,
+        host: config.ssh_host || "",
+        port: config.ssh_port || 22,
+        user: config.ssh_user || "",
+        password: config.ssh_password || "",
+        key_path: config.ssh_key_path || "",
+        key_passphrase: config.ssh_key_passphrase || "",
+        connect_timeout_secs: config.ssh_connect_timeout_secs || 5,
+        expose_lan: config.ssh_expose_lan || false,
+      }),
+    ];
+  }
+  return [];
+}
+
 const form = ref(defaultForm());
+const selectedSshTunnelId = ref<string | null>(null);
+const draggedSshTunnelId = ref<string | null>(null);
 const selectedType = ref("mysql");
 const customDriverName = ref("");
 const mongoUseUrl = ref(false);
@@ -366,6 +436,7 @@ watch(
         ssh_key_passphrase: config.ssh_key_passphrase || "",
         ssh_expose_lan: config.ssh_expose_lan || false,
         ssh_connect_timeout_secs: config.ssh_connect_timeout_secs || 5,
+        ssh_tunnels: sshTunnelsForConfig(config),
         connect_timeout_secs: config.connect_timeout_secs || 5,
         query_timeout_secs: config.query_timeout_secs ?? 30,
         proxy_enabled: config.proxy_enabled || false,
@@ -388,6 +459,7 @@ watch(
         redis_sentinel_tls: config.redis_sentinel_tls || false,
         redis_cluster_nodes: config.redis_cluster_nodes || "",
       };
+      selectedSshTunnelId.value = form.value.ssh_tunnels?.[0]?.id || null;
       selectedType.value = profile;
       if (profile === "oceanbase") {
         oceanbaseSubMode.value = config.driver_profile === "oceanbase-oracle" ? "oracle" : "mysql";
@@ -400,6 +472,7 @@ watch(
     } else {
       editingId.value = null;
       form.value = defaultForm();
+      selectedSshTunnelId.value = null;
       selectedType.value = "mysql";
       customDriverName.value = "";
       oceanbaseSubMode.value = "mysql";
@@ -427,6 +500,20 @@ const databasePlaceholder = computed(() => {
   const fallback = defaultDatabaseForProfile();
   if (!fallback) return t("connection.databasePlaceholder");
   return t("connection.databasePlaceholderWithDefault", { database: fallback });
+});
+
+const sshTunnels = computed(() => form.value.ssh_tunnels || []);
+const selectedSshTunnel = computed(() => {
+  const tunnels = sshTunnels.value;
+  return tunnels.find((hop) => hop.id === selectedSshTunnelId.value) || tunnels[0] || null;
+});
+const sshPathSegments = computed(() => {
+  const hops = sshTunnels.value.filter((hop) => hop.enabled !== false);
+  return [
+    "DBX",
+    ...hops.map((hop, index) => hop.name?.trim() || hop.host?.trim() || `SSH ${index + 1}`),
+    form.value.host || "Database",
+  ];
 });
 
 function defaultDatabaseForProfile() {
@@ -774,6 +861,24 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
   }
   const sshTimeout = Number(config.ssh_connect_timeout_secs);
   config.ssh_connect_timeout_secs = Number.isFinite(sshTimeout) && sshTimeout > 0 ? sshTimeout : 5;
+  config.ssh_tunnels = (config.ssh_tunnels || []).map((hop) => {
+    const normalized = normalizeSshTunnel(hop);
+    const timeout = Number(normalized.connect_timeout_secs);
+    normalized.connect_timeout_secs = Number.isFinite(timeout) && timeout > 0 ? timeout : 5;
+    return normalized;
+  });
+  const firstSshTunnel = config.ssh_tunnels[0];
+  if (firstSshTunnel) {
+    config.ssh_host = firstSshTunnel.host;
+    config.ssh_port = firstSshTunnel.port;
+    config.ssh_user = firstSshTunnel.user;
+    config.ssh_password = firstSshTunnel.password || "";
+    config.ssh_key_path = firstSshTunnel.key_path || "";
+    config.ssh_key_passphrase = firstSshTunnel.key_passphrase || "";
+    config.ssh_expose_lan = !!firstSshTunnel.expose_lan;
+    config.ssh_connect_timeout_secs = firstSshTunnel.connect_timeout_secs || config.ssh_connect_timeout_secs;
+  }
+  validateSshTunnels(config);
   const connectTimeout = Number(config.connect_timeout_secs);
   config.connect_timeout_secs = Number.isFinite(connectTimeout) && connectTimeout > 0 ? connectTimeout : 5;
   const queryTimeout = Number(config.query_timeout_secs);
@@ -1012,6 +1117,8 @@ async function copyTestResult() {
 function resetForm() {
   editingId.value = null;
   form.value = defaultForm();
+  selectedSshTunnelId.value = null;
+  draggedSshTunnelId.value = null;
   selectedType.value = "mysql";
   customDriverName.value = "";
   mongoUseUrl.value = false;
@@ -1137,6 +1244,80 @@ watch(supportsTlsToggle, (value) => {
   }
 });
 
+function ensureSelectedSshTunnel() {
+  if (!selectedSshTunnelId.value || !sshTunnels.value.some((hop) => hop.id === selectedSshTunnelId.value)) {
+    selectedSshTunnelId.value = sshTunnels.value[0]?.id || null;
+  }
+}
+
+function addSshTunnel() {
+  const next = defaultSshTunnel();
+  next.name = t("connection.sshHopDefaultName", { index: sshTunnels.value.length + 1 });
+  form.value.ssh_tunnels = [...sshTunnels.value, next];
+  form.value.ssh_enabled = true;
+  selectedSshTunnelId.value = next.id;
+  resetTestState();
+}
+
+function duplicateSshTunnel(hop: SshTunnelConfig) {
+  const next = { ...normalizeSshTunnel(hop), id: uuid(), name: hop.name ? `${hop.name} copy` : "" };
+  form.value.ssh_tunnels = [...sshTunnels.value, next];
+  selectedSshTunnelId.value = next.id;
+  resetTestState();
+}
+
+function removeSshTunnel(id: string) {
+  form.value.ssh_tunnels = sshTunnels.value.filter((hop) => hop.id !== id);
+  ensureSelectedSshTunnel();
+  resetTestState();
+}
+
+function moveSshTunnel(id: string, direction: -1 | 1) {
+  const tunnels = [...sshTunnels.value];
+  const index = tunnels.findIndex((hop) => hop.id === id);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= tunnels.length) return;
+  [tunnels[index], tunnels[target]] = [tunnels[target], tunnels[index]];
+  form.value.ssh_tunnels = tunnels;
+  resetTestState();
+}
+
+function dropSshTunnel(targetId: string) {
+  const sourceId = draggedSshTunnelId.value;
+  draggedSshTunnelId.value = null;
+  if (!sourceId || sourceId === targetId) return;
+  const tunnels = [...sshTunnels.value];
+  const sourceIndex = tunnels.findIndex((hop) => hop.id === sourceId);
+  const targetIndex = tunnels.findIndex((hop) => hop.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const [source] = tunnels.splice(sourceIndex, 1);
+  tunnels.splice(targetIndex, 0, source);
+  form.value.ssh_tunnels = tunnels;
+  resetTestState();
+}
+
+function validateSshTunnels(config: ConnectionConfig) {
+  if (!config.ssh_enabled) return;
+  const tunnels = config.ssh_tunnels || [];
+  tunnels.forEach((hop, index) => {
+    if (hop.enabled === false) return;
+    const label = hop.name?.trim() || t("connection.sshHopDefaultName", { index: index + 1 });
+    if (!hop.host?.trim()) throw new Error(t("connection.sshHopInvalidHost", { hop: label }));
+    if (!hop.user?.trim()) throw new Error(t("connection.sshHopInvalidUser", { hop: label }));
+    const port = Number(hop.port);
+    if (!Number.isFinite(port) || port < 1 || port > 65535) {
+      throw new Error(t("connection.sshHopInvalidPort", { hop: label }));
+    }
+    if (!hop.password?.trim() && !hop.key_path?.trim()) {
+      throw new Error(t("connection.sshHopInvalidAuth", { hop: label }));
+    }
+    const timeout = Number(hop.connect_timeout_secs);
+    if (!Number.isFinite(timeout) || timeout < 1 || timeout > 300) {
+      throw new Error(t("connection.sshHopInvalidTimeout", { hop: label }));
+    }
+  });
+}
+
 async function save() {
   if (!ensureConnectionHostResolvedFromUrl()) return;
   if (isSaving.value) return;
@@ -1181,7 +1362,7 @@ watch([() => editingId.value, () => open.value], () => {
   dialogTitle.value = editingId.value ? t("connection.editTitle") : t("connection.title");
 });
 
-async function browseSshKeyPath() {
+async function browseSshKeyPath(target?: SshTunnelConfig | null) {
   if (isTauriRuntime()) {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const selected = await open({
@@ -1189,7 +1370,11 @@ async function browseSshKeyPath() {
       multiple: false,
     });
     if (selected && typeof selected === "string") {
-      form.value.ssh_key_path = selected;
+      if (target) {
+        target.key_path = selected;
+      } else {
+        form.value.ssh_key_path = selected;
+      }
     }
   }
 }
@@ -2318,92 +2503,218 @@ function openExternalUrl(url: string) {
                     <span class="text-xs text-muted-foreground">{{ t("connection.sshEnable") }}</span>
                   </label>
                 </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.sshHost") }}</Label>
-                  <Input
-                    v-model="form.ssh_host"
-                    class="col-span-2"
-                    placeholder="ssh.example.com"
-                    :disabled="!form.ssh_enabled"
-                  />
-                  <Input
-                    v-model.number="form.ssh_port"
-                    type="number"
-                    class="col-span-1"
-                    :disabled="!form.ssh_enabled"
-                  />
-                </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.sshUser") }}</Label>
-                  <Input v-model="form.ssh_user" class="col-span-3" placeholder="root" :disabled="!form.ssh_enabled" />
-                </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.sshPassword") }}</Label>
-                  <Input
-                    v-model="form.ssh_password"
-                    type="password"
-                    class="col-span-3"
-                    :placeholder="t('connection.sshPasswordPlaceholder')"
-                    :disabled="!form.ssh_enabled"
-                  />
-                </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.sshKeyPath") }}</Label>
-                  <div class="col-span-3 flex items-center gap-1">
-                    <Input
-                      v-model="form.ssh_key_path"
-                      class="flex-1"
-                      placeholder="~/.ssh/id_rsa"
-                      :disabled="!form.ssh_enabled"
-                    />
-                    <Tooltip v-if="isDesktop">
-                      <TooltipTrigger as-child>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          class="h-9 w-9 shrink-0"
+
+                <div class="grid grid-cols-4 items-start gap-4">
+                  <Label class="pt-2 text-right text-xs">{{ t("connection.sshHops") }}</Label>
+                  <div class="col-span-3 grid gap-3">
+                    <div class="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                      <template v-for="(segment, index) in sshPathSegments" :key="`${segment}-${index}`">
+                        <span class="rounded border bg-muted/40 px-2 py-1">{{ segment }}</span>
+                        <ChevronRight v-if="index < sshPathSegments.length - 1" class="h-3 w-3" />
+                      </template>
+                    </div>
+                    <div class="grid gap-2">
+                      <button
+                        v-for="(hop, index) in sshTunnels"
+                        :key="hop.id"
+                        type="button"
+                        draggable="true"
+                        class="flex min-h-10 items-center gap-2 rounded-md border px-2 text-left text-xs transition-colors"
+                        :class="hop.id === selectedSshTunnel?.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'"
+                        :disabled="!form.ssh_enabled"
+                        @click="selectedSshTunnelId = hop.id"
+                        @dragstart="draggedSshTunnelId = hop.id"
+                        @dragover.prevent
+                        @drop="dropSshTunnel(hop.id)"
+                      >
+                        <GripVertical class="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span class="w-5 shrink-0 text-muted-foreground">{{ index + 1 }}</span>
+                        <input
+                          v-model="hop.enabled"
+                          type="checkbox"
+                          class="mr-0"
                           :disabled="!form.ssh_enabled"
-                          @click="browseSshKeyPath"
-                        >
-                          <FolderOpen class="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>{{ t("connection.sshKeyPathBrowse") }}</TooltipContent>
-                    </Tooltip>
+                          @click.stop
+                        />
+                        <span class="min-w-0 flex-1 truncate">
+                          {{ hop.name || hop.host || t("connection.sshHopDefaultName", { index: index + 1 }) }}
+                        </span>
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              class="h-7 w-7"
+                              :disabled="index === 0 || !form.ssh_enabled"
+                              @click.stop="moveSshTunnel(hop.id, -1)"
+                            >
+                              <ArrowUp class="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.sshHopMoveUp") }}</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              class="h-7 w-7"
+                              :disabled="index === sshTunnels.length - 1 || !form.ssh_enabled"
+                              @click.stop="moveSshTunnel(hop.id, 1)"
+                            >
+                              <ArrowDown class="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.sshHopMoveDown") }}</TooltipContent>
+                        </Tooltip>
+                      </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        :disabled="!form.ssh_enabled"
+                        @click="addSshTunnel"
+                      >
+                        <Plus class="mr-1.5 h-3.5 w-3.5" />
+                        {{ t("connection.sshHopAdd") }}
+                      </Button>
+                      <Button
+                        v-if="selectedSshTunnel"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        :disabled="!form.ssh_enabled"
+                        @click="duplicateSshTunnel(selectedSshTunnel)"
+                      >
+                        <Copy class="mr-1.5 h-3.5 w-3.5" />
+                        {{ t("connection.sshHopDuplicate") }}
+                      </Button>
+                      <Button
+                        v-if="selectedSshTunnel"
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        :disabled="!form.ssh_enabled"
+                        @click="removeSshTunnel(selectedSshTunnel.id)"
+                      >
+                        <Trash2 class="mr-1.5 h-3.5 w-3.5" />
+                        {{ t("connection.sshHopDelete") }}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.sshKeyPassphrase") }}</Label>
-                  <Input
-                    v-model="form.ssh_key_passphrase"
-                    type="password"
-                    class="col-span-3"
-                    :placeholder="t('connection.sshKeyPassphrasePlaceholder')"
-                    :disabled="!form.ssh_enabled"
-                  />
-                </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <span />
-                  <label
-                    class="col-span-3 flex items-center gap-2"
-                    :class="form.ssh_enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'"
-                  >
-                    <input type="checkbox" v-model="form.ssh_expose_lan" class="mr-0" :disabled="!form.ssh_enabled" />
-                    <span class="text-xs text-muted-foreground">{{ t("connection.sshExposeLan") }}</span>
-                  </label>
-                </div>
-                <div class="grid grid-cols-4 items-center gap-4">
-                  <Label class="text-right text-xs">{{ t("connection.sshConnectTimeout") }}</Label>
-                  <Input
-                    v-model.number="form.ssh_connect_timeout_secs"
-                    type="number"
-                    min="5"
-                    max="300"
-                    step="1"
-                    class="col-span-3"
-                    :disabled="!form.ssh_enabled"
-                  />
-                </div>
+
+                <template v-if="selectedSshTunnel">
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshHopName") }}</Label>
+                    <Input
+                      v-model="selectedSshTunnel.name"
+                      class="col-span-3"
+                      :placeholder="t('connection.sshHopNamePlaceholder')"
+                      :disabled="!form.ssh_enabled"
+                    />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshHost") }}</Label>
+                    <Input
+                      v-model="selectedSshTunnel.host"
+                      class="col-span-2"
+                      placeholder="ssh.example.com"
+                      :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                    />
+                    <Input
+                      v-model.number="selectedSshTunnel.port"
+                      type="number"
+                      min="1"
+                      max="65535"
+                      class="col-span-1"
+                      :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                    />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshUser") }}</Label>
+                    <Input
+                      v-model="selectedSshTunnel.user"
+                      class="col-span-3"
+                      placeholder="root"
+                      :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                    />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshPassword") }}</Label>
+                    <Input
+                      v-model="selectedSshTunnel.password"
+                      type="password"
+                      class="col-span-3"
+                      :placeholder="t('connection.sshPasswordPlaceholder')"
+                      :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                    />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshKeyPath") }}</Label>
+                    <div class="col-span-3 flex items-center gap-1">
+                      <Input
+                        v-model="selectedSshTunnel.key_path"
+                        class="flex-1"
+                        placeholder="~/.ssh/id_rsa"
+                        :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                      />
+                      <Tooltip v-if="isDesktop">
+                        <TooltipTrigger as-child>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            class="h-9 w-9 shrink-0"
+                            :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                            @click="browseSshKeyPath(selectedSshTunnel)"
+                          >
+                            <FolderOpen class="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{{ t("connection.sshKeyPathBrowse") }}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshKeyPassphrase") }}</Label>
+                    <Input
+                      v-model="selectedSshTunnel.key_passphrase"
+                      type="password"
+                      class="col-span-3"
+                      :placeholder="t('connection.sshKeyPassphrasePlaceholder')"
+                      :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                    />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <span />
+                    <label
+                      class="col-span-3 flex items-center gap-2"
+                      :class="form.ssh_enabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'"
+                    >
+                      <input
+                        type="checkbox"
+                        v-model="selectedSshTunnel.expose_lan"
+                        class="mr-0"
+                        :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                      />
+                      <span class="text-xs text-muted-foreground">{{ t("connection.sshExposeLan") }}</span>
+                    </label>
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.sshConnectTimeout") }}</Label>
+                    <Input
+                      v-model.number="selectedSshTunnel.connect_timeout_secs"
+                      type="number"
+                      min="1"
+                      max="300"
+                      step="1"
+                      class="col-span-3"
+                      :disabled="!form.ssh_enabled || selectedSshTunnel.enabled === false"
+                    />
+                  </div>
+                </template>
               </div>
             </TabsContent>
 

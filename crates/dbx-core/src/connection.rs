@@ -401,7 +401,8 @@ impl AppState {
         connection_id: &str,
         config: &ConnectionConfig,
     ) -> Result<(String, u16), String> {
-        if !config.ssh_enabled || config.ssh_host.is_empty() {
+        let ssh_hops = config.effective_ssh_tunnels();
+        if ssh_hops.is_empty() {
             if config.proxy_enabled && !config.proxy_host.is_empty() {
                 if let Some(local_port) = self.proxy_tunnels.local_port(connection_id).await {
                     return Ok(("127.0.0.1".to_string(), local_port));
@@ -465,22 +466,7 @@ impl AppState {
             (config.host.clone(), config.port)
         };
 
-        let local_port = self
-            .tunnels
-            .start_tunnel(
-                connection_id,
-                &config.ssh_host,
-                config.ssh_port,
-                &config.ssh_user,
-                &config.ssh_password,
-                &config.ssh_key_path,
-                &config.ssh_key_passphrase,
-                config.effective_ssh_connect_timeout_secs(),
-                &remote_host,
-                remote_port,
-                config.ssh_expose_lan,
-            )
-            .await?;
+        let local_port = self.tunnels.start_chain(connection_id, &ssh_hops, &remote_host, remote_port).await?;
 
         Ok(("127.0.0.1".to_string(), local_port))
     }
@@ -657,7 +643,7 @@ impl AppState {
         // Re-establish SSH tunnels that have died
         let tunnel_connection_ids: Vec<String> = {
             let configs = self.configs.read().await;
-            configs.iter().filter(|(_, c)| c.ssh_enabled && !c.ssh_host.is_empty()).map(|(id, _)| id.clone()).collect()
+            configs.iter().filter(|(_, c)| c.has_effective_ssh_tunnels()).map(|(id, _)| id.clone()).collect()
         };
         for connection_id in tunnel_connection_ids {
             self.tunnels.stop_tunnel(&connection_id).await;
@@ -700,8 +686,7 @@ impl AppState {
     async fn uses_forwarded_transport(&self, connection_id: &str) -> bool {
         let configs = self.configs.read().await;
         configs.get(connection_id).is_some_and(|config| {
-            (config.ssh_enabled && !config.ssh_host.is_empty())
-                || (config.proxy_enabled && !config.proxy_host.is_empty())
+            config.has_effective_ssh_tunnels() || (config.proxy_enabled && !config.proxy_host.is_empty())
         })
     }
 }
@@ -956,6 +941,7 @@ mod tests {
             ssh_key_passphrase: String::new(),
             ssh_expose_lan: false,
             ssh_connect_timeout_secs: crate::models::connection::default_ssh_connect_timeout_secs(),
+            ssh_tunnels: Vec::new(),
             connect_timeout_secs: default_connect_timeout_secs(),
             query_timeout_secs: crate::models::connection::default_query_timeout_secs(),
             proxy_enabled: false,

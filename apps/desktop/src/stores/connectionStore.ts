@@ -246,6 +246,7 @@ export const useConnectionStore = defineStore("connection", () => {
         ? config.attached_databases.filter((database) => database.name?.trim() && database.path?.trim())
         : [],
       ssh_connect_timeout_secs: config.ssh_connect_timeout_secs || 5,
+      ssh_tunnels: Array.isArray(config.ssh_tunnels) ? config.ssh_tunnels : [],
       connect_timeout_secs: config.connect_timeout_secs || 5,
       query_timeout_secs: config.query_timeout_secs ?? 30,
       proxy_type: config.proxy_type || "socks5",
