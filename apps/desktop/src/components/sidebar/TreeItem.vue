@@ -797,6 +797,7 @@ const showBatchDropConfirm = ref(false);
 const showStructurePreviewDialog = ref(false);
 const structurePreviewSql = ref("");
 const structurePreviewTitle = ref("");
+const structurePreviewDefaultFileName = ref("structure.sql");
 const structurePreviewError = ref("");
 const isLoadingStructurePreview = ref(false);
 const showEmptyTableConfirm = ref(false);
@@ -1688,6 +1689,7 @@ async function exportStructure() {
     targets.length === 1
       ? t("contextMenu.exportStructurePreviewTitle", { name: targets[0]!.label })
       : t("contextMenu.exportStructurePreviewTitleMultiple", { count: targets.length });
+  structurePreviewDefaultFileName.value = targets.length === 1 ? `${targets[0]!.label}.sql` : "structures.sql";
   showStructurePreviewDialog.value = true;
   try {
     const parts: string[] = [];
@@ -1746,6 +1748,16 @@ async function copyStructurePreview() {
     toast(t("contextMenu.exportStructureCopied"), 2000);
   } catch (e: any) {
     toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function saveStructurePreview() {
+  if (!structurePreviewSql.value) return;
+  try {
+    await saveFileContent(structurePreviewSql.value, structurePreviewDefaultFileName.value, "SQL", "sql");
+    toast(t("grid.exported"));
+  } catch (e: any) {
+    toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
   }
 }
 
@@ -3009,9 +3021,17 @@ function treeItemMenuItems(): ContextMenuItem[] {
       </div>
       <DialogFooter>
         <Button variant="outline" @click="showStructurePreviewDialog = false">{{ t("dangerDialog.cancel") }}</Button>
-        <Button :disabled="isLoadingStructurePreview || !structurePreviewSql" @click="copyStructurePreview">
+        <Button
+          variant="outline"
+          :disabled="isLoadingStructurePreview || !structurePreviewSql"
+          @click="copyStructurePreview"
+        >
           <Clipboard class="h-4 w-4" />
           {{ t("contextMenu.copyStructure") }}
+        </Button>
+        <Button :disabled="isLoadingStructurePreview || !structurePreviewSql" @click="saveStructurePreview">
+          <Download class="h-4 w-4" />
+          {{ t("contextMenu.saveStructure") }}
         </Button>
       </DialogFooter>
     </DialogContent>

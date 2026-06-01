@@ -903,6 +903,7 @@ export default {
     exportStructurePreviewTitleMultiple: "資料表結構 - {count} 個物件",
     exportStructureLoading: "正在讀取資料表結構...",
     copyStructure: "複製資料表結構",
+    saveStructure: "儲存 SQL",
     exportStructureCopied: "資料表結構已複製",
     createTable: "建立資料表",
     dropTable: "刪除資料表",

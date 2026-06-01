@@ -922,6 +922,7 @@ export default {
     exportStructurePreviewTitleMultiple: "Structure - {count} objects",
     exportStructureLoading: "Loading structure...",
     copyStructure: "Copy Structure",
+    saveStructure: "Save SQL",
     exportStructureCopied: "Structure copied",
     createTable: "Create Table",
     dropTable: "Drop Table",

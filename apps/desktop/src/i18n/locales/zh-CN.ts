@@ -903,6 +903,7 @@ export default {
     exportStructurePreviewTitleMultiple: "表结构 - {count} 个对象",
     exportStructureLoading: "正在读取表结构...",
     copyStructure: "复制表结构",
+    saveStructure: "保存 SQL",
     exportStructureCopied: "表结构已复制",
     createTable: "新建表",
     dropTable: "删除表",
