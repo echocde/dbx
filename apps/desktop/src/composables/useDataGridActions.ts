@@ -117,6 +117,9 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
   async function onSort(column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string) {
     const tab = activeTab.value;
     if (!tab) return;
+    tab.resultSortColumn = direction ? column : undefined;
+    tab.resultSortColumnIndex = direction ? columnIndex : undefined;
+    tab.resultSortDirection = direction ?? undefined;
 
     if (tab.mode === "data") {
       if (!tab.tableMeta) return;

@@ -329,6 +329,9 @@ export interface QueryTab {
   lastExecutedSql?: string;
   resultBaseSql?: string;
   resultSortedSql?: string;
+  resultSortColumn?: string;
+  resultSortColumnIndex?: number;
+  resultSortDirection?: "asc" | "desc";
   resultPageSql?: string;
   resultPageLimit?: number;
   resultPageOffset?: number;

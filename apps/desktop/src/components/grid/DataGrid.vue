@@ -173,6 +173,7 @@ import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
 import { useCellDetailEditor, type UseCellDetailEditorReturn } from "@/composables/useCellDetailEditor";
 import { useTheme } from "@/composables/useTheme";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { nextDataGridSortState, type DataGridSortDirection } from "@/lib/dataGridSort";
 
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
@@ -199,6 +200,9 @@ const props = defineProps<{
   sourceColumns?: Array<string | undefined>;
   queryEditabilityReason?: string;
   initialWhereInput?: string;
+  sortColumn?: string;
+  sortColumnIndex?: number;
+  sortDirection?: DataGridSortDirection;
   tableMeta?: {
     schema?: string;
     tableName: string;
@@ -399,7 +403,7 @@ const transposeScrollLeft = ref(0);
 const transposeViewportWidth = ref(0);
 const sortCol = ref<string | null>(null);
 const sortColIndex = ref<number | null>(null);
-const sortDir = ref<"asc" | "desc">("asc");
+const sortDir = ref<DataGridSortDirection>("asc");
 const searchText = ref("");
 const deferredClientSearchText = ref("");
 const searchOverlayVisible = ref(false);
@@ -1753,6 +1757,17 @@ function syncOrderByInputWithSort(column: string | null, direction: "asc" | "des
   orderByInput.value = column && direction ? `${queryColumnRef(column)} ${direction.toUpperCase()}` : "";
 }
 
+watch(
+  () => [props.sortColumn, props.sortColumnIndex, props.sortDirection] as const,
+  ([column, columnIndex, direction]) => {
+    sortCol.value = column && direction ? column : null;
+    sortColIndex.value = typeof columnIndex === "number" && direction ? columnIndex : null;
+    sortDir.value = direction ?? "asc";
+    syncOrderByInputWithSort(sortCol.value, sortCol.value ? sortDir.value : null);
+  },
+  { immediate: true },
+);
+
 function firstPage() {
   if (currentPage.value <= 1) return;
   currentPage.value = 1;
@@ -2671,25 +2686,16 @@ function toggleSort(colName: string, colIdx: number) {
   if (getIsResizing()) return;
   currentPage.value = 1;
   resetGridVerticalScroll(true);
-  if (sortCol.value === colName && sortColIndex.value === colIdx) {
-    if (sortDir.value === "asc") {
-      sortDir.value = "desc";
-      syncOrderByInputWithSort(colName, "desc");
-      emit("sort", colName, colIdx, "desc", currentWhereInput());
-    } else {
-      sortCol.value = null;
-      sortColIndex.value = null;
-      sortDir.value = "asc";
-      syncOrderByInputWithSort(null, null);
-      emit("sort", colName, colIdx, null, currentWhereInput());
-    }
-  } else {
-    sortCol.value = colName;
-    sortColIndex.value = colIdx;
-    sortDir.value = "asc";
-    syncOrderByInputWithSort(colName, "asc");
-    emit("sort", colName, colIdx, "asc", currentWhereInput());
-  }
+  const next = nextDataGridSortState(
+    { column: sortCol.value, columnIndex: sortColIndex.value, direction: sortDir.value },
+    colName,
+    colIdx,
+  );
+  sortCol.value = next.column;
+  sortColIndex.value = next.columnIndex;
+  sortDir.value = next.direction;
+  syncOrderByInputWithSort(next.column, next.column ? next.direction : null);
+  emit("sort", colName, colIdx, next.column ? next.direction : null, currentWhereInput());
 }
 
 function applyContextSort(direction: "asc" | "desc" | null) {
