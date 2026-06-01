@@ -136,3 +136,34 @@ test("copying database object group rows uses the parent schema or database name
     "db",
   );
 });
+
+test("copying column rows uses the column name without type suffix", () => {
+  assert.equal(
+    copyNameForTreeNode({
+      id: "conn:db:public:orders:__columns:status",
+      label: "status (varchar)",
+      type: "column",
+      meta: {
+        name: "status",
+        data_type: "varchar",
+        is_nullable: true,
+        column_default: null,
+        is_primary_key: false,
+        extra: null,
+        comment: null,
+        numeric_precision: null,
+        numeric_scale: null,
+        character_maximum_length: null,
+      },
+    }),
+    "status",
+  );
+  assert.equal(
+    copyNameForTreeNode({
+      id: "conn:db:public:orders:__columns:status",
+      label: "status (varchar)",
+      type: "column",
+    }),
+    "status",
+  );
+});

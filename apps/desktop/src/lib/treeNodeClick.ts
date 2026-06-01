@@ -79,5 +79,9 @@ export function sidebarSelectionCopyAction(event: ShortcutLikeEvent): SidebarSel
 export function copyNameForTreeNode(node: TreeNode): string {
   if (tableChildGroupNodeTypes.has(node.type) && node.tableName) return node.tableName;
   if (databaseChildGroupNodeTypes.has(node.type)) return node.schema || node.database || node.label;
+  if (node.type === "column") {
+    if (node.meta && "name" in node.meta) return node.meta.name;
+    return node.label.replace(/\s+\(.+\)$/, "");
+  }
   return node.label;
 }
