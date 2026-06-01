@@ -465,6 +465,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 :count-sql="activeTab.resultCountSql"
                 :total-row-count="activeTab.resultTotalRowCount"
                 :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
+                :full-export-result="() => queryStore.fetchTabResultForExport(activeTab.id)"
                 @reload="
                   (
                     sql?: string,
@@ -667,6 +668,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           :page-offset="activeTab.resultPageOffset"
           :page-limit="activeTab.resultPageLimit"
           :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
+          :full-export-result="() => queryStore.fetchTabResultForExport(activeTab.id)"
           @update:where-input="(v: string) => (activeTab.whereInput = v)"
           @reload="
             (

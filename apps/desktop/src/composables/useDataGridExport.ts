@@ -15,7 +15,7 @@ import { displayCellValue, type CellValue } from "@/lib/cellValue";
 import { tryStartExclusiveActivation, type ActionActivationGuard } from "@/lib/actionActivation";
 import { copyToClipboard } from "@/lib/clipboard";
 import { buildDataGridCopyInsertStatement, buildDataGridCopyUpdateStatements } from "@/lib/dataGridSql";
-import type { DatabaseType } from "@/types/database";
+import type { DatabaseType, QueryResult } from "@/types/database";
 
 interface RowItem {
   id: number;
@@ -44,6 +44,7 @@ export interface UseDataGridExportOptions {
   getRowItem: (rowId: number) => RowItem | undefined;
   selectedRowIds: Ref<Set<number>> | ComputedRef<Set<number>>;
   hasRowSelection: ComputedRef<boolean>;
+  fullExportResult?: () => Promise<QueryResult | undefined>;
 }
 
 interface CopyStatementCache {
@@ -90,6 +91,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     getRowItem,
     selectedRowIds,
     hasRowSelection,
+    fullExportResult,
   } = options;
 
   async function copyText(text: string) {
@@ -105,6 +107,17 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     if (!rowIds?.length) return displayItems.value;
     const rowIdSet = new Set(rowIds);
     return displayItems.value.filter((item) => rowIdSet.has(item.id));
+  }
+
+  async function resultToExport(rowIds?: number[]): Promise<{ columns: string[]; rows: CellValue[][] }> {
+    if (!rowIds?.length && fullExportResult) {
+      const result = await fullExportResult();
+      if (result) return { columns: result.columns, rows: result.rows };
+    }
+    return {
+      columns: columns.value,
+      rows: rowsToExport(rowIds).map((item) => item.data),
+    };
   }
 
   function targetedRows(): RowItem[] {
@@ -427,7 +440,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportCsv(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
-        const rows = rowsToExport(rowIds).map((item) => item.data.map((c) => displayCellValue(c)));
+        const result = await resultToExport(rowIds);
+        const rows = result.rows.map((row) => row.map((c) => displayCellValue(c)));
         let outputPath = "export.csv";
         if (isTauriRuntime()) {
           const { save } = await import("@tauri-apps/plugin-dialog");
@@ -438,7 +452,7 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
           if (!path) return;
           outputPath = path as string;
         }
-        await api.exportQueryResultCsv(outputPath, columns.value, rows);
+        await api.exportQueryResultCsv(outputPath, result.columns, rows);
         toast(t("grid.exported"));
       } catch (e: any) {
         toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
@@ -459,11 +473,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
           if (!path) return;
           outputPath = path as string;
         }
-        await api.exportQueryResultJson(
-          outputPath,
-          columns.value,
-          rowsToExport(rowIds).map((item) => item.data),
-        );
+        const result = await resultToExport(rowIds);
+        await api.exportQueryResultJson(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
         toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
@@ -484,11 +495,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
           if (!path) return;
           outputPath = path as string;
         }
-        await api.exportQueryResultMarkdown(
-          outputPath,
-          columns.value,
-          rowsToExport(rowIds).map((item) => item.data),
-        );
+        const result = await resultToExport(rowIds);
+        await api.exportQueryResultMarkdown(outputPath, result.columns, result.rows);
         toast(t("grid.exported"));
       } catch (e: any) {
         toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
@@ -509,11 +517,12 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
           if (!path) return;
           outputPath = path as string;
         }
+        const result = await resultToExport(rowIds);
         await api.exportQueryResultXlsx(
           outputPath,
           tableMeta.value?.tableName || "Export",
-          columns.value,
-          rowsToExport(rowIds).map((item) => item.data),
+          result.columns,
+          result.rows,
         );
         toast(t("grid.exported"));
       } catch (e: any) {

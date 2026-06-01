@@ -216,6 +216,7 @@ const props = defineProps<{
   loading?: boolean;
   cacheKey?: string;
   onExecuteSql?: (sql: string) => Promise<void>;
+  fullExportResult?: () => Promise<QueryResult | undefined>;
   customSave?: (changes: {
     dirtyRows: Map<number, Map<number, string | number | boolean | null>>;
     newRows: (string | number | boolean | null)[][];
@@ -2944,6 +2945,7 @@ const {
   getRowItem: (rowId: number) => visibleDisplayItems.value.find((item) => item.id === rowId),
   selectedRowIds,
   hasRowSelection,
+  fullExportResult: props.fullExportResult,
 });
 
 const pageSizeMenuItems = computed(() =>

@@ -20,6 +20,7 @@ import {
 } from "@/lib/mongoShellCommand";
 import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
 import { editablePrimaryKeys } from "@/lib/tableEditing";
+import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/tableDataExport";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -1073,6 +1074,80 @@ export const useQueryStore = defineStore("query", () => {
     });
   }
 
+  async function fetchTabResultForExport(id: string): Promise<QueryResult | undefined> {
+    const tab = tabs.value.find((t) => t.id === id);
+    if (!tab?.result) return undefined;
+    if (tab.mode !== "query") return tab.result;
+
+    const sql = tab.resultSortedSql ?? tab.resultBaseSql ?? tab.lastExecutedSql ?? tab.sql;
+    if (!sql.trim()) return tab.result;
+
+    const connStore = useConnectionStore();
+    await connStore.ensureConnected(tab.connectionId);
+    const conn = connStore.getConfig(tab.connectionId);
+    const useAgentCursor = !!conn?.db_type && AGENT_DRIVER_TYPES.has(conn.db_type);
+    const queryBaseSql = tab.resultBaseSql ?? sql;
+    const pageLimit = Math.max(tab.resultPageLimit ?? 0, TABLE_DATA_EXPORT_PAGE_SIZE);
+    const rows: QueryResult["rows"] = [];
+    let columns: string[] = [];
+    let executionTimeMs = 0;
+    let offset = 0;
+    let sessionId: string | undefined;
+    const clientSessionId = `${tab.id}:export`;
+
+    try {
+      while (true) {
+        const plan = await api.prepareQueryPaginationExecutionPlan({
+          sql,
+          queryBaseSql,
+          databaseType: conn?.db_type,
+          pagination: { limit: pageLimit, offset, sessionId },
+          useAgentCursor,
+        });
+        if (typeof plan.pageLimit !== "number" || typeof plan.pageOffset !== "number") return tab.result;
+        const executionOptions = plan.useAgentResultSession
+          ? {
+              maxRows: plan.pageLimit,
+              fetchSize: plan.pageLimit,
+              pageSize: plan.pageLimit,
+              resultSessionId: sessionId,
+              clientSessionId,
+            }
+          : { maxRows: plan.pageLimit, fetchSize: plan.pageLimit };
+        const results = await api.executeMulti(
+          tab.connectionId,
+          tab.database,
+          plan.sqlToExecute,
+          tab.schema,
+          undefined,
+          executionOptions,
+        );
+        const result = results[0];
+        if (!result) break;
+        if (columns.length === 0) columns = result.columns;
+        rows.push(...result.rows);
+        executionTimeMs += result.execution_time_ms ?? 0;
+        sessionId = result.session_id ?? undefined;
+        const shouldFetchNextPage = plan.useAgentResultSession
+          ? result.has_more === true
+          : result.rows.length >= plan.pageLimit;
+        if (!shouldFetchNextPage) break;
+        offset += result.rows.length;
+      }
+    } finally {
+      if (sessionId) void api.closeQuerySession(tab.connectionId, tab.database, sessionId, clientSessionId);
+    }
+
+    return {
+      columns: columns.length ? columns : tab.result.columns,
+      rows,
+      affected_rows: 0,
+      execution_time_ms: executionTimeMs,
+      truncated: false,
+      has_more: false,
+    };
+  }
+
   return {
     tabs,
     activeTabId,
@@ -1102,6 +1177,7 @@ export const useQueryStore = defineStore("query", () => {
     cancelTabExecution,
     cancelTabExplain,
     reloadEvictedTab,
+    fetchTabResultForExport,
     notifyConnectionMayBeLost,
   };
 });
