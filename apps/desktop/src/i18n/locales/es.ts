@@ -836,6 +836,7 @@ export default {
     saveStructure: "Guardar SQL",
     exportStructureCopied: "Estructura copiada",
     createTable: "Crear tabla",
+    createView: "Crear vista",
     dropTable: "Eliminar tabla",
     emptyTable: "Vaciar tabla",
     truncateTable: "Truncar tabla",

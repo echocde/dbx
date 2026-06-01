@@ -939,6 +939,7 @@ export default {
     saveStructure: "Save SQL",
     exportStructureCopied: "Structure copied",
     createTable: "Create Table",
+    createView: "Create View",
     dropTable: "Drop Table",
     emptyTable: "Empty Table",
     truncateTable: "Truncate Table",

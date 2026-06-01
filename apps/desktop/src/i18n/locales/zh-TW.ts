@@ -920,6 +920,7 @@ export default {
     saveStructure: "儲存 SQL",
     exportStructureCopied: "資料表結構已複製",
     createTable: "建立資料表",
+    createView: "建立檢視",
     dropTable: "刪除資料表",
     emptyTable: "清空資料",
     truncateTable: "截斷資料表",

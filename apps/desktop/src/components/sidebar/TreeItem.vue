@@ -1436,7 +1436,7 @@ const supportsTruncate = computed(() => {
 const canCreateTable = computed(() => {
   const config = props.node.connectionId ? connectionStore.getConfig(props.node.connectionId) : undefined;
   return (
-    (props.node.type === "database" || props.node.type === "schema") &&
+    (props.node.type === "database" || props.node.type === "schema" || props.node.type === "group-tables") &&
     !!props.node.database &&
     supportsTableStructureEditing(config?.db_type)
   );
@@ -1796,6 +1796,21 @@ function createTable() {
   const node = props.node;
   if (!node.connectionId || !node.database) return;
   queryStore.openTableStructure(node.connectionId, node.database, node.schema, "");
+}
+
+function createView() {
+  const node = props.node;
+  if (!node.connectionId || !node.database) return;
+  connectionStore.activeConnectionId = node.connectionId;
+  const viewName = node.schema ? `${node.schema}.new_view` : "new_view";
+  const tabId = queryStore.createTab(
+    node.connectionId,
+    node.database,
+    t("contextMenu.createView"),
+    "query",
+    node.schema,
+  );
+  queryStore.updateSql(tabId, `CREATE VIEW ${viewName} AS\nSELECT\n  *\nFROM table_name;\n`);
 }
 
 async function saveFileContent(content: string, defaultFileName: string, filterName: string, filterExt: string) {
@@ -3052,6 +3067,18 @@ function treeItemMenuItems(): ContextMenuItem[] {
         shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
+      items.push({ label: "", separator: true });
+    }
+    const hasGroupCreateAction =
+      (node.type === "group-tables" && canCreateTable.value) ||
+      (node.type === "group-views" && !!node.connectionId && !!node.database);
+    if (node.type === "group-tables" && canCreateTable.value) {
+      items.push({ label: t("contextMenu.createTable"), action: createTable, icon: Plus });
+    }
+    if (node.type === "group-views" && node.connectionId && node.database) {
+      items.push({ label: t("contextMenu.createView"), action: createView, icon: Plus });
+    }
+    if (hasGroupCreateAction) {
       items.push({ label: "", separator: true });
     }
     if (node.type !== "saved-sql-root" && node.type !== "saved-sql-folder" && node.type !== "group-partitions") {
