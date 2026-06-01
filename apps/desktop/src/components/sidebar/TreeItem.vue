@@ -55,7 +55,7 @@ import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useToast } from "@/composables/useToast";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
-import type { DatabaseType, TreeNode, TreeNodeType } from "@/types/database";
+import type { ColumnInfo, DatabaseType, TreeNode, TreeNodeType } from "@/types/database";
 import * as api from "@/lib/api";
 import { uuid } from "@/lib/utils";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
@@ -150,6 +150,8 @@ const savedSqlStore = useSavedSqlStore();
 const settingsStore = useSettingsStore();
 const { toast } = useToast();
 const { highlight } = useSqlHighlighter();
+
+type StructureCopyFormat = "tsv" | "markdown";
 const { getDatabaseOptions } = useDatabaseOptions();
 const showVisibleDatabasesDialog = ref(false);
 
@@ -795,10 +797,13 @@ const showDropTableConfirm = ref(false);
 const showDropTableChildObjectConfirm = ref(false);
 const showBatchDropConfirm = ref(false);
 const showStructurePreviewDialog = ref(false);
+const showStructureDocCopyDialog = ref(false);
 const structurePreviewSql = ref("");
 const structurePreviewTitle = ref("");
 const structurePreviewDefaultFileName = ref("structure.sql");
 const structurePreviewError = ref("");
+const structureDocCopyText = ref("");
+const structureDocCopyTitle = ref("");
 const isLoadingStructurePreview = ref(false);
 const showEmptyTableConfirm = ref(false);
 const showTruncateTableConfirm = ref(false);
@@ -1741,6 +1746,124 @@ function structureExportTargets(): Array<TreeNode & { connectionId: string; data
   return selected.some((node) => node.id === props.node.id) ? selected : [props.node];
 }
 
+function structureTargetName(target: TreeNode): string {
+  return target.schema ? `${target.schema}.${target.label}` : target.label;
+}
+
+function columnDocValue(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function tsvCell(value: unknown): string {
+  return columnDocValue(value).replace(/\t/g, " ").replace(/\r?\n/g, " ").trim();
+}
+
+function markdownCell(value: unknown): string {
+  return columnDocValue(value).replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>").trim();
+}
+
+function columnDocHeaders(includeTable: boolean): string[] {
+  const headers = [
+    t("contextMenu.structureDocColumn"),
+    t("contextMenu.structureDocType"),
+    t("contextMenu.structureDocPrimaryKey"),
+    t("contextMenu.structureDocNullable"),
+    t("contextMenu.structureDocDefault"),
+    t("contextMenu.structureDocComment"),
+  ];
+  return includeTable ? [t("contextMenu.structureDocTable"), ...headers] : headers;
+}
+
+function columnDocCells(target: TreeNode, column: ColumnInfo, includeTable: boolean): unknown[] {
+  const cells = [
+    column.name,
+    column.data_type,
+    column.is_primary_key ? t("contextMenu.structureDocYes") : t("contextMenu.structureDocNo"),
+    column.is_nullable ? t("contextMenu.structureDocYes") : t("contextMenu.structureDocNo"),
+    column.column_default,
+    column.comment,
+  ];
+  return includeTable ? [structureTargetName(target), ...cells] : cells;
+}
+
+async function tableColumnsForStructureCopy(
+  target: TreeNode & { connectionId: string; database: string },
+): Promise<ColumnInfo[]> {
+  await connectionStore.ensureConnected(target.connectionId);
+  return (await api.getColumns(
+    target.connectionId,
+    target.database,
+    target.schema || target.database,
+    target.label,
+  )) as ColumnInfo[];
+}
+
+async function buildStructureCopyText(format: StructureCopyFormat): Promise<string> {
+  const targets = structureExportTargets();
+  if (!targets.length) return "";
+  const includeTable = targets.length > 1;
+  const headers = columnDocHeaders(includeTable);
+
+  if (format === "tsv") {
+    const lines = [headers.map(tsvCell).join("\t")];
+    for (const target of targets) {
+      const columns = await tableColumnsForStructureCopy(target);
+      for (const column of columns) {
+        lines.push(columnDocCells(target, column, includeTable).map(tsvCell).join("\t"));
+      }
+    }
+    return `${lines.join("\n")}\n`;
+  }
+
+  const tables: string[] = [];
+  const markdownHeaders = columnDocHeaders(false);
+  for (const target of targets) {
+    const columns = await tableColumnsForStructureCopy(target);
+    const tableLines = [
+      `### ${markdownCell(structureTargetName(target))}`,
+      "",
+      `| ${markdownHeaders.map(markdownCell).join(" | ")} |`,
+      `| ${markdownHeaders.map(() => "---").join(" | ")} |`,
+      ...columns.map((column) => `| ${columnDocCells(target, column, false).map(markdownCell).join(" | ")} |`),
+    ];
+    tables.push(tableLines.join("\n"));
+  }
+  return `${tables.join("\n\n")}\n`;
+}
+
+async function copyStructureAs(format: StructureCopyFormat) {
+  let text = "";
+  try {
+    text = await buildStructureCopyText(format);
+    if (!text) return;
+    await copyToClipboard(text);
+    toast(t("contextMenu.structureDocCopied"), 2000);
+  } catch (e: any) {
+    if (text) {
+      structureDocCopyText.value = text;
+      structureDocCopyTitle.value =
+        format === "tsv" ? t("contextMenu.copyStructureAsTsv") : t("contextMenu.copyStructureAsMarkdown");
+      showStructureDocCopyDialog.value = true;
+      return;
+    }
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+async function copyStructureDocText() {
+  if (!structureDocCopyText.value) return;
+  try {
+    await copyToClipboard(structureDocCopyText.value);
+    toast(t("contextMenu.structureDocCopied"), 2000);
+  } catch (e: any) {
+    toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);
+  }
+}
+
+function selectTextareaContent(event: FocusEvent) {
+  if (event.target instanceof HTMLTextAreaElement) event.target.select();
+}
+
 async function copyStructurePreview() {
   if (!structurePreviewSql.value) return;
   try {
@@ -2428,6 +2551,17 @@ function exportDataSubmenu(): ContextMenuItem {
   };
 }
 
+function copyStructureAsSubmenu(): ContextMenuItem {
+  return {
+    label: t("contextMenu.copyStructureAs"),
+    icon: Clipboard,
+    children: [
+      { label: t("contextMenu.copyStructureAsTsv"), action: () => copyStructureAs("tsv") },
+      { label: t("contextMenu.copyStructureAsMarkdown"), action: () => copyStructureAs("markdown") },
+    ],
+  };
+}
+
 function treeItemMenuItems(): ContextMenuItem[] {
   const node = props.node;
   const items: ContextMenuItem[] = [];
@@ -2629,6 +2763,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
     items.push(exportDataSubmenu());
     items.push({ label: t("contextMenu.exportDatabase"), action: openDatabaseExport, icon: Download });
     items.push({ label: t("contextMenu.exportStructure"), action: exportStructure, icon: FileCode });
+    items.push(copyStructureAsSubmenu());
     if (isTableNotView.value) {
       items.push({ label: "", separator: true });
       items.push({ label: t("contextMenu.duplicateStructure"), action: duplicateStructure, icon: CopyPlus });
@@ -3032,6 +3167,30 @@ function treeItemMenuItems(): ContextMenuItem[] {
         <Button :disabled="isLoadingStructurePreview || !structurePreviewSql" @click="saveStructurePreview">
           <Download class="h-4 w-4" />
           {{ t("contextMenu.saveStructure") }}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+  <Dialog v-model:open="showStructureDocCopyDialog">
+    <DialogContent class="sm:max-w-[760px]">
+      <DialogHeader>
+        <DialogTitle>{{ structureDocCopyTitle || t("contextMenu.copyStructureAs") }}</DialogTitle>
+      </DialogHeader>
+      <div class="grid gap-3">
+        <p class="text-sm text-muted-foreground">{{ t("contextMenu.structureDocCopyFallbackHint") }}</p>
+        <textarea
+          readonly
+          class="max-h-[56vh] min-h-64 resize-y overflow-auto rounded bg-muted p-3 font-mono text-xs whitespace-pre"
+          :value="structureDocCopyText"
+          @focus="selectTextareaContent"
+        ></textarea>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" @click="showStructureDocCopyDialog = false">{{ t("dangerDialog.cancel") }}</Button>
+        <Button :disabled="!structureDocCopyText" @click="copyStructureDocText">
+          <Clipboard class="h-4 w-4" />
+          {{ t("contextMenu.copyStructure") }}
         </Button>
       </DialogFooter>
     </DialogContent>
