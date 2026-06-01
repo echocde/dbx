@@ -1926,6 +1926,12 @@ function buildJoinConditionItemsForPair(
       ) {
         boost = 1800;
       }
+      // Pattern 7: Generic FK column → id when table names do not reveal the relationship.
+      else if (leftName !== "id" && leftName.endsWith("_id") && rightName === "id") {
+        boost = 1650;
+      } else if (rightName !== "id" && rightName.endsWith("_id") && leftName === "id") {
+        boost = 1650;
+      }
 
       if (!boost) continue;
       const label = `${leftLabel} = ${rightLabel}`;

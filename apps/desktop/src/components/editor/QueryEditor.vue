@@ -917,7 +917,9 @@ async function performAsyncCompletionWithResult(
     }
   }
 
-  const shouldLoadTables = completionContext.suggestTables || !!completionContext.qualifier;
+  const shouldLoadTables =
+    completionContext.suggestTables ||
+    (!!completionContext.qualifier && !isReferencedTableQualifier(completionContext));
   let tables = shouldLoadTables
     ? await connectionStore.listCompletionTables(
         props.connectionId!,
@@ -1073,6 +1075,14 @@ async function performAsyncCompletionWithResult(
   });
 
   return buildCompletionResult(items, position, completionContext.prefix.length, fullDoc);
+}
+
+function isReferencedTableQualifier(completionContext: ReturnType<typeof getSqlCompletionContext>): boolean {
+  if (!completionContext.qualifier) return false;
+  const qualifier = completionContext.qualifier.toLowerCase();
+  return completionContext.referencedTables.some(
+    (table) => table.alias?.toLowerCase() === qualifier || table.name.toLowerCase() === qualifier,
+  );
 }
 
 async function refreshCompletionCache() {

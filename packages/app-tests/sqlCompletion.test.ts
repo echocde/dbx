@@ -203,6 +203,48 @@ test("keeps explicit alias column suggestions scoped to the alias table", () => 
   );
 });
 
+test("suggests only fields after numbered table aliases in join conditions", () => {
+  const sql = "select * from public.users t1 join public.orders t2 on t1.";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type]),
+    [
+      ["id", "column"],
+      ["name", "column"],
+      ["email", "column"],
+    ],
+  );
+  assert.equal(
+    items.some((item) => item.type === "table"),
+    false,
+  );
+});
+
+test("scopes numbered alias field suggestions to the requested joined table", () => {
+  const sql = "select * from public.users t1 join public.orders t2 on t2.";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type]),
+    [
+      ["id", "column"],
+      ["user_id", "column"],
+      ["status", "column"],
+    ],
+  );
+  assert.equal(
+    items.some((item) => item.type === "table"),
+    false,
+  );
+});
+
 test("suggests columns from referenced tables in select list", () => {
   const sql = "select na from public.users u join public.orders o on u.id = o.user_id";
   const cursor = "select na".length;
@@ -994,6 +1036,37 @@ test("suggests join condition for created_by → id pattern", () => {
   });
   const creatorJoin = items.find((item) => item.label === "u.id = d.created_by");
   assert.ok(creatorJoin, "should suggest id = created_by join");
+});
+
+test("suggests generic foreign-key to id join when table names differ from column names", () => {
+  const colsWithGenericFk = new Map<string, SqlCompletionColumn[]>([
+    [
+      "public.first_table",
+      [
+        { name: "id", table: "first_table", schema: "public", dataType: "bigint" },
+        { name: "user_id", table: "first_table", schema: "public", dataType: "bigint" },
+      ],
+    ],
+    [
+      "public.second_table",
+      [
+        { name: "id", table: "second_table", schema: "public", dataType: "bigint" },
+        { name: "name", table: "second_table", schema: "public", dataType: "varchar" },
+      ],
+    ],
+  ]);
+  const sql = "select * from public.first_table t1 join public.second_table t2 on ";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: [
+      { name: "first_table", schema: "public", type: "table" },
+      { name: "second_table", schema: "public", type: "table" },
+    ],
+    columnsByTable: colsWithGenericFk,
+  });
+
+  const genericJoin = items.find((item) => item.label === "t1.user_id = t2.id");
+  assert.ok(genericJoin, "should suggest generic *_id = id joins");
+  assert.equal(genericJoin.apply, "t1.user_id = t2.id");
 });
 
 // --- Fuzzy matching ---
