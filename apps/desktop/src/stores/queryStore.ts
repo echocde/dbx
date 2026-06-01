@@ -234,16 +234,18 @@ export const useQueryStore = defineStore("query", () => {
 
   function openTableStructure(connectionId: string, database: string, schema?: string, tableName?: string) {
     const resolvedTableName = tableName || "";
-    const existing = tabs.value.find(
-      (tab) =>
-        tab.mode === "structure" &&
-        tab.connectionId === connectionId &&
-        tab.database === database &&
-        (tab.structureTableName || "") === resolvedTableName,
-    );
-    if (existing) {
-      activeTabId.value = existing.id;
-      return existing.id;
+    if (resolvedTableName) {
+      const existing = tabs.value.find(
+        (tab) =>
+          tab.mode === "structure" &&
+          tab.connectionId === connectionId &&
+          tab.database === database &&
+          (tab.structureTableName || "") === resolvedTableName,
+      );
+      if (existing) {
+        activeTabId.value = existing.id;
+        return existing.id;
+      }
     }
 
     const title = resolvedTableName

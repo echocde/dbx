@@ -748,3 +748,22 @@ test("tab reuse is scoped by mode and schema instead of title alone", () => {
     restoreStorage();
   }
 });
+
+test("new table structure tabs can open multiple drafts while existing tables still reuse tabs", () => {
+  const restoreStorage = installMemoryStorage();
+  try {
+    setActivePinia(createPinia());
+    const store = useQueryStore();
+
+    const firstDraftId = store.openTableStructure("conn-1", "db", "public", "");
+    const secondDraftId = store.openTableStructure("conn-1", "db", "public", "");
+    const firstEditId = store.openTableStructure("conn-1", "db", "public", "users");
+    const secondEditId = store.openTableStructure("conn-1", "db", "public", "users");
+
+    assert.notEqual(secondDraftId, firstDraftId);
+    assert.equal(secondEditId, firstEditId);
+    assert.equal(store.tabs.length, 3);
+  } finally {
+    restoreStorage();
+  }
+});
