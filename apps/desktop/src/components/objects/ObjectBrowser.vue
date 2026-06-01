@@ -23,6 +23,7 @@ import {
   Pencil,
   PencilLine,
   PencilRuler,
+  Play,
   RefreshCw,
   Scissors,
   Search,
@@ -39,6 +40,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
 import * as api from "@/lib/api";
 import type { ConnectionConfig, ObjectInfo, ObjectSourceKind } from "@/types/database";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
@@ -143,6 +145,8 @@ const emptyPreviewSql = ref("");
 const showDuplicateDialog = ref(false);
 const duplicateTarget = ref<ObjectBrowserRow | null>(null);
 const duplicateTableName = ref("");
+const showProcedureExecutionConfirm = ref(false);
+const procedureExecutionTarget = ref<ObjectBrowserRow | null>(null);
 const selectedTableIds = ref<Set<string>>(new Set());
 const expandedPartitionParentIds = ref<Set<string>>(new Set());
 const showBatchDropConfirm = ref(false);
@@ -404,6 +408,29 @@ async function openNewQuery(row: ObjectBrowserRow) {
       limit: 100,
     }),
   );
+}
+
+function openProcedureExecution(row: ObjectBrowserRow) {
+  if (row.type !== "PROCEDURE") return;
+  procedureExecutionTarget.value = row;
+  showProcedureExecutionConfirm.value = true;
+}
+
+function openProcedureExecutionSql(sql: string) {
+  const row = procedureExecutionTarget.value;
+  if (!row || !sql) return;
+  const schema = row.schema || selectedSchema.value;
+  const tabId = queryStore.createTab(props.connection.id, props.database, `Execute - ${row.name}`, "query", schema);
+  queryStore.updateSql(tabId, sql);
+}
+
+async function executeProcedureSql(sql: string) {
+  const row = procedureExecutionTarget.value;
+  if (!row || !sql) return;
+  const schema = row.schema || selectedSchema.value;
+  const tabId = queryStore.createTab(props.connection.id, props.database, `Execute - ${row.name}`, "query", schema);
+  queryStore.updateSql(tabId, sql);
+  await queryStore.executeTabSql(tabId, sql);
 }
 
 function requestDrop(row: ObjectBrowserRow) {
@@ -1152,6 +1179,7 @@ function getTableMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
 function getViewMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
   return [
     { label: t("contextMenu.viewData"), action: () => openViewData(item), icon: Table2 },
+    { label: t("contextMenu.editView"), action: () => openSource(item), icon: PencilLine },
     { label: t("contextMenu.viewSource"), action: () => openSource(item), icon: Code2 },
     { label: t("contextMenu.viewDdl"), action: () => openViewDdl(item), icon: ScrollText },
     ...(canRename(item)
@@ -1177,6 +1205,9 @@ function getViewMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
 
 function getProcFuncMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
   return [
+    ...(item.type === "PROCEDURE"
+      ? [{ label: t("contextMenu.executeProcedure"), action: () => openProcedureExecution(item), icon: Play }]
+      : []),
     { label: t("contextMenu.viewSource"), action: () => openSource(item), icon: Code2 },
     ...(canRename(item)
       ? [{ label: t("contextMenu.renameObject"), action: () => requestRename(item), icon: Pencil }]
@@ -1556,6 +1587,18 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
     :sql="emptyPreviewSql"
     :confirm-label="t('contextMenu.emptyTable')"
     @confirm="confirmEmptyTable"
+  />
+
+  <ProcedureExecutionDialog
+    v-if="procedureExecutionTarget"
+    v-model:open="showProcedureExecutionConfirm"
+    :connection-id="props.connection.id"
+    :database="props.database"
+    :database-type="props.connection.db_type"
+    :schema="procedureExecutionTarget.schema || selectedSchema"
+    :routine-name="procedureExecutionTarget.name"
+    @open-sql="openProcedureExecutionSql"
+    @execute="executeProcedureSql"
   />
 
   <Dialog v-model:open="showDuplicateDialog">

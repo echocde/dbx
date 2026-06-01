@@ -23,6 +23,7 @@ import {
   Zap,
   ListTree,
   Pencil,
+  Play,
   Plug,
   Unplug,
   Pin,
@@ -113,6 +114,7 @@ import { focusSidebarRenameInput } from "@/lib/sidebarRenameFocus";
 import { hasTreeNodeDatabaseContext } from "@/lib/treeNodeContext";
 import { sidebarDisplayTableName } from "@/lib/sidebarTableNameDisplay";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { copyToClipboard } from "@/lib/clipboard";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
@@ -714,6 +716,7 @@ const showDropSchemaConfirm = ref(false);
 
 // --- Procedure / Function Management ---
 const showDropObjectConfirm = ref(false);
+const showProcedureExecutionConfirm = ref(false);
 
 function dropObjectSqlOptions(): DropObjectSqlOptions | null {
   const node = props.node;
@@ -782,6 +785,27 @@ function viewObjectDdl() {
     .catch((e: any) => {
       toast(e?.message || String(e), 5000);
     });
+}
+
+function openProcedureExecution() {
+  const node = props.node;
+  if (node.type !== "procedure" || !node.connectionId || !node.database) return;
+  showProcedureExecutionConfirm.value = true;
+}
+
+function openProcedureExecutionSql(sql: string) {
+  const node = props.node;
+  if (node.type !== "procedure" || !node.connectionId || !node.database || !sql) return;
+  const tabId = queryStore.createTab(node.connectionId, node.database, `Execute - ${node.label}`, "query", node.schema);
+  queryStore.updateSql(tabId, sql);
+}
+
+async function executeProcedureSql(sql: string) {
+  const node = props.node;
+  if (node.type !== "procedure" || !node.connectionId || !node.database || !sql) return;
+  const tabId = queryStore.createTab(node.connectionId, node.database, `Execute - ${node.label}`, "query", node.schema);
+  queryStore.updateSql(tabId, sql);
+  await queryStore.executeTabSql(tabId, sql);
 }
 
 function requestDropObject() {
@@ -2138,6 +2162,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.viewData"), action: openData, icon: TableProperties });
     if (node.type === "view") {
+      items.push({ label: t("contextMenu.editView"), action: viewObjectSource, icon: Pencil });
       items.push({ label: t("contextMenu.viewSource"), action: viewObjectSource, icon: Code2 });
       items.push({ label: t("contextMenu.viewDdl"), action: viewObjectDdl, icon: FileCode });
     }
@@ -2201,6 +2226,9 @@ function treeItemMenuItems(): ContextMenuItem[] {
 
   // 8. Procedure / Function
   if (node.type === "procedure" || node.type === "function") {
+    if (node.type === "procedure") {
+      items.push({ label: t("contextMenu.executeProcedure"), action: openProcedureExecution, icon: Play });
+    }
     items.push({ label: t("contextMenu.viewSource"), action: viewObjectSource, icon: Code2 });
     if (canRenameObject.value) {
       items.push({ label: t("contextMenu.renameObject"), action: openRenameObjectDialog, icon: Pencil });
@@ -2568,6 +2596,18 @@ function treeItemMenuItems(): ContextMenuItem[] {
     :sql="dropObjectPreviewSql"
     :confirm-label="node.type === 'procedure' ? t('contextMenu.dropProcedure') : t('contextMenu.dropFunction')"
     @confirm="confirmDropObject"
+  />
+
+  <ProcedureExecutionDialog
+    v-if="node.type === 'procedure' && node.connectionId && node.database"
+    v-model:open="showProcedureExecutionConfirm"
+    :connection-id="node.connectionId"
+    :database="node.database"
+    :database-type="currentDatabaseType()"
+    :schema="node.schema"
+    :routine-name="node.label"
+    @open-sql="openProcedureExecutionSql"
+    @execute="executeProcedureSql"
   />
 
   <Dialog v-model:open="showDuplicateDialog">
