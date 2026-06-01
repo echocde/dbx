@@ -9,8 +9,18 @@ export interface SavedOpenTab {
   schema?: string;
   sql: string;
   savedSqlId?: string;
+  lastExecutedSql?: string;
+  resultBaseSql?: string;
+  resultSortedSql?: string;
+  resultSortColumn?: string;
+  resultSortColumnIndex?: number;
+  resultSortDirection?: QueryTab["resultSortDirection"];
+  resultPageLimit?: number;
+  resultPageOffset?: number;
+  whereInput?: string;
   pinned?: boolean;
   mode?: QueryTab["mode"];
+  structureTableName?: string;
   objectBrowser?: QueryTab["objectBrowser"];
   objectSource?: QueryTab["objectSource"];
   tableMeta?: QueryTab["tableMeta"];
@@ -31,8 +41,18 @@ export function serializeOpenTabs(tabs: QueryTab[]): SavedOpenTab[] {
     schema: tab.schema,
     sql: tab.sql,
     savedSqlId: tab.savedSqlId,
+    ...(tab.lastExecutedSql !== undefined ? { lastExecutedSql: tab.lastExecutedSql } : {}),
+    ...(tab.resultBaseSql !== undefined ? { resultBaseSql: tab.resultBaseSql } : {}),
+    ...(tab.resultSortedSql !== undefined ? { resultSortedSql: tab.resultSortedSql } : {}),
+    ...(tab.resultSortColumn !== undefined ? { resultSortColumn: tab.resultSortColumn } : {}),
+    ...(tab.resultSortColumnIndex !== undefined ? { resultSortColumnIndex: tab.resultSortColumnIndex } : {}),
+    ...(tab.resultSortDirection !== undefined ? { resultSortDirection: tab.resultSortDirection } : {}),
+    ...(tab.resultPageLimit !== undefined ? { resultPageLimit: tab.resultPageLimit } : {}),
+    ...(tab.resultPageOffset !== undefined ? { resultPageOffset: tab.resultPageOffset } : {}),
+    ...(tab.whereInput !== undefined ? { whereInput: tab.whereInput } : {}),
     pinned: tab.pinned,
     mode: tab.mode,
+    ...(tab.structureTableName !== undefined ? { structureTableName: tab.structureTableName } : {}),
     objectBrowser: tab.objectBrowser,
     objectSource: tab.objectSource,
     tableMeta: tab.tableMeta,

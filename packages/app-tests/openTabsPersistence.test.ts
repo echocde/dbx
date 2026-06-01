@@ -62,6 +62,38 @@ test("serializes object source query tabs with save context", () => {
   assert.equal(saved[0]?.customTitle, true);
 });
 
+test("serializes table tabs with reload context", () => {
+  const saved = serializeOpenTabs([
+    queryTab({
+      mode: "data",
+      lastExecutedSql: "select * from users limit 100 offset 100",
+      resultPageLimit: 100,
+      resultPageOffset: 100,
+      whereInput: "active = true",
+      tableMeta: { schema: "public", tableName: "users", columns: [], primaryKeys: [] },
+    }),
+  ]);
+
+  assert.deepEqual(
+    {
+      mode: saved[0]?.mode,
+      lastExecutedSql: saved[0]?.lastExecutedSql,
+      resultPageLimit: saved[0]?.resultPageLimit,
+      resultPageOffset: saved[0]?.resultPageOffset,
+      whereInput: saved[0]?.whereInput,
+      tableMeta: saved[0]?.tableMeta,
+    },
+    {
+      mode: "data",
+      lastExecutedSql: "select * from users limit 100 offset 100",
+      resultPageLimit: 100,
+      resultPageOffset: 100,
+      whereInput: "active = true",
+      tableMeta: { schema: "public", tableName: "users", columns: [], primaryKeys: [] },
+    },
+  );
+});
+
 test("restores unsaved query tabs and active tab after restart", () => {
   const raw = JSON.stringify([
     queryTab({ id: "tab-1", sql: "select 1" }),
@@ -102,7 +134,60 @@ test("restores object source save context", () => {
   assert.equal(restored.tabs[0]?.customTitle, true);
 });
 
-test("desktop restore keeps legacy query tabs without a mode", () => {
+test("restores data and structure tabs with table state", () => {
+  const raw = JSON.stringify([
+    queryTab({
+      id: "data",
+      title: "public.users",
+      mode: "data",
+      sql: 'SELECT * FROM "public"."users" LIMIT 50 OFFSET 50;',
+      lastExecutedSql: 'SELECT * FROM "public"."users" LIMIT 50 OFFSET 50;',
+      resultPageLimit: 50,
+      resultPageOffset: 50,
+      whereInput: "id > 10",
+      tableMeta: {
+        schema: "public",
+        tableName: "users",
+        columns: [
+          {
+            name: "id",
+            data_type: "integer",
+            is_nullable: false,
+            column_default: null,
+            is_primary_key: true,
+            extra: null,
+          },
+        ],
+        primaryKeys: ["id"],
+      },
+    }),
+    queryTab({
+      id: "structure",
+      title: "Edit users",
+      mode: "structure",
+      sql: "",
+      structureTableName: "users",
+    }),
+  ]);
+
+  const restored = restoreOpenTabsState(raw, "data");
+
+  assert.deepEqual(
+    restored.tabs.map((tab) => ({ id: tab.id, mode: tab.mode })),
+    [
+      { id: "data", mode: "data" },
+      { id: "structure", mode: "structure" },
+    ],
+  );
+  assert.equal(restored.activeTabId, "data");
+  assert.equal(restored.tabs[0]?.tableMeta?.tableName, "users");
+  assert.equal(restored.tabs[0]?.resultPageLimit, 50);
+  assert.equal(restored.tabs[0]?.resultPageOffset, 50);
+  assert.equal(restored.tabs[0]?.whereInput, "id > 10");
+  assert.equal(restored.tabs[1]?.structureTableName, "users");
+});
+
+test("query-only restore keeps legacy query tabs without a mode", () => {
   const raw = JSON.stringify([
     {
       id: "legacy",

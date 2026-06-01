@@ -847,17 +847,17 @@ function initApp() {
 }
 
 async function reconnectRestoredTabs() {
-  if (isDesktop) return;
-  const connectionIds = new Set(queryStore.tabs.map((t) => t.connectionId).filter(Boolean));
-  for (const id of connectionIds) {
+  const activeConnectionId = activeTab.value?.connectionId || connectionStore.activeConnectionId;
+  if (activeConnectionId && connectionStore.getConfig(activeConnectionId)) {
+    connectionStore.activeConnectionId = activeConnectionId;
     try {
-      await connectionStore.ensureConnected(id);
+      await connectionStore.ensureConnected(activeConnectionId);
     } catch {}
   }
-  for (const tab of queryStore.tabs) {
-    if (tab.mode === "data" && tab.tableMeta && tab.sql) {
-      queryStore.executeTabSql(tab.id, tab.sql).catch(() => {});
-    }
+
+  const tab = activeTab.value;
+  if (tab?.mode === "data" && tab.tableMeta && tab.sql) {
+    queryStore.executeTabSql(tab.id, tab.sql).catch(() => {});
   }
 }
 

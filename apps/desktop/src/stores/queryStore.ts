@@ -26,7 +26,6 @@ import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/tableDataExport";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { isTauriRuntime } from "@/lib/tauriRuntime";
 import type { SavedSqlFile } from "@/types/database";
 
 const STORAGE_KEY = "dbx-open-tabs";
@@ -41,9 +40,7 @@ function saveTabs(tabs: QueryTab[], activeTabId: string | null) {
 
 function loadSavedTabs(): { tabs: QueryTab[]; activeTabId: string | null } {
   try {
-    return restoreOpenTabsState(localStorage.getItem(STORAGE_KEY), localStorage.getItem(ACTIVE_TAB_KEY), {
-      queryOnly: isTauriRuntime(),
-    });
+    return restoreOpenTabsState(localStorage.getItem(STORAGE_KEY), localStorage.getItem(ACTIVE_TAB_KEY));
   } catch {
     return { tabs: [], activeTabId: null };
   }
@@ -117,8 +114,18 @@ export const useQueryStore = defineStore("query", () => {
       schema: t.schema,
       sql: t.sql,
       savedSqlId: t.savedSqlId,
+      lastExecutedSql: t.lastExecutedSql,
+      resultBaseSql: t.resultBaseSql,
+      resultSortedSql: t.resultSortedSql,
+      resultSortColumn: t.resultSortColumn,
+      resultSortColumnIndex: t.resultSortColumnIndex,
+      resultSortDirection: t.resultSortDirection,
+      resultPageLimit: t.resultPageLimit,
+      resultPageOffset: t.resultPageOffset,
+      whereInput: t.whereInput,
       pinned: t.pinned,
       mode: t.mode,
+      structureTableName: t.structureTableName,
       objectBrowser: t.objectBrowser,
       objectSource: t.objectSource,
       tableMeta: t.tableMeta,

@@ -48,6 +48,7 @@ import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
+const ACTIVE_CONNECTION_STORAGE_KEY = "dbx-active-connection";
 type ImportSource = "dbx" | "navicat" | "dbeaver";
 
 interface LoadTreeOptions {
@@ -69,13 +70,12 @@ function redisDbLabel(db: number, loadedKeyCount?: number, totalKeyCount?: numbe
 export const useConnectionStore = defineStore("connection", () => {
   const connections = ref<ConnectionConfig[]>([]);
   const isDesktop = isTauriRuntime();
-  const activeConnectionId = ref<string | null>(!isDesktop ? localStorage.getItem("dbx-active-connection") : null);
+  const activeConnectionId = ref<string | null>(localStorage.getItem(ACTIVE_CONNECTION_STORAGE_KEY));
   const selectedTreeNodeId = ref<string | null>(null);
 
   watch(activeConnectionId, (id) => {
-    if (isDesktop) return;
-    if (id) localStorage.setItem("dbx-active-connection", id);
-    else localStorage.removeItem("dbx-active-connection");
+    if (id) localStorage.setItem(ACTIVE_CONNECTION_STORAGE_KEY, id);
+    else localStorage.removeItem(ACTIVE_CONNECTION_STORAGE_KEY);
   });
   const treeNodes = ref<TreeNode[]>([]);
   const pinnedTreeNodeIds = ref<Set<string>>(new Set());
