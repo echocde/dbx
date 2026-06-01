@@ -1381,6 +1381,21 @@ export async function checkForUpdates(): Promise<UpdateInfo> {
   return get("/api/update/check");
 }
 
+export async function checkMcpServerStatus(): Promise<import("./tauri").McpServerStatus> {
+  return {
+    installed: false,
+    npm_available: false,
+    node_version: null,
+    current_version: null,
+    latest_version: null,
+    update_available: false,
+    bin_path: null,
+    install_command: "npm install -g @dbx-app/mcp-server@latest",
+    update_command: "npm install -g @dbx-app/mcp-server@latest",
+    error: "MCP Server status is only available in the desktop app.",
+  };
+}
+
 export async function getSystemProxyUrl(): Promise<string | null> {
   return null;
 }

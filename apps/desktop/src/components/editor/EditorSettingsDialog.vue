@@ -3,14 +3,19 @@ import { ref, watch, shallowRef, computed, onMounted } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
 import {
+  AlertTriangle,
+  CheckCircle2,
   CircleHelp,
   Cloud,
+  Copy,
   Download,
   ExternalLink,
   Loader2,
+  PackageSearch,
   Pencil,
   RefreshCw,
   Settings,
+  Terminal,
   Trash2,
   Upload,
   X,
@@ -41,9 +46,11 @@ import {
 import { loadEditorTheme, editorFontTheme } from "@/lib/editorThemes";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { useTheme } from "@/composables/useTheme";
+import { copyToClipboard } from "@/lib/clipboard";
 import {
   aiListModels,
   aiTestConnection,
+  checkMcpServerStatus,
   forgetWebdavSavedPassword,
   listSystemFonts,
   saveWebdavSavedPassword,
@@ -52,6 +59,7 @@ import {
   webdavSyncTest,
   webdavSyncUpload,
   type AiModelInfo,
+  type McpServerStatus,
   type WebDavConfig,
 } from "@/lib/api";
 import { eventToShortcut } from "@/lib/keyboardShortcuts";
@@ -425,6 +433,7 @@ type SettingsCategory =
   | "snippets"
   | "sync"
   | "ai"
+  | "mcp"
   | "security"
   | "about";
 const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[]>(() => [
@@ -436,6 +445,7 @@ const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[
   { value: "snippets", label: t("settings.snippetsTab") },
   ...(isWeb ? [] : [{ value: "sync" as const, label: t("settings.syncTab") }]),
   { value: "ai", label: t("settings.aiTab") },
+  ...(isWeb ? [] : [{ value: "mcp" as const, label: t("settings.mcpTab") }]),
   ...(isWeb ? [{ value: "security" as const, label: t("settings.securityTab") }] : []),
   { value: "about", label: t("settings.aboutTab") },
 ]);
@@ -467,6 +477,66 @@ function openExternalUrl(url: string) {
   } else {
     window.open(url, "_blank", "noopener,noreferrer");
   }
+}
+
+// ---------- MCP Server ----------
+const mcpStatus = ref<McpServerStatus | null>(null);
+const mcpStatusLoading = ref(false);
+const mcpStatusError = ref("");
+const mcpCopied = ref<"" | "install" | "config">("");
+
+const mcpRecommendedConfig = `{
+  "mcpServers": {
+    "dbx": {
+      "command": "dbx-mcp-server"
+    }
+  }
+}`;
+
+const mcpStatusTone = computed<"ok" | "warning" | "muted">(() => {
+  if (!mcpStatus.value) return "muted";
+  if (!mcpStatus.value.installed || mcpStatus.value.update_available || mcpStatus.value.error) return "warning";
+  return "ok";
+});
+
+const mcpStatusLabel = computed(() => {
+  if (mcpStatusLoading.value) return t("settings.mcpChecking");
+  if (mcpStatusError.value) return t("settings.mcpStatusError");
+  if (!mcpStatus.value) return t("settings.mcpStatusUnknown");
+  if (!mcpStatus.value.installed) return t("settings.mcpNotInstalled");
+  if (mcpStatus.value.update_available) return t("settings.mcpUpdateAvailable");
+  return t("settings.mcpReady");
+});
+
+const mcpCommand = computed(() => {
+  if (!mcpStatus.value) return "npm install -g @dbx-app/mcp-server@latest";
+  return mcpStatus.value.installed ? mcpStatus.value.update_command : mcpStatus.value.install_command;
+});
+
+async function refreshMcpStatus() {
+  if (mcpStatusLoading.value) return;
+  mcpStatusLoading.value = true;
+  mcpStatusError.value = "";
+  try {
+    mcpStatus.value = await checkMcpServerStatus();
+  } catch (e: any) {
+    mcpStatusError.value = e?.message || String(e);
+  } finally {
+    mcpStatusLoading.value = false;
+  }
+}
+
+async function copyMcpText(kind: "install" | "config", value: string) {
+  mcpCopied.value = kind;
+  try {
+    await copyToClipboard(value);
+  } catch {
+    mcpCopied.value = "";
+    return;
+  }
+  window.setTimeout(() => {
+    if (mcpCopied.value === kind) mcpCopied.value = "";
+  }, 1500);
 }
 
 // ---------- WebDAV Sync ----------
@@ -617,6 +687,7 @@ watch(
       webdavPassword.value = "";
       await refreshWebDavPasswordStatus();
       syncAiEditState();
+      if (!isWeb && activeSettingsTab.value === "mcp") void refreshMcpStatus();
     }
   },
   { immediate: true },
@@ -627,6 +698,10 @@ watch([webdavEndpoint, webdavUsername], () => {
 });
 watch(webdavRememberPassword, (val) => {
   localStorage.setItem("dbx-webdav-remember-password", String(val));
+});
+
+watch(activeSettingsTab, (tab) => {
+  if (tab === "mcp" && !mcpStatus.value && !mcpStatusLoading.value) void refreshMcpStatus();
 });
 
 onMounted(() => {
@@ -1849,6 +1924,123 @@ watch(
               </div>
             </section>
 
+            <section v-else-if="activeSettingsTab === 'mcp' && !isWeb" class="flex flex-col gap-5 py-2">
+              <div class="rounded-md border bg-muted/20 p-4">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0 space-y-2">
+                    <div class="flex items-center gap-2">
+                      <PackageSearch class="h-4 w-4 text-muted-foreground" />
+                      <Label class="text-base">{{ t("settings.mcpTitle") }}</Label>
+                    </div>
+                    <p class="text-sm text-muted-foreground">{{ t("settings.mcpDescription") }}</p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    class="shrink-0 rounded-md"
+                    :class="
+                      mcpStatusTone === 'ok'
+                        ? 'border-green-500/40 text-green-600 dark:text-green-400'
+                        : mcpStatusTone === 'warning'
+                          ? 'border-amber-500/40 text-amber-600 dark:text-amber-400'
+                          : 'text-muted-foreground'
+                    "
+                  >
+                    <Loader2 v-if="mcpStatusLoading" class="mr-1 h-3 w-3 animate-spin" />
+                    <CheckCircle2 v-else-if="mcpStatusTone === 'ok'" class="mr-1 h-3 w-3" />
+                    <AlertTriangle v-else-if="mcpStatusTone === 'warning'" class="mr-1 h-3 w-3" />
+                    {{ mcpStatusLabel }}
+                  </Badge>
+                </div>
+              </div>
+
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div class="rounded-md border p-3">
+                  <div class="text-xs font-medium uppercase text-muted-foreground">{{ t("settings.mcpCurrent") }}</div>
+                  <div class="mt-2 font-mono text-sm">
+                    {{ mcpStatus?.current_version ? `v${mcpStatus.current_version}` : t("settings.mcpVersionMissing") }}
+                  </div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs font-medium uppercase text-muted-foreground">{{ t("settings.mcpLatest") }}</div>
+                  <div class="mt-2 font-mono text-sm">
+                    {{ mcpStatus?.latest_version ? `v${mcpStatus.latest_version}` : t("settings.mcpVersionUnknown") }}
+                  </div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs font-medium uppercase text-muted-foreground">Node.js</div>
+                  <div class="mt-2 font-mono text-sm">
+                    {{ mcpStatus?.node_version || t("settings.mcpVersionUnknown") }}
+                  </div>
+                </div>
+                <div class="rounded-md border p-3">
+                  <div class="text-xs font-medium uppercase text-muted-foreground">npm</div>
+                  <div class="mt-2 font-mono text-sm">
+                    {{ mcpStatus?.npm_available ? t("settings.mcpAvailable") : t("settings.mcpUnavailable") }}
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="mcpStatus?.bin_path" class="space-y-2">
+                <Label>{{ t("settings.mcpBinPath") }}</Label>
+                <div class="rounded-md border bg-muted/20 px-3 py-2 font-mono text-xs text-muted-foreground">
+                  {{ mcpStatus.bin_path }}
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <Label>{{
+                  mcpStatus?.installed ? t("settings.mcpUpdateCommand") : t("settings.mcpInstallCommand")
+                }}</Label>
+                <div class="flex min-w-0 items-center gap-2">
+                  <div class="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 font-mono text-xs">
+                    {{ mcpCommand }}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    :title="t('common.copy')"
+                    @click="copyMcpText('install', mcpCommand)"
+                  >
+                    <CheckCircle2 v-if="mcpCopied === 'install'" class="h-4 w-4 text-green-500" />
+                    <Copy v-else class="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <Label>{{ t("settings.mcpConfig") }}</Label>
+                <div class="relative rounded-md border bg-background p-3">
+                  <pre
+                    class="overflow-x-auto whitespace-pre text-xs leading-relaxed"
+                  ><code>{{ mcpRecommendedConfig }}</code></pre>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    class="absolute right-2 top-2 h-7 w-7"
+                    :title="t('common.copy')"
+                    @click="copyMcpText('config', mcpRecommendedConfig)"
+                  >
+                    <CheckCircle2 v-if="mcpCopied === 'config'" class="h-3.5 w-3.5 text-green-500" />
+                    <Copy v-else class="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              <div
+                v-if="mcpStatus?.error || mcpStatusError"
+                class="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+              >
+                {{ mcpStatusError || mcpStatus?.error }}
+              </div>
+
+              <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                <Terminal class="h-3.5 w-3.5" />
+                <span>{{ t("settings.mcpDetectionTiming") }} {{ t("settings.mcpNpmBoundary") }}</span>
+              </div>
+            </section>
+
             <section v-else-if="activeSettingsTab === 'security' && isWeb" class="flex flex-col gap-5 py-2">
               <div class="space-y-3">
                 <Label class="text-base">{{ t("auth.changePassword") }}</Label>
@@ -2079,6 +2271,25 @@ watch(
               <Loader2 v-if="webdavBusy === 'upload'" class="mr-1 h-3 w-3 animate-spin" />
               <Upload v-else class="mr-1 h-3 w-3" />
               {{ t("settings.syncUpload") }}
+            </Button>
+          </DialogFooter>
+
+          <DialogFooter
+            v-else-if="activeSettingsTab === 'mcp' && !isWeb"
+            class="mx-0 mb-0 shrink-0 rounded-none border-t border-border/60 bg-transparent px-0 pb-0 pt-3"
+          >
+            <Button variant="outline" @click="emit('update:open', false)">
+              {{ t("common.close") }}
+            </Button>
+            <div class="flex-1" />
+            <Button variant="outline" :disabled="mcpStatusLoading" @click="refreshMcpStatus">
+              <Loader2 v-if="mcpStatusLoading" class="mr-1 h-3 w-3 animate-spin" />
+              <RefreshCw v-else class="mr-1 h-3 w-3" />
+              {{ t("settings.mcpRefresh") }}
+            </Button>
+            <Button variant="outline" @click="openExternalUrl('https://dbxio.com/cn/docs/mcp')">
+              <ExternalLink class="mr-1 h-3 w-3" />
+              {{ t("settings.mcpGuide") }}
             </Button>
           </DialogFooter>
 

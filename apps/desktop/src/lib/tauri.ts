@@ -915,6 +915,23 @@ export interface UpdateInfo {
   release_notes: string;
 }
 
+export interface McpServerStatus {
+  installed: boolean;
+  npm_available: boolean;
+  node_version: string | null;
+  current_version: string | null;
+  latest_version: string | null;
+  update_available: boolean;
+  bin_path: string | null;
+  install_command: string;
+  update_command: string;
+  error: string | null;
+}
+
+export async function checkMcpServerStatus(): Promise<McpServerStatus> {
+  return invoke("check_mcp_server_status");
+}
+
 export async function checkForUpdates(): Promise<UpdateInfo> {
   return invoke("check_for_updates");
 }

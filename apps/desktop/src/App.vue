@@ -688,7 +688,7 @@ function openGitHub() {
   openUrl("https://github.com/t8y2/dbx");
 }
 function openMcpGuide() {
-  openUrl("https://github.com/t8y2/dbx/blob/main/docs/mcp-guide.md");
+  openUrl("https://dbxio.com/cn/docs/mcp");
 }
 
 function ensureQueryTab(): string {
