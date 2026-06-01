@@ -124,6 +124,7 @@ import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { copyToClipboard } from "@/lib/clipboard";
+import { formatShortcut } from "@/lib/shortcutRegistry";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import ConnectionErrorIndicator from "@/components/connection/ConnectionErrorIndicator.vue";
 import VisibleDatabasesDialog from "@/components/sidebar/VisibleDatabasesDialog.vue";
@@ -518,8 +519,20 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
 
 function onKeydown(event: KeyboardEvent) {
   if ((!isSelected.value && !isMultiSelected.value) || isEditableShortcutTarget(event.target)) return;
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === "F2") {
+    if (!requestRenameSelectedNode()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === "F5") {
+    if (!requestRefreshSelectedNode()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   if (!event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && isDeleteTreeNodeShortcut(event)) {
-    if (!requestDropSelectedNodes()) return;
+    if (!requestDeleteSelectedNode()) return;
     event.preventDefault();
     event.stopPropagation();
     return;
@@ -533,6 +546,73 @@ function onKeydown(event: KeyboardEvent) {
 
 function isDeleteTreeNodeShortcut(event: KeyboardEvent): boolean {
   return event.key === "Delete" || event.key === "Backspace";
+}
+
+function requestRefreshSelectedNode(): boolean {
+  if (!canRefreshTreeNodeShortcut()) return false;
+  void refresh();
+  return true;
+}
+
+function canRefreshTreeNodeShortcut(): boolean {
+  const type = props.node.type;
+  if (type === "connection" || type === "database" || type === "schema" || type === "table" || type === "view") {
+    return true;
+  }
+  return (
+    isGroupLabel(props.node) && type !== "saved-sql-root" && type !== "saved-sql-folder" && type !== "group-partitions"
+  );
+}
+
+function requestRenameSelectedNode(): boolean {
+  const selected = selectedTreeNodesInVisibleOrder();
+  if (selected.length > 1 && selected.some((node) => node.id === props.node.id)) return false;
+  if (canRenameObject.value) {
+    openRenameObjectDialog();
+    return true;
+  }
+  if (props.node.type === "connection-group") {
+    startRenameGroup();
+    return true;
+  }
+  if (props.node.type === "saved-sql-folder") {
+    openRenameSavedSqlFolder();
+    return true;
+  }
+  if (props.node.type === "saved-sql-file") {
+    openRenameSavedSqlFile();
+    return true;
+  }
+  return false;
+}
+
+function requestDeleteSelectedNode(): boolean {
+  if (requestDropSelectedNodes()) return true;
+  if (props.node.type === "connection") {
+    deleteConnection();
+    return true;
+  }
+  if (props.node.type === "connection-group") {
+    deleteConnectionGroup();
+    return true;
+  }
+  if (props.node.type === "saved-sql-file") {
+    deleteSavedSqlFile();
+    return true;
+  }
+  if (props.node.type === "saved-sql-folder") {
+    deleteSavedSqlFolder();
+    return true;
+  }
+  if (canDropDatabase.value) {
+    dropDatabase();
+    return true;
+  }
+  if (canDropSchema.value) {
+    dropSchema();
+    return true;
+  }
+  return false;
 }
 
 function onDoubleClick() {
@@ -2538,6 +2618,11 @@ onBeforeUnmount(() => finishTableReferenceDrag());
 
 // ---- CustomContextMenu ----
 
+const shortcutCopyName = computed(() => formatShortcut("Mod+C"));
+const shortcutRename = "F2";
+const shortcutRefresh = "F5";
+const shortcutDelete = "Delete";
+
 function exportDataSubmenu(): ContextMenuItem {
   return {
     label: t("contextMenu.exportData"),
@@ -2615,7 +2700,12 @@ function treeItemMenuItems(): ContextMenuItem[] {
     } else {
       items.push({ label: t("connectionGroup.moveToNewGroup"), action: moveToNewGroup, icon: FolderPlus });
     }
-    items.push({ label: t("contextMenu.refreshChildren"), action: refresh, icon: RefreshCw });
+    items.push({
+      label: t("contextMenu.refreshChildren"),
+      action: refresh,
+      icon: RefreshCw,
+      shortcut: shortcutRefresh,
+    });
     if (canConfigureVisibleDatabases.value) {
       items.push({
         label: t("contextMenu.selectVisibleDatabases"),
@@ -2630,6 +2720,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
       label: t("contextMenu.deleteConnection"),
       action: deleteConnection,
       icon: Trash2,
+      shortcut: shortcutDelete,
       variant: "destructive" as const,
     });
     return items;
@@ -2639,12 +2730,18 @@ function treeItemMenuItems(): ContextMenuItem[] {
   if (node.type === "connection-group") {
     items.push({ label: t("toolbar.newConnection"), action: newConnectionInGroup, icon: Plus });
     items.push({ label: "", separator: true });
-    items.push({ label: t("connectionGroup.renameGroup"), action: startRenameGroup, icon: Pencil });
+    items.push({
+      label: t("connectionGroup.renameGroup"),
+      action: startRenameGroup,
+      icon: Pencil,
+      shortcut: shortcutRename,
+    });
     items.push({ label: "", separator: true });
     items.push({
       label: t("connectionGroup.deleteGroup"),
       action: deleteConnectionGroup,
       icon: Trash2,
+      shortcut: shortcutDelete,
       variant: "destructive" as const,
     });
     return items;
@@ -2678,7 +2775,12 @@ function treeItemMenuItems(): ContextMenuItem[] {
     if (canOpenDatabaseSearch.value) {
       items.push({ label: t("databaseSearch.open"), action: openDatabaseSearch, icon: Search });
     }
-    items.push({ label: t("contextMenu.refreshChildren"), action: refresh, icon: RefreshCw });
+    items.push({
+      label: t("contextMenu.refreshChildren"),
+      action: refresh,
+      icon: RefreshCw,
+      shortcut: shortcutRefresh,
+    });
     items.push({ label: "", separator: true });
     items.push({ label: t("transfer.dataTransfer"), action: openTransfer, icon: ArrowRightLeft });
     items.push({ label: t("diff.title"), action: openSchemaDiff, icon: ArrowRightLeft });
@@ -2696,6 +2798,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
         label: t("contextMenu.dropDatabase"),
         action: dropDatabase,
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
     }
@@ -2704,6 +2807,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
         label: t("contextMenu.dropSchema"),
         action: dropSchema,
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
     }
@@ -2727,7 +2831,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
 
   // 6. Table / View
   if (node.type === "table" || node.type === "view") {
-    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy });
+    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.viewData"), action: openData, icon: TableProperties });
     if (node.type === "view") {
@@ -2739,13 +2843,19 @@ function treeItemMenuItems(): ContextMenuItem[] {
       items.push({ label: t("contextMenu.editStructure"), action: openStructureEditor, icon: PencilRuler });
     }
     if (canRenameObject.value) {
-      items.push({ label: t("contextMenu.renameObject"), action: openRenameObjectDialog, icon: Pencil });
+      items.push({
+        label: t("contextMenu.renameObject"),
+        action: openRenameObjectDialog,
+        icon: Pencil,
+        shortcut: shortcutRename,
+      });
     }
     if (node.type === "view") {
       items.push({
         label: deleteMenuLabel(t("contextMenu.dropView")),
         action: deleteMenuAction(requestDropObject),
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
     }
@@ -2786,17 +2896,23 @@ function treeItemMenuItems(): ContextMenuItem[] {
         label: deleteMenuLabel(t("contextMenu.dropTable")),
         action: deleteMenuAction(dropTable),
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
     }
     items.push({ label: "", separator: true });
-    items.push({ label: t("contextMenu.refreshChildren"), action: refresh, icon: RefreshCw });
+    items.push({
+      label: t("contextMenu.refreshChildren"),
+      action: refresh,
+      icon: RefreshCw,
+      shortcut: shortcutRefresh,
+    });
     return items;
   }
 
   // 7. Column
   if (node.type === "column") {
-    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy });
+    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     if (canOpenFieldLineage.value) {
       items.push({ label: "", separator: true });
       items.push({ label: t("lineage.open"), action: openFieldLineage, icon: Network });
@@ -2807,6 +2923,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
         label: deleteMenuLabel(dropTableChildObjectMenuLabel()),
         action: deleteMenuAction(requestDropTableChildObject),
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
     }
@@ -2814,13 +2931,14 @@ function treeItemMenuItems(): ContextMenuItem[] {
   }
 
   if (node.type === "index" || node.type === "fkey" || node.type === "trigger") {
-    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy });
+    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     if (canDropTableChildObject.value) {
       items.push({ label: "", separator: true });
       items.push({
         label: deleteMenuLabel(dropTableChildObjectMenuLabel()),
         action: deleteMenuAction(requestDropTableChildObject),
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
     }
@@ -2834,7 +2952,12 @@ function treeItemMenuItems(): ContextMenuItem[] {
     }
     items.push({ label: t("contextMenu.viewSource"), action: viewObjectSource, icon: Code2 });
     if (canRenameObject.value) {
-      items.push({ label: t("contextMenu.renameObject"), action: openRenameObjectDialog, icon: Pencil });
+      items.push({
+        label: t("contextMenu.renameObject"),
+        action: openRenameObjectDialog,
+        icon: Pencil,
+        shortcut: shortcutRename,
+      });
     }
     items.push({ label: "", separator: true });
     items.push({
@@ -2843,6 +2966,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
       ),
       action: deleteMenuAction(requestDropObject),
       icon: Trash2,
+      shortcut: shortcutDelete,
       variant: "destructive" as const,
     });
     return items;
@@ -2851,7 +2975,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
   if (node.type === "package" || node.type === "package-body") {
     items.push({ label: t("contextMenu.viewSource"), action: viewObjectSource, icon: Code2 });
     items.push({ label: "", separator: true });
-    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy });
+    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
     return items;
   }
 
@@ -2861,17 +2985,28 @@ function treeItemMenuItems(): ContextMenuItem[] {
       items.push({ label: t("savedSql.newFolder"), action: openCreateSavedSqlFolder, icon: FolderPlus });
     }
     if (node.type === "saved-sql-folder") {
-      items.push({ label: t("savedSql.renameFolder"), action: openRenameSavedSqlFolder, icon: Pencil });
+      items.push({
+        label: t("savedSql.renameFolder"),
+        action: openRenameSavedSqlFolder,
+        icon: Pencil,
+        shortcut: shortcutRename,
+      });
       items.push({
         label: t("savedSql.deleteFolder"),
         action: deleteSavedSqlFolder,
         icon: Trash2,
+        shortcut: shortcutDelete,
         variant: "destructive" as const,
       });
       items.push({ label: "", separator: true });
     }
     if (node.type !== "saved-sql-root" && node.type !== "saved-sql-folder" && node.type !== "group-partitions") {
-      items.push({ label: t("contextMenu.refreshChildren"), action: refresh, icon: RefreshCw });
+      items.push({
+        label: t("contextMenu.refreshChildren"),
+        action: refresh,
+        icon: RefreshCw,
+        shortcut: shortcutRefresh,
+      });
     }
     return items;
   }
@@ -2879,12 +3014,18 @@ function treeItemMenuItems(): ContextMenuItem[] {
   // 10. Saved SQL File
   if (node.type === "saved-sql-file") {
     items.push({ label: t("savedSql.open"), action: openSavedSqlFile, icon: FileText });
-    items.push({ label: t("savedSql.renameFile"), action: openRenameSavedSqlFile, icon: Pencil });
+    items.push({
+      label: t("savedSql.renameFile"),
+      action: openRenameSavedSqlFile,
+      icon: Pencil,
+      shortcut: shortcutRename,
+    });
     items.push({ label: "", separator: true });
     items.push({
       label: t("savedSql.deleteFile"),
       action: deleteSavedSqlFile,
       icon: Trash2,
+      shortcut: shortcutDelete,
       variant: "destructive" as const,
     });
     return items;
@@ -2893,7 +3034,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
   // 11. Universal Copy Name (for all types except connection)
   if (hasTypeMenu.value) {
     items.push({ label: "", separator: true });
-    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy });
+    items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
   }
 
   return items;

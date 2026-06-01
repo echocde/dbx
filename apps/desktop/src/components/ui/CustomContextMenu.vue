@@ -9,6 +9,7 @@ export interface ContextMenuItem {
   separator?: boolean;
   icon?: Component;
   iconClass?: string;
+  shortcut?: string;
   variant?: "default" | "destructive";
   visible?: boolean;
   children?: ContextMenuItem[];
@@ -210,6 +211,22 @@ function itemButtonClass(variant?: "default" | "destructive") {
   ];
 }
 
+function shortcutKeyLabel(part: string): string {
+  if (part === "Cmd") return "⌘";
+  if (part === "Meta") return "⌘";
+  if (part === "Alt") return "⌥";
+  if (part === "Shift") return "⇧";
+  if (part === "Delete") return "Del";
+  if (part === "Backspace") return "⌫";
+  if (part === "Enter") return "↵";
+  if (part === "Escape") return "Esc";
+  return part;
+}
+
+function shortcutKeys(shortcut?: string): string[] {
+  return shortcut?.split("+").filter(Boolean).map(shortcutKeyLabel) || [];
+}
+
 onBeforeUnmount(() => {
   openMenus.delete(close);
   document.removeEventListener("click", onClickOutside, true);
@@ -244,7 +261,15 @@ onBeforeUnmount(() => {
             @mouseleave="onItemMouseLeave"
           >
             <component :is="item.icon" v-if="item.icon" :class="['size-4 shrink-0', item.iconClass]" />
-            {{ item.label }}
+            <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+            <span v-if="item.shortcut" class="ml-8 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+              <kbd
+                v-for="key in shortcutKeys(item.shortcut)"
+                :key="key"
+                class="min-w-5 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs"
+                >{{ key }}</kbd
+              >
+            </span>
             <ChevronRight v-if="item.children?.length" class="ml-auto size-4" />
           </button>
         </template>
@@ -271,7 +296,15 @@ onBeforeUnmount(() => {
             @click="handleSubItemClick(child)"
           >
             <component :is="child.icon" v-if="child.icon" :class="['size-4 shrink-0', child.iconClass]" />
-            {{ child.label }}
+            <span class="min-w-0 flex-1 truncate">{{ child.label }}</span>
+            <span v-if="child.shortcut" class="ml-8 inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+              <kbd
+                v-for="key in shortcutKeys(child.shortcut)"
+                :key="key"
+                class="min-w-5 rounded border border-border/70 bg-muted/60 px-1 py-0.5 text-center font-mono text-[10px] leading-none text-muted-foreground shadow-xs"
+                >{{ key }}</kbd
+              >
+            </span>
           </button>
         </template>
       </template>
