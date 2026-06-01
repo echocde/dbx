@@ -81,6 +81,7 @@ import {
   usesTreeSchemaMode,
 } from "@/lib/databaseCapabilities";
 import {
+  copyNameForTreeNode,
   objectSourceKindForTreeNode,
   sidebarSelectionCopyAction,
   treeNodeRowAction,
@@ -684,7 +685,7 @@ async function confirmDelete() {
 
 async function copyName() {
   try {
-    await copyToClipboard(props.node.label);
+    await copyToClipboard(copyNameForTreeNode(props.node));
     toast(t("connection.copied"), 2000);
   } catch (e: any) {
     toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000);

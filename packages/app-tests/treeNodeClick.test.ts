@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  copyNameForTreeNode,
   objectSourceKindForTreeNode,
   sidebarSelectionCopyAction,
   treeNodeRowAction,
@@ -91,4 +92,47 @@ test("double click navigation mode copies the selected sidebar row name", () => 
 test("single click navigation mode copies the selected sidebar row name", () => {
   assert.equal(sidebarSelectionCopyAction({ key: "c", metaKey: true }), "copy-name");
   assert.equal(sidebarSelectionCopyAction({ key: "C", ctrlKey: true }), "copy-name");
+});
+
+test("copying table child group rows uses the parent table name", () => {
+  assert.equal(
+    copyNameForTreeNode({
+      id: "conn:db:public:orders:__columns",
+      label: "tree.columns",
+      type: "group-columns",
+      tableName: "orders",
+    }),
+    "orders",
+  );
+  assert.equal(
+    copyNameForTreeNode({
+      id: "conn:db:public:orders:__indexes",
+      label: "tree.indexes",
+      type: "group-indexes",
+      tableName: "orders",
+    }),
+    "orders",
+  );
+});
+
+test("copying database object group rows uses the parent schema or database name", () => {
+  assert.equal(
+    copyNameForTreeNode({
+      id: "conn:db:public:__tables",
+      label: "tree.tables",
+      type: "group-tables",
+      database: "db",
+      schema: "public",
+    }),
+    "public",
+  );
+  assert.equal(
+    copyNameForTreeNode({
+      id: "conn:db:__views",
+      label: "tree.views",
+      type: "group-views",
+      database: "db",
+    }),
+    "db",
+  );
 });

@@ -1,4 +1,4 @@
-import type { ObjectSourceKind, TreeNodeType } from "@/types/database";
+import type { ObjectSourceKind, TreeNode, TreeNodeType } from "@/types/database";
 import { matchesShortcut, type ShortcutLikeEvent } from "@/lib/keyboardShortcuts";
 
 export type TreeNodeRowAction = "open-data" | "toggle" | "none";
@@ -17,6 +17,20 @@ const dataNodeTypes = new Set<TreeNodeType>(["table", "view"]);
 const toggleLeafNodeTypes = new Set<TreeNodeType>(["redis-db", "mongo-collection"]);
 const objectBrowserNodeTypes = new Set<TreeNodeType>(["database", "schema", "object-browser"]);
 const sourceNodeTypes = new Set<TreeNodeType>(["procedure", "function", "package", "package-body"]);
+const tableChildGroupNodeTypes = new Set<TreeNodeType>([
+  "group-columns",
+  "group-indexes",
+  "group-fkeys",
+  "group-triggers",
+  "group-partitions",
+]);
+const databaseChildGroupNodeTypes = new Set<TreeNodeType>([
+  "group-tables",
+  "group-views",
+  "group-procedures",
+  "group-functions",
+  "group-packages",
+]);
 
 export function objectSourceKindForTreeNode(type: TreeNodeType): ObjectSourceKind | null {
   if (type === "view") return "VIEW";
@@ -60,4 +74,10 @@ export function treeNodeRowDoubleClickAction(
 
 export function sidebarSelectionCopyAction(event: ShortcutLikeEvent): SidebarSelectionCopyAction {
   return matchesShortcut(event, "Mod+C") ? "copy-name" : "none";
+}
+
+export function copyNameForTreeNode(node: TreeNode): string {
+  if (tableChildGroupNodeTypes.has(node.type) && node.tableName) return node.tableName;
+  if (databaseChildGroupNodeTypes.has(node.type)) return node.schema || node.database || node.label;
+  return node.label;
 }
