@@ -93,6 +93,36 @@ final class DbxJdbcPluginTest {
     }
 
     @Test
+    void sqliteCipherUrlUsesPasswordAsKeyWhenKeyIsMissing() {
+        String url = DbxJdbcPlugin.jdbcUrlWithPasswordKey(
+            "jdbc:sqlite:/tmp/library.db?cipher=chacha20",
+            "my password"
+        );
+
+        assertEquals("jdbc:sqlite:/tmp/library.db?cipher=chacha20&key=my+password", url);
+    }
+
+    @Test
+    void sqliteCipherUrlKeepsExplicitKey() {
+        String url = DbxJdbcPlugin.jdbcUrlWithPasswordKey(
+            "jdbc:sqlite:/tmp/library.db?cipher=chacha20&key=from-url",
+            "from-password"
+        );
+
+        assertEquals("jdbc:sqlite:/tmp/library.db?cipher=chacha20&key=from-url", url);
+    }
+
+    @Test
+    void nonSqliteUrlDoesNotUsePasswordAsKey() {
+        String url = DbxJdbcPlugin.jdbcUrlWithPasswordKey(
+            "jdbc:h2:mem:dbx_cipher?cipher=sqlcipher",
+            "secret"
+        );
+
+        assertEquals("jdbc:h2:mem:dbx_cipher?cipher=sqlcipher", url);
+    }
+
+    @Test
     void listTablesFallsBackWhenCatalogFiltersEverything() throws Exception {
         request("executeQuery", """
             {

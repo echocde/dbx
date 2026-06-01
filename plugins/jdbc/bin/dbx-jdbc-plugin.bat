@@ -1,6 +1,13 @@
 @echo off
 setlocal
 
+if defined DBX_JAVA_BIN (
+    if exist "%DBX_JAVA_BIN%" (
+        set "JAVA_BIN=%DBX_JAVA_BIN%"
+        goto :run
+    )
+)
+
 if defined JAVA_HOME (
     if exist "%JAVA_HOME%\bin\java.exe" (
         set "JAVA_BIN=%JAVA_HOME%\bin\java.exe"
