@@ -364,6 +364,50 @@ test("data tab execution preserves pagination offset metadata", async () => {
   }
 });
 
+test("reloading an empty data tab fetches table results again", async () => {
+  const restoreStorage = installMemoryStorage();
+  setActivePinia(createPinia());
+  const connectionStore = useConnectionStore();
+  const store = useQueryStore();
+  const originalFetch = globalThis.fetch;
+  let executeBody: any;
+
+  connectionStore.addEphemeralConnection(conn("conn-1"));
+  const tabId = store.createTab("conn-1", "db", "users", "data", "public");
+  const tab = store.tabs.find((item) => item.id === tabId);
+  assert.ok(tab);
+  tab.sql = 'SELECT * FROM "public"."users" LIMIT 50 OFFSET 50;';
+  tab.lastExecutedSql = tab.sql;
+  tab.resultPageLimit = 50;
+  tab.resultPageOffset = 50;
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    if (url === "/api/query/execute-multi") {
+      executeBody = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(JSON.stringify([{ columns: ["id"], rows: [[51]], affected_rows: 0, execution_time_ms: 1 }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    await store.reloadEvictedTab(tabId);
+
+    assert.equal(executeBody.sql, 'SELECT * FROM "public"."users" LIMIT 50 OFFSET 50;');
+    assert.equal(executeBody.maxRows, 50);
+    assert.equal(executeBody.fetchSize, 50);
+    assert.deepEqual(tab.result?.rows, [[51]]);
+    assert.equal(tab.resultPageLimit, 50);
+    assert.equal(tab.resultPageOffset, 50);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
 test("query result export fetches every paginated page", async () => {
   const restoreStorage = installMemoryStorage();
   setActivePinia(createPinia());

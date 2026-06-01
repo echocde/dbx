@@ -602,6 +602,7 @@ export default {
     tableInfoSearch: "Search...",
     tableInfoNoResults: "No results",
     queryError: "Query Error",
+    dataUnavailable: "Table data needs to be reloaded.",
     refresh: "Refresh",
     commit: "Commit",
     rollback: "Rollback",

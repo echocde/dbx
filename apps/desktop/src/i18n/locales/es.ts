@@ -561,6 +561,7 @@ export default {
     tableInfoSearch: "Buscar...",
     tableInfoNoResults: "Sin resultados",
     queryError: "Error de consulta",
+    dataUnavailable: "Los datos de la tabla deben volver a cargarse.",
     refresh: "Actualizar",
     commit: "Confirmar",
     rollback: "Revertir",

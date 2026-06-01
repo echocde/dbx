@@ -14,6 +14,7 @@ import {
   TableProperties,
   ChevronDown,
   ChevronUp,
+  RefreshCcw,
 } from "lucide-vue-next";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
@@ -707,6 +708,14 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
             <Loader2 v-if="activeTab.isCancelling" class="h-3.5 w-3.5 animate-spin" />
             <Square v-else class="h-3.5 w-3.5 fill-current" />
             {{ t("toolbar.stopQuery") }}
+          </Button>
+        </div>
+        <div v-else class="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground text-sm">
+          <Inbox class="h-8 w-8 opacity-60" />
+          <div>{{ t("grid.dataUnavailable") }}</div>
+          <Button variant="outline" size="sm" class="h-7 gap-1.5" @click="emit('reload')">
+            <RefreshCcw class="h-3.5 w-3.5" />
+            {{ t("grid.refresh") }}
           </Button>
         </div>
       </div>

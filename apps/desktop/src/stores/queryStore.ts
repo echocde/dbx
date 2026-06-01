@@ -1126,13 +1126,22 @@ export const useQueryStore = defineStore("query", () => {
 
   async function reloadEvictedTab(id: string) {
     const tab = tabs.value.find((t) => t.id === id);
-    if (!tab || !tab.resultEvicted) return;
+    const shouldReloadMissingDataTab = tab?.mode === "data" && !tab.result && !tab.isExecuting;
+    if (!tab || (!tab.resultEvicted && !shouldReloadMissingDataTab)) return;
     tab.resultEvicted = false;
     const sql = tab.lastExecutedSql ?? tab.sql;
     if (!sql?.trim()) return;
+    const settingsStore = useSettingsStore();
     await executeTabSql(tab.id, sql, {
       resultBaseSql: tab.resultBaseSql ?? sql,
       resultSortedSql: tab.resultSortedSql,
+      pagination:
+        tab.mode === "data"
+          ? {
+              limit: tab.resultPageLimit ?? settingsStore.editorSettings.pageSize,
+              offset: tab.resultPageOffset ?? 0,
+            }
+          : undefined,
     });
   }
 
