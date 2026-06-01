@@ -38,6 +38,26 @@ const columnsByTable = new Map<string, SqlCompletionColumn[]>([
   ],
 ]);
 
+const postgresQuotedTables: SqlCompletionTable[] = [
+  { name: "article", schema: "public", type: "table" },
+  { name: "order_lines", schema: "public", type: "table" },
+  { name: "OrderLines", schema: "public", type: "table" },
+  { name: "User", schema: "public", type: "table" },
+  { name: 'has"quote', schema: "public", type: "table" },
+];
+
+const postgresQuotedColumnsByTable = new Map<string, SqlCompletionColumn[]>([
+  [
+    "public.OrderLines",
+    [
+      { name: "article", table: "OrderLines", schema: "public", dataType: "text" },
+      { name: "OrderId", table: "OrderLines", schema: "public", dataType: "uuid" },
+      { name: "User", table: "OrderLines", schema: "public", dataType: "text" },
+      { name: 'has"quote', table: "OrderLines", schema: "public", dataType: "text" },
+    ],
+  ],
+]);
+
 test("suggests SQL keywords for generic keyword input", () => {
   const items = buildSqlCompletionItems("sel", 3, {
     tables,
@@ -47,6 +67,72 @@ test("suggests SQL keywords for generic keyword input", () => {
   const keyword = items.find((item) => item.type === "keyword" && item.label === "SELECT");
   assert.ok(keyword);
   assert.equal(keyword.type, "keyword");
+});
+
+test("quotes PostgreSQL table identifiers when completion inserts them", () => {
+  const sql = "select * from Order";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: postgresQuotedTables,
+    columnsByTable: new Map(),
+    dialect: "postgres",
+  });
+
+  const table = items.find((item) => item.type === "table" && item.label === "OrderLines");
+  assert.equal(table?.apply, '"OrderLines"');
+});
+
+test("leaves safe PostgreSQL table identifiers unquoted when completion inserts them", () => {
+  const sql = "select * from article";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: postgresQuotedTables,
+    columnsByTable: new Map(),
+    dialect: "postgres",
+  });
+
+  const table = items.find((item) => item.type === "table" && item.label === "article");
+  assert.equal(table?.apply, "article");
+});
+
+test("quotes PostgreSQL keyword-like and escaped table identifiers when completion inserts them", () => {
+  const userItems = buildSqlCompletionItems("select * from User", "select * from User".length, {
+    tables: postgresQuotedTables,
+    columnsByTable: new Map(),
+    dialect: "postgres",
+  });
+  const quotedItems = buildSqlCompletionItems("select * from has", "select * from has".length, {
+    tables: postgresQuotedTables,
+    columnsByTable: new Map(),
+    dialect: "postgres",
+  });
+
+  assert.equal(userItems.find((item) => item.label === "User")?.apply, '"User"');
+  assert.equal(quotedItems.find((item) => item.label === 'has"quote')?.apply, '"has""quote"');
+});
+
+test("quotes PostgreSQL column identifiers when completion inserts them", () => {
+  const sql = "select Order from public.OrderLines";
+  const cursor = "select Order".length;
+  const items = buildSqlCompletionItems(sql, cursor, {
+    tables: postgresQuotedTables,
+    columnsByTable: postgresQuotedColumnsByTable,
+    dialect: "postgres",
+  });
+
+  const column = items.find((item) => item.type === "column" && item.label === "OrderId");
+  assert.equal(column?.apply, '"OrderId"');
+});
+
+test("leaves safe PostgreSQL column identifiers unquoted when completion inserts them", () => {
+  const sql = "select arti from public.OrderLines";
+  const cursor = "select arti".length;
+  const items = buildSqlCompletionItems(sql, cursor, {
+    tables: postgresQuotedTables,
+    columnsByTable: postgresQuotedColumnsByTable,
+    dialect: "postgres",
+  });
+
+  const column = items.find((item) => item.type === "column" && item.label === "article");
+  assert.equal(column?.apply, "article");
 });
 
 test("suggests matching table names after FROM", () => {

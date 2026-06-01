@@ -805,6 +805,7 @@ function buildCompletionResult(
             label: item.label,
             type: item.type,
             detail: item.detail,
+            apply: item.apply,
             boost: item.boost,
           },
     ),
@@ -835,6 +836,7 @@ async function provideSqlCompletions(
         schemas: [],
         translations: completionTranslations.value,
         snippets: settingsStore.editorSettings.snippets,
+        dialect: props.dialect,
       });
       return buildCompletionResult(items, position, completionContext.prefix.length, fullDoc);
     }
@@ -853,6 +855,7 @@ async function provideSqlCompletions(
         schemas: [],
         translations: completionTranslations.value,
         snippets: settingsStore.editorSettings.snippets,
+        dialect: props.dialect,
       });
       return buildCompletionResult(items, position, completionContext.prefix.length, fullDoc);
     }
@@ -1066,6 +1069,7 @@ async function performAsyncCompletionWithResult(
     schemas: schemaNames,
     translations: completionTranslations.value,
     snippets: settingsStore.editorSettings.snippets,
+    dialect: props.dialect,
   });
 
   return buildCompletionResult(items, position, completionContext.prefix.length, fullDoc);
