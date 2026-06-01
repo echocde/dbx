@@ -1,5 +1,6 @@
 import type { ObjectInfo } from "@/types/database";
 import { createDatabaseObjectNameComparator, normalizeDatabaseObjectName } from "@/lib/tableTree";
+import { parseSlashDelimitedRegexQuery } from "@/lib/searchPattern";
 
 export type ObjectBrowserRow = {
   id: string;
@@ -100,6 +101,12 @@ function partitionParentName(name: string): string | null {
 export function filterObjectBrowserRows(rows: ObjectBrowserRow[], query: string): ObjectBrowserRow[] {
   const q = query.trim().toLowerCase();
   if (!q) return rows;
+  const regex = parseSlashDelimitedRegexQuery(query.trim());
+  if (regex) {
+    return rows.filter((row) =>
+      [row.name, row.type, row.comment].filter(Boolean).some((value) => regex.test(String(value))),
+    );
+  }
   return rows.filter((row) =>
     [row.name, row.type, row.comment].filter(Boolean).some((value) => String(value).toLowerCase().includes(q)),
   );

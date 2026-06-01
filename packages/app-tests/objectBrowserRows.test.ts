@@ -43,6 +43,24 @@ test("object browser search matches names, types, and comments but not schema na
   );
 });
 
+test("object browser search supports slash-delimited regular expression queries", () => {
+  const rows = buildObjectBrowserRows({
+    objects: [
+      { name: "sys_user_log", object_type: "TABLE", schema: "public" },
+      { name: "sys_order_archive", object_type: "TABLE", schema: "public" },
+      { name: "app_user_log", object_type: "TABLE", schema: "public" },
+    ],
+    database: "app",
+    fallbackSchema: "public",
+    needsSchema: true,
+  });
+
+  assert.deepEqual(
+    filterObjectBrowserRows(rows, "/^sys_.*_log$/").map((row) => row.name),
+    ["sys_user_log"],
+  );
+});
+
 test("object browser rows preserve table timestamps and sort recent updates first", () => {
   const rows = buildObjectBrowserRows({
     objects: [

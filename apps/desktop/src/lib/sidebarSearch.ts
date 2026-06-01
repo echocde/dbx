@@ -1,4 +1,13 @@
-export type SidebarSearchMatchKind = "exact" | "prefix" | "word-prefix" | "substring" | "abbreviation" | "fuzzy";
+import { parseSlashDelimitedRegexQuery } from "@/lib/searchPattern";
+
+export type SidebarSearchMatchKind =
+  | "exact"
+  | "prefix"
+  | "word-prefix"
+  | "substring"
+  | "abbreviation"
+  | "fuzzy"
+  | "regex";
 
 export interface SidebarSearchMatch {
   kind: SidebarSearchMatchKind;
@@ -41,6 +50,9 @@ function matchesSubsequence(text: string, query: string): boolean {
 
 export function matchSidebarLabel(label: string, query: string): SidebarSearchMatch | null {
   if (!query) return null;
+
+  const regex = parseSlashDelimitedRegexQuery(query);
+  if (regex) return regex.test(label) ? { kind: "regex", score: 95 } : null;
 
   if (label === query) return { kind: "exact", score: 100 };
   if (label.startsWith(query)) return { kind: "prefix", score: 90 };
