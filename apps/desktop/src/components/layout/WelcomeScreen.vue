@@ -26,9 +26,9 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <div class="flex-1 overflow-auto bg-background">
-    <div class="mx-auto flex min-h-full w-full max-w-5xl flex-col justify-center gap-6 px-8 py-10">
-      <div class="grid grid-cols-3 gap-3">
+  <div class="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-background">
+    <div class="mx-auto flex min-h-full w-full min-w-0 max-w-5xl flex-col justify-center gap-6 px-8 py-10">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div class="rounded-lg border bg-muted/20 px-4 py-3">
           <div class="flex items-center gap-2 text-xs text-muted-foreground">
             <Database class="h-3.5 w-3.5" /> {{ t("welcome.connections") }}
@@ -49,7 +49,7 @@ const { t } = useI18n();
         </div>
       </div>
 
-      <div class="grid grid-cols-[1.2fr_0.8fr] gap-4">
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <div class="rounded-lg border">
           <div class="flex items-center justify-between border-b px-4 py-3">
             <div class="text-sm font-medium">{{ t("welcome.quickConnections") }}</div>
@@ -124,8 +124,10 @@ const { t } = useI18n();
             <p class="mt-1 text-xs leading-5 text-muted-foreground">
               {{ t("welcome.mcpDescription") }}
             </p>
-            <div class="mt-2 flex items-center gap-2">
-              <code class="rounded bg-muted px-2 py-0.5 text-[11px] select-all">npx @dbx-app/mcp-server</code>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <code class="max-w-full break-all rounded bg-muted px-2 py-0.5 text-[11px] select-all"
+                >npx @dbx-app/mcp-server</code
+              >
               <a href="#" class="text-xs text-primary hover:underline" @click.prevent="emit('open-mcp-guide')">{{
                 t("welcome.mcpLearnMore")
               }}</a>

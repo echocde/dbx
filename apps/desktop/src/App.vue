@@ -948,10 +948,10 @@ onUnmounted(() => {
     :setup-mode="setupRequired"
     @authenticated="onLoginSuccess"
   />
-  <div v-show="!setupRequired && (!needsAuth || authenticated)">
+  <div v-show="!setupRequired && (!needsAuth || authenticated)" class="h-screen w-screen overflow-hidden">
     <TooltipProvider :delay-duration="300">
       <div
-        class="h-screen w-screen min-w-[760px] min-h-[600px] flex flex-col bg-background text-foreground overflow-hidden"
+        class="h-screen w-screen max-w-full min-w-[760px] min-h-[600px] flex flex-col bg-background text-foreground overflow-hidden"
       >
         <AppToolbar
           :is-dark="isDark"
