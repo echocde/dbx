@@ -840,7 +840,7 @@ defineExpose({ focusSearch });
 
             <TabsContent value="command" class="m-0 min-h-0 flex-1 flex flex-col">
               <div
-                class="dbx-editor-font-family relative flex min-h-0 flex-1 flex-col bg-[#090c10] text-[13px] leading-5 text-slate-100"
+                class="dbx-editor-font-family relative flex min-h-0 flex-1 flex-col bg-[#171b21] text-[13px] leading-5 text-slate-200"
                 @click="getCommandInput()?.focus()"
               >
                 <div ref="commandTerminalRef" class="min-h-0 flex-1 overflow-auto px-4 pb-3 pt-4">
@@ -851,7 +851,7 @@ defineExpose({ focusSearch });
                   <div v-for="entry in commandHistory" :key="entry.id" class="mb-2">
                     <div class="flex min-w-0 items-start gap-2 whitespace-pre-wrap break-words">
                       <span class="shrink-0 text-[#d7ba7d]">{{ entry.prompt }}</span>
-                      <span class="min-w-0 text-slate-100">{{ entry.command }}</span>
+                      <span class="min-w-0 text-slate-200">{{ entry.command }}</span>
                     </div>
                     <pre
                       v-if="entry.output"
@@ -863,14 +863,14 @@ defineExpose({ focusSearch });
                 </div>
 
                 <form
-                  class="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[#090c10] px-4 py-2"
+                  class="flex shrink-0 items-center gap-2 border-t border-white/10 bg-[#171b21] px-4 py-2"
                   @submit.prevent="executeCommand"
                 >
                   <span class="shrink-0 text-[#d7ba7d]">{{ commandPrompt }}</span>
                   <input
                     v-model="commandText"
                     data-redis-command-input
-                    class="dbx-editor-font-family min-w-0 flex-1 border-0 bg-transparent p-0 text-[13px] text-slate-100 caret-[#d7ba7d] outline-none placeholder:text-slate-600"
+                    class="dbx-editor-font-family min-w-0 flex-1 border-0 bg-transparent p-0 text-[13px] text-slate-200 caret-[#d7ba7d] outline-none placeholder:text-slate-500"
                     :disabled="commandRunning"
                     autocomplete="off"
                     autocapitalize="off"

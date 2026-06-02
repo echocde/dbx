@@ -33,6 +33,7 @@ export const DATA_GRID_DARK_SEARCH_COLORS = {
   current: "rgb(116 87 0)",
   currentBorder: "rgb(239 177 0)",
 } as const;
+export const DATA_GRID_DARK_ROW_NUMBER_BG = "rgb(35 37 42)";
 
 export function cssVarColor(getVar: (name: string) => string, name: string, fallback: string): string {
   const value = getVar(name).trim();
@@ -63,11 +64,15 @@ export function resolveDataGridPaintTheme(options: {
   isDark: boolean;
 }): DataGridPaintTheme {
   const { getVar, isDark } = options;
-  const background = cssVarColor(getVar, "--background", isDark ? "oklch(0.145 0 0)" : "oklch(1 0 0)");
-  const foreground = cssVarColor(getVar, "--foreground", isDark ? "oklch(0.985 0 0)" : "oklch(0.145 0 0)");
-  const mutedForeground = cssVarColor(getVar, "--muted-foreground", isDark ? "oklch(0.708 0 0)" : "oklch(0.556 0 0)");
-  const primary = cssVarColor(getVar, "--primary", isDark ? "oklch(0.922 0 0)" : "oklch(0.205 0 0)");
-  const muted = cssVarColor(getVar, "--muted", isDark ? "oklch(0.269 0 0)" : "oklch(0.97 0 0)");
+  const background = cssVarColor(getVar, "--background", isDark ? "oklch(0.19 0.004 285)" : "oklch(1 0 0)");
+  const foreground = cssVarColor(getVar, "--foreground", isDark ? "oklch(0.88 0.006 285)" : "oklch(0.145 0 0)");
+  const mutedForeground = cssVarColor(
+    getVar,
+    "--muted-foreground",
+    isDark ? "oklch(0.68 0.008 285)" : "oklch(0.556 0 0)",
+  );
+  const primary = cssVarColor(getVar, "--primary", isDark ? "oklch(0.86 0.008 285)" : "oklch(0.205 0 0)");
+  const muted = cssVarColor(getVar, "--muted", isDark ? "oklch(0.285 0.006 285)" : "oklch(0.97 0 0)");
   const destructive = cssVarColor(getVar, "--destructive", "oklch(0.6 0.22 25)");
   const accent = cssVarColor(getVar, "--accent", isDark ? "oklch(0.269 0 0)" : "oklch(0.97 0 0)");
   const yellow500 = "oklch(0.795 0.184 86.047)";
@@ -84,7 +89,9 @@ export function resolveDataGridPaintTheme(options: {
   const cellSearch = isDark ? DATA_GRID_DARK_SEARCH_COLORS.match : "rgb(253 245 184)";
   const cellCurrentSearch = isDark ? DATA_GRID_DARK_SEARCH_COLORS.current : "rgb(253 224 71 / 52%)";
   const cellCurrentSearchBorder = isDark ? DATA_GRID_DARK_SEARCH_COLORS.currentBorder : "rgb(234 179 8 / 82%)";
-  const rowNumberDefault = isDark ? "rgb(15 15 15)" : "rgb(255 255 255)";
+  const rowNumberDefault = isDark
+    ? DATA_GRID_DARK_ROW_NUMBER_BG
+    : paintToken(getVar, "--data-grid-row-number-default-bg", "rgb(255 255 255)");
   const rowNumberNew = `color-mix(in oklab, rgb(16 185 129) 15%, ${background})`;
   const rowNumberEdited = `color-mix(in oklab, rgb(245 158 11) 15%, ${background})`;
   const rowNumberDeleted = `color-mix(in oklab, ${destructive} 15%, ${background})`;
