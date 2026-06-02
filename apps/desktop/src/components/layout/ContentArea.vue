@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCcw,
+  Wrench,
 } from "lucide-vue-next";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
@@ -55,6 +56,10 @@ type DataGridHandle = {
   toggleColumnVisibility: (columnIndex: number) => void;
   showAllColumns: () => void;
   invertColumnVisibility: () => void;
+  nullColumnsHidden: boolean;
+  allNullColumnCount: number;
+  canToggleAllNullColumns: boolean;
+  toggleAllNullColumns: () => void;
   showDdl: boolean;
   toggleDdl: () => void;
 };
@@ -412,11 +417,56 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 <BarChart3 class="h-3.5 w-3.5" />
                 {{ t("chart.title") }}
               </Button>
+              <Popover v-if="activeOutputView === 'result' && activeTab.result">
+                <PopoverTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="ml-auto h-6 w-7 shrink-0 text-foreground hover:bg-accent"
+                    :class="{ 'bg-accent text-foreground': dataGridRef?.nullColumnsHidden }"
+                    :title="t('grid.viewOptions')"
+                    :aria-label="t('grid.viewOptions')"
+                  >
+                    <Wrench class="h-4 w-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  class="w-max min-w-44 max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl"
+                  @click.stop
+                  @keydown.stop
+                >
+                  <div class="border-b bg-muted/40 px-3 py-2">
+                    <div class="text-xs font-semibold">{{ t("grid.viewOptions") }}</div>
+                  </div>
+                  <label
+                    class="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-accent"
+                    :class="{ 'cursor-not-allowed opacity-60': !dataGridRef?.canToggleAllNullColumns }"
+                  >
+                    <input
+                      type="checkbox"
+                      class="h-3.5 w-3.5 shrink-0 accent-primary"
+                      :checked="!!dataGridRef?.nullColumnsHidden"
+                      :disabled="!dataGridRef?.canToggleAllNullColumns"
+                      @change="dataGridRef?.toggleAllNullColumns()"
+                    />
+                    <span class="min-w-0 flex items-center gap-1 font-medium">
+                      {{ t("grid.hideNullColumns") }}
+                      <span
+                        v-if="(dataGridRef?.allNullColumnCount ?? 0) > 0"
+                        class="text-muted-foreground tabular-nums"
+                      >
+                        ({{ dataGridRef?.allNullColumnCount }})
+                      </span>
+                    </span>
+                  </label>
+                </PopoverContent>
+              </Popover>
               <Button
                 v-if="activeOutputView === 'result' && activeTab.result"
                 variant="ghost"
                 size="sm"
-                class="ml-auto h-6 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                class="h-6 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
                 :disabled="activeTab.isExecuting"
                 @click="refreshData"
               >
@@ -660,6 +710,48 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           >
             <TableProperties class="h-3.5 w-3.5" /> {{ t("grid.tableInfo") }}
           </Button>
+          <Popover v-if="activeTab.result?.columns.length">
+            <PopoverTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-6 w-7 shrink-0 text-foreground hover:bg-accent"
+                :class="{ 'bg-accent text-foreground': dataGridRef?.nullColumnsHidden }"
+                :title="t('grid.viewOptions')"
+                :aria-label="t('grid.viewOptions')"
+              >
+                <Wrench class="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              class="w-max min-w-44 max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl"
+              @click.stop
+              @keydown.stop
+            >
+              <div class="border-b bg-muted/40 px-3 py-2">
+                <div class="text-xs font-semibold">{{ t("grid.viewOptions") }}</div>
+              </div>
+              <label
+                class="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs hover:bg-accent"
+                :class="{ 'cursor-not-allowed opacity-60': !dataGridRef?.canToggleAllNullColumns }"
+              >
+                <input
+                  type="checkbox"
+                  class="h-3.5 w-3.5 shrink-0 accent-primary"
+                  :checked="!!dataGridRef?.nullColumnsHidden"
+                  :disabled="!dataGridRef?.canToggleAllNullColumns"
+                  @change="dataGridRef?.toggleAllNullColumns()"
+                />
+                <span class="min-w-0 flex items-center gap-1 font-medium">
+                  {{ t("grid.hideNullColumns") }}
+                  <span v-if="(dataGridRef?.allNullColumnCount ?? 0) > 0" class="text-muted-foreground tabular-nums">
+                    ({{ dataGridRef?.allNullColumnCount }})
+                  </span>
+                </span>
+              </label>
+            </PopoverContent>
+          </Popover>
         </div>
         <DataGrid
           v-if="activeTab.result"

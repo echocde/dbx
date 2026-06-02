@@ -170,9 +170,12 @@ import {
   resultPageSizeMenuOptions,
 } from "@/lib/paginationPageSize";
 import {
+  allNullColumnIndexes,
   filterColumnVisibilityOptions,
+  hiddenColumnIndexesWithAllNullColumns,
   invertedHiddenColumnIndexes,
   nextHiddenColumnIndexes,
+  removeAutoHiddenColumnIndexes,
   visibleColumnIndexesForFilter,
 } from "@/lib/dataGridColumnVisibility";
 
@@ -1436,6 +1439,8 @@ const gridRef = ref<HTMLDivElement>();
 const headerRef = ref<HTMLDivElement>();
 const gridScrollbarGutter = ref(0);
 const hiddenColumnIndexes = ref<Set<number>>(new Set());
+const nullColumnsHidden = ref(false);
+const autoHiddenNullColumnIndexes = ref<Set<number>>(new Set());
 const highlightedColumnIndex = ref<number | null>(null);
 let highlightedColumnTimer = 0;
 const displayableColumnIndexes = computed(() =>
@@ -1455,6 +1460,13 @@ const visibleSourceColumns = computed(() => {
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
 const displayableColumnCount = computed(() => displayableColumnIndexes.value.length);
 const hiddenColumnCount = computed(() => displayableColumnCount.value - visibleColumnCount.value);
+const allNullColumnIndexesForResult = computed(() =>
+  allNullColumnIndexes(props.result.rows, displayableColumnIndexes.value),
+);
+const allNullColumnCount = computed(() => allNullColumnIndexesForResult.value.length);
+const canToggleAllNullColumns = computed(
+  () => nullColumnsHidden.value || (allNullColumnCount.value > 0 && displayableColumnCount.value > 1),
+);
 function filteredColumnVisibilityOptions(query: string) {
   const displayable = new Set(displayableColumnIndexes.value);
   return filterColumnVisibilityOptions(props.result.columns, query).filter((option) => displayable.has(option.index));
@@ -1475,6 +1487,40 @@ function showAllColumns() {
 function invertColumnVisibility() {
   hiddenColumnIndexes.value = invertedHiddenColumnIndexes(displayableColumnIndexes.value, hiddenColumnIndexes.value);
 }
+function showAllNullColumns() {
+  hiddenColumnIndexes.value = removeAutoHiddenColumnIndexes(
+    hiddenColumnIndexes.value,
+    autoHiddenNullColumnIndexes.value,
+  );
+  autoHiddenNullColumnIndexes.value = new Set();
+  nullColumnsHidden.value = false;
+}
+function hideAllNullColumns() {
+  const next = hiddenColumnIndexesWithAllNullColumns({
+    availableIndexes: displayableColumnIndexes.value,
+    hiddenIndexes: hiddenColumnIndexes.value,
+    allNullIndexes: new Set(allNullColumnIndexesForResult.value),
+  });
+  hiddenColumnIndexes.value = next.hiddenIndexes;
+  autoHiddenNullColumnIndexes.value = next.autoHiddenIndexes;
+  nullColumnsHidden.value = next.autoHiddenIndexes.size > 0;
+}
+function toggleAllNullColumns() {
+  if (nullColumnsHidden.value) {
+    showAllNullColumns();
+  } else {
+    hideAllNullColumns();
+  }
+}
+watch(allNullColumnIndexesForResult, () => {
+  if (!nullColumnsHidden.value) return;
+  hiddenColumnIndexes.value = removeAutoHiddenColumnIndexes(
+    hiddenColumnIndexes.value,
+    autoHiddenNullColumnIndexes.value,
+  );
+  autoHiddenNullColumnIndexes.value = new Set();
+  hideAllNullColumns();
+});
 const firstVisibleColumnIndex = computed(() => visibleColumnIndexes.value[0] ?? 0);
 function actualColumnIndex(visibleColumnIndex: number): number {
   return visibleColumnIndexes.value[visibleColumnIndex] ?? visibleColumnIndex;
@@ -1690,6 +1736,8 @@ watch(
   () => {
     localColumnFilters.value = {};
     hiddenColumnIndexes.value = new Set();
+    nullColumnsHidden.value = false;
+    autoHiddenNullColumnIndexes.value = new Set();
     closeLocalFilter();
   },
 );
@@ -4896,6 +4944,10 @@ defineExpose({
   toggleColumnVisibility,
   showAllColumns,
   invertColumnVisibility,
+  nullColumnsHidden,
+  allNullColumnCount,
+  canToggleAllNullColumns,
+  toggleAllNullColumns,
   openCellDetailSearch,
 });
 
