@@ -244,6 +244,26 @@ pub fn responses_stream_text(event: &serde_json::Value) -> Option<&str> {
     event["delta"].as_str().filter(|s| !s.is_empty())
 }
 
+fn responses_max_output_tokens(max_tokens: Option<u32>) -> u32 {
+    max_tokens.unwrap_or(2048).max(16)
+}
+
+fn responses_text(data: &serde_json::Value) -> String {
+    if let Some(text) = data["output_text"].as_str().filter(|text| !text.is_empty()) {
+        return text.to_string();
+    }
+
+    data["output"]
+        .as_array()
+        .and_then(|items| {
+            items.iter().find_map(|item| {
+                item["content"].as_array().and_then(|parts| parts.iter().find_map(|p| p["text"].as_str()))
+            })
+        })
+        .unwrap_or_default()
+        .to_string()
+}
+
 pub fn gemini_text(data: &serde_json::Value) -> String {
     data["candidates"]
         .get(0)
@@ -486,7 +506,7 @@ pub async fn call_responses_api(client: &reqwest::Client, request: AiCompletionR
     let body = json!({
         "model": request.config.model,
         "input": build_responses_input(&request.system_prompt, &request.messages),
-        "max_output_tokens": request.max_tokens.unwrap_or(2048),
+        "max_output_tokens": responses_max_output_tokens(request.max_tokens),
         "temperature": request.temperature.unwrap_or(0.2),
     });
 
@@ -504,15 +524,7 @@ pub async fn call_responses_api(client: &reqwest::Client, request: AiCompletionR
         return Err(extract_error(&data).unwrap_or_else(|| format!("API error: {status}")));
     }
 
-    Ok(data["output"]
-        .as_array()
-        .and_then(|items| {
-            items.iter().find_map(|item| {
-                item["content"].as_array().and_then(|parts| parts.iter().find_map(|p| p["text"].as_str()))
-            })
-        })
-        .unwrap_or_default()
-        .to_string())
+    Ok(responses_text(&data))
 }
 
 pub async fn call_gemini(client: &reqwest::Client, request: AiCompletionRequest) -> Result<String, String> {
@@ -831,7 +843,7 @@ async fn stream_responses_api(
     let body = json!({
         "model": request.config.model,
         "input": build_responses_input(&request.system_prompt, &request.messages),
-        "max_output_tokens": request.max_tokens.unwrap_or(2048),
+        "max_output_tokens": responses_max_output_tokens(request.max_tokens),
         "temperature": request.temperature.unwrap_or(0.2),
         "stream": true,
     });
@@ -1037,7 +1049,7 @@ pub fn load_config(path: &Path) -> Result<Option<AiConfig>, String> {
 mod tests {
     use super::{
         build_ai_http_client, gemini_text, parse_model_list_response, resolve_endpoint, resolve_model_list_endpoint,
-        validate_config, AiApiStyle, AiConfig, AiModelInfo, AiProvider,
+        responses_max_output_tokens, responses_text, validate_config, AiApiStyle, AiConfig, AiModelInfo, AiProvider,
     };
 
     #[test]
@@ -1154,6 +1166,33 @@ mod tests {
                     display_name: Some("Claude Sonnet 4".to_string())
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn responses_api_clamps_tiny_output_token_requests() {
+        assert_eq!(responses_max_output_tokens(Some(1)), 16);
+        assert_eq!(responses_max_output_tokens(Some(16)), 16);
+        assert_eq!(responses_max_output_tokens(Some(2400)), 2400);
+        assert_eq!(responses_max_output_tokens(None), 2048);
+    }
+
+    #[test]
+    fn parses_responses_text_from_current_and_nested_shapes() {
+        assert_eq!(
+            responses_text(&serde_json::json!({
+                "output_text": "SELECT 1;"
+            })),
+            "SELECT 1;"
+        );
+
+        assert_eq!(
+            responses_text(&serde_json::json!({
+                "output": [{
+                    "content": [{ "type": "output_text", "text": "SELECT 2;" }]
+                }]
+            })),
+            "SELECT 2;"
         );
     }
 
