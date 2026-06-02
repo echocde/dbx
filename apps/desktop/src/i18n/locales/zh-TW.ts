@@ -73,6 +73,8 @@ export default {
     importNavicat: "匯入 Navicat NCX",
     importDbeaver: "匯入 DBeaver",
     export: "匯出連線",
+    collapse: "收合側邊欄",
+    expand: "展開側邊欄",
     showMore: "再顯示 {count} 個……",
     filterByType: "依類型篩選",
     searchScopeConnection: "連線",

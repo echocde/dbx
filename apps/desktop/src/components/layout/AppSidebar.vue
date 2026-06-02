@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
-import { Upload, Download, FolderPlus, RefreshCw } from "lucide-vue-next";
+import { Upload, Download, FolderPlus, RefreshCw, ChevronsLeft } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import LightDropdown from "@/components/ui/LightDropdown.vue";
@@ -19,6 +19,7 @@ const emit = defineEmits<{
   import: [source: "dbx" | "navicat" | "dbeaver"];
   export: [];
   startResize: [event: MouseEvent];
+  collapse: [];
 }>();
 
 const { t } = useI18n();
@@ -58,7 +59,7 @@ defineExpose({ focusSearch });
   >
     <div class="h-full flex flex-col overflow-hidden">
       <div
-        class="flex items-center px-3 text-xs font-medium text-muted-foreground border-b bg-muted/20"
+        class="flex items-center gap-px px-3 text-xs font-medium text-muted-foreground border-b bg-muted/20"
         :class="classicLayout ? 'h-9' : 'h-10'"
       >
         <span class="flex self-stretch items-center truncate" data-tauri-drag-region>{{
@@ -71,8 +72,8 @@ defineExpose({ focusSearch });
           :aria-label="t('sidebar.import')"
           :trigger-title="t('sidebar.import')"
           :trigger-icon="Upload"
-          trigger-class="inline-flex h-6 w-6 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-          trigger-icon-class="h-3.5 w-3.5"
+          trigger-class="inline-flex h-6 w-5 items-center justify-center rounded-md outline-none hover:bg-muted hover:text-foreground focus-visible:ring-0"
+          trigger-icon-class="h-4 w-4"
           content-class="w-44"
           :show-trigger-label="false"
           :show-chevron="false"
@@ -83,27 +84,35 @@ defineExpose({ focusSearch });
         />
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon" class="h-6 w-6" @click="emit('export')">
-              <Download class="h-3.5 w-3.5" />
+            <Button variant="ghost" size="icon" class="h-5 w-5" @click="emit('export')">
+              <Download class="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{{ t("sidebar.export") }}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon" class="h-6 w-6" @click="createNewGroup">
-              <FolderPlus class="h-3.5 w-3.5" />
+            <Button variant="ghost" size="icon" class="h-5 w-5" @click="createNewGroup">
+              <FolderPlus class="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{{ t("connectionGroup.createGroup") }}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon" class="h-6 w-6" @click="refreshTree">
-              <RefreshCw class="h-3.5 w-3.5" />
+            <Button variant="ghost" size="icon" class="h-5 w-5" @click="refreshTree">
+              <RefreshCw class="h-3 w-3" />
             </Button>
           </TooltipTrigger>
           <TooltipContent>{{ t("contextMenu.refreshChildren") }}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="icon" class="h-6 w-6" @click="emit('collapse')">
+              <ChevronsLeft class="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{{ t("sidebar.collapse") }}</TooltipContent>
         </Tooltip>
       </div>
       <div class="flex-1 min-h-0">

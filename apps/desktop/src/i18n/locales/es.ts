@@ -74,6 +74,8 @@ export default {
     importNavicat: "Importar Navicat NCX",
     importDbeaver: "Importar DBeaver",
     export: "Exportar conexiones",
+    collapse: "Contraer barra lateral",
+    expand: "Expandir barra lateral",
     showMore: "Mostrar {count} más...",
     filterByType: "Filtrar por tipo",
     searchScopeConnection: "Conexión",

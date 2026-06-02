@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import { ChevronsRight } from "lucide-vue-next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppToolbar from "@/components/layout/AppToolbar.vue";
 import AppTabBar from "@/components/layout/AppTabBar.vue";
@@ -113,6 +114,7 @@ const showDriverStore = ref(false);
 const agentDriverUpdateCount = ref(0);
 const showHistory = ref(false);
 const showAiPanel = ref(safeLocalStorageGet("dbx-ai-panel-open") === "true");
+const sidebarOpen = ref(safeLocalStorageGet("dbx-sidebar-open") !== "false");
 const aiPanelReady = ref(false);
 const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
   usePanelResize();
@@ -691,6 +693,11 @@ function openMcpGuide() {
   openUrl("https://dbxio.com/cn/docs/mcp");
 }
 
+function setSidebarOpen(open: boolean) {
+  sidebarOpen.value = open;
+  safeLocalStorageSet("dbx-sidebar-open", open ? "true" : "false");
+}
+
 function ensureQueryTab(): string {
   const tab = activeTab.value;
   if (tab && tab.mode === "query") return tab.id;
@@ -987,13 +994,31 @@ onUnmounted(() => {
           "
         >
           <AppSidebar
+            v-show="sidebarOpen"
             ref="appSidebarRef"
             :sidebar-width="sidebarWidth"
             :classic-layout="isClassicLayout"
             @import="dialogs.onImportClick"
             @export="dialogs.onExportClick"
             @start-resize="startSidebarResize"
+            @collapse="setSidebarOpen(false)"
           />
+          <div
+            v-show="!sidebarOpen"
+            class="flex h-full w-8 shrink-0 items-start justify-center border-r bg-background/80 pt-2"
+            :class="isClassicLayout ? '' : 'rounded-md border border-border/80'"
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-7 w-7"
+              :title="t('sidebar.expand')"
+              :aria-label="t('sidebar.expand')"
+              @click="setSidebarOpen(true)"
+            >
+              <ChevronsRight class="h-4 w-4" />
+            </Button>
+          </div>
 
           <div
             :class="
