@@ -1527,6 +1527,17 @@ function updateGridHorizontalViewport(element: HTMLElement) {
 function updateGridScrollbarGutter(element: HTMLElement) {
   gridScrollbarGutter.value = scrollbarGutterWidth(element);
 }
+
+function refreshGridScrollerMetrics() {
+  const scrollerEl = gridRef.value?.querySelector<HTMLElement>(".data-grid-scroller");
+  if (!scrollerEl) return;
+  updateGridScrollbarGutter(scrollerEl);
+  updateGridHorizontalViewport(scrollerEl);
+  if (headerRef.value) {
+    headerRef.value.scrollLeft = scrollerEl.scrollLeft;
+  }
+}
+
 function syncHeaderScroll(e: Event) {
   const target = e.target as HTMLElement;
   updateGridScrollbarGutter(target);
@@ -1636,10 +1647,7 @@ watch(() => visibleColumns.value.length, initColumnWidths);
 watch(
   () => [visibleColumnCount.value, renderedColumnWidths.value.length],
   () => {
-    nextTick(() => {
-      const scrollerEl = gridRef.value?.querySelector<HTMLElement>(".data-grid-scroller");
-      if (scrollerEl) updateGridHorizontalViewport(scrollerEl);
-    });
+    nextTick(refreshGridScrollerMetrics);
   },
 );
 const localFilterScopeKey = computed(() =>
@@ -2181,6 +2189,13 @@ const hasActiveFilter = computed(
 const emptyTitle = computed(() => (hasActiveFilter.value ? t("grid.noFilteredRows") : t("grid.noRows")));
 const emptyDescription = computed(() =>
   hasActiveFilter.value ? t("grid.noFilteredRowsDescription") : t("grid.noRowsDescription"),
+);
+watch(
+  () => [hasVisibleRows.value, props.result.columns.length] as const,
+  () => {
+    nextTick(refreshGridScrollerMetrics);
+  },
+  { immediate: true },
 );
 const isErrorResult = computed(
   () => props.result.columns.length === 1 && props.result.columns[0] === "Error" && props.result.rows.length > 0,
@@ -5802,18 +5817,26 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </div>
               </div>
 
-              <div
-                v-if="!hasVisibleRows"
-                class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-muted-foreground"
-              >
-                <component
-                  :is="hasActiveFilter ? SearchX : Inbox"
-                  class="h-8 w-8 text-muted-foreground/50"
-                  aria-hidden="true"
-                />
-                <div class="space-y-1">
-                  <div class="text-sm font-medium text-foreground">{{ emptyTitle }}</div>
-                  <div class="text-xs">{{ emptyDescription }}</div>
+              <div v-if="!hasVisibleRows" class="relative min-h-0 flex-1">
+                <div
+                  class="data-grid-scroller h-full overflow-x-auto overflow-y-hidden overscroll-none"
+                  :class="{ 'is-scrolling': isScrolling }"
+                  @scroll="onScrollerScroll"
+                >
+                  <div class="h-full min-h-[220px]" :style="{ width: 'max(100%, var(--total-w))' }" />
+                </div>
+                <div
+                  class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-muted-foreground"
+                >
+                  <component
+                    :is="hasActiveFilter ? SearchX : Inbox"
+                    class="h-8 w-8 text-muted-foreground/50"
+                    aria-hidden="true"
+                  />
+                  <div class="space-y-1">
+                    <div class="text-sm font-medium text-foreground">{{ emptyTitle }}</div>
+                    <div class="text-xs">{{ emptyDescription }}</div>
+                  </div>
                 </div>
               </div>
 
