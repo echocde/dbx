@@ -7,7 +7,12 @@ import { orderPinnedFirst } from "@/lib/pinnedItems";
 import { canCancelQueryExecution } from "@/lib/queryExecutionState";
 import { closeAllTabsState, closeOtherTabsState } from "@/lib/tabCloseActions";
 import { buildExplainSql, parseExplainResult } from "@/lib/explainPlan";
-import { allEditableColumnsWriteable, allPrimaryKeysPresent, sourceColumnsForResult } from "@/lib/sqlAnalysis";
+import {
+  allEditableColumnsWriteable,
+  allPrimaryKeysPresent,
+  sourceColumnsForResult,
+  type EditableQueryInfo,
+} from "@/lib/sqlAnalysis";
 import { restoreOpenTabsState, serializeOpenTabs } from "@/lib/openTabsPersistence";
 import {
   evaluateMongoAggregateSafety,
@@ -31,6 +36,30 @@ import type { SavedSqlFile } from "@/types/database";
 
 const STORAGE_KEY = "dbx-open-tabs";
 const ACTIVE_TAB_KEY = "dbx-active-tab";
+const ORACLE_LIKE_METADATA_TYPES = new Set<string>(["oracle", "dameng", "oceanbase-oracle"]);
+
+function normalizeOracleLikeMetadataIdentifier(dbType: string, identifier: string | undefined, quoted?: boolean) {
+  if (!identifier || quoted || !ORACLE_LIKE_METADATA_TYPES.has(dbType)) return identifier;
+  return identifier.toUpperCase();
+}
+
+function normalizeOracleLikeQueryAnalysis(
+  dbType: string,
+  analysis: EditableQueryInfo,
+  schema: string | undefined,
+  tableName: string,
+): EditableQueryInfo {
+  if (!ORACLE_LIKE_METADATA_TYPES.has(dbType)) return analysis;
+  return {
+    ...analysis,
+    schema,
+    tableName,
+    columns: analysis.columns.map((column) => ({
+      ...column,
+      sourceName: normalizeOracleLikeMetadataIdentifier(dbType, column.sourceName, column.sourceNameQuoted),
+    })),
+  };
+}
 
 function saveTabs(tabs: QueryTab[], activeTabId: string | null) {
   try {
@@ -570,15 +599,32 @@ export const useQueryStore = defineStore("query", () => {
       if (dbType === "postgres") schema = "public";
       else schema = "";
     }
+    const metadataSchema =
+      normalizeOracleLikeMetadataIdentifier(
+        dbType,
+        schema || undefined,
+        analysis.schema ? analysis.schemaQuoted : false,
+      ) || "";
+    const metadataTableName = normalizeOracleLikeMetadataIdentifier(
+      dbType,
+      analysis.tableName,
+      analysis.tableNameQuoted,
+    )!;
+    const metadataAnalysis = normalizeOracleLikeQueryAnalysis(
+      dbType,
+      analysis,
+      metadataSchema || undefined,
+      metadataTableName,
+    );
 
     try {
       console.info("[DBX][executeTabSql:metadata:get-columns:start]", {
         traceId,
-        schema,
-        table: analysis.tableName,
+        schema: metadataSchema,
+        table: metadataTableName,
         elapsed: elapsed?.(),
       });
-      const columns = await api.getColumns(tab.connectionId, tab.database, schema, analysis.tableName);
+      const columns = await api.getColumns(tab.connectionId, tab.database, metadataSchema, metadataTableName);
       console.info("[DBX][executeTabSql:metadata:get-columns:done]", {
         traceId,
         columnCount: columns.length,
@@ -586,8 +632,8 @@ export const useQueryStore = defineStore("query", () => {
       });
       const primaryKeys = editablePrimaryKeys(dbType as DatabaseType, columns);
       const tableMeta = {
-        schema: schema || undefined,
-        tableName: analysis.tableName,
+        schema: metadataSchema || undefined,
+        tableName: metadataTableName,
         columns,
         primaryKeys,
       };
@@ -601,7 +647,7 @@ export const useQueryStore = defineStore("query", () => {
         };
       }
 
-      if (!allPrimaryKeysPresent(primaryKeys, tab.result.columns, analysis)) {
+      if (!allPrimaryKeysPresent(primaryKeys, tab.result.columns, metadataAnalysis)) {
         return {
           queryAnalysis: undefined,
           querySourceColumns: undefined,
@@ -610,7 +656,7 @@ export const useQueryStore = defineStore("query", () => {
         };
       }
 
-      if (!allEditableColumnsWriteable(analysis, tab.result.columns)) {
+      if (!allEditableColumnsWriteable(metadataAnalysis, tab.result.columns)) {
         return {
           queryAnalysis: undefined,
           querySourceColumns: undefined,
@@ -620,8 +666,8 @@ export const useQueryStore = defineStore("query", () => {
       }
 
       return {
-        queryAnalysis: analysis,
-        querySourceColumns: sourceColumnsForResult(analysis, tab.result.columns),
+        queryAnalysis: metadataAnalysis,
+        querySourceColumns: sourceColumnsForResult(metadataAnalysis, tab.result.columns),
         queryEditabilityReason: undefined,
         tableMeta,
       };

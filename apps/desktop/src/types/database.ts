@@ -392,11 +392,14 @@ export interface QueryTab {
   };
   queryAnalysis?: {
     schema?: string;
+    schemaQuoted?: boolean;
     tableName: string;
+    tableNameQuoted?: boolean;
     tableAlias?: string;
     selectStar: boolean;
     columns: {
       sourceName?: string;
+      sourceNameQuoted?: boolean;
       resultName: string;
       expression: string;
     }[];

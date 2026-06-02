@@ -36,6 +36,22 @@ function conn(id: string): ConnectionConfig {
   };
 }
 
+function oracleConn(id: string): ConnectionConfig {
+  return {
+    ...conn(id),
+    db_type: "oracle",
+    port: 1521,
+  };
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs = 1000) {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) throw new Error("timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 test("setErrorResult stops loading and shows the error result", () => {
   setActivePinia(createPinia());
   const store = useQueryStore();
@@ -113,6 +129,107 @@ test("editing query sql preserves the displayed result editability state", () =>
   assert.deepEqual(tab.querySourceColumns, ["id", "name"]);
   assert.equal(tab.queryAnalysis?.tableName, "users");
   assert.equal(tab.tableMeta?.tableName, "users");
+});
+
+test("normalizes unquoted Oracle query identifiers before loading editable metadata", async () => {
+  const restoreStorage = installMemoryStorage();
+  setActivePinia(createPinia());
+  const connectionStore = useConnectionStore();
+  const store = useQueryStore();
+  const originalFetch = globalThis.fetch;
+  const columnRequests: Array<{ schema: string | null; table: string | null }> = [];
+
+  connectionStore.addEphemeralConnection(oracleConn("oracle-1"));
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    if (url === "/api/query/execute-multi") {
+      return new Response(
+        JSON.stringify([
+          {
+            columns: ["ID", "NAME"],
+            rows: [[1, "Ada"]],
+            affected_rows: 0,
+            execution_time_ms: 1,
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url === "/api/query/analyze-editability") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      assert.equal(body.sql, "select id, name from users");
+      return new Response(
+        JSON.stringify({
+          editable: true,
+          analysis: {
+            schema: undefined,
+            schemaQuoted: false,
+            tableName: "users",
+            tableNameQuoted: false,
+            tableAlias: undefined,
+            selectStar: false,
+            columns: [
+              { sourceName: "id", sourceNameQuoted: false, resultName: "id", expression: "id" },
+              { sourceName: "name", sourceNameQuoted: false, resultName: "name", expression: "name" },
+            ],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url.startsWith("/api/schema/columns?")) {
+      const params = new URL(url, "http://localhost").searchParams;
+      columnRequests.push({ schema: params.get("schema"), table: params.get("table") });
+      return new Response(
+        JSON.stringify([
+          {
+            name: "ID",
+            data_type: "NUMBER",
+            is_nullable: false,
+            column_default: null,
+            is_primary_key: true,
+            extra: null,
+            comment: "identifier",
+          },
+          {
+            name: "NAME",
+            data_type: "VARCHAR2",
+            is_nullable: true,
+            column_default: null,
+            is_primary_key: false,
+            extra: null,
+            comment: "display name",
+          },
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url === "/api/query/prepare-pagination-plan") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return new Response(JSON.stringify({ sqlToExecute: body.options.sql, useAgentResultSession: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const tabId = store.createTab("oracle-1", "ORCL", "Query 1", "query", "app");
+    await store.executeTabSql(tabId, "select id, name from users");
+
+    const tab = store.tabs.find((item) => item.id === tabId);
+    await waitFor(() => columnRequests.length > 0 && tab?.tableMeta?.tableName === "USERS");
+    assert.deepEqual(columnRequests, [{ schema: "APP", table: "USERS" }]);
+    assert.equal(tab?.tableMeta?.schema, "APP");
+    assert.equal(tab?.tableMeta?.tableName, "USERS");
+    assert.deepEqual(tab?.querySourceColumns, ["ID", "NAME"]);
+    assert.equal(tab?.queryEditabilityReason, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
 });
 
 test("evicting cached tab results releases multi-result payloads and sessions", async () => {
