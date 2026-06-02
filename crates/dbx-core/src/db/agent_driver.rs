@@ -712,6 +712,10 @@ fn agent_java_args(jar_path: &str) -> Vec<String> {
     .map(str::to_string)
     .collect::<Vec<_>>();
 
+    if agent_jar_path_matches_key(jar_path, "kingbase") {
+        args.push("-Djava.net.preferIPv4Stack=true".to_string());
+    }
+
     if !agent_jar_path_matches_key(jar_path, "oracle-10g") {
         args.push("--add-opens=java.sql/java.sql=ALL-UNNAMED".to_string());
     }
@@ -866,6 +870,20 @@ mod tests {
         assert!(args.iter().any(|arg| arg == "-Dhttp.proxyHost="));
         assert!(args.iter().any(|arg| arg == "-Dhttps.proxyHost="));
         assert!(args.iter().any(|arg| arg == "-DsocksProxyHost="));
+    }
+
+    #[test]
+    fn agent_java_args_prefer_ipv4_for_kingbase() {
+        let args = agent_java_args("/tmp/dbx/drivers/kingbase/agent.jar");
+
+        assert!(args.iter().any(|arg| arg == "-Djava.net.preferIPv4Stack=true"));
+    }
+
+    #[test]
+    fn agent_java_args_do_not_prefer_ipv4_for_other_agents() {
+        let args = agent_java_args("/tmp/dbx/drivers/highgo/agent.jar");
+
+        assert!(!args.iter().any(|arg| arg == "-Djava.net.preferIPv4Stack=true"));
     }
 
     #[test]
