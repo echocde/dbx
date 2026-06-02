@@ -368,6 +368,8 @@ pub fn is_connection_error(err: &str) -> bool {
         || lower.contains("reset by peer")
         || lower.contains("timed out")
         || lower.contains("closed")
+        || lower.contains("关闭的连接")
+        || lower.contains("连接已关闭")
         || lower.contains("eof")
         || lower.contains("i/o error")
         || lower.contains("not connected")
@@ -1405,6 +1407,8 @@ mod tests {
         assert!(is_connection_error("ORA-03113: end-of-file on communication channel"));
         assert!(is_connection_error("ORA-03114: not connected to Oracle"));
         assert!(is_connection_error("ORA-03135: connection lost contact"));
+        assert!(is_connection_error("Agent RPC error (-1): java.sql.SQLRecoverableException: 关闭的连接"));
+        assert!(is_connection_error("java.sql.SQLRecoverableException: 连接已关闭"));
     }
 
     #[test]
