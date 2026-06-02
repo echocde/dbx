@@ -4606,19 +4606,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     tabindex="0"
     @keydown="onGridKeydown"
   >
-    <div
-      v-if="isErrorResult"
-      class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-destructive"
-    >
-      <TriangleAlert class="h-8 w-8 text-destructive/50" aria-hidden="true" />
-      <div class="space-y-1">
-        <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
-        <div class="text-xs max-w-lg break-all text-destructive/80">{{ errorMessage }}</div>
-      </div>
-      <slot name="error-actions" :error-message="errorMessage" />
-    </div>
-
-    <CustomContextMenu v-else :items="gridContextMenuItems" v-slot="{ onContextMenu }">
+    <CustomContextMenu :items="gridContextMenuItems" v-slot="{ onContextMenu }">
       <div
         v-if="hasData || canUseWhereSearch"
         class="flex-1 flex flex-col overflow-hidden"
@@ -5099,7 +5087,18 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </button>
               </div>
             </Transition>
-            <div v-if="isTransposeMode" class="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div
+              v-if="isErrorResult"
+              class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-destructive"
+            >
+              <TriangleAlert class="h-8 w-8 text-destructive/50" aria-hidden="true" />
+              <div class="space-y-1">
+                <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
+                <div class="text-xs max-w-lg break-all text-destructive/80">{{ errorMessage }}</div>
+              </div>
+              <slot name="error-actions" :error-message="errorMessage" />
+            </div>
+            <div v-else-if="isTransposeMode" class="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div class="h-8 flex items-center gap-2 px-3 border-y shrink-0 bg-muted/20">
                 <Rows3 class="w-3.5 h-3.5 text-muted-foreground" />
                 <span class="text-xs font-medium">{{ t("grid.transpose") }}</span>
