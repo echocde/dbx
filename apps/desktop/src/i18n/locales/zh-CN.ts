@@ -1542,7 +1542,7 @@ export default {
     showColumnCommentsInHeader: "在字段名下方显示注释",
     showColumnCommentsInHeaderDescription: "把表字段注释直接显示在结果表头字段名下方。",
     compactColumnHeaderActions: "收起字段表头工具",
-    compactColumnHeaderActionsDescription: "将排序、格式化、本地筛选收进更多菜单，优先显示字段名称。",
+    compactColumnHeaderActionsDescription: "将格式化、本地筛选收进更多菜单，优先显示字段名称。",
     sidebarActivation: "侧边栏打开方式",
     sidebarActivationSingle: "单击打开",
     sidebarActivationSingleDescription: "单击即可打开侧边栏中的可操作项目。",

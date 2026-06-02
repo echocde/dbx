@@ -1464,7 +1464,7 @@ export default {
       "Muestra los comentarios de columnas directamente debajo del nombre de la columna.",
     compactColumnHeaderActions: "Compactar herramientas del encabezado",
     compactColumnHeaderActionsDescription:
-      "Mueve ordenar, formatear y filtrar a un menú de más acciones para priorizar el nombre de columna.",
+      "Mueve formatear y filtrar a un menú de más acciones para priorizar el nombre de columna.",
     sidebarActivation: "Activación de la barra lateral",
     sidebarActivationSingle: "Un clic",
     sidebarActivationSingleDescription: "Abrir elementos accionables de la barra lateral con un clic.",

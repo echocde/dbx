@@ -359,6 +359,7 @@ pub fn is_connection_error(err: &str) -> bool {
         || lower.contains("not connected")
         || lower.contains("end-of-file")
         || lower.contains("idle")
+        || lower.contains("communicating with the server")
         || is_os_connection_error(&lower)
 }
 
@@ -1321,6 +1322,7 @@ mod tests {
         assert!(is_connection_error("Connection timed out"));
         assert!(is_connection_error("socket closed"));
         assert!(is_connection_error("unexpected eof"));
+        assert!(is_connection_error("Error occurred while creating a new object: error communicating with the server"));
     }
 
     #[test]

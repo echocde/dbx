@@ -8,7 +8,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tokio::time::Duration;
+use tokio::time::{Duration, MissedTickBehavior};
 
 use crate::models::connection::SshTunnelConfig;
 
@@ -20,6 +20,10 @@ const INITIAL_RECONNECT_DELAY: Duration = Duration::from_secs(5);
 const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(60);
 /// Maximum number of consecutive reconnect attempts before giving up.
 const MAX_RECONNECT_ATTEMPTS: u32 = 10;
+/// How often an idle local listener verifies that the SSH session still answers.
+const IDLE_SESSION_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+/// Maximum time to wait for an explicit SSH ping response.
+const IDLE_SESSION_PING_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct SshClient;
 
@@ -93,8 +97,32 @@ async fn connect_and_authenticate(
 /// Accept connections on the local listener and forward them through the SSH session.
 /// Returns when the SSH session dies (listener error or session.is_closed()).
 async fn forward_loop(session: &Handle<SshClient>, listener: &TcpListener, remote_host: &str, remote_port: u16) {
+    let mut idle_check = tokio::time::interval(IDLE_SESSION_CHECK_INTERVAL);
+    idle_check.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
     loop {
-        let (mut stream, peer_addr) = match listener.accept().await {
+        let accepted = tokio::select! {
+            result = listener.accept() => result,
+            _ = idle_check.tick() => {
+                if session.is_closed() {
+                    log::warn!("SSH session closed while tunnel was idle");
+                    break;
+                }
+                match tokio::time::timeout(IDLE_SESSION_PING_TIMEOUT, session.send_ping()).await {
+                    Ok(Ok(())) => continue,
+                    Ok(Err(e)) => {
+                        log::warn!("SSH idle ping failed: {e}");
+                        break;
+                    }
+                    Err(_) => {
+                        log::warn!("SSH idle ping timed out");
+                        break;
+                    }
+                }
+            }
+        };
+
+        let (mut stream, peer_addr) = match accepted {
             Ok(v) => v,
             Err(e) => {
                 log::error!("SSH tunnel listener error: {e}");
@@ -120,11 +148,7 @@ async fn forward_loop(session: &Handle<SshClient>, listener: &TcpListener, remot
             Ok(c) => c,
             Err(e) => {
                 log::error!("SSH direct-tcpip failed: {e}");
-                if session.is_closed() {
-                    log::warn!("SSH session closed after channel open failure");
-                    break;
-                }
-                continue;
+                break;
             }
         };
 
