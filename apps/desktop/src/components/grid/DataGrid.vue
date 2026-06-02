@@ -4,7 +4,7 @@ const globalDdlOpen = ref(false);
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, watch, type Component } from "vue";
+import { computed, nextTick, onUnmounted, useSlots, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   ArrowUp,
@@ -46,7 +46,6 @@ import {
   PanelBottom,
   PanelRight,
   TableProperties,
-  LockKeyhole,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
@@ -178,6 +177,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { nextDataGridSortState, type DataGridSortDirection } from "@/lib/dataGridSort";
 
 const { t } = useI18n();
+const slots = useSlots();
 const settingsStore = useSettingsStore();
 const { isDark } = useTheme();
 const { toast } = useToast();
@@ -200,7 +200,6 @@ const props = defineProps<{
   schema?: string;
   context?: "results" | "table-data";
   sourceColumns?: Array<string | undefined>;
-  queryEditabilityReason?: string;
   initialWhereInput?: string;
   initialOrderByInput?: string;
   sortColumn?: string;
@@ -1707,16 +1706,9 @@ const showTruncationWarning = computed(
   () => props.result.truncated === true && typeof props.pageLimit !== "number" && props.result.has_more !== true,
 );
 const isResultsContext = computed(() => props.context === "results");
-const resultEditStatus = computed(() => {
-  if (!isResultsContext.value || !hasData.value) return null;
-  if (props.editable && props.tableMeta) return "editable";
-  if (props.queryEditabilityReason) return "readonly";
-  return null;
-});
-const queryEditabilityHint = computed(() => {
-  const reason = props.queryEditabilityReason;
-  return reason ? t(`grid.queryEditUnsupported.${reason}`) : "";
-});
+const showQueryEditReadyBadge = computed(
+  () => isResultsContext.value && hasData.value && !!props.editable && !!props.tableMeta,
+);
 const canUseWhereSearch = computed(() => !!props.tableMeta && !!props.onExecuteSql && !isResultsContext.value);
 const tableUsesSyntheticRowId = computed(() =>
   usesSyntheticRowIdKey(props.databaseType, props.tableMeta?.primaryKeys ?? []),
@@ -1946,6 +1938,19 @@ const saveToolbarState = computed(() =>
     hasPendingChanges: hasPendingChanges.value,
     isSaving: isSaving.value,
   }),
+);
+const hasSearchBarSlot = computed(() => !!slots["search-bar"]);
+const showDataGridTopbar = computed(
+  () =>
+    (useTransaction.value && !!props.editable && (!!props.tableMeta || !!props.customSave)) ||
+    hasLocalColumnFilters.value ||
+    canUseWhereSearch.value ||
+    hasSearchBarSlot.value ||
+    showQueryEditReadyBadge.value ||
+    props.context !== "results" ||
+    (!!props.editable && (!!props.tableMeta || !!props.customSave)) ||
+    transactionActive.value ||
+    saveToolbarState.value.showActions,
 );
 
 function canEditRowItem(item: RowItem | undefined): boolean {
@@ -4634,6 +4639,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       >
         <!-- Search bar -->
         <div
+          v-if="showDataGridTopbar"
           class="data-grid-topbar-scroll shrink-0 overflow-x-auto border-b bg-muted/20"
           @scroll="
             updateWhereSuggestionPosition();
@@ -4955,7 +4961,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             <slot name="search-bar" />
 
             <div class="flex shrink-0 items-center gap-1 px-1 ml-auto">
-              <Tooltip v-if="resultEditStatus === 'editable'">
+              <Tooltip v-if="showQueryEditReadyBadge">
                 <TooltipTrigger as-child>
                   <div
                     class="flex h-5 items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"
@@ -4965,19 +4971,6 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" class="max-w-sm">
                   {{ t("grid.queryEditReadyHint", { table: tableMeta?.tableName }) }}
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip v-else-if="resultEditStatus === 'readonly' && queryEditabilityHint">
-                <TooltipTrigger as-child>
-                  <div
-                    class="flex h-5 items-center gap-1 rounded border border-border bg-background px-1.5 text-xs font-medium text-muted-foreground"
-                  >
-                    <LockKeyhole class="h-3 w-3" />
-                    {{ t("grid.queryEditReadOnly") }}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" class="max-w-sm">
-                  {{ queryEditabilityHint }}
                 </TooltipContent>
               </Tooltip>
               <Button
