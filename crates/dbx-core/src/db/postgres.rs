@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, NaiveTime};
 use deadpool_postgres::{ManagerConfig, Pool, RecyclingMethod, Runtime};
 use futures::{SinkExt, StreamExt};
 use percent_encoding::percent_decode_str;
@@ -24,8 +24,8 @@ use crate::types::{
 };
 
 fn pg_temporal_to_json_value(row: &Row, idx: usize) -> Option<serde_json::Value> {
-    if let Ok(v) = row.try_get::<_, DateTime<Utc>>(idx) {
-        return Some(serde_json::Value::String(v.to_rfc3339()));
+    if let Ok(v) = row.try_get::<_, DateTime<Local>>(idx) {
+        return Some(serde_json::Value::String(format_pg_timestamptz(v)));
     }
     if let Ok(v) = row.try_get::<_, NaiveDateTime>(idx) {
         return Some(serde_json::Value::String(v.to_string()));
@@ -107,8 +107,8 @@ fn pg_array_to_json_value(row: &Row, idx: usize) -> Option<serde_json::Value> {
     if let Ok(values) = row.try_get::<_, Vec<Option<uuid::Uuid>>>(idx) {
         return Some(pg_optional_array_to_json(values, |v| serde_json::Value::String(v.to_string())));
     }
-    if let Ok(values) = row.try_get::<_, Vec<Option<DateTime<Utc>>>>(idx) {
-        return Some(pg_optional_array_to_json(values, |v| serde_json::Value::String(v.to_rfc3339())));
+    if let Ok(values) = row.try_get::<_, Vec<Option<DateTime<Local>>>>(idx) {
+        return Some(pg_optional_array_to_json(values, |v| serde_json::Value::String(format_pg_timestamptz(v))));
     }
     if let Ok(values) = row.try_get::<_, Vec<Option<NaiveDateTime>>>(idx) {
         return Some(pg_optional_array_to_json(values, |v| serde_json::Value::String(v.to_string())));
@@ -144,6 +144,10 @@ fn pg_array_to_json_value(row: &Row, idx: usize) -> Option<serde_json::Value> {
         return Some(pg_optional_array_to_json(values, |v| serde_json::Value::String(v.0)));
     }
     None
+}
+
+fn format_pg_timestamptz(value: DateTime<Local>) -> String {
+    value.to_rfc3339()
 }
 
 fn pg_value_to_json(row: &Row, idx: usize, type_name: &str) -> serde_json::Value {
@@ -1284,6 +1288,12 @@ mod tests {
     #[test]
     fn row_limit_allows_max_rows_override() {
         assert_eq!(query_result_row_limit(Some(5)), 5);
+    }
+
+    #[test]
+    fn timestamptz_display_preserves_local_offset() {
+        let text = format_pg_timestamptz(Local::now());
+        assert!(!text.ends_with("+00:00") || Local::now().offset().local_minus_utc() == 0);
     }
 
     // --- validate_postgres_ssl_paths ---
