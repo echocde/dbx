@@ -3610,6 +3610,10 @@ function currentSelectedCellPosition() {
 function scrollCellIntoView(rowIndex: number, colIndex: number) {
   nextTick(() => {
     scrollGridColumnIntoView(colIndex);
+    if (useCanvasGridRows.value) {
+      scrollCanvasRowIntoView(rowIndex, "nearest");
+      return;
+    }
     nextTick(() => {
       const rowEl = gridRef.value?.querySelector<HTMLElement>(`[data-row-index="${rowIndex}"]`);
       const cellEl = rowEl?.querySelector<HTMLElement>(`[data-visible-col-index="${colIndex}"]`);
@@ -3634,11 +3638,30 @@ function scrollGridColumnIntoView(visibleColIdx: number) {
 
   updateGridHorizontalViewport(scroller);
   if (headerRef.value) headerRef.value.scrollLeft = scroller.scrollLeft;
+  if (useCanvasGridRows.value) syncCanvasViewport();
+}
+
+function scrollCanvasRowIntoView(rowIndex: number, block: "nearest" | "start") {
+  const target = Math.max(0, Math.min(displayItems.value.length - 1, rowIndex));
+  const scroller = canvasScrollerElement();
+  if (!scroller) return;
+  const rowTop = target * CANVAS_DATA_GRID_ROW_HEIGHT;
+  const rowBottom = rowTop + CANVAS_DATA_GRID_ROW_HEIGHT;
+  if (block === "start" || rowTop < scroller.scrollTop) {
+    scroller.scrollTop = rowTop;
+  } else if (rowBottom > scroller.scrollTop + scroller.clientHeight) {
+    scroller.scrollTop = Math.max(0, rowBottom - scroller.clientHeight);
+  }
+  syncCanvasViewport();
 }
 
 function scrollGridRowIntoView(rowIndex: number) {
   const target = Math.max(0, Math.min(displayItems.value.length - 1, rowIndex));
   nextTick(() => {
+    if (useCanvasGridRows.value) {
+      scrollCanvasRowIntoView(target, "start");
+      return;
+    }
     const scroller = scrollerRef.value;
     if (scroller && !(scroller instanceof HTMLElement)) {
       scroller.scrollToItem?.(target);

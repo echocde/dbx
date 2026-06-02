@@ -249,8 +249,6 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
     ctx.beginPath();
     ctx.moveTo(rowNumberWidth + 0.5, y);
     ctx.lineTo(rowNumberWidth + 0.5, y + CANVAS_DATA_GRID_ROW_HEIGHT);
-    ctx.moveTo(0, y + CANVAS_DATA_GRID_ROW_HEIGHT - 0.5);
-    ctx.lineTo(width, y + CANVAS_DATA_GRID_ROW_HEIGHT - 0.5);
     ctx.stroke();
 
     const rowNumberText =
@@ -317,16 +315,12 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
           ctx.fillRect(clippedX, y, cellPaintWidth, CANVAS_DATA_GRID_ROW_HEIGHT);
         }
         if (isSearchMatch) {
-          ctx.globalAlpha = 1;
           ctx.fillStyle = searchFill;
           ctx.fillRect(clippedX, y, cellPaintWidth, CANVAS_DATA_GRID_ROW_HEIGHT);
-          ctx.globalAlpha = item.isDeleted ? 0.7 : 1;
         }
         if (isCurrentSearchMatch) {
-          ctx.globalAlpha = 1;
           ctx.fillStyle = currentSearchFill;
           ctx.fillRect(clippedX, y, cellPaintWidth, CANVAS_DATA_GRID_ROW_HEIGHT);
-          ctx.globalAlpha = item.isDeleted ? 0.7 : 1;
         }
 
         ctx.save();
@@ -356,9 +350,30 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
         setCanvasNumericVariant(ctx, "normal");
         ctx.font = normalFont;
 
-        if (selectedBorderVisual) {
+        ctx.strokeStyle = theme.border;
+        ctx.beginPath();
+        ctx.moveTo(x + colWidth - 0.5, y);
+        ctx.lineTo(x + colWidth - 0.5, y + CANVAS_DATA_GRID_ROW_HEIGHT);
+        ctx.stroke();
+
+        if (selectedBorderVisual && cellPaintWidth >= 2) {
+          const selectedLeftX = clippedX + 0.5;
+          const selectedRightX = clippedX + cellPaintWidth - 1.5;
+          const selectedTopY = y + 0.5;
+          const selectedBottomY = y + CANVAS_DATA_GRID_ROW_HEIGHT - 1.5;
           ctx.strokeStyle = theme.cellSelectedBorder;
-          ctx.strokeRect(clippedX + 0.5, y + 0.5, Math.max(0, cellPaintWidth - 1), CANVAS_DATA_GRID_ROW_HEIGHT - 1);
+          ctx.beginPath();
+          if (!rowSelectionVisual) {
+            ctx.moveTo(selectedLeftX, selectedTopY);
+            ctx.lineTo(selectedRightX, selectedTopY);
+            ctx.moveTo(selectedLeftX, selectedBottomY);
+            ctx.lineTo(selectedRightX, selectedBottomY);
+          }
+          ctx.moveTo(selectedLeftX, selectedTopY);
+          ctx.lineTo(selectedLeftX, selectedBottomY);
+          ctx.moveTo(selectedRightX, selectedTopY);
+          ctx.lineTo(selectedRightX, selectedBottomY);
+          ctx.stroke();
         }
 
         if (isCurrentSearchMatch) {
@@ -367,14 +382,15 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
           ctx.strokeRect(clippedX + 1, y + 1, Math.max(0, cellPaintWidth - 2), CANVAS_DATA_GRID_ROW_HEIGHT - 2);
           ctx.lineWidth = 1;
         }
-
-        ctx.strokeStyle = theme.border;
-        ctx.beginPath();
-        ctx.moveTo(x + colWidth - 0.5, y);
-        ctx.lineTo(x + colWidth - 0.5, y + CANVAS_DATA_GRID_ROW_HEIGHT);
-        ctx.stroke();
       }
       x += colWidth;
+    }
+    if (!isRowSelected(item.id)) {
+      ctx.strokeStyle = theme.border;
+      ctx.beginPath();
+      ctx.moveTo(0, y + CANVAS_DATA_GRID_ROW_HEIGHT - 0.5);
+      ctx.lineTo(width, y + CANVAS_DATA_GRID_ROW_HEIGHT - 0.5);
+      ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }

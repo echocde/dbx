@@ -59,10 +59,11 @@ export function resolveDataGridPaintTheme(options: {
   const destructive = cssVarColor(getVar, "--destructive", "oklch(0.6 0.22 25)");
   const accent = cssVarColor(getVar, "--accent", isDark ? "oklch(0.269 0 0)" : "oklch(0.97 0 0)");
   const yellow500 = "oklch(0.795 0.184 86.047)";
+  const activeSurface = isDark ? "rgb(64 64 64)" : `color-mix(in oklab, ${primary} 10%, ${background})`;
   const rowMuted = `color-mix(in oklab, ${muted} 30%, transparent)`;
   const rowNew = `color-mix(in oklab, ${primary} 5%, transparent)`;
   const rowDeleted = `color-mix(in oklab, ${destructive} 5%, transparent)`;
-  const cellActive = `color-mix(in oklab, ${primary} 15%, transparent)`;
+  const cellActive = activeSurface;
   const cellDirty = `color-mix(in oklab, ${yellow500} 10%, transparent)`;
   const cellSelected = `color-mix(in oklab, ${primary} 25%, transparent)`;
   const cellSelectedDirty = `color-mix(in oklab, oklch(0.8 0.15 85) 30%, color-mix(in oklab, ${primary} 18%, transparent))`;
@@ -75,7 +76,7 @@ export function resolveDataGridPaintTheme(options: {
   const rowNumberNew = `color-mix(in oklab, rgb(16 185 129) 15%, ${background})`;
   const rowNumberEdited = `color-mix(in oklab, rgb(245 158 11) 15%, ${background})`;
   const rowNumberDeleted = `color-mix(in oklab, ${destructive} 15%, ${background})`;
-  const rowNumberActive = `color-mix(in oklab, ${primary} 15%, ${background})`;
+  const rowNumberActive = activeSurface;
   const rowNumberSelected = `color-mix(in oklab, ${primary} 25%, ${background})`;
 
   return {
