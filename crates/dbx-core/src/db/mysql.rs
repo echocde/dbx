@@ -998,9 +998,14 @@ pub async fn execute_query_on_conn_with_max_rows(
 
 fn is_result_set_query(sql: &str) -> bool {
     starts_with_executable_sql_keyword(sql, &["SELECT", "SHOW", "DESCRIBE", "EXPLAIN", "WITH"])
+        || is_admin_show_query(sql)
 }
 
 fn requires_text_protocol_query(sql: &str) -> bool {
+    if is_admin_show_query(sql) {
+        return true;
+    }
+
     if !starts_with_executable_sql_keyword(sql, &["SHOW"]) {
         return false;
     }
@@ -1018,6 +1023,66 @@ fn requires_text_protocol_query(sql: &str) -> bool {
             | ["show", "slave", "status"]
             | ["show", "replica", "status"]
     )
+}
+
+fn is_admin_show_query(sql: &str) -> bool {
+    let tokens = leading_sql_word_tokens(sql, 2);
+    tokens.get(0).is_some_and(|token| token == "admin") && tokens.get(1).is_some_and(|token| token == "show")
+}
+
+fn leading_sql_word_tokens(sql: &str, limit: usize) -> Vec<String> {
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    let mut tokens = Vec::new();
+
+    while i < bytes.len() && tokens.len() < limit {
+        i = skip_sql_whitespace_and_comments(bytes, i);
+        let start = i;
+        while i < bytes.len() && (bytes[i].is_ascii_alphabetic() || bytes[i] == b'_') {
+            i += 1;
+        }
+        if i == start {
+            break;
+        }
+        tokens.push(sql[start..i].to_ascii_lowercase());
+    }
+
+    tokens
+}
+
+fn skip_sql_whitespace_and_comments(bytes: &[u8], mut i: usize) -> usize {
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+
+        if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
+            i += 2;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if i < bytes.len() && bytes[i] == b'#' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(bytes.len());
+            continue;
+        }
+
+        return i;
+    }
 }
 
 pub async fn list_indexes(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<IndexInfo>, String> {
@@ -1117,6 +1182,27 @@ mod tests {
     #[test]
     fn mysql_desc_queries_are_treated_as_result_sets() {
         assert!(is_result_set_query("DESC users"));
+    }
+
+    #[test]
+    fn mysql_admin_show_queries_are_treated_as_result_sets() {
+        let sql = "ADMIN SHOW FRONTEND CONFIG LIKE '%default_replication_num%'";
+
+        assert!(is_result_set_query(sql));
+        assert!(requires_text_protocol_query(sql));
+    }
+
+    #[test]
+    fn mysql_admin_show_detection_skips_leading_comments() {
+        let sql = "-- inspect FE config\nADMIN /* StarRocks */ SHOW FRONTEND CONFIG";
+
+        assert!(is_result_set_query(sql));
+        assert!(requires_text_protocol_query(sql));
+    }
+
+    #[test]
+    fn mysql_admin_set_queries_are_not_treated_as_result_sets() {
+        assert!(!is_result_set_query("ADMIN SET FRONTEND CONFIG ('default_replication_num' = '1')"));
     }
 
     #[test]
