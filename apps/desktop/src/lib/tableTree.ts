@@ -212,6 +212,43 @@ export function sortDatabaseObjectsByName<T>(items: readonly T[], getName: (item
   return [...items].sort((left, right) => databaseObjectNameCollator.compare(getName(left), getName(right)));
 }
 
+export function mergeTableInfosIntoObjects(
+  objects: readonly ObjectInfo[],
+  tables: readonly TableInfo[],
+  schema?: string,
+): ObjectInfo[] {
+  const merged = [...objects];
+  const seen = new Set(
+    merged.map((obj) => {
+      const name = normalizeDatabaseObjectName(obj.name);
+      const objectSchema = obj.schema ? normalizeDatabaseObjectName(obj.schema) : schema || "";
+      return `${normalizeObjectType(obj.object_type)}\0${objectSchema.toLowerCase()}\0${name.toLowerCase()}`;
+    }),
+  );
+
+  for (const table of tables) {
+    const objectType = normalizeObjectType(table.table_type);
+    if (objectType !== "TABLE" && objectType !== "VIEW") continue;
+    const name = normalizeDatabaseObjectName(table.name);
+    if (!name) continue;
+    const key = `${objectType}\0${(schema || "").toLowerCase()}\0${name.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push({
+      name,
+      object_type: objectType,
+      schema,
+      comment: table.comment,
+      created_at: undefined,
+      updated_at: undefined,
+      parent_schema: table.parent_schema,
+      parent_name: table.parent_name,
+    });
+  }
+
+  return merged;
+}
+
 function buildPartitionTree(entries: TableTreeEntry[], connectionId: string, database: string): TreeNode[] {
   const orderedEntries = sortDatabaseObjectsByName(entries, (entry) => entry.node.label);
   const byKey = new Map<string, TableTreeEntry>();

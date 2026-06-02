@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGroupedObjectTreeNodes, buildTableTreeNodes } from "../../apps/desktop/src/lib/tableTree.ts";
+import {
+  buildGroupedObjectTreeNodes,
+  buildTableTreeNodes,
+  mergeTableInfosIntoObjects,
+} from "../../apps/desktop/src/lib/tableTree.ts";
 import type { ObjectInfo, TableInfo, TreeNode } from "../../apps/desktop/src/types/database.ts";
 
 function table(name: string, parent?: string): TableInfo {
@@ -161,6 +165,31 @@ test("buildGroupedObjectTreeNodes groups Oracle packages and package bodies", ()
     [
       { label: "PAYROLL", type: "package", id: "conn:app:HR:__packages:HR:PAYROLL:PACKAGE" },
       { label: "PAYROLL", type: "package-body", id: "conn:app:HR:__packages:HR:PAYROLL:PACKAGE_BODY" },
+    ],
+  );
+});
+
+test("mergeTableInfosIntoObjects restores views missing from object metadata", () => {
+  const merged = mergeTableInfosIntoObjects(
+    [object("orders")],
+    [
+      table("orders"),
+      {
+        name: "active_orders",
+        table_type: "VIEW",
+        comment: "current orders",
+        parent_schema: null,
+        parent_name: null,
+      },
+    ],
+    "public",
+  );
+
+  assert.deepEqual(
+    merged.map((item) => ({ name: item.name, type: item.object_type, schema: item.schema, comment: item.comment })),
+    [
+      { name: "orders", type: "TABLE", schema: "public", comment: null },
+      { name: "active_orders", type: "VIEW", schema: "public", comment: "current orders" },
     ],
   );
 });

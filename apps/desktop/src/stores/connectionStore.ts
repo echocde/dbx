@@ -35,6 +35,7 @@ import {
   buildGroupedObjectTreeNodes,
   buildTableTreeNodes,
   expandCachedObjectBrowserNodes,
+  mergeTableInfosIntoObjects,
   objectGroupRefreshParentId,
   tablePartitionGroups,
 } from "@/lib/tableTree";
@@ -1060,8 +1061,17 @@ export const useConnectionStore = defineStore("connection", () => {
         children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
       } else {
         try {
-          const objects = await api.listObjects(connectionId, database, querySchema);
-          children = buildGroupedObjectTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, objects });
+          const [objects, tables] = await Promise.all([
+            api.listObjects(connectionId, database, querySchema),
+            api.listTables(connectionId, database, querySchema),
+          ]);
+          children = buildGroupedObjectTreeNodes({
+            nodeId,
+            connectionId,
+            database,
+            schema: effectiveSchema,
+            objects: mergeTableInfosIntoObjects(objects, tables, effectiveSchema),
+          });
         } catch {
           const tables = await api.listTables(connectionId, database, querySchema);
           children = buildTableTreeNodes({ nodeId, connectionId, database, schema: effectiveSchema, tables });
