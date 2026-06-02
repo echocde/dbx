@@ -1,5 +1,6 @@
 use mongodb::{
     bson::{doc, oid::ObjectId, Bson, Document},
+    options::ClientOptions,
     Client,
 };
 use serde::{Deserialize, Serialize};
@@ -15,16 +16,20 @@ pub struct MongoDocumentResult {
 
 pub async fn connect(url: &str, timeout: Duration) -> Result<Client, String> {
     with_connection_timeout("MongoDB", timeout, async {
-        Client::with_uri_str(url).await.map_err(|e| format!("MongoDB connection failed: {e}"))
+        let mut options = ClientOptions::parse(url).await.map_err(|e| format!("MongoDB connection failed: {e}"))?;
+        options.connect_timeout = Some(timeout);
+        options.server_selection_timeout = Some(timeout);
+        Client::with_options(options).map_err(|e| format!("MongoDB connection failed: {e}"))
     })
     .await
 }
 
-pub async fn test_connection(client: &Client, timeout: Duration, database: Option<&str>) -> Result<(), String> {
+pub async fn test_connection(client: &Client, _timeout: Duration, database: Option<&str>) -> Result<(), String> {
     let database = database.map(str::trim).filter(|value| !value.is_empty()).unwrap_or("admin");
-    tokio::time::timeout(timeout, client.database(database).run_command(doc! { "ping": 1 }))
+    client
+        .database(database)
+        .run_command(doc! { "ping": 1 })
         .await
-        .map_err(|_| format!("MongoDB connection timed out ({}s)", timeout.as_secs()))?
         .map(|_| ())
         .map_err(|e| format!("MongoDB connection failed: {e}"))
 }
