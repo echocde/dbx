@@ -308,6 +308,11 @@ const columnCommentMap = computed(() => {
     for (const col of props.tableMeta.columns) {
       if (col.comment) map.set(col.name, col.comment);
     }
+    for (const col of props.tableMeta.columns) {
+      if (!col.comment) continue;
+      const normalizedName = col.name.toLowerCase();
+      if (!map.has(normalizedName)) map.set(normalizedName, col.comment);
+    }
   }
   return map;
 });

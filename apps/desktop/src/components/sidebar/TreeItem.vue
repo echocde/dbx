@@ -751,38 +751,45 @@ async function openData() {
     });
     queryStore.updateSql(tabId, sql);
 
-    const loadTableMeta = async () => {
-      try {
-        console.info("[DBX][openData:get-columns:start]", {
-          traceId,
-          database: node.database,
-          schema: querySchema,
-          table: node.label,
-          elapsed: elapsed(),
-        });
-        const columns = await api.getColumns(node.connectionId, node.database, querySchema, node.label);
-        console.info("[DBX][openData:get-columns:done]", {
-          traceId,
-          columnCount: columns.length,
-          primaryKeys: columns.filter((column) => column.is_primary_key).map((column) => column.name),
-          elapsed: elapsed(),
-        });
-        const pks = editablePrimaryKeys(config.db_type, columns);
-        queryStore.setTableMeta(tabId, {
-          schema: node.schema,
-          tableName: node.label,
-          columns,
-          primaryKeys: pks,
-        });
-      } catch (error) {
-        console.warn("[DBX][openData:get-columns:error]", { traceId, elapsed: elapsed(), error });
-      }
-    };
+    queryStore.setTableMeta(tabId, {
+      schema: node.schema,
+      tableName: node.label,
+      columns: [],
+      primaryKeys: [],
+    });
+
+    console.info("[DBX][openData:get-columns:start]", {
+      traceId,
+      database: node.database,
+      schema: querySchema,
+      table: node.label,
+      elapsed: elapsed(),
+    });
+    const columnsPromise = api.getColumns(node.connectionId, node.database, querySchema, node.label);
 
     console.info("[DBX][openData:execute:start]", { traceId, tabId, elapsed: elapsed() });
-    await queryStore.executeTabSql(tabId, sql);
+    const dataPromise = queryStore.executeTabSql(tabId, sql);
+    const [columnsResult, dataResult] = await Promise.allSettled([columnsPromise, dataPromise]);
+    if (columnsResult.status === "fulfilled") {
+      const columns = columnsResult.value;
+      console.info("[DBX][openData:get-columns:done]", {
+        traceId,
+        columnCount: columns.length,
+        primaryKeys: columns.filter((column) => column.is_primary_key).map((column) => column.name),
+        elapsed: elapsed(),
+      });
+      const pks = editablePrimaryKeys(config.db_type, columns);
+      queryStore.setTableMeta(tabId, {
+        schema: node.schema,
+        tableName: node.label,
+        columns,
+        primaryKeys: pks,
+      });
+    } else {
+      console.warn("[DBX][openData:get-columns:error]", { traceId, elapsed: elapsed(), error: columnsResult.reason });
+    }
+    if (dataResult.status === "rejected") throw dataResult.reason;
     console.info("[DBX][openData:execute:done]", { traceId, tabId, elapsed: elapsed() });
-    void loadTableMeta();
   } catch (e: any) {
     console.error("[DBX][openData:error]", { traceId, elapsed: elapsed(), error: e });
     queryStore.setErrorResult(tabId, e);
