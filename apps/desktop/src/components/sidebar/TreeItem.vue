@@ -90,6 +90,7 @@ import {
 } from "@/lib/treeNodeClick";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
+import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
 import {
   buildCreateDatabaseSql,
   buildDuckDbAttachDatabaseSql,
@@ -2062,7 +2063,10 @@ async function exportData(format: "csv" | "json" | "sql") {
       schema: node.schema,
       tableName: node.label,
       columns: queryColumns,
-      executePage: (sql) => api.executeQuery(connectionId, database, sql),
+      executePage: (sql) =>
+        api.executeQuery(connectionId, database, sql, undefined, undefined, {
+          timeoutSecs: queryTimeoutSecsForConnection(config),
+        }),
     });
 
     if (format === "csv") {
@@ -2132,7 +2136,10 @@ async function exportDataXlsx() {
       schema: node.schema,
       tableName: node.label,
       columns: queryColumns,
-      executePage: (sql) => api.executeQuery(connectionId, database, sql),
+      executePage: (sql) =>
+        api.executeQuery(connectionId, database, sql, undefined, undefined, {
+          timeoutSecs: queryTimeoutSecsForConnection(config),
+        }),
     });
 
     let outputPath = `${node.label}.xlsx`;

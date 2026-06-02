@@ -660,8 +660,9 @@ test("query result export fetches every paginated page", async () => {
   const originalFetch = globalThis.fetch;
   const preparedOffsets: number[] = [];
   const executedSqls: string[] = [];
+  const timeoutSecs: unknown[] = [];
 
-  connectionStore.addEphemeralConnection(conn("conn-1"));
+  connectionStore.addEphemeralConnection({ ...conn("conn-1"), query_timeout_secs: 600 });
   const tabId = store.createTab("conn-1", "db");
   const tab = store.tabs.find((item) => item.id === tabId);
   assert.ok(tab);
@@ -698,6 +699,7 @@ test("query result export fetches every paginated page", async () => {
     if (url === "/api/query/execute-multi") {
       const body = JSON.parse(String(init?.body ?? "{}"));
       executedSqls.push(body.sql);
+      timeoutSecs.push(body.timeoutSecs);
       const rows = String(body.sql).includes("offset:0")
         ? Array.from({ length: 10_000 }, (_, index) => [index + 1])
         : [[10_001], [10_002]];
@@ -714,6 +716,7 @@ test("query result export fetches every paginated page", async () => {
 
     assert.deepEqual(preparedOffsets, [0, 10_000]);
     assert.deepEqual(executedSqls, ["select id from users /* offset:0 */", "select id from users /* offset:10000 */"]);
+    assert.deepEqual(timeoutSecs, [600, 600]);
     assert.equal(exported?.rows.length, 10_002);
     assert.deepEqual(exported?.rows.at(-1), [10_002]);
   } finally {

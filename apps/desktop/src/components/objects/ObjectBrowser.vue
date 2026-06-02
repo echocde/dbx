@@ -72,6 +72,7 @@ import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
+import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryStore } from "@/stores/queryStore";
@@ -785,7 +786,10 @@ async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql")
       schema,
       tableName: row.name,
       columns: queryColumns,
-      executePage: (sql) => api.executeQuery(props.connection.id, props.database, sql),
+      executePage: (sql) =>
+        api.executeQuery(props.connection.id, props.database, sql, undefined, undefined, {
+          timeoutSecs: queryTimeoutSecsForConnection(props.connection),
+        }),
     });
 
     if (format === "csv") {
@@ -848,7 +852,10 @@ async function exportDataXlsx(row: ObjectBrowserRow) {
       schema,
       tableName: row.name,
       columns: queryColumns,
-      executePage: (sql) => api.executeQuery(props.connection.id, props.database, sql),
+      executePage: (sql) =>
+        api.executeQuery(props.connection.id, props.database, sql, undefined, undefined, {
+          timeoutSecs: queryTimeoutSecsForConnection(props.connection),
+        }),
     });
 
     let outputPath = `${row.name}.xlsx`;
