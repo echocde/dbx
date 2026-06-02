@@ -597,9 +597,73 @@ public final class DbxJdbcPlugin {
 
     private static String oracleEffectiveSchema(Connection conn, String schema) throws SQLException {
         if (schema != null && !schema.isBlank()) {
-            return schema.toUpperCase();
+            return oracleResolveOwner(conn, schema);
         }
-        return conn.getMetaData().getUserName();
+        String username = conn.getMetaData().getUserName();
+        return username == null || username.isBlank() ? username : oracleResolveOwner(conn, username);
+    }
+
+    private static String oracleResolveOwner(Connection conn, String owner) throws SQLException {
+        String exact = oracleFindIdentifier(
+            conn,
+            "SELECT username FROM all_users WHERE username = ?",
+            owner
+        );
+        if (exact != null) {
+            return exact;
+        }
+        String upper = owner.toUpperCase();
+        exact = oracleFindIdentifier(
+            conn,
+            "SELECT username FROM all_users WHERE username = ?",
+            upper
+        );
+        return exact == null ? owner : exact;
+    }
+
+    private static String oracleResolveTable(Connection conn, String owner, String table) throws SQLException {
+        String exact = oracleFindIdentifier(
+            conn,
+            "SELECT table_name FROM all_tab_comments WHERE owner = ? AND table_name = ?",
+            owner,
+            table
+        );
+        if (exact != null) {
+            return exact;
+        }
+        String upper = table.toUpperCase();
+        exact = oracleFindIdentifier(
+            conn,
+            "SELECT table_name FROM all_tab_comments WHERE owner = ? AND table_name = ?",
+            owner,
+            upper
+        );
+        return exact == null ? table : exact;
+    }
+
+    private static String oracleFindIdentifier(Connection conn, String sql, String first) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, first);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String oracleFindIdentifier(Connection conn, String sql, String first, String second) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, first);
+            ps.setString(2, second);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        }
+        return null;
     }
 
     private static JsonNode oracleListSchemas(Connection conn) throws SQLException {
@@ -736,7 +800,8 @@ public final class DbxJdbcPlugin {
 
     private static JsonNode oracleGetColumns(Connection conn, String owner, String table) throws SQLException {
         ArrayNode result = MAPPER.createArrayNode();
-        Set<String> pks = oraclePrimaryKeys(conn, owner, table);
+        String resolvedTable = oracleResolveTable(conn, owner, table);
+        Set<String> pks = oraclePrimaryKeys(conn, owner, resolvedTable);
         String sql =
             "SELECT c.column_name, c.data_type, c.nullable, c.data_default, " +
             "c.data_precision, c.data_scale, c.char_length, cc.comments " +
@@ -745,7 +810,7 @@ public final class DbxJdbcPlugin {
             "WHERE c.owner = ? AND c.table_name = ? ORDER BY c.column_id";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, owner);
-            ps.setString(2, table);
+            ps.setString(2, resolvedTable);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String name = rs.getString("column_name");

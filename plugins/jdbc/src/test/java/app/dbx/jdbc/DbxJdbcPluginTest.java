@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -216,6 +218,36 @@ final class DbxJdbcPluginTest {
         assertEquals("PACKAGE_BODY", method.invoke(null, "PACKAGE BODY"));
         assertEquals("PACKAGE_BODY", method.invoke(null, "PACKAGE_BODY"));
         assertEquals("PACKAGE", method.invoke(null, "PACKAGE"));
+    }
+
+    @Test
+    void oracleEffectiveSchemaUsesExactOwnerBeforeUppercaseFallback() throws Exception {
+        Method method = DbxJdbcPlugin.class.getDeclaredMethod("oracleEffectiveSchema", Connection.class, String.class);
+        method.setAccessible(true);
+
+        try (Connection conn = DriverManager.getConnection("jdbc:h2:mem:dbx_oracle_owner;DB_CLOSE_DELAY=-1", "sa", "")) {
+            conn.createStatement().execute("CREATE TABLE all_users (username VARCHAR(64))");
+            conn.createStatement().execute("INSERT INTO all_users(username) VALUES ('mixed_owner'), ('SYSDBA')");
+
+            assertEquals("mixed_owner", method.invoke(null, conn, "mixed_owner"));
+            assertEquals("SYSDBA", method.invoke(null, conn, "sysdba"));
+        }
+    }
+
+    @Test
+    void oracleResolveTableUsesExactNameBeforeUppercaseFallback() throws Exception {
+        Method method = DbxJdbcPlugin.class.getDeclaredMethod("oracleResolveTable", Connection.class, String.class, String.class);
+        method.setAccessible(true);
+
+        try (Connection conn = DriverManager.getConnection("jdbc:h2:mem:dbx_oracle_table;DB_CLOSE_DELAY=-1", "sa", "")) {
+            conn.createStatement().execute("CREATE TABLE all_tab_comments (owner VARCHAR(64), table_name VARCHAR(64))");
+            conn.createStatement().execute(
+                "INSERT INTO all_tab_comments(owner, table_name) VALUES ('SYSDBA', 'mixed_table'), ('SYSDBA', 'ORDERS')"
+            );
+
+            assertEquals("mixed_table", method.invoke(null, conn, "SYSDBA", "mixed_table"));
+            assertEquals("ORDERS", method.invoke(null, conn, "SYSDBA", "orders"));
+        }
     }
 
     private static void createPeopleTable() throws Exception {
