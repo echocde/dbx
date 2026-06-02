@@ -216,6 +216,7 @@ public final class DbxJdbcPlugin {
         if (password != null) {
             properties.setProperty("password", password);
         }
+        applyConnectTimeout(connection, properties);
         if (isOracleUrl(url)) {
             properties.putIfAbsent("remarksReporting", "false");
             properties.putIfAbsent("restrictGetTables", "true");
@@ -225,6 +226,14 @@ public final class DbxJdbcPlugin {
         sharedConnection = DriverManager.getConnection(url, properties);
         sharedConnectionKey = key;
         return sharedConnection;
+    }
+
+    private static void applyConnectTimeout(JsonNode connection, Properties properties) {
+        int connectTimeoutSecs = positiveInt(connection, "connect_timeout_secs", 30);
+        DriverManager.setLoginTimeout(connectTimeoutSecs);
+        String value = Integer.toString(connectTimeoutSecs);
+        properties.putIfAbsent("loginTimeout", value);
+        properties.putIfAbsent("connectTimeout", value);
     }
 
     private static JsonNode executeQuery(

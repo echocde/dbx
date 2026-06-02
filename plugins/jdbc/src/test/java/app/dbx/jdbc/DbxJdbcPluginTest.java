@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.lang.reflect.Method;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,7 +18,8 @@ final class DbxJdbcPluginTest {
     private static final String CONNECTION = """
         {
           "connection_string": "jdbc:h2:mem:dbx_ctx;DB_CLOSE_DELAY=-1",
-          "username": "sa"
+          "username": "sa",
+          "connect_timeout_secs": 30
         }
         """;
 
@@ -103,6 +105,21 @@ final class DbxJdbcPluginTest {
         assertFalse(response.has("error"), response.toString());
         assertEquals(1, response.path("result").path("rows").size());
         assertEquals(true, response.path("result").path("truncated").asBoolean());
+    }
+
+    @Test
+    void connectTimeoutIsMappedToDriverProperties() throws Exception {
+        Method method = DbxJdbcPlugin.class.getDeclaredMethod("applyConnectTimeout", JsonNode.class, Properties.class);
+        method.setAccessible(true);
+        Properties properties = new Properties();
+        JsonNode connection = MAPPER.readTree("""
+            { "connect_timeout_secs": 45 }
+            """);
+
+        method.invoke(null, connection, properties);
+
+        assertEquals("45", properties.getProperty("loginTimeout"));
+        assertEquals("45", properties.getProperty("connectTimeout"));
     }
 
     @Test

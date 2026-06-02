@@ -141,12 +141,30 @@ impl PluginRegistry {
     where
         T: DeserializeOwned,
     {
+        self.invoke_driver_with_env_and_timeout(driver_id, method, params, env, Some(PLUGIN_REQUEST_TIMEOUT)).await
+    }
+
+    pub async fn invoke_driver_with_env_and_timeout<T>(
+        &self,
+        driver_id: &str,
+        method: &str,
+        params: serde_json::Value,
+        env: PluginRuntimeEnv,
+        timeout_duration: Option<Duration>,
+    ) -> Result<T, String>
+    where
+        T: DeserializeOwned,
+    {
         let plugin =
             self.find_driver(driver_id)?.ok_or_else(|| format!("Plugin driver '{driver_id}' is not installed"))?;
         ensure_plugin_protocol_compatible(&plugin.manifest)?;
-        timeout(PLUGIN_REQUEST_TIMEOUT, invoke_plugin(&plugin, driver_id, method, params, &env)).await.map_err(
-            |_| format!("Plugin '{}' timed out after {} seconds", plugin.manifest.id, PLUGIN_REQUEST_TIMEOUT.as_secs()),
-        )?
+        let invoke = invoke_plugin(&plugin, driver_id, method, params, &env);
+        match timeout_duration {
+            Some(duration) => timeout(duration, invoke).await.map_err(|_| {
+                format!("Plugin '{}' timed out after {} seconds", plugin.manifest.id, duration.as_secs())
+            })?,
+            None => invoke.await,
+        }
     }
 
     pub async fn start_driver_session(&self, driver_id: &str) -> Result<Arc<PluginDriverSession>, String> {
