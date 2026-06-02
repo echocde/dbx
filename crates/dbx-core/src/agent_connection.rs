@@ -78,7 +78,11 @@ pub fn mongo_legacy_error_with_auth_hint(err: &str) -> String {
 
 fn oracle_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> String {
     if let Some(connection_string) = config.connection_string.as_deref().filter(|value| !value.trim().is_empty()) {
-        return crate::models::connection::rewrite_jdbc_url_host(connection_string.trim(), host, port);
+        let connection_string = connection_string.trim();
+        if host == config.host && port == config.port {
+            return connection_string.to_string();
+        }
+        return crate::models::connection::rewrite_jdbc_url_host(connection_string, host, port);
     }
 
     let database = database.trim();
@@ -288,6 +292,24 @@ mod tests {
         assert_eq!(
             params["connection_string"],
             "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=127.0.0.1)(PORT=11521))(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
+        );
+    }
+
+    #[test]
+    fn oracle_url_preserves_custom_jdbc_descriptor_without_forwarding() {
+        let mut cfg = config(DatabaseType::Oracle, Some("ORCL"));
+        cfg.host = "form-host.example.com".to_string();
+        cfg.port = 1521;
+        cfg.connection_string = Some(
+            "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=descriptor-host.example.com)(PORT=1522))(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
+                .to_string(),
+        );
+
+        let params = agent_connect_params(&cfg, "form-host.example.com", 1521, "ORCL");
+
+        assert_eq!(
+            params["connection_string"],
+            "jdbc:oracle:thin:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=descriptor-host.example.com)(PORT=1522))(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
         );
     }
 
