@@ -98,6 +98,13 @@ test("keeps saved data grid header display settings", () => {
   assert.equal(settings.compactColumnHeaderActions, false);
 });
 
+test("normalizes data grid render mode", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.dataGridRenderMode, "dom");
+  assert.equal(normalizeEditorSettings({}).dataGridRenderMode, "dom");
+  assert.equal(normalizeEditorSettings({ dataGridRenderMode: "canvas" as any }).dataGridRenderMode, "canvas");
+  assert.equal(normalizeEditorSettings({ dataGridRenderMode: "unknown" as any }).dataGridRenderMode, "dom");
+});
+
 test("normalizes table structure editor density", () => {
   assert.equal(DEFAULT_EDITOR_SETTINGS.structureEditorDensity, "compact");
   assert.equal(normalizeEditorSettings({}).structureEditorDensity, "compact");
