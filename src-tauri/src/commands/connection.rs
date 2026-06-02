@@ -6,8 +6,8 @@ pub use dbx_core::agent_connection::{
     oracle_auth_fallback_profiles, should_retry_oracle_with_10g_driver,
 };
 pub use dbx_core::connection::{
-    connection_url_for_endpoint, expand_tilde, metadata_connection_config, probe_connection_endpoint,
-    redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
+    connect_mysql_metadata_pool, connection_url_for_endpoint, expand_tilde, metadata_connection_config,
+    probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
 };
 use dbx_core::database_capabilities;
 use dbx_core::db;
@@ -434,13 +434,10 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
     let connect_timeout = std::time::Duration::from_secs(db_config.effective_connect_timeout_secs());
 
     let pool = match db_config.db_type {
-        DatabaseType::Mysql if db_config.needs_bare_mysql() => {
-            PoolKind::Mysql(db::mysql::connect_bare(&url, connect_timeout).await?, MysqlMode::Bare)
+        DatabaseType::Mysql => {
+            let (pool, mode) = connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout).await?;
+            PoolKind::Mysql(pool, mode)
         }
-        DatabaseType::Mysql => PoolKind::Mysql(
-            db::mysql::connect_with_ca_cert(&url, Some(&db_config.ca_cert_path), connect_timeout).await?,
-            MysqlMode::Normal,
-        ),
         DatabaseType::Doris | DatabaseType::StarRocks => {
             PoolKind::Mysql(db::mysql::connect_bare(&url, connect_timeout).await?, MysqlMode::Bare)
         }

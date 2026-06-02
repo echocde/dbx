@@ -90,6 +90,66 @@ pub fn database_connection_config(config: &ConnectionConfig, database: Option<&s
     db_config
 }
 
+pub async fn connect_mysql_metadata_pool(
+    config: &ConnectionConfig,
+    db_config: &ConnectionConfig,
+    host: &str,
+    port: u16,
+    connect_timeout: std::time::Duration,
+) -> Result<(db::mysql::MySqlPool, MysqlMode), String> {
+    let url = connection_url_for_endpoint(db_config, host, port);
+    if db_config.needs_bare_mysql() {
+        return match db::mysql::connect_bare(&url, connect_timeout).await {
+            Ok(pool) => Ok((pool, MysqlMode::Bare)),
+            Err(err) => {
+                let fallback_url = mysql_metadata_fallback_url(config, db_config, host, port);
+                if let Some(fallback_url) = fallback_url {
+                    log::info!(
+                        "MySQL metadata connection without a default database failed ({err}); retrying with configured default database."
+                    );
+                    db::mysql::connect_bare(&fallback_url, connect_timeout).await.map(|pool| (pool, MysqlMode::Bare))
+                } else {
+                    Err(err)
+                }
+            }
+        };
+    }
+
+    match db::mysql::connect_with_ca_cert(&url, Some(&db_config.ca_cert_path), connect_timeout).await {
+        Ok(pool) => {
+            let mode = detect_ob_oracle_mode(config, &pool).await;
+            Ok((pool, mode))
+        }
+        Err(err) => {
+            let fallback_url = mysql_metadata_fallback_url(config, db_config, host, port);
+            if let Some(fallback_url) = fallback_url {
+                log::info!(
+                    "MySQL metadata connection without a default database failed ({err}); retrying with configured default database."
+                );
+                let pool =
+                    db::mysql::connect_with_ca_cert(&fallback_url, Some(&config.ca_cert_path), connect_timeout).await?;
+                let mode = detect_ob_oracle_mode(config, &pool).await;
+                Ok((pool, mode))
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
+fn mysql_metadata_fallback_url(
+    config: &ConnectionConfig,
+    db_config: &ConnectionConfig,
+    host: &str,
+    port: u16,
+) -> Option<String> {
+    if db_config.db_type != DatabaseType::Mysql || db_config.effective_database().is_some() {
+        return None;
+    }
+    config.effective_database()?;
+    Some(connection_url_for_endpoint(config, host, port))
+}
+
 impl AppState {
     pub fn new(storage: Storage) -> Self {
         Self::new_with_plugin_dir(storage, default_plugin_dir())
@@ -210,13 +270,9 @@ impl AppState {
         let url = connection_url_for_endpoint(&db_config, &host, port);
         let connect_timeout = std::time::Duration::from_secs(db_config.effective_connect_timeout_secs());
         let pool = match db_config.db_type {
-            DatabaseType::Mysql if db_config.needs_bare_mysql() => {
-                PoolKind::Mysql(db::mysql::connect_bare(&url, connect_timeout).await?, MysqlMode::Bare)
-            }
             DatabaseType::Mysql => {
-                let pool =
-                    db::mysql::connect_with_ca_cert(&url, Some(&db_config.ca_cert_path), connect_timeout).await?;
-                let mode = detect_ob_oracle_mode(&db_config, &pool).await;
+                let (pool, mode) =
+                    connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout).await?;
                 PoolKind::Mysql(pool, mode)
             }
             DatabaseType::Doris | DatabaseType::StarRocks => {
@@ -952,7 +1008,7 @@ async fn detect_ob_oracle_mode(config: &ConnectionConfig, pool: &db::mysql::MySq
 mod tests {
     use super::{
         connection_url_for_endpoint, database_connection_config, metadata_connection_config,
-        redacted_connection_url_for_endpoint, uses_tcp_probe, AppState, PoolKind,
+        mysql_metadata_fallback_url, redacted_connection_url_for_endpoint, uses_tcp_probe, AppState, PoolKind,
     };
     use crate::agent_connection::{
         agent_connect_params, mongo_legacy_error_with_auth_hint, oracle_alternate_connect_config,
@@ -1393,6 +1449,25 @@ mod tests {
 
         assert_eq!(metadata.database, None);
         assert_eq!(metadata.db_type, DatabaseType::Mysql);
+    }
+
+    #[test]
+    fn mysql_metadata_fallback_uses_saved_default_database() {
+        let config = mysql_config(Some("app"));
+        let metadata = metadata_connection_config(&config);
+
+        assert_eq!(
+            mysql_metadata_fallback_url(&config, &metadata, &config.host, config.port),
+            Some("mysql://root:secret@127.0.0.1:3306/app?ssl-mode=preferred&charset=utf8mb4".to_string())
+        );
+    }
+
+    #[test]
+    fn mysql_metadata_fallback_is_unavailable_without_default_database() {
+        let config = mysql_config(None);
+        let metadata = metadata_connection_config(&config);
+
+        assert_eq!(mysql_metadata_fallback_url(&config, &metadata, &config.host, config.port), None);
     }
 
     #[test]
