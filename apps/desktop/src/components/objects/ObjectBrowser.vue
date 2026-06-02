@@ -781,6 +781,27 @@ async function exportData(row: ObjectBrowserRow, format: "csv" | "json" | "sql")
             (column) => column.name,
           )
         : undefined;
+
+    if (format === "csv" && isTauriRuntime()) {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const outputPath = await save({
+        defaultPath: `${row.name}.csv`,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+      if (!outputPath) return;
+      await api.exportTableDataCsv({
+        filePath: outputPath as string,
+        connectionId: props.connection.id,
+        database: props.database,
+        schema,
+        tableName: row.name,
+        columns: queryColumns,
+        timeoutSecs: queryTimeoutSecsForConnection(props.connection),
+      });
+      toast(t("grid.exported"));
+      return;
+    }
+
     const result = await fetchTableDataForExport({
       databaseType: props.connection.db_type,
       schema,

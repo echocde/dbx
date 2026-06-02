@@ -500,6 +500,7 @@ pub fn run() {
             commands::database_export::export_database_sql,
             commands::database_export::cancel_database_export,
             commands::csv_export::export_query_result_csv,
+            commands::csv_export::export_table_data_csv,
             commands::xlsx_export::export_query_result_xlsx,
             commands::text_export::export_query_result_json,
             commands::text_export::export_query_result_markdown,
