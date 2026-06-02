@@ -441,7 +441,7 @@ export default {
     copyFailed: "Copy failed: {message}",
     domRenderMode: "DOM",
     canvasRenderMode: "Canvas",
-    renderModeHint: "Switch between the stable DOM grid and experimental Canvas rendering.",
+    renderModeHint: "Switch between Canvas rendering and the DOM fallback grid.",
     filter: "Filter",
     filterBuilder: "Filters",
     filterBuilderTitle: "Filters",

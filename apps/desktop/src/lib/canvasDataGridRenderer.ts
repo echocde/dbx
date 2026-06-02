@@ -280,9 +280,10 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
         const rowSelectionVisual = rowCellsUseSelectionVisual(item.id);
         const isSingleSelectedCell =
           singleSelectedCell?.rowIndex === item.displayIndex && singleSelectedCell.visibleColIdx === visibleColIdx;
-        const selectedFillVisual = rowSelectionVisual || (selectedCell && !isSingleSelectedCell);
-        const selectedBorderVisual = rowSelectionVisual || selectedCell;
         const isDirtyCell = item.isDirtyCol[actualColIdx];
+        const selectedFillVisual =
+          rowSelectionVisual || (selectedCell && !isSingleSelectedCell && (!rowIsActive || isDirtyCell));
+        const selectedBorderVisual = rowSelectionVisual || selectedCell;
         const isSearchMatch = paintSearchMatches && searchMatchKeys.has(`${item.displayIndex}:${actualColIdx}`);
         const isCurrentSearchMatch =
           paintSearchMatches &&
@@ -363,12 +364,10 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
           const selectedBottomY = y + CANVAS_DATA_GRID_ROW_HEIGHT - 1.5;
           ctx.strokeStyle = theme.cellSelectedBorder;
           ctx.beginPath();
-          if (!rowSelectionVisual) {
-            ctx.moveTo(selectedLeftX, selectedTopY);
-            ctx.lineTo(selectedRightX, selectedTopY);
-            ctx.moveTo(selectedLeftX, selectedBottomY);
-            ctx.lineTo(selectedRightX, selectedBottomY);
-          }
+          ctx.moveTo(selectedLeftX, selectedTopY);
+          ctx.lineTo(selectedRightX, selectedTopY);
+          ctx.moveTo(selectedLeftX, selectedBottomY);
+          ctx.lineTo(selectedRightX, selectedBottomY);
           ctx.moveTo(selectedLeftX, selectedTopY);
           ctx.lineTo(selectedLeftX, selectedBottomY);
           ctx.moveTo(selectedRightX, selectedTopY);

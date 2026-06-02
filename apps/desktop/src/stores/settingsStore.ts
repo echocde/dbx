@@ -255,7 +255,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   mongoViewMode: "document",
   showColumnCommentsInHeader: false,
   compactColumnHeaderActions: true,
-  dataGridRenderMode: "dom",
+  dataGridRenderMode: "canvas",
   structureEditorDensity: "compact",
   tableInfoDrawerWidth: 320,
   cellDetailDrawerWidth: 320,

@@ -437,7 +437,7 @@ export default {
     copyFailed: "複製失敗：{message}",
     domRenderMode: "DOM",
     canvasRenderMode: "Canvas",
-    renderModeHint: "在穩定 DOM 表格和實驗性 Canvas 渲染之間切換。",
+    renderModeHint: "在 Canvas 渲染和 DOM 備援表格之間切換。",
     filter: "篩選",
     filterBuilder: "篩選器",
     filterBuilderTitle: "篩選器",

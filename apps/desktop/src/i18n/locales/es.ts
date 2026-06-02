@@ -434,7 +434,7 @@ export default {
     copyFailed: "Error al copiar: {message}",
     domRenderMode: "DOM",
     canvasRenderMode: "Canvas",
-    renderModeHint: "Alterna entre la cuadrícula DOM estable y el renderizado Canvas experimental.",
+    renderModeHint: "Alterna entre el renderizado Canvas y la cuadrícula DOM de respaldo.",
     filter: "Filtrar",
     filterBuilder: "Filtros",
     filterBuilderTitle: "Filtros",

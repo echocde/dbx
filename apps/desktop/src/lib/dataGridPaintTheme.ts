@@ -40,10 +40,22 @@ export function cssVarColor(getVar: (name: string) => string, name: string, fall
   return value.startsWith("#") || /^(rgb|hsl|oklch|oklab|lab|lch|color-mix)\(/.test(value) ? value : `hsl(${value})`;
 }
 
+function resolveCssVarReferences(value: string, getVar: (name: string) => string, depth = 0): string {
+  if (depth > 6 || !value.includes("var(")) return value;
+  return value.replace(/var\(\s*(--[\w-]+)(?:\s*,\s*([^)]+))?\s*\)/g, (_match, name: string, fallback?: string) => {
+    const resolved = getVar(name).trim() || fallback?.trim() || "";
+    if (!resolved) return "";
+    const nested = resolveCssVarReferences(resolved, getVar, depth + 1);
+    return cssVarColor(() => nested, name, nested);
+  });
+}
+
 function paintToken(getVar: (name: string) => string, name: string, fallback: string): string {
-  const value = getVar(name).trim();
-  if (!value || value.includes("var(")) return fallback;
-  return cssVarColor(getVar, name, fallback);
+  const value = resolveCssVarReferences(getVar(name).trim(), getVar);
+  if (!value) return fallback;
+  return value.startsWith("#") || /^(rgb|hsl|oklch|oklab|lab|lch|color-mix)\(/.test(value)
+    ? value
+    : cssVarColor(() => value, name, fallback);
 }
 
 export function resolveDataGridPaintTheme(options: {
