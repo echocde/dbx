@@ -200,6 +200,7 @@ const props = defineProps<{
   sourceColumns?: Array<string | undefined>;
   queryEditabilityReason?: string;
   initialWhereInput?: string;
+  initialOrderByInput?: string;
   sortColumn?: string;
   sortColumnIndex?: number;
   sortDirection?: DataGridSortDirection;
@@ -235,6 +236,7 @@ const emit = defineEmits<{
   paginate: [offset: number, limit: number, whereInput?: string, orderBy?: string];
   sort: [column: string, columnIndex: number, direction: "asc" | "desc" | null, whereInput?: string];
   "update:whereInput": [value: string];
+  "update:orderByInput": [value: string];
 }>();
 
 console.info("[DBX][DataGrid:setup]", {
@@ -431,7 +433,7 @@ const orderByMeasureRef = ref<HTMLSpanElement>();
 const orderBySuggestionLeft = ref(0);
 const orderBySuggestionPosition = ref({ left: 0, top: 0 });
 
-const orderByInput = ref("");
+const orderByInput = ref(props.initialOrderByInput ?? "");
 const hasOrderByInput = computed(() => orderByInput.value.trim().length > 0);
 const whereFilterInput = ref(props.initialWhereInput ?? "");
 const hasWhereFilterInput = computed(() => whereFilterInput.value.trim().length > 0);
@@ -1361,6 +1363,7 @@ function navigateOrderBySuggestion(delta: number) {
 }
 
 watch(orderByInput, (val) => {
+  emit("update:orderByInput", val);
   orderBySuggestions.value = [];
   if (!props.tableMeta?.columns?.length) return;
   const trimmed = val.trim();
@@ -1756,16 +1759,24 @@ function currentOrderBy(): string | undefined {
 }
 
 function syncOrderByInputWithSort(column: string | null, direction: "asc" | "desc" | null) {
-  orderByInput.value = column && direction ? `${queryColumnRef(column)} ${direction.toUpperCase()}` : "";
+  const nextOrderByInput = column && direction ? `${queryColumnRef(column)} ${direction.toUpperCase()}` : "";
+  orderByInput.value = nextOrderByInput;
+  emit("update:orderByInput", nextOrderByInput);
 }
 
 watch(
   () => [props.sortColumn, props.sortColumnIndex, props.sortDirection] as const,
-  ([column, columnIndex, direction]) => {
+  ([column, columnIndex, direction], previous) => {
+    const wasControlledSort = !!previous?.[0] && !!previous?.[2];
+    const isControlledSort = !!column && !!direction;
     sortCol.value = column && direction ? column : null;
     sortColIndex.value = typeof columnIndex === "number" && direction ? columnIndex : null;
     sortDir.value = direction ?? "asc";
-    syncOrderByInputWithSort(sortCol.value, sortCol.value ? sortDir.value : null);
+    if (isControlledSort) {
+      syncOrderByInputWithSort(sortCol.value, sortDir.value);
+    } else if (wasControlledSort) {
+      syncOrderByInputWithSort(null, null);
+    }
   },
   { immediate: true },
 );
@@ -2752,6 +2763,7 @@ async function clearContextFilter() {
 async function applyOrderBySearch() {
   if (!props.tableMeta || !props.onExecuteSql) return;
   const orderByClause = orderByInput.value.trim() || undefined;
+  emit("update:orderByInput", orderByInput.value);
   isApplyingWhere.value = true;
   saveError.value = "";
   currentPage.value = 1;

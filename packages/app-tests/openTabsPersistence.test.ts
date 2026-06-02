@@ -70,6 +70,7 @@ test("serializes table tabs with reload context", () => {
       resultPageLimit: 100,
       resultPageOffset: 100,
       whereInput: "active = true",
+      orderByInput: "created_at DESC",
       tableMeta: { schema: "public", tableName: "users", columns: [], primaryKeys: [] },
     }),
   ]);
@@ -81,6 +82,7 @@ test("serializes table tabs with reload context", () => {
       resultPageLimit: saved[0]?.resultPageLimit,
       resultPageOffset: saved[0]?.resultPageOffset,
       whereInput: saved[0]?.whereInput,
+      orderByInput: saved[0]?.orderByInput,
       tableMeta: saved[0]?.tableMeta,
     },
     {
@@ -89,6 +91,7 @@ test("serializes table tabs with reload context", () => {
       resultPageLimit: 100,
       resultPageOffset: 100,
       whereInput: "active = true",
+      orderByInput: "created_at DESC",
       tableMeta: { schema: "public", tableName: "users", columns: [], primaryKeys: [] },
     },
   );
@@ -145,6 +148,7 @@ test("restores data and structure tabs with table state", () => {
       resultPageLimit: 50,
       resultPageOffset: 50,
       whereInput: "id > 10",
+      orderByInput: "id DESC",
       tableMeta: {
         schema: "public",
         tableName: "users",
@@ -184,6 +188,7 @@ test("restores data and structure tabs with table state", () => {
   assert.equal(restored.tabs[0]?.resultPageLimit, 50);
   assert.equal(restored.tabs[0]?.resultPageOffset, 50);
   assert.equal(restored.tabs[0]?.whereInput, "id > 10");
+  assert.equal(restored.tabs[0]?.orderByInput, "id DESC");
   assert.equal(restored.tabs[1]?.structureTableName, "users");
 });
 

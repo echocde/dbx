@@ -120,6 +120,7 @@ export const useQueryStore = defineStore("query", () => {
       resultSortColumn: t.resultSortColumn,
       resultSortColumnIndex: t.resultSortColumnIndex,
       resultSortDirection: t.resultSortDirection,
+      orderByInput: t.orderByInput,
       resultPageLimit: t.resultPageLimit,
       resultPageOffset: t.resultPageOffset,
       whereInput: t.whereInput,

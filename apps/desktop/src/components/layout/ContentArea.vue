@@ -463,6 +463,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 :sort-column="activeTab.resultSortColumn"
                 :sort-column-index="activeTab.resultSortColumnIndex"
                 :sort-direction="activeTab.resultSortDirection"
+                :initial-order-by-input="activeTab.orderByInput"
                 :sql="activeTab.lastExecutedSql || activeTab.sql"
                 :loading="activeTab.isExecuting"
                 :editable="!!activeTab.queryAnalysis"
@@ -480,6 +481,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 :total-row-count="activeTab.resultTotalRowCount"
                 :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
                 :full-export-result="() => queryStore.fetchTabResultForExport(activeTab.id)"
+                @update:order-by-input="(v: string) => (activeTab.orderByInput = v)"
                 @reload="
                   (
                     sql?: string,
@@ -670,6 +672,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           :sort-column="activeTab.resultSortColumn"
           :sort-column-index="activeTab.resultSortColumnIndex"
           :sort-direction="activeTab.resultSortDirection"
+          :initial-order-by-input="activeTab.orderByInput"
           :sql="activeTab.sql"
           :loading="activeTab.isExecuting"
           :editable="isTableDataEditable(activeConnection?.db_type, activeTab.tableMeta?.primaryKeys ?? [])"
@@ -684,6 +687,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           :on-execute-sql="async (sql: string) => emit('executeSql', sql)"
           :full-export-result="() => queryStore.fetchTabResultForExport(activeTab.id)"
           @update:where-input="(v: string) => (activeTab.whereInput = v)"
+          @update:order-by-input="(v: string) => (activeTab.orderByInput = v)"
           @reload="
             (
               sql?: string,

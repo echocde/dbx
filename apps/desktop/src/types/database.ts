@@ -351,6 +351,7 @@ export interface QueryTab {
   resultSortColumn?: string;
   resultSortColumnIndex?: number;
   resultSortDirection?: "asc" | "desc";
+  orderByInput?: string;
   resultPageSql?: string;
   resultPageLimit?: number;
   resultPageOffset?: number;
