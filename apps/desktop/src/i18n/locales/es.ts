@@ -581,7 +581,6 @@ export default {
     transactionSaveHint: "Confirma {count} cambio(s) pendiente(s) en una transacción.",
     nonTransactionalSaveHint:
       "Guarda {count} cambio(s) pendiente(s) uno por uno. Si uno falla, los cambios anteriores correctos no se revierten.",
-    transactionActive: "Editando",
     keylessEditWarning: "Sin clave primaria",
     keylessEditWarningHint:
       "Esta tabla no tiene clave primaria. Las actualizaciones y eliminaciones usan todos los valores originales de la fila en WHERE; filas duplicadas exactas pueden verse afectadas juntas.",

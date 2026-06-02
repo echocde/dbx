@@ -5537,13 +5537,6 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               >
                 <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }}
               </Button>
-              <span
-                v-if="transactionActive"
-                class="flex shrink-0 items-center gap-1 px-1 text-xs text-emerald-600 dark:text-emerald-400"
-              >
-                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                {{ t("grid.transactionActive") }}
-              </span>
               <template v-if="saveToolbarState.showActions">
                 <Tooltip>
                   <TooltipTrigger as-child>
@@ -5555,6 +5548,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       @click="onToolbarCommit"
                     >
                       <Loader2 v-if="isSaving" class="w-3 h-3 mr-1 animate-spin" />
+                      <span
+                        v-else-if="pendingChangeCount > 0"
+                        class="mr-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-amber-300 px-1 text-[9px] font-semibold leading-none text-amber-950 shadow-[0_0_0_1px_rgba(120,53,15,0.16)] dark:bg-amber-400 dark:text-amber-950"
+                      >
+                        {{ pendingChangeCount }}
+                      </span>
                       <Save v-else class="w-3 h-3 mr-1" />
                       {{ t(saveActionMode.labelKey, { count: pendingChangeCount }) }}
                     </Button>

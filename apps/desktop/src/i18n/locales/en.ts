@@ -627,7 +627,6 @@ export default {
     transactionSaveHint: "Commit {count} pending change(s) in a transaction.",
     nonTransactionalSaveHint:
       "Save {count} pending change(s) one by one. If one fails, earlier successful changes will not be rolled back.",
-    transactionActive: "Editing",
     keylessEditWarning: "No primary key",
     keylessEditWarningHint:
       "This table has no primary key. Updates and deletes use all original row values in the WHERE clause; exact duplicate rows may be affected together.",
