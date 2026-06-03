@@ -109,6 +109,7 @@ import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
 import {
   BINARY_CELL_DOWNLOAD_MODES,
+  binaryCellDisplayText,
   binaryCellDownloadFileName,
   binaryCellDownloadPayload,
   canDownloadBinaryCellValue,
@@ -2976,6 +2977,11 @@ function primitiveCellFormatKey(value: CellValue, columnIndex?: number): string 
 
 function formatCell(value: CellValue, columnIndex?: number): string {
   const formatter = columnIndex === undefined ? undefined : resolvedColumnFormatters.value[columnIndex];
+  const columnName = columnIndex === undefined ? undefined : props.result.columns[columnIndex];
+  const binaryDisplay = formatter
+    ? null
+    : binaryCellDisplayText(value, columnName ? columnTypeMap.value.get(columnName) : undefined);
+  if (binaryDisplay) return binaryDisplay;
   const s = applyColumnFormatter(value, formatter);
   return s.length > CELL_DISPLAY_MAX_LENGTH ? s.slice(0, CELL_DISPLAY_MAX_LENGTH) : s;
 }
@@ -4019,7 +4025,7 @@ function canDownloadDetailBinaryValue(detail: DataGridCellDetail | null): boolea
 async function downloadDetailBinaryValue(detail: DataGridCellDetail | null, mode: BinaryCellDownloadMode) {
   if (!detail || !canDownloadDetailBinaryValue(detail)) return;
   try {
-    const payload = binaryCellDownloadPayload(detail.value, mode);
+    const payload = binaryCellDownloadPayload(detail.value, mode, detail.type);
     const fileName = binaryCellDownloadFileName({
       column: detail.column,
       rowNumber: detail.rowNumber,
