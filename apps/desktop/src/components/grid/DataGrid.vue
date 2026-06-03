@@ -179,9 +179,11 @@ import {
   removeAutoHiddenColumnIndexes,
   visibleColumnIndexesForFilter,
 } from "@/lib/dataGridColumnVisibility";
+import { parseClipboardTable } from "@/lib/gridSelection";
 
 import { useToast } from "@/composables/useToast";
 import { useDataGridExport } from "@/composables/useDataGridExport";
+import { readTextFromClipboard } from "@/lib/clipboard";
 import ExportProgressDialog from "@/components/export/ExportProgressDialog.vue";
 import { DATA_GRID_ROW_NUM_WIDTH, useDataGridColumnResize } from "@/composables/useDataGridColumnResize";
 import { useDataGridSelection } from "@/composables/useDataGridSelection";
@@ -406,6 +408,8 @@ function typeColorClass(t: string): string {
 const contextCell = ref<{ rowId: number; rowIndex: number; col: number } | null>(null);
 const contextHeaderColumn = ref<string | null>(null);
 const contextHeaderColumnIndex = ref<number | null>(null);
+const bulkEditDialogOpen = ref(false);
+const bulkEditValue = ref("");
 const detailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const hoveredDetailCell = ref<{ rowIndex: number; col: number } | null>(null);
 const quickDownloadMenuCell = ref<{ rowIndex: number; col: number } | null>(null);
@@ -1791,10 +1795,9 @@ const isResultsContext = computed(() => props.context === "results");
 const showQueryEditReadyBadge = computed(
   () => isResultsContext.value && hasData.value && !!props.editable && !!props.tableMeta,
 );
+const canShowWhereSearch = computed(() => !!props.onExecuteSql && !isResultsContext.value);
 const canUseWhereSearch = computed(() => !!props.tableMeta && !!props.onExecuteSql && !isResultsContext.value);
-const tableUsesSyntheticRowId = computed(() =>
-  usesSyntheticRowIdKey(props.databaseType, props.tableMeta?.primaryKeys ?? []),
-);
+type DataGridTableMeta = NonNullable<typeof props.tableMeta>;
 const hiveTableTransactional = ref<boolean | undefined>(undefined);
 const canEditExistingRows = computed(
   () =>
@@ -2026,7 +2029,7 @@ const showDataGridTopbar = computed(
   () =>
     (useTransaction.value && !!props.editable && (!!props.tableMeta || !!props.customSave)) ||
     hasLocalColumnFilters.value ||
-    canUseWhereSearch.value ||
+    canShowWhereSearch.value ||
     hasSearchBarSlot.value ||
     showQueryEditReadyBadge.value ||
     props.context !== "results" ||
@@ -2337,8 +2340,10 @@ const {
   columnIsSelected,
   selectedRangeStart,
   selectedRowIds,
+  selectedColumnIndexes,
   hasRowSelection,
   selectedRowCount,
+  hasColumnSelection,
   clearRowSelection,
   handleRowClick,
   handleDataCellMousedown,
@@ -2901,8 +2906,29 @@ async function clearContextFilter() {
   await clearAllFilters();
 }
 
+function waitForTableMeta(timeoutMs = 2500): Promise<DataGridTableMeta | null> {
+  if (props.tableMeta) return Promise.resolve(props.tableMeta);
+  return new Promise((resolve) => {
+    let stop: (() => void) | undefined;
+    const timer = window.setTimeout(() => {
+      stop?.();
+      resolve(null);
+    }, timeoutMs);
+    stop = watch(
+      () => props.tableMeta,
+      (tableMeta) => {
+        if (!tableMeta) return;
+        window.clearTimeout(timer);
+        stop?.();
+        resolve(tableMeta);
+      },
+      { flush: "sync" },
+    );
+  });
+}
+
 async function applyOrderBySearch() {
-  if (!props.tableMeta || !props.onExecuteSql) return;
+  if (!props.onExecuteSql) return;
   const orderByClause = orderByInput.value.trim() || undefined;
   emit("update:orderByInput", orderByInput.value);
   isApplyingWhere.value = true;
@@ -2912,16 +2938,18 @@ async function applyOrderBySearch() {
   sortColIndex.value = null;
   sortDir.value = "asc";
   try {
+    const tableMeta = await waitForTableMeta();
+    if (!tableMeta) return;
     const sql = await buildTableSelectSql({
       databaseType: props.databaseType,
-      schema: props.tableMeta.schema,
-      tableName: props.tableMeta.tableName,
-      columns: props.tableMeta.columns.map((column) => column.name),
-      primaryKeys: props.tableMeta.primaryKeys,
+      schema: tableMeta.schema,
+      tableName: tableMeta.tableName,
+      columns: tableMeta.columns.map((column) => column.name),
+      primaryKeys: tableMeta.primaryKeys,
       orderBy: orderByClause,
       limit: pageSize.value,
       whereInput: currentWhereInput(),
-      includeRowId: tableUsesSyntheticRowId.value,
+      includeRowId: usesSyntheticRowIdKey(props.databaseType, tableMeta.primaryKeys),
     });
     await props.onExecuteSql(sql);
   } catch (e: any) {
@@ -2932,23 +2960,25 @@ async function applyOrderBySearch() {
 }
 
 async function applyWhereFilter() {
-  if (!props.tableMeta || !props.onExecuteSql) return;
+  if (!props.onExecuteSql) return;
   isApplyingWhere.value = true;
   saveError.value = "";
   currentPage.value = 1;
   try {
+    const tableMeta = await waitForTableMeta();
+    if (!tableMeta) return;
     const sql = await buildTableSelectSql({
       databaseType: props.databaseType,
-      schema: props.tableMeta.schema,
-      tableName: props.tableMeta.tableName,
-      columns: props.tableMeta.columns.map((column) => column.name),
-      primaryKeys: props.tableMeta.primaryKeys,
+      schema: tableMeta.schema,
+      tableName: tableMeta.tableName,
+      columns: tableMeta.columns.map((column) => column.name),
+      primaryKeys: tableMeta.primaryKeys,
       orderBy:
         orderByInput.value.trim() ||
         (sortCol.value ? `${queryColumnRef(sortCol.value)} ${sortDir.value.toUpperCase()}` : undefined),
       limit: pageSize.value,
       whereInput: currentWhereInput(),
-      includeRowId: tableUsesSyntheticRowId.value,
+      includeRowId: usesSyntheticRowIdKey(props.databaseType, tableMeta.primaryKeys),
     });
     await props.onExecuteSql(sql);
   } catch (e: any) {
@@ -3727,29 +3757,125 @@ function clipboardShortcut(event: KeyboardEvent, key: string): boolean {
   return (event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === key;
 }
 
-function parseClipboardTable(text: string): string[][] {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/\n$/, "");
-  if (!normalized) return [[""]];
-  return normalized.split("\n").map((row) => row.split("\t"));
-}
+let lastPasteEventAt = 0;
 
 async function pasteClipboardIntoSelection() {
   if (!props.editable) return;
-  const start = selectedRangeStart();
-  if (!start) return;
+  const text = await readTextFromClipboard();
+  pasteTextIntoSelection(text);
+}
 
-  const text = await navigator.clipboard.readText();
+function pasteTextIntoSelection(text: string): boolean {
   const rows = parseClipboardTable(text);
+
+  if (rows.length === 1 && rows[0]?.length === 1 && fillSelectionWithValue(rows[0][0])) {
+    toast(t("grid.pasted"));
+    return true;
+  }
+
+  const start = pasteStartCell();
+  if (!start) return false;
+  let applied = false;
   rows.forEach((row, rowOffset) => {
     const item = displayItems.value[start.rowIndex + rowOffset];
     if (!item) return;
     row.forEach((value, colOffset) => {
       const visibleCol = start.colIndex + colOffset;
       if (visibleCol >= visibleColumns.value.length) return;
-      applyCellValue(item.id, actualColumnIndex(visibleCol), value);
+      applied = applyVisibleCellValue(item, visibleCol, value) || applied;
     });
   });
-  toast(t("grid.pasted"));
+  if (applied) toast(t("grid.pasted"));
+  return applied;
+}
+
+function onGridPaste(event: ClipboardEvent) {
+  if (!props.editable || (!selectedRange.value && !hasColumnSelection.value)) return;
+  const text = event.clipboardData?.getData("text/plain");
+  if (text === undefined) return;
+  event.preventDefault();
+  lastPasteEventAt = Date.now();
+  pasteTextIntoSelection(text);
+}
+
+function pasteStartCell() {
+  const start = selectedRangeStart();
+  if (start) return start;
+  if (!hasColumnSelection.value) return null;
+  const firstCol = selectedVisibleColumnIndexes()[0];
+  return firstCol === undefined ? null : { rowIndex: 0, colIndex: firstCol };
+}
+
+function selectedVisibleColumnIndexes(): number[] {
+  return [...selectedColumnIndexes.value]
+    .filter((index) => index >= 0 && index < visibleColumns.value.length)
+    .sort((a, b) => a - b);
+}
+
+function applyVisibleCellValue(item: RowItem, visibleCol: number, value: string | null): boolean {
+  const actualCol = actualColumnIndex(visibleCol);
+  if (!canEditCellItem(item, actualCol)) return false;
+  applyCellValue(item.id, actualCol, value);
+  return true;
+}
+
+function fillSelectionWithValue(value: string): boolean {
+  const range = selectedRange.value;
+  let applied = false;
+  if (range) {
+    for (let rowIndex = range.startRow; rowIndex <= range.endRow; rowIndex++) {
+      const item = displayItems.value[rowIndex];
+      if (!item) continue;
+      for (let visibleCol = range.startCol; visibleCol <= range.endCol; visibleCol++) {
+        applied = applyVisibleCellValue(item, visibleCol, value) || applied;
+      }
+    }
+    return applied;
+  }
+
+  if (!hasColumnSelection.value) return false;
+  const visibleColumnIndexes = selectedVisibleColumnIndexes();
+  if (!visibleColumnIndexes.length) return false;
+  for (const item of displayItems.value) {
+    for (const visibleCol of visibleColumnIndexes) {
+      applied = applyVisibleCellValue(item, visibleCol, value) || applied;
+    }
+  }
+  return applied;
+}
+
+function selectionHasEditableCells(): boolean {
+  const range = selectedRange.value;
+  if (range) {
+    for (let rowIndex = range.startRow; rowIndex <= range.endRow; rowIndex++) {
+      const item = displayItems.value[rowIndex];
+      if (!item) continue;
+      for (let visibleCol = range.startCol; visibleCol <= range.endCol; visibleCol++) {
+        if (canEditCellItem(item, actualColumnIndex(visibleCol))) return true;
+      }
+    }
+    return false;
+  }
+
+  if (!hasColumnSelection.value) return false;
+  const visibleColumnIndexes = selectedVisibleColumnIndexes();
+  for (const item of displayItems.value) {
+    for (const visibleCol of visibleColumnIndexes) {
+      if (canEditCellItem(item, actualColumnIndex(visibleCol))) return true;
+    }
+  }
+  return false;
+}
+
+function openBulkEditDialog() {
+  if (!props.editable || !selectionHasEditableCells()) return;
+  bulkEditValue.value = "";
+  bulkEditDialogOpen.value = true;
+}
+
+function applyBulkEditValue() {
+  if (!fillSelectionWithValue(bulkEditValue.value)) return;
+  bulkEditDialogOpen.value = false;
 }
 
 function cutSelection() {
@@ -4018,9 +4144,15 @@ async function onGridKeydown(event: KeyboardEvent) {
     return;
   }
   if (clipboardShortcut(event, "v")) {
-    if (!props.editable || !selectedRange.value) return;
-    event.preventDefault();
-    await pasteClipboardIntoSelection();
+    if (!props.editable || (!selectedRange.value && !hasColumnSelection.value)) return;
+    const keydownAt = Date.now();
+    window.setTimeout(() => {
+      if (lastPasteEventAt >= keydownAt) return;
+      pasteClipboardIntoSelection().catch((e) =>
+        toast(t("grid.copyFailed", { message: e?.message || String(e) }), 5000),
+      );
+    }, 50);
+    return;
   }
 }
 
@@ -4454,8 +4586,10 @@ watch(
 // --- Context menu handlers ---
 function onHeaderContext(col: string, columnIndex: number) {
   contextCell.value = null;
-  clearCellSelection();
-  clearRowSelection();
+  const visibleColIdx = visibleColumnIndexes.value.indexOf(columnIndex);
+  if (visibleColIdx >= 0 && !columnIsSelected(visibleColIdx)) {
+    selectColumn(visibleColIdx);
+  }
   contextHeaderColumn.value = col;
   contextHeaderColumnIndex.value = columnIndex;
 }
@@ -5167,6 +5301,15 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     items.push(copySubmenu());
   }
 
+  if (props.editable && hasCellSelection.value) {
+    items.push({
+      label: t("grid.bulkEditSelection"),
+      action: openBulkEditDialog,
+      disabled: !selectionHasEditableCells(),
+      icon: Pencil,
+    });
+  }
+
   // 5. Transpose
   if (contextCell.value) {
     items.push({ label: t("grid.transpose"), action: openContextTranspose, icon: Rows3 });
@@ -5219,10 +5362,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
     :style="gridStyle"
     tabindex="0"
     @keydown="onGridKeydown"
+    @paste="onGridPaste"
   >
     <CustomContextMenu :items="gridContextMenuItems" v-slot="{ onContextMenu }">
       <div
-        v-if="hasData || canUseWhereSearch"
+        v-if="hasData || canShowWhereSearch"
         class="flex-1 flex flex-col overflow-hidden"
         @contextmenu="onContextMenu"
       >
@@ -5273,7 +5417,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               </div>
             </template>
 
-            <template v-if="canUseWhereSearch">
+            <template v-if="canShowWhereSearch">
               <div ref="searchSplitContainerRef" class="flex flex-1 min-w-0">
                 <div
                   class="flex flex-1 items-center gap-1 px-2 py-0.5 border-l min-w-0 relative"
@@ -5289,6 +5433,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                             ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
                             : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'
                         "
+                        :disabled="!canUseWhereSearch"
                         @click="ensureStructuredFilterRule"
                       >
                         <Filter class="h-3 w-3" />
@@ -7843,6 +7988,28 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
           <Button variant="ghost" size="sm" class="h-7 text-xs" @click="copyColumnDetailColumnName">
             <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyColumnName") }}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="bulkEditDialogOpen">
+      <DialogContent class="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>{{ t("grid.bulkEditTitle") }}</DialogTitle>
+        </DialogHeader>
+        <div class="space-y-2">
+          <p class="text-sm text-muted-foreground">
+            {{ t("grid.bulkEditDescription", { count: selectedCellCount }) }}
+          </p>
+          <Input
+            v-model="bulkEditValue"
+            :placeholder="t('grid.bulkEditValuePlaceholder')"
+            @keydown.enter.prevent="applyBulkEditValue"
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="bulkEditDialogOpen = false">{{ t("dangerDialog.cancel") }}</Button>
+          <Button @click="applyBulkEditValue">{{ t("grid.applyBulkEdit") }}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,6 +1,7 @@
 import { isTauriRuntime } from "./tauriRuntime";
 
 interface ClipboardApi {
+  readText?: () => Promise<string> | string;
   writeText?: (text: string) => Promise<void> | void;
 }
 
@@ -34,6 +35,25 @@ interface ClipboardDocument {
 export interface ClipboardEnvironment {
   navigator?: ClipboardNavigator;
   document?: ClipboardDocument;
+}
+
+export async function readTextFromClipboard(
+  env: ClipboardEnvironment = globalThis as unknown as ClipboardEnvironment,
+): Promise<string> {
+  if (isTauriRuntime(env as unknown as Record<string, unknown>)) {
+    try {
+      const { readText } = await import("@tauri-apps/plugin-clipboard-manager");
+      return await readText();
+    } catch {
+      // Fall through to Web Clipboard when the native plugin is unavailable.
+    }
+  }
+
+  if (env.navigator?.clipboard?.readText) {
+    return await env.navigator.clipboard.readText();
+  }
+
+  throw new Error("Clipboard API is not available");
 }
 
 export async function copyToClipboard(
