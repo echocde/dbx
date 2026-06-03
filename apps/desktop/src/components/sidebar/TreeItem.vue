@@ -126,7 +126,7 @@ import {
 } from "@/lib/sidebarTreeSelection";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
-import { useExportTracker } from "@/composables/useExportTracker";
+import { useExportTracker, type ExportTask } from "@/composables/useExportTracker";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatShortcut } from "@/lib/shortcutRegistry";
@@ -2122,6 +2122,7 @@ async function exportTableData(format: "csv" | "xlsx") {
   const config = connectionStore.getConfig(node.connectionId);
   if (!config) return;
 
+  let task: ExportTask | null = null;
   try {
     await connectionStore.ensureConnected(connectionId);
 
@@ -2138,7 +2139,8 @@ async function exportTableData(format: "csv" | "xlsx") {
     }
 
     // Step 2: Register task in export tracker (background)
-    const task = addExportTask(node.label, format, outputPath);
+    task = addExportTask(node.label, format, outputPath);
+    const currentTask = task;
 
     // Step 3: Get query columns for neo4j
     const queryColumns =
@@ -2148,7 +2150,7 @@ async function exportTableData(format: "csv" | "xlsx") {
 
     // Step 4: Start streaming export (background, non-blocking)
     const request: api.TableExportRequest = {
-      exportId: task.exportId,
+      exportId: currentTask.exportId,
       connectionId,
       database,
       schema: node.schema || undefined,
@@ -2160,10 +2162,10 @@ async function exportTableData(format: "csv" | "xlsx") {
     };
 
     await api.startTableExport(request, (progress) => {
-      task.rowsExported = progress.rowsExported;
-      task.totalRows = progress.totalRows;
-      task.status = progress.status;
-      task.errorMessage = progress.errorMessage || null;
+      currentTask.rowsExported = progress.rowsExported;
+      currentTask.totalRows = progress.totalRows;
+      currentTask.status = progress.status;
+      currentTask.errorMessage = progress.errorMessage || null;
       if (progress.status === "Done") {
         toast(t("grid.exported"));
       } else if (progress.status === "Error") {
@@ -2171,6 +2173,10 @@ async function exportTableData(format: "csv" | "xlsx") {
       }
     });
   } catch (e: any) {
+    if (task) {
+      task.status = "Error";
+      task.errorMessage = e?.message || String(e);
+    }
     toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
   }
 }

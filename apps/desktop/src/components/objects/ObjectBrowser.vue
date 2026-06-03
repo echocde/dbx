@@ -74,7 +74,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
 import { useConnectionStore } from "@/stores/connectionStore";
-import { useExportTracker } from "@/composables/useExportTracker";
+import { useExportTracker, type ExportTask } from "@/composables/useExportTracker";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
@@ -861,38 +861,43 @@ async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx") {
     filePath = `__web_export_${webExportId}.${format}`;
   }
 
-  // Register task in export tracker (background)
-  const task = addExportTask(row.name, format, filePath);
-
-  // Get columns for neo4j only
-  const queryColumns =
-    props.connection.db_type === "neo4j"
-      ? (await api.getColumns(props.connection.id, props.database, schema || props.database, row.name)).map(
-          (column) => column.name,
-        )
-      : undefined;
-
-  const request: api.TableExportRequest = {
-    exportId: task.exportId,
-    connectionId: props.connection.id,
-    database: props.database,
-    schema,
-    tableName: row.name,
-    filePath,
-    format,
-    columns: queryColumns,
-    batchSize: settingsStore.editorSettings.exportBatchSize,
-  };
-
+  let task: ExportTask | null = null;
   try {
-    await api.startTableExport(request, (progress) => {
-      task.rowsExported = progress.rowsExported;
-      task.totalRows = progress.totalRows;
-      task.status = progress.status;
-      task.errorMessage = progress.errorMessage || null;
+    const queryColumns =
+      props.connection.db_type === "neo4j"
+        ? (await api.getColumns(props.connection.id, props.database, schema || props.database, row.name)).map(
+            (column) => column.name,
+          )
+        : undefined;
+
+    task = addExportTask(row.name, format, filePath);
+    const currentTask = task;
+    const request: api.TableExportRequest = {
+      exportId: currentTask.exportId,
+      connectionId: props.connection.id,
+      database: props.database,
+      schema,
+      tableName: row.name,
+      filePath,
+      format,
+      columns: queryColumns,
+      batchSize: settingsStore.editorSettings.exportBatchSize,
+    };
+
+    const terminalProgress = await api.startTableExport(request, (progress) => {
+      currentTask.rowsExported = progress.rowsExported;
+      currentTask.totalRows = progress.totalRows;
+      currentTask.status = progress.status;
+      currentTask.errorMessage = progress.errorMessage || null;
     });
-    toast(t("grid.exported"));
+    if (terminalProgress.status === "Done") {
+      toast(t("grid.exported"));
+    }
   } catch (e: any) {
+    if (task) {
+      task.status = "Error";
+      task.errorMessage = e?.message || String(e);
+    }
     toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
   }
 }

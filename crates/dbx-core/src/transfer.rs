@@ -1267,21 +1267,13 @@ pub fn keyset_pagination_sql(
     let order =
         primary_keys.iter().map(|pk| format!("{} ASC", quote_identifier(pk, db_type))).collect::<Vec<_>>().join(", ");
 
-    let where_clause = if primary_keys.is_empty() || last_pk_values.is_empty() {
-        String::new()
-    } else {
-        let pk_list = primary_keys.iter().map(|pk| quote_identifier(pk, db_type)).collect::<Vec<_>>().join(", ");
-        let vals = last_pk_values.iter().map(|v| value_to_sql_literal(v, db_type)).collect::<Vec<_>>().join(", ");
-        if primary_keys.len() == 1 {
-            format!(" WHERE {} > {}", pk_list, vals)
-        } else {
-            format!(" WHERE ({}) > ({})", pk_list, vals)
-        }
-    };
+    let where_clause = keyset_where_clause(primary_keys, last_pk_values, db_type);
 
     match db_type {
         DatabaseType::SqlServer | DatabaseType::Oracle => {
-            format!("SELECT {col_list} FROM {full_table}{where_clause} ORDER BY {order} FETCH NEXT {limit} ROWS ONLY")
+            format!(
+                "SELECT {col_list} FROM {full_table}{where_clause} ORDER BY {order} OFFSET 0 ROWS FETCH NEXT {limit} ROWS ONLY"
+            )
         }
         _ => {
             format!("SELECT {col_list} FROM {full_table}{where_clause} ORDER BY {order} LIMIT {limit}")
@@ -1289,7 +1281,44 @@ pub fn keyset_pagination_sql(
     }
 }
 
-fn value_to_sql_literal(value: &serde_json::Value, db_type: &DatabaseType) -> String {
+fn keyset_where_clause(
+    primary_keys: &[String],
+    last_pk_values: &[serde_json::Value],
+    db_type: &DatabaseType,
+) -> String {
+    if primary_keys.is_empty() || last_pk_values.is_empty() {
+        return String::new();
+    }
+
+    let quoted_keys = primary_keys.iter().map(|pk| quote_identifier(pk, db_type)).collect::<Vec<_>>();
+    let literals = last_pk_values.iter().map(|v| value_to_sql_literal(v, db_type)).collect::<Vec<_>>();
+    let comparison_count = quoted_keys.len().min(literals.len());
+    if comparison_count == 0 {
+        return String::new();
+    }
+
+    let mut clauses = Vec::with_capacity(comparison_count);
+    for index in 0..comparison_count {
+        let mut parts = Vec::with_capacity(index + 1);
+        for prefix_index in 0..index {
+            parts.push(format!("{} = {}", quoted_keys[prefix_index], literals[prefix_index]));
+        }
+        parts.push(format!("{} > {}", quoted_keys[index], literals[index]));
+        if parts.len() == 1 {
+            clauses.push(parts.remove(0));
+        } else {
+            clauses.push(format!("({})", parts.join(" AND ")));
+        }
+    }
+
+    if clauses.len() == 1 {
+        format!(" WHERE {}", clauses[0])
+    } else {
+        format!(" WHERE ({})", clauses.join(" OR "))
+    }
+}
+
+fn value_to_sql_literal(value: &serde_json::Value, _db_type: &DatabaseType) -> String {
     match value {
         serde_json::Value::Null => "NULL".to_string(),
         serde_json::Value::Bool(b) => {
@@ -2796,6 +2825,42 @@ mod tests {
         );
 
         assert_eq!(sql, "SELECT \"id\", \"name\" FROM \"public\".\"users\" ORDER BY \"id\" LIMIT 100 OFFSET 200");
+    }
+
+    #[test]
+    fn sqlserver_keyset_pagination_includes_offset_fetch() {
+        let sql = keyset_pagination_sql(
+            &[String::from("id"), String::from("name")],
+            "users",
+            "dbo",
+            &DatabaseType::SqlServer,
+            &[String::from("id")],
+            &[],
+            100,
+        );
+
+        assert_eq!(
+            sql,
+            "SELECT [id], [name] FROM [dbo].[users] ORDER BY [id] ASC OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"
+        );
+    }
+
+    #[test]
+    fn composite_keyset_pagination_uses_portable_lexicographic_predicate() {
+        let sql = keyset_pagination_sql(
+            &[String::from("tenant_id"), String::from("id"), String::from("name")],
+            "users",
+            "dbo",
+            &DatabaseType::SqlServer,
+            &[String::from("tenant_id"), String::from("id")],
+            &[json!(10), json!(25)],
+            100,
+        );
+
+        assert_eq!(
+            sql,
+            "SELECT [tenant_id], [id], [name] FROM [dbo].[users] WHERE ([tenant_id] > 10 OR ([tenant_id] = 10 AND [id] > 25)) ORDER BY [tenant_id] ASC, [id] ASC OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY"
+        );
     }
 
     #[test]
