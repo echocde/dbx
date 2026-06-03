@@ -159,8 +159,11 @@ mod tests {
             Some("oracle-legacy")
         );
         assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Oracle, None), Some("oracle"));
+        assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Gbase, Some("gbase8s")), Some("gbase8s"));
+        assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Gbase, None), Some("gbase"));
         manager.stop_daemon_by_key("oracle-legacy").await;
         manager.stop_daemon_by_key("oracle-10g").await;
+        manager.stop_daemon_by_key("gbase8s").await;
     }
 }
 
