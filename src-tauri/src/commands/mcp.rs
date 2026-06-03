@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 const MCP_PACKAGE_NAME: &str = "@dbx-app/mcp-server";
 const MCP_LATEST_URL: &str = "https://registry.npmjs.org/@dbx-app%2fmcp-server/latest";
+const MCP_INSTALL_COMMAND: &str = "npm install -g @dbx-app/mcp-server@latest --registry=https://registry.npmjs.org";
 
 #[derive(Debug, Serialize)]
 pub struct McpServerStatus {
@@ -46,8 +47,8 @@ pub async fn check_mcp_server_status() -> Result<McpServerStatus, String> {
         latest_version,
         update_available,
         bin_path,
-        install_command: format!("npm install -g {MCP_PACKAGE_NAME}@latest"),
-        update_command: format!("npm install -g {MCP_PACKAGE_NAME}@latest"),
+        install_command: MCP_INSTALL_COMMAND.to_string(),
+        update_command: MCP_INSTALL_COMMAND.to_string(),
         error,
     })
 }

@@ -10,7 +10,7 @@ MCP server for [DBX](https://github.com/t8y2/dbx) — lets AI agents (Claude Cod
 - **8 tools** — List/add/remove connections, list tables, describe table, get schema context, execute SQL, open table in DBX UI
 - **Connection pooling** — Reuses database connections across queries
 - **Direct execution** — PostgreSQL, MySQL, SQLite, and compatible databases (Doris, StarRocks, etc.) can run without opening DBX
-- **Read-only by default** — SQL execution blocks write and dangerous statements unless explicitly enabled
+- **Writes enabled by default** — regular `INSERT` / `UPDATE` / `DELETE` statements work out of the box, while dangerous SQL stays blocked unless explicitly enabled
 - **DBX UI integration** — Open tables directly in the DBX desktop app from your AI agent
 
 ## Quick Start
@@ -92,10 +92,12 @@ See the [DBX CLI README](../cli/README.md) for command details.
 
 ## SQL Safety
 
-`dbx_execute_query` accepts multiple SQL statements and executes them one at a time after checking each statement. It is read-only by default. To allow write statements such as `INSERT` or `UPDATE`, set:
+`dbx_execute_query` accepts multiple SQL statements and executes them one at a time after checking each statement. Regular write statements such as `INSERT`, `UPDATE`, and `DELETE ... WHERE ...` are allowed by default.
+
+If you need to force a read-only MCP session, set:
 
 ```bash
-DBX_MCP_ALLOW_WRITES=1
+DBX_MCP_ALLOW_WRITES=0
 ```
 
 Dangerous statements such as `DROP`, `TRUNCATE`, and `ALTER` remain blocked unless you also set:
@@ -145,7 +147,7 @@ MIT
 - **8 个工具** — 列出/添加/删除连接、列出表、查看表结构、获取 Schema 上下文、执行 SQL、在 DBX 中打开表
 - **连接池** — 跨查询复用数据库连接
 - **直接执行** — PostgreSQL、MySQL、SQLite 及兼容数据库（Doris、StarRocks 等）无需打开 DBX 即可查询
-- **默认只读** — SQL 执行默认拦截写操作和危险语句
+- **默认允许常规写入** — `INSERT` / `UPDATE` / `DELETE` 可直接执行，危险语句仍需显式开启
 - **DBX UI 联动** — 从 AI 助手直接在 DBX 桌面端打开表
 
 ### 快速开始
@@ -213,10 +215,12 @@ dbx query local "select 1" --json
 
 ### SQL 安全
 
-`dbx_execute_query` 支持多条 SQL 语句，会逐条完成安全检查并依次执行。默认只读。若要允许 `INSERT`、`UPDATE` 等写操作，设置：
+`dbx_execute_query` 支持多条 SQL 语句，会逐条完成安全检查并依次执行。默认允许常规写操作，例如 `INSERT`、`UPDATE`、`DELETE ... WHERE ...`。
+
+如果你希望 MCP 会话强制退回只读，可设置：
 
 ```bash
-DBX_MCP_ALLOW_WRITES=1
+DBX_MCP_ALLOW_WRITES=0
 ```
 
 `DROP`、`TRUNCATE`、`ALTER` 等危险语句仍会被拦截，除非额外设置：

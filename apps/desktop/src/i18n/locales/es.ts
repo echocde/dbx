@@ -1624,7 +1624,15 @@ export default {
     mcpBinPath: "Ruta del comando",
     mcpInstallCommand: "Comando de instalación",
     mcpUpdateCommand: "Comando de actualización",
-    mcpConfig: "Configuración de Claude Code",
+    mcpConfig: "Configuración de MCP",
+    mcpCodexConfig: "Configuración de Codex",
+    mcpCodexConfigPath: "Codex puede usar ~/.codex/config.toml o .codex/config.toml dentro del proyecto.",
+    mcpReadonlyMode: "Modo solo lectura",
+    mcpReadonlyModeDescription:
+      "Añade DBX_MCP_ALLOW_WRITES=0 al ejemplo de configuración para que la sesión MCP solo permita consultas.",
+    mcpAllowDangerous: "Permitir SQL peligroso",
+    mcpAllowDangerousDescription:
+      "Añade DBX_MCP_ALLOW_DANGEROUS_SQL=1 al ejemplo de configuración para permitir DROP, TRUNCATE, ALTER y sentencias similares.",
     mcpDetectionTiming: "DBX comprueba automáticamente al abrir esta página; usa Comprobar de nuevo para actualizar.",
     mcpNpmBoundary: "DBX solo comprueba y explica el estado de MCP; la instalación y actualización siguen usando npm.",
     mcpRefresh: "Comprobar de nuevo",

@@ -30,6 +30,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   useSettingsStore,
@@ -483,15 +484,48 @@ function openExternalUrl(url: string) {
 const mcpStatus = ref<McpServerStatus | null>(null);
 const mcpStatusLoading = ref(false);
 const mcpStatusError = ref("");
-const mcpCopied = ref<"" | "install" | "config">("");
+const mcpCopied = ref<"" | "install" | "claude-config" | "codex-config">("");
+const mcpConfigTab = ref<"claude" | "codex">("claude");
+const mcpReadonlyMode = ref(false);
+const mcpAllowDangerous = ref(false);
 
-const mcpRecommendedConfig = `{
-  "mcpServers": {
-    "dbx": {
-      "command": "dbx-mcp-server"
+const mcpEnvEntries = computed(() => {
+  const entries: Array<[string, string]> = [];
+  if (mcpReadonlyMode.value) {
+    entries.push(["DBX_MCP_ALLOW_WRITES", "0"]);
+  }
+  if (!mcpReadonlyMode.value && mcpAllowDangerous.value) {
+    entries.push(["DBX_MCP_ALLOW_DANGEROUS_SQL", "1"]);
+  }
+  return entries;
+});
+
+const mcpClaudeRecommendedConfig = computed(() => {
+  const config: Record<string, unknown> = {
+    mcpServers: {
+      dbx: {
+        command: "dbx-mcp-server",
+      } as Record<string, unknown>,
+    },
+  };
+  if (mcpEnvEntries.value.length > 0) {
+    const env = Object.fromEntries(mcpEnvEntries.value);
+    ((config.mcpServers as Record<string, any>).dbx as Record<string, unknown>).env = env;
+  }
+  return JSON.stringify(config, null, 2);
+});
+
+const mcpCodexRecommendedConfig = computed(() => {
+  const lines = ["[mcp_servers.dbx]", 'command = "dbx-mcp-server"'];
+  if (mcpEnvEntries.value.length > 0) {
+    lines.push("");
+    lines.push("[mcp_servers.dbx.env]");
+    for (const [key, value] of mcpEnvEntries.value) {
+      lines.push(`${key} = "${value}"`);
     }
   }
-}`;
+  return lines.join("\n");
+});
 
 const mcpStatusTone = computed<"ok" | "warning" | "muted">(() => {
   if (!mcpStatus.value) return "muted";
@@ -509,8 +543,12 @@ const mcpStatusLabel = computed(() => {
 });
 
 const mcpCommand = computed(() => {
-  if (!mcpStatus.value) return "npm install -g @dbx-app/mcp-server@latest";
+  if (!mcpStatus.value) return "npm install -g @dbx-app/mcp-server@latest --registry=https://registry.npmjs.org";
   return mcpStatus.value.installed ? mcpStatus.value.update_command : mcpStatus.value.install_command;
+});
+
+watch(mcpReadonlyMode, (value) => {
+  if (value) mcpAllowDangerous.value = false;
 });
 
 async function refreshMcpStatus() {
@@ -526,7 +564,7 @@ async function refreshMcpStatus() {
   }
 }
 
-async function copyMcpText(kind: "install" | "config", value: string) {
+async function copyMcpText(kind: "install" | "claude-config" | "codex-config", value: string) {
   mcpCopied.value = kind;
   try {
     await copyToClipboard(value);
@@ -1931,8 +1969,15 @@ watch(
                     <div class="flex items-center gap-2">
                       <PackageSearch class="h-4 w-4 text-muted-foreground" />
                       <Label class="text-base">{{ t("settings.mcpTitle") }}</Label>
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <CircleHelp class="h-3.5 w-3.5 cursor-help text-muted-foreground hover:text-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent class="max-w-[320px] text-xs leading-relaxed" side="top" align="start">
+                          {{ t("settings.mcpDescription") }}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
-                    <p class="text-sm text-muted-foreground">{{ t("settings.mcpDescription") }}</p>
                   </div>
                   <Badge
                     variant="outline"
@@ -1992,7 +2037,9 @@ watch(
                   mcpStatus?.installed ? t("settings.mcpUpdateCommand") : t("settings.mcpInstallCommand")
                 }}</Label>
                 <div class="flex min-w-0 items-center gap-2">
-                  <div class="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 font-mono text-xs">
+                  <div
+                    class="min-w-0 flex-1 overflow-x-auto rounded-md border bg-background px-3 py-2 font-mono text-xs whitespace-nowrap"
+                  >
                     {{ mcpCommand }}
                   </div>
                   <Button
@@ -2009,23 +2056,76 @@ watch(
               </div>
 
               <div class="space-y-2">
-                <Label>{{ t("settings.mcpConfig") }}</Label>
-                <div class="relative rounded-md border bg-background p-3">
-                  <pre
-                    class="overflow-x-auto whitespace-pre text-xs leading-relaxed"
-                  ><code>{{ mcpRecommendedConfig }}</code></pre>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    class="absolute right-2 top-2 h-7 w-7"
-                    :title="t('common.copy')"
-                    @click="copyMcpText('config', mcpRecommendedConfig)"
-                  >
-                    <CheckCircle2 v-if="mcpCopied === 'config'" class="h-3.5 w-3.5 text-green-500" />
-                    <Copy v-else class="h-3.5 w-3.5" />
-                  </Button>
+                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="mcp-readonly-mode">{{ t("settings.mcpReadonlyMode") }}</Label>
+                    <p class="text-xs text-muted-foreground">{{ t("settings.mcpReadonlyModeDescription") }}</p>
+                  </div>
+                  <Switch id="mcp-readonly-mode" v-model="mcpReadonlyMode" />
                 </div>
+              </div>
+
+              <div class="space-y-2">
+                <div class="flex items-center justify-between gap-4 rounded-md border bg-muted/20 px-3 py-2">
+                  <div class="space-y-1">
+                    <Label for="mcp-allow-dangerous">{{ t("settings.mcpAllowDangerous") }}</Label>
+                    <p class="text-xs text-muted-foreground">{{ t("settings.mcpAllowDangerousDescription") }}</p>
+                  </div>
+                  <Switch id="mcp-allow-dangerous" v-model="mcpAllowDangerous" :disabled="mcpReadonlyMode" />
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <Label>{{ t("settings.mcpConfig") }}</Label>
+                <Tabs v-model="mcpConfigTab" class="space-y-3">
+                  <TabsList>
+                    <TabsTrigger value="claude">Claude Code</TabsTrigger>
+                    <TabsTrigger value="codex">Codex</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="claude" class="m-0">
+                    <div class="relative rounded-md border bg-background p-3">
+                      <pre
+                        class="overflow-x-auto whitespace-pre text-xs leading-relaxed"
+                      ><code>{{ mcpClaudeRecommendedConfig }}</code></pre>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        class="absolute right-2 top-2 h-7 w-7"
+                        :title="t('common.copy')"
+                        @click="copyMcpText('claude-config', mcpClaudeRecommendedConfig)"
+                      >
+                        <CheckCircle2 v-if="mcpCopied === 'claude-config'" class="h-3.5 w-3.5 text-green-500" />
+                        <Copy v-else class="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="codex" class="m-0">
+                    <div class="space-y-2">
+                      <div class="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                        {{ t("settings.mcpCodexConfigPath") }}
+                      </div>
+                      <div class="relative rounded-md border bg-background p-3">
+                        <pre
+                          class="overflow-x-auto whitespace-pre text-xs leading-relaxed"
+                        ><code>{{ mcpCodexRecommendedConfig }}</code></pre>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          class="absolute right-2 top-2 h-7 w-7"
+                          :title="t('common.copy')"
+                          @click="copyMcpText('codex-config', mcpCodexRecommendedConfig)"
+                        >
+                          <CheckCircle2 v-if="mcpCopied === 'codex-config'" class="h-3.5 w-3.5 text-green-500" />
+                          <Copy v-else class="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
 
               <div

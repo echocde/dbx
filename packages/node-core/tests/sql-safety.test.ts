@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateSqlSafety } from "../src/sql-safety.js";
+import { evaluateSqlSafety, sqlSafetyFromEnv } from "../src/sql-safety.js";
 
 test("allows read-only SQL by default", () => {
   const decision = evaluateSqlSafety("select * from users limit 5");
@@ -8,11 +8,10 @@ test("allows read-only SQL by default", () => {
   assert.equal(decision.allowed, true);
 });
 
-test("blocks write SQL by default", () => {
-  const decision = evaluateSqlSafety("update users set role = 'admin' where id = 1");
+test("allows non-dangerous write SQL by default when scoped", () => {
+  const decision = evaluateSqlSafety("update users set role = 'admin' where id = 1", sqlSafetyFromEnv({}));
 
-  assert.equal(decision.allowed, false);
-  assert.match(decision.reason ?? "", /read-only/i);
+  assert.equal(decision.allowed, true);
 });
 
 test("blocks dangerous SQL even when writes are enabled", () => {
@@ -51,4 +50,18 @@ test("checks every statement in a multi-statement SQL string", () => {
   assert.equal(decision.allowed, false);
   assert.match(decision.reason ?? "", /Statement 2/i);
   assert.match(decision.reason ?? "", /WHERE/i);
+});
+
+test("sqlSafetyFromEnv allows writes by default but keeps dangerous SQL blocked", () => {
+  const options = sqlSafetyFromEnv({});
+
+  assert.equal(options.allowWrites, true);
+  assert.equal(options.allowDangerous, false);
+});
+
+test("sqlSafetyFromEnv supports explicitly disabling writes", () => {
+  const options = sqlSafetyFromEnv({ DBX_MCP_ALLOW_WRITES: "0" } as NodeJS.ProcessEnv);
+
+  assert.equal(options.allowWrites, false);
+  assert.equal(options.allowDangerous, false);
 });

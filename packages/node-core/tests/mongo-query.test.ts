@@ -59,7 +59,7 @@ test("mongoAggregateWriteStage detects write stages", () => {
   assert.equal(mongoAggregateWriteStage('[{"$merge":{"into":"projects_dump"}}]'), "$merge");
 });
 
-test("mongodb executeQuery blocks aggregate write stages without both env flags", async () => {
+test("mongodb executeQuery blocks aggregate write stages until dangerous SQL is enabled", async () => {
   const oldAllowWrites = process.env.DBX_MCP_ALLOW_WRITES;
   const oldAllowDangerous = process.env.DBX_MCP_ALLOW_DANGEROUS_SQL;
   delete process.env.DBX_MCP_ALLOW_WRITES;
@@ -77,9 +77,6 @@ test("mongodb executeQuery blocks aggregate write stages without both env flags"
     ssl: false,
   } as const;
 
-  await assert.rejects(executeQuery(config, 'db.projects.aggregate([{"$out":"projects_dump"}])'), /DBX_MCP_ALLOW_WRITES=1/);
-
-  process.env.DBX_MCP_ALLOW_WRITES = "1";
   await assert.rejects(
     executeQuery(config, 'db.projects.aggregate([{"$merge":{"into":"projects_dump"}}])'),
     /DBX_MCP_ALLOW_DANGEROUS_SQL=1/,
@@ -112,9 +109,9 @@ test("parseMongoWriteCommand accepts supported write commands", () => {
   });
 });
 
-test("mongodb executeQuery blocks writes without the write env flag", async () => {
+test("mongodb executeQuery blocks writes when writes are explicitly disabled", async () => {
   const oldAllowWrites = process.env.DBX_MCP_ALLOW_WRITES;
-  delete process.env.DBX_MCP_ALLOW_WRITES;
+  process.env.DBX_MCP_ALLOW_WRITES = "0";
   await assert.rejects(
     executeQuery(
       {
@@ -131,7 +128,7 @@ test("mongodb executeQuery blocks writes without the write env flag", async () =
       },
       'db.projects.insertOne({"name":"demo"})',
     ),
-    /DBX_MCP_ALLOW_WRITES=1/,
+    /read-only/i,
   );
   if (oldAllowWrites === undefined) delete process.env.DBX_MCP_ALLOW_WRITES;
   else process.env.DBX_MCP_ALLOW_WRITES = oldAllowWrites;

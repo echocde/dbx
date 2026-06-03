@@ -96,24 +96,17 @@ test("execute query runs safe multi-statement SQL one statement at a time", asyn
 });
 
 test("execute query reports the blocked statement number for unsafe multi-statement SQL", async () => {
-  const oldAllowWrites = process.env.DBX_MCP_ALLOW_WRITES;
-  process.env.DBX_MCP_ALLOW_WRITES = "1";
   const server = createDbxMcpServer(backend, { isWebMode: true });
 
-  try {
-    const result = await (server as any)._registeredTools.dbx_execute_query.handler({
-      connection_name: "local",
-      sql: "select 1; delete from users;",
-    });
+  const result = await (server as any)._registeredTools.dbx_execute_query.handler({
+    connection_name: "local",
+    sql: "select 1; delete from users;",
+  });
 
-    assert.equal(result.isError, true);
-    assert.match(result.content[0].text, /SQL_BLOCKED:/);
-    assert.match(result.content[0].text, /Statement 2/);
-    assert.match(result.content[0].text, /WHERE/);
-  } finally {
-    if (oldAllowWrites === undefined) delete process.env.DBX_MCP_ALLOW_WRITES;
-    else process.env.DBX_MCP_ALLOW_WRITES = oldAllowWrites;
-  }
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /SQL_BLOCKED:/);
+  assert.match(result.content[0].text, /Statement 2/);
+  assert.match(result.content[0].text, /WHERE/);
 });
 
 test("mongodb list tables returns collections from the selected database", async () => {
@@ -266,7 +259,7 @@ test("mongodb execute-and-show blocks aggregate write stages before desktop brid
     });
 
     assert.match(result.content[0].text, /SQL_BLOCKED:/);
-    assert.match(result.content[0].text, /DBX_MCP_ALLOW_WRITES=1/);
+    assert.match(result.content[0].text, /DBX_MCP_ALLOW_DANGEROUS_SQL=1/);
   } finally {
     if (oldAllowWrites === undefined) delete process.env.DBX_MCP_ALLOW_WRITES;
     else process.env.DBX_MCP_ALLOW_WRITES = oldAllowWrites;

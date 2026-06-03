@@ -12,6 +12,14 @@ export interface SqlSafetyDecision {
 const READ_KEYWORDS = new Set(["select", "with", "show", "describe", "desc", "explain"]);
 const DANGEROUS_KEYWORDS = new Set(["drop", "truncate", "alter"]);
 
+function parseBooleanEnv(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true") return true;
+  if (normalized === "0" || normalized === "false") return false;
+  return undefined;
+}
+
 export function evaluateSqlSafety(sql: string, options: SqlSafetyOptions = {}): SqlSafetyDecision {
   const statements = splitSqlStatements(sql);
   if (statements.length === 0) return { allowed: false, reason: "SQL is empty." };
@@ -47,7 +55,7 @@ function evaluateSingleSqlStatementSafety(sql: string, options: SqlSafetyOptions
   if (!options.allowWrites && !READ_KEYWORDS.has(firstKeyword)) {
     return {
       allowed: false,
-      reason: "MCP SQL execution is read-only by default. Set DBX_MCP_ALLOW_WRITES=1 to allow write statements.",
+      reason: "MCP SQL execution is read-only for this session. Set DBX_MCP_ALLOW_WRITES=1 to allow write statements.",
     };
   }
 
@@ -64,9 +72,11 @@ function evaluateSingleSqlStatementSafety(sql: string, options: SqlSafetyOptions
 }
 
 export function sqlSafetyFromEnv(env: NodeJS.ProcessEnv = process.env): SqlSafetyOptions {
+  const allowWrites = parseBooleanEnv(env.DBX_MCP_ALLOW_WRITES);
+  const allowDangerous = parseBooleanEnv(env.DBX_MCP_ALLOW_DANGEROUS_SQL);
   return {
-    allowWrites: env.DBX_MCP_ALLOW_WRITES === "1" || env.DBX_MCP_ALLOW_WRITES === "true",
-    allowDangerous: env.DBX_MCP_ALLOW_DANGEROUS_SQL === "1" || env.DBX_MCP_ALLOW_DANGEROUS_SQL === "true",
+    allowWrites: allowWrites ?? true,
+    allowDangerous: allowDangerous ?? false,
   };
 }
 
