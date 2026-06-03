@@ -96,7 +96,7 @@ function toggleShowAll() {
       </Button>
     </PopoverTrigger>
 
-    <PopoverContent align="start" class="w-80 p-0 gap-0 overflow-hidden" side-offset="8">
+    <PopoverContent align="start" class="w-80 p-0 gap-0 overflow-hidden" :side-offset="8">
       <div class="border-b bg-muted/40 px-3 py-2">
         <div class="text-sm font-semibold">{{ t("exportProgress.popoverTitle") }}</div>
       </div>
