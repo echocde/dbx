@@ -614,6 +614,7 @@ export interface SqlCompletionColumn {
   schema?: string;
   dataType?: string;
   isNullable?: boolean;
+  comment?: string | null;
 }
 
 export interface SqlCompletionForeignKey {
@@ -628,6 +629,7 @@ export interface SqlCompletionItem {
   label: string;
   type: "keyword" | "table" | "column" | "snippet" | "function" | "schema";
   detail?: string;
+  info?: string;
   apply?: string;
   boost: number;
 }
@@ -1895,6 +1897,7 @@ function buildColumnItems(
         label: column.displayLabel,
         type: "column" as const,
         detail: buildColumnDetail(column),
+        info: buildColumnInfo(column),
         apply: buildColumnApply(column, context, dialect),
         boost: computeBoost(column.displayLabel, context.prefix) + keyBoost,
       };
@@ -1924,7 +1927,21 @@ function buildColumnDetail(column: SqlCompletionColumn): string {
   if (column.isNullable === false) {
     detail += "  NOT NULL";
   }
+  const comment = column.comment?.trim();
+  if (comment) {
+    detail += `  -- ${comment}`;
+  }
   return detail;
+}
+
+function buildColumnInfo(column: SqlCompletionColumn): string | undefined {
+  const parts = [
+    column.schema ? `${column.schema}.${column.table}.${column.name}` : `${column.table}.${column.name}`,
+    column.dataType ? `Type: ${column.dataType}` : undefined,
+    column.isNullable === false ? "Nullable: no" : column.isNullable === true ? "Nullable: yes" : undefined,
+    column.comment?.trim() ? `Comment: ${column.comment.trim()}` : undefined,
+  ].filter((part): part is string => !!part);
+  return parts.length > 1 ? parts.join("\n") : undefined;
 }
 
 function buildJoinConditionItems(

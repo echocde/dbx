@@ -1720,6 +1720,8 @@ export const useConnectionStore = defineStore("connection", () => {
       table,
       schema,
       dataType: column.data_type,
+      isNullable: column.is_nullable,
+      comment: column.comment,
     }));
   }
 

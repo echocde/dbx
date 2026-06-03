@@ -4,6 +4,7 @@ export interface ElasticsearchCompletionItem {
   label: string;
   type: "keyword" | "property" | "text" | "snippet";
   detail?: string;
+  info?: string;
   apply?: string;
   boost: number;
 }

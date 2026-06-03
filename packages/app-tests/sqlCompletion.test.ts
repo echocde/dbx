@@ -211,6 +211,32 @@ test("keeps explicit alias column suggestions scoped to the alias table", () => 
   );
 });
 
+test("shows column comments in WHERE field completions", () => {
+  const sql = "select * from public.orders where st";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable: new Map([
+      [
+        "public.orders",
+        [
+          {
+            name: "status",
+            table: "orders",
+            schema: "public",
+            dataType: "varchar",
+            isNullable: false,
+            comment: "Order lifecycle state",
+          },
+        ],
+      ],
+    ]),
+  });
+
+  const column = items.find((item) => item.type === "column" && item.label === "status");
+  assert.equal(column?.detail, "public.orders  [varchar]  NOT NULL  -- Order lifecycle state");
+  assert.equal(column?.info, "public.orders.status\nType: varchar\nNullable: no\nComment: Order lifecycle state");
+});
+
 test("suggests only fields after numbered table aliases in join conditions", () => {
   const sql = "select * from public.users t1 join public.orders t2 on t1.";
   const items = buildSqlCompletionItems(sql, sql.length, {

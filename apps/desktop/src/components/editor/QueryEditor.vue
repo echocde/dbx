@@ -611,6 +611,7 @@ async function resolveSqlHoverTooltip(currentView: EditorViewType, pos: number) 
         create: () => ({
           dom: createHoverDom(column.name, column.dataType || "column", [
             column.schema ? `${column.schema}.${column.table}` : column.table,
+            ...(column.comment?.trim() ? [column.comment.trim()] : []),
           ]),
         }),
       };
@@ -869,12 +870,14 @@ function buildCompletionResult(items: QueryCompletionItem[], from: number, valid
             label: item.label,
             type: item.type,
             detail: item.detail,
+            info: item.info,
             boost: item.boost,
           })
         : {
             label: item.label,
             type: item.type,
             detail: item.detail,
+            info: item.info,
             apply: item.apply,
             boost: item.boost,
           },
