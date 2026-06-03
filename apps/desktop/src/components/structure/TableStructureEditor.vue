@@ -23,7 +23,7 @@ import {
   SlidersHorizontal,
   Trash2,
   X,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,

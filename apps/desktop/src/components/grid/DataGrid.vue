@@ -56,7 +56,7 @@ import {
   PanelBottom,
   PanelRight,
   TableProperties,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import {
@@ -1627,7 +1627,14 @@ interface RenderedGridColumn {
   name: string;
 }
 
-const horizontalColumnWindow = computed(() => {
+interface HorizontalColumnWindow {
+  start: number;
+  end: number;
+  beforeWidth: number;
+  afterWidth: number;
+}
+
+function getHorizontalColumnWindow(): HorizontalColumnWindow {
   const widths = renderedColumnWidths.value;
   const offsets = renderedColumnOffsets.value;
   const totalColumns = visibleColumnIndexes.value.length;
@@ -1666,7 +1673,9 @@ const horizontalColumnWindow = computed(() => {
     beforeWidth: offset,
     afterWidth: Math.max(0, columnsWidth - visibleWidth),
   };
-});
+}
+
+const horizontalColumnWindow = computed(getHorizontalColumnWindow);
 
 const renderedGridColumns = computed<RenderedGridColumn[]>(() => {
   const window = horizontalColumnWindow.value;

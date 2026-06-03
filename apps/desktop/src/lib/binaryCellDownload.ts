@@ -21,6 +21,10 @@ const HEX_VALUE_RE = /^(?:0[xX]|\\x)([0-9a-fA-F\s]+)$/;
 const BINARY_TYPE_RE =
   /^(?:blob|tinyblob|mediumblob|longblob|bytea|bytes|binary|varbinary|image|raw|long\s+raw)(?:\b|\()/i;
 
+function copyBytesForBlob(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(bytes);
+}
+
 export function parseBinaryCellHexValue(value: CellValue): Uint8Array | null {
   if (typeof value !== "string") return null;
   const match = value.trim().match(HEX_VALUE_RE);
@@ -105,7 +109,9 @@ export async function downloadBinaryCellPayload(
     return { kind: "saved", path };
   }
 
-  const blob = new Blob([payload.data], { type: payload.mimeType });
+  const blob = new Blob([typeof payload.data === "string" ? payload.data : copyBytesForBlob(payload.data)], {
+    type: payload.mimeType,
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

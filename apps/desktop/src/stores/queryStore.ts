@@ -38,6 +38,22 @@ const STORAGE_KEY = "dbx-open-tabs";
 const ACTIVE_TAB_KEY = "dbx-active-tab";
 const ORACLE_LIKE_METADATA_TYPES = new Set<string>(["oracle", "dameng", "oceanbase-oracle"]);
 
+async function withFrontendQueryTimeout<T>(promise: Promise<T>, timeoutSecs: number, message: string): Promise<T> {
+  if (timeoutSecs === 0) return promise;
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutSecs * 1000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function normalizeOracleLikeMetadataIdentifier(dbType: string, identifier: string | undefined, quoted?: boolean) {
   if (!identifier || quoted || !ORACLE_LIKE_METADATA_TYPES.has(dbType)) return identifier;
   return identifier.toUpperCase();
@@ -961,19 +977,12 @@ export const useQueryStore = defineStore("query", () => {
         executionId,
         executionOptions,
       );
-      const results =
-        queryTimeoutSecs === 0
-          ? await executionPromise
-          : await Promise.race([
-              executionPromise,
-              new Promise<never>((_, reject) => {
-                const frontendTimeoutSecs = Math.max(queryTimeoutSecs * 2, 60);
-                setTimeout(
-                  () => reject(new Error(t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }))),
-                  frontendTimeoutSecs * 1000,
-                );
-              }),
-            ]);
+      const frontendTimeoutSecs = Math.max(queryTimeoutSecs * 2, 60);
+      const results = await withFrontendQueryTimeout(
+        executionPromise,
+        queryTimeoutSecs === 0 ? 0 : frontendTimeoutSecs,
+        t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }),
+      );
       console.info("[DBX][executeTabSql:execute-multi:done]", {
         traceId,
         resultCount: results.length,

@@ -2,7 +2,7 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
-import { Upload, Download, FolderPlus, RefreshCw, ChevronsLeft } from "lucide-vue-next";
+import { Upload, Download, FolderPlus, RefreshCw, ChevronsLeft } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import LightDropdown from "@/components/ui/LightDropdown.vue";

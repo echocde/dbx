@@ -3,7 +3,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, XCircle, AlertCircle, X } from "lucide-vue-next";
+import { Loader2, CheckCircle2, XCircle, AlertCircle, X } from "@lucide/vue";
 
 const { t } = useI18n();
 const open = defineModel<boolean>("open", { default: false });

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Database } from "lucide-vue-next";
+import { Database } from "@lucide/vue";
 
 const props = defineProps<{
   dbType: string;

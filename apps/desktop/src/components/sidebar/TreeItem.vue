@@ -47,7 +47,7 @@ import {
   ListFilter,
   Package,
   Clipboard,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";

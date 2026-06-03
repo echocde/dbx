@@ -31,7 +31,7 @@ import {
   Loader2,
   Play,
   Square,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 
 type CompareColumn = ColumnInfo;
 

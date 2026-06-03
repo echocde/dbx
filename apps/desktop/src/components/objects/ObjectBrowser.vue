@@ -34,7 +34,7 @@ import {
   TerminalSquare,
   Trash2,
   X,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

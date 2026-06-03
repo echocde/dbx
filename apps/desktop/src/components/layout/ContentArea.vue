@@ -16,7 +16,7 @@ import {
   ChevronUp,
   RefreshCcw,
   Wrench,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 import { Button } from "@/components/ui/button";

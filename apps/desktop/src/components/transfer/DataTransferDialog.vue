@@ -14,7 +14,7 @@ import type { TransferProgress, TransferMode } from "@/lib/api";
 import type { DatabaseType } from "@/types/database";
 import { isSchemaAware, supportsTransfer } from "@/lib/databaseCapabilities";
 import { nextTransferTerminalState } from "@/lib/transferProgressState";
-import { ArrowRightLeft, Check, X, Loader2, Square, CheckSquare } from "lucide-vue-next";
+import { ArrowRightLeft, Check, X, Loader2, Square, CheckSquare } from "@lucide/vue";
 
 const { t } = useI18n();
 const open = defineModel<boolean>("open", { default: false });

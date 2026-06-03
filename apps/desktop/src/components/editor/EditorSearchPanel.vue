@@ -12,7 +12,7 @@ import {
   replaceNext as cmReplaceNext,
   replaceAll as cmReplaceAll,
 } from "@codemirror/search";
-import { ChevronUp, ChevronDown, ChevronRight, X } from "lucide-vue-next";
+import { ChevronUp, ChevronDown, ChevronRight, X } from "@lucide/vue";
 
 const props = defineProps<{
   view: EditorView | null;

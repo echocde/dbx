@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, type Component } from "vue";
-import { Check, ChevronDown } from "lucide-vue-next";
+import { Check, ChevronDown } from "@lucide/vue";
 
 export interface LightDropdownItem {
   label: string;

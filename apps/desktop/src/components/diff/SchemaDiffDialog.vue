@@ -15,7 +15,7 @@ import type { TableDiff, TableSchemaDetail } from "@/lib/schemaDiff";
 import type { TableInfo } from "@/types/database";
 import { sqlMetadataRefreshTarget } from "@/lib/sqlMetadataRefresh";
 import { useToast } from "@/composables/useToast";
-import { Loader2, Copy, Play, GitCompareArrows, ArrowLeftRight } from "lucide-vue-next";
+import { Loader2, Copy, Play, GitCompareArrows, ArrowLeftRight } from "@lucide/vue";
 import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
 
 interface SelectableTableDiff extends TableDiff {

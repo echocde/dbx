@@ -14,7 +14,7 @@ import {
   KeyRound,
   TerminalSquare,
   Asterisk,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
 import { Splitpanes, Pane } from "splitpanes";

@@ -1188,7 +1188,7 @@ export async function exportQueryResultXlsx(
     rows,
   });
   const fileName = filePath.split(/[\\/]/).pop() || "export.xlsx";
-  const blob = new Blob([workbook], {
+  const blob = new Blob([new Uint8Array(workbook)], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const url = URL.createObjectURL(blob);

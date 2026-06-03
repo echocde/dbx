@@ -39,7 +39,7 @@ import {
   Search,
   ShieldCheck,
   Trash2,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 
 type DbOption = { value: string; label: string };
 type DbCategory = { key: string; title: string; options: DbOption[] };
