@@ -668,7 +668,7 @@ public final class DbxJdbcPlugin {
             return url;
         }
         String params = urlParams.trim();
-        while (params.startsWith("?") || params.startsWith("&")) {
+        while (params.startsWith("?") || params.startsWith("&") || params.startsWith(";") || params.startsWith(":")) {
             params = params.substring(1).trim();
         }
         if (params.isEmpty()) {
@@ -678,8 +678,40 @@ public final class DbxJdbcPlugin {
         int fragmentStart = url.indexOf('#');
         String base = fragmentStart < 0 ? url : url.substring(0, fragmentStart);
         String fragment = fragmentStart < 0 ? "" : url.substring(fragmentStart);
-        String separator = base.contains("?") ? (base.endsWith("?") || base.endsWith("&") ? "" : "&") : "?";
+        if (jdbcUrlUsesColonProperties(base) && !params.endsWith(";")) {
+            params = params + ";";
+        }
+        String separator = jdbcUrlParamSeparator(base);
         return base + separator + params + fragment;
+    }
+
+    private static String jdbcUrlParamSeparator(String base) {
+        if (urlMatchesPrefix(base, "jdbc:sqlserver:")) {
+            return base.endsWith(";") ? "" : ";";
+        }
+        if (jdbcUrlUsesColonProperties(base)) {
+            if (base.endsWith(":") || base.endsWith(";")) {
+                return "";
+            }
+            return jdbcUrlHasColonProperties(base) ? ";" : ":";
+        }
+        return base.contains("?") ? (base.endsWith("?") || base.endsWith("&") ? "" : "&") : "?";
+    }
+
+    private static boolean jdbcUrlUsesColonProperties(String base) {
+        return urlMatchesPrefix(base, "jdbc:db2:") || urlMatchesPrefix(base, "jdbc:informix-sqli:");
+    }
+
+    private static boolean jdbcUrlHasColonProperties(String base) {
+        int schemeEnd = base.indexOf("://");
+        if (schemeEnd < 0) {
+            return false;
+        }
+        int pathStart = base.indexOf('/', schemeEnd + 3);
+        if (pathStart < 0) {
+            return false;
+        }
+        return base.indexOf(':', pathStart + 1) >= 0;
     }
 
     private static String oracleEffectiveSchema(Connection conn, String schema) throws SQLException {

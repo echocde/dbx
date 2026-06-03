@@ -153,6 +153,48 @@ final class DbxJdbcPluginTest {
     }
 
     @Test
+    void jdbcUrlAppendsSqlServerConnectionUrlParamsWithSemicolon() throws Exception {
+        JsonNode connection = MAPPER.readTree("""
+            {
+              "connection_string": "jdbc:sqlserver://localhost:1433",
+              "url_params": "databaseName=master;encrypt=true"
+            }
+            """);
+
+        assertEquals(
+            "jdbc:sqlserver://localhost:1433;databaseName=master;encrypt=true",
+            DbxJdbcPlugin.jdbcUrl(connection)
+        );
+    }
+
+    @Test
+    void jdbcUrlAppendsDb2ConnectionUrlParamsWithColonProperties() throws Exception {
+        JsonNode connection = MAPPER.readTree("""
+            {
+              "connection_string": "jdbc:db2://localhost:50000/SAMPLE",
+              "url_params": "sslConnection=true;"
+            }
+            """);
+
+        assertEquals("jdbc:db2://localhost:50000/SAMPLE:sslConnection=true;", DbxJdbcPlugin.jdbcUrl(connection));
+    }
+
+    @Test
+    void jdbcUrlAppendsInformixConnectionUrlParamsWithColonProperties() throws Exception {
+        JsonNode connection = MAPPER.readTree("""
+            {
+              "connection_string": "jdbc:informix-sqli://localhost:9088/sysmaster",
+              "url_params": "INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8"
+            }
+            """);
+
+        assertEquals(
+            "jdbc:informix-sqli://localhost:9088/sysmaster:INFORMIXSERVER=informix;CLIENT_LOCALE=en_US.utf8;",
+            DbxJdbcPlugin.jdbcUrl(connection)
+        );
+    }
+
+    @Test
     void oracleSysdbaIsMappedToInternalLogonProperty() throws Exception {
         Method method = DbxJdbcPlugin.class.getDeclaredMethod("applyOracleProperties", JsonNode.class, Properties.class);
         method.setAccessible(true);
