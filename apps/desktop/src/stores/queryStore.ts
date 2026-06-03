@@ -388,6 +388,26 @@ export const useQueryStore = defineStore("query", () => {
     closeTabsWhere((tab) => tab.connectionId === connectionId && tab.database === database);
   }
 
+  function releaseTabsWhere(predicate: (tab: QueryTab) => boolean) {
+    tabs.value
+      .filter((tab) => predicate(tab))
+      .forEach((tab) => {
+        if (tab.isExecuting) void cancelTabExecution(tab.id);
+        if (tab.isExplaining) void cancelTabExplain(tab.id);
+        void closeResultSession(tab);
+        void closeClientConnectionSession(tab);
+        clearResultPayload(tab);
+      });
+  }
+
+  function releaseConnectionTabs(connectionId: string) {
+    releaseTabsWhere((tab) => tab.connectionId === connectionId);
+  }
+
+  function releaseDatabaseTabs(connectionId: string, database: string) {
+    releaseTabsWhere((tab) => tab.connectionId === connectionId && tab.database === database);
+  }
+
   function updateSql(id: string, sql: string) {
     const tab = tabs.value.find((t) => t.id === id);
     if (tab) {
@@ -1328,6 +1348,8 @@ export const useQueryStore = defineStore("query", () => {
     closeAllTabs,
     closeConnectionTabs,
     closeDatabaseTabs,
+    releaseConnectionTabs,
+    releaseDatabaseTabs,
     updateSql,
     renameTab,
     openObjectBrowser,

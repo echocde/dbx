@@ -1579,6 +1579,15 @@ export default {
     sidebarObjectDisplaySimpleDescription: "数据库或 schema 下直接平铺表和视图，减少中间层级。",
     autoSelectActiveSidebarNode: "始终选中已打开项目",
     autoSelectActiveSidebarNodeDescription: "切换标签页时，在侧边栏选中匹配的可见表、集合或 SQL 文件。",
+    disconnectTabHandlingMode: "关闭连接后的查询页签处理",
+    disconnectTabHandlingModeDescription: "选择关闭连接或数据库后，查询页签和结果表格的保留策略。",
+    disconnectTabHandlingModeCloseTabs: "关闭全部页签",
+    disconnectTabHandlingModeCloseTabsDescription: "直接关闭对应的查询页签，页签中的 SQL 和结果表格都会一起移除。",
+    disconnectTabHandlingModeKeepTabsClearResults: "关闭结果表格，保留 SQL 页签",
+    disconnectTabHandlingModeKeepTabsClearResultsDescription:
+      "关闭结果表格，保留查询页签和 SQL 文本，同时清理执行状态与结果会话。",
+    disconnectTabHandlingModeKeepTabsKeepResults: "不关闭页签和结果表格",
+    disconnectTabHandlingModeKeepTabsKeepResultsDescription: "保留查询页签、SQL 文本和当前结果表格，不做额外处理。",
     sidebarHiddenTablePrefixes: "隐藏表名前缀",
     sidebarHiddenTablePrefixesDescription:
       "每行一个前缀，仅影响侧边栏表、视图和集合的显示名称，悬浮提示和实际操作仍使用完整名称。",

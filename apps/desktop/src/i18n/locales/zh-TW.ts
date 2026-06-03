@@ -1566,6 +1566,15 @@ export default {
     sidebarObjectDisplaySimpleDescription: "直接在每個資料庫或 schema 下列出資料表與檢視，減少中間層級。",
     autoSelectActiveSidebarNode: "一律選取已開啟項目",
     autoSelectActiveSidebarNodeDescription: "切換分頁時，在側邊欄選取相符的可見資料表、集合或 SQL 檔案。",
+    disconnectTabHandlingMode: "關閉連線後的查詢分頁處理",
+    disconnectTabHandlingModeDescription: "選擇關閉連線或資料庫後，查詢分頁與結果表格的保留策略。",
+    disconnectTabHandlingModeCloseTabs: "關閉全部分頁",
+    disconnectTabHandlingModeCloseTabsDescription: "直接關閉對應查詢分頁，分頁中的 SQL 與結果表格都會一併移除。",
+    disconnectTabHandlingModeKeepTabsClearResults: "關閉結果表格，保留 SQL 分頁",
+    disconnectTabHandlingModeKeepTabsClearResultsDescription:
+      "關閉結果表格，保留查詢分頁與 SQL 文字，同時清理執行狀態與結果工作階段。",
+    disconnectTabHandlingModeKeepTabsKeepResults: "不關閉分頁和結果表格",
+    disconnectTabHandlingModeKeepTabsKeepResultsDescription: "保留查詢分頁、SQL 文字與目前結果表格，不另外做清理。",
     sidebarHiddenTablePrefixes: "隱藏資料表名稱字首",
     sidebarHiddenTablePrefixesDescription:
       "每行一個字首。只縮短側邊欄中的資料表、檢視和集合標籤；工具提示和實際操作仍使用完整名稱。",

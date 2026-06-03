@@ -78,6 +78,7 @@ function redisDbLabel(db: number, loadedKeyCount?: number, totalKeyCount?: numbe
 }
 
 export const useConnectionStore = defineStore("connection", () => {
+  const settingsStore = useSettingsStore();
   const connections = ref<ConnectionConfig[]>([]);
   const isDesktop = isTauriRuntime();
   const activeConnectionId = ref<string | null>(localStorage.getItem(ACTIVE_CONNECTION_STORAGE_KEY));
@@ -701,7 +702,17 @@ export const useConnectionStore = defineStore("connection", () => {
     const shouldRemoveOneTimeConnection = getConfig(connectionId)?.one_time === true;
     await api.disconnectDb(connectionId);
     const { useQueryStore } = await import("@/stores/queryStore");
-    useQueryStore().closeConnectionTabs(connectionId);
+    const queryStore = useQueryStore();
+    switch (settingsStore.editorSettings.disconnectTabHandlingMode) {
+      case "close-tabs":
+        queryStore.closeConnectionTabs(connectionId);
+        break;
+      case "keep-tabs-clear-results":
+        queryStore.releaseConnectionTabs(connectionId);
+        break;
+      case "keep-tabs-keep-results":
+        break;
+    }
     connectedIds.value.delete(connectionId);
     const node = findNode(treeNodes.value, connectionId);
     if (node) {
@@ -721,7 +732,17 @@ export const useConnectionStore = defineStore("connection", () => {
   async function closeDatabaseConnection(connectionId: string, database: string) {
     await api.closeDatabaseConnection(connectionId, database);
     const { useQueryStore } = await import("@/stores/queryStore");
-    useQueryStore().closeDatabaseTabs(connectionId, database);
+    const queryStore = useQueryStore();
+    switch (settingsStore.editorSettings.disconnectTabHandlingMode) {
+      case "close-tabs":
+        queryStore.closeDatabaseTabs(connectionId, database);
+        break;
+      case "keep-tabs-clear-results":
+        queryStore.releaseDatabaseTabs(connectionId, database);
+        break;
+      case "keep-tabs-keep-results":
+        break;
+    }
     const node = findDatabaseTreeNode(treeNodes.value, connectionId, database);
     if (node) {
       node.isExpanded = false;

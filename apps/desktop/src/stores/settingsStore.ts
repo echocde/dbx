@@ -187,6 +187,8 @@ const CELL_DETAIL_PANEL_LAYOUTS = ["bottom", "right"] as const;
 export type CellDetailPanelLayout = (typeof CELL_DETAIL_PANEL_LAYOUTS)[number];
 const DATA_GRID_RENDER_MODES = ["dom", "canvas"] as const;
 export type DataGridRenderMode = (typeof DATA_GRID_RENDER_MODES)[number];
+const DISCONNECT_TAB_HANDLING_MODES = ["close-tabs", "keep-tabs-clear-results", "keep-tabs-keep-results"] as const;
+export type DisconnectTabHandlingMode = (typeof DISCONNECT_TAB_HANDLING_MODES)[number];
 
 export interface EditorSettings {
   fontFamily: string;
@@ -211,6 +213,7 @@ export interface EditorSettings {
   sidebarActivation: SidebarActivation;
   sidebarObjectDisplay: "grouped" | "simple";
   autoSelectActiveSidebarNode: boolean;
+  disconnectTabHandlingMode: DisconnectTabHandlingMode;
   sidebarHiddenTablePrefixes: string[];
   sidebarHideTableComments: boolean;
   sidebarAllowHorizontalScroll: boolean;
@@ -267,6 +270,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   sidebarActivation: "single",
   sidebarObjectDisplay: "grouped",
   autoSelectActiveSidebarNode: false,
+  disconnectTabHandlingMode: "close-tabs",
   sidebarHiddenTablePrefixes: [],
   sidebarHideTableComments: false,
   sidebarAllowHorizontalScroll: false,
@@ -306,6 +310,21 @@ function normalizeDataGridRenderMode(value: unknown): DataGridRenderMode {
   return DATA_GRID_RENDER_MODES.includes(value as DataGridRenderMode)
     ? (value as DataGridRenderMode)
     : DEFAULT_EDITOR_SETTINGS.dataGridRenderMode;
+}
+
+function normalizeDisconnectTabHandlingMode(
+  value: unknown,
+  legacyCloseTabsOnDisconnect?: unknown,
+): DisconnectTabHandlingMode {
+  if (DISCONNECT_TAB_HANDLING_MODES.includes(value as DisconnectTabHandlingMode)) {
+    return value as DisconnectTabHandlingMode;
+  }
+  if (value === "clear-state") return "keep-tabs-clear-results";
+  if (value === "keep-tabs") return "keep-tabs-keep-results";
+  if (typeof legacyCloseTabsOnDisconnect === "boolean") {
+    return legacyCloseTabsOnDisconnect ? "close-tabs" : "keep-tabs-clear-results";
+  }
+  return DEFAULT_EDITOR_SETTINGS.disconnectTabHandlingMode;
 }
 
 function normalizeColumnFormatters(value: unknown): Record<string, ColumnFormatterConfig> {
@@ -395,6 +414,10 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
         : DEFAULT_EDITOR_SETTINGS.sidebarObjectDisplay,
     autoSelectActiveSidebarNode:
       settings.autoSelectActiveSidebarNode ?? DEFAULT_EDITOR_SETTINGS.autoSelectActiveSidebarNode,
+    disconnectTabHandlingMode: normalizeDisconnectTabHandlingMode(
+      (settings as Partial<EditorSettings>).disconnectTabHandlingMode,
+      (settings as Partial<EditorSettings> & { closeQueryTabsOnDisconnect?: boolean }).closeQueryTabsOnDisconnect,
+    ),
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(settings.sidebarHiddenTablePrefixes),
     sidebarHideTableComments: settings.sidebarHideTableComments ?? DEFAULT_EDITOR_SETTINGS.sidebarHideTableComments,
     sidebarAllowHorizontalScroll:
@@ -532,6 +555,10 @@ export const useSettingsStore = defineStore("settings", () => {
       editorSettings.value.sidebarObjectDisplay = partial.sidebarObjectDisplay;
     if (partial.autoSelectActiveSidebarNode !== undefined)
       editorSettings.value.autoSelectActiveSidebarNode = partial.autoSelectActiveSidebarNode;
+    if (partial.disconnectTabHandlingMode !== undefined)
+      editorSettings.value.disconnectTabHandlingMode = normalizeDisconnectTabHandlingMode(
+        partial.disconnectTabHandlingMode,
+      );
     if (partial.sidebarHiddenTablePrefixes !== undefined)
       editorSettings.value.sidebarHiddenTablePrefixes = normalizeSidebarHiddenTablePrefixes(
         partial.sidebarHiddenTablePrefixes,
