@@ -1137,7 +1137,7 @@ export async function startTableExport(
 }
 
 function downloadTableExportFile(exportId: string, format: string): void {
-  const ext = format === "csv" ? "csv" : "xlsx";
+  const ext = format === "markdown" || format === "md" ? "md" : format;
   const a = document.createElement("a");
   a.href = `/api/export/table/download/${exportId}`;
   a.download = `table_export_${exportId}.${ext}`;

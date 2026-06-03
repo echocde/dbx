@@ -278,7 +278,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   columnFormatters: {},
   customColumnFormatters: {},
   snippets: DEFAULT_SQL_SNIPPETS,
-  exportBatchSize: 2000,
+  exportBatchSize: 10000,
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";

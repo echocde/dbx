@@ -16,6 +16,7 @@ import { tryStartExclusiveActivation, type ActionActivationGuard } from "@/lib/a
 import { copyToClipboard } from "@/lib/clipboard";
 import { buildDataGridCopyInsertStatement, buildDataGridCopyUpdateStatements } from "@/lib/dataGridSql";
 import { formatSqlInsert } from "@/lib/exportFormats";
+import { uuid } from "@/lib/utils";
 import type { DatabaseType, QueryResult } from "@/types/database";
 
 interface RowItem {
@@ -35,7 +36,13 @@ export interface UseDataGridExportOptions {
   sql: ComputedRef<string | undefined>;
   tableMeta: ComputedRef<{ schema?: string; tableName: string; primaryKeys: string[] } | undefined>;
   databaseType: ComputedRef<DatabaseType | undefined>;
+  connectionId: ComputedRef<string | undefined>;
+  database: ComputedRef<string | undefined>;
+  context: ComputedRef<"results" | "table-data" | undefined>;
   sourceColumns: ComputedRef<Array<string | undefined> | undefined>;
+  whereInput: ComputedRef<string | undefined>;
+  orderBy: ComputedRef<string | undefined>;
+  exportBatchSize: ComputedRef<number>;
   hasCellSelection: ComputedRef<boolean>;
   selectedCells: ComputedRef<SelectionData>;
   selectedRange: ComputedRef<CellSelectionRange | null>;
@@ -95,6 +102,12 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     tableMeta,
     sourceColumns,
     databaseType,
+    connectionId,
+    database,
+    context,
+    whereInput,
+    orderBy,
+    exportBatchSize,
     hasCellSelection,
     selectedCells,
     selectedRange,
@@ -453,6 +466,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportCsv(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
+        if (await exportFullTableDataViaBackend("csv", rowIds)) return;
+
         const needsFullExport = !rowIds?.length && !!fullExportResult;
         if (needsFullExport && exportProgressDialog && exportProgressState) {
           exportProgressState.value = {
@@ -514,6 +529,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportJson(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
+        if (await exportFullTableDataViaBackend("json", rowIds)) return;
+
         let outputPath = "export.json";
         if (isTauriRuntime()) {
           const { save } = await import("@tauri-apps/plugin-dialog");
@@ -536,6 +553,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportMarkdown(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
+        if (await exportFullTableDataViaBackend("markdown", rowIds)) return;
+
         let outputPath = "export.md";
         if (isTauriRuntime()) {
           const { save } = await import("@tauri-apps/plugin-dialog");
@@ -558,6 +577,8 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
   async function exportXlsx(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
+        if (await exportFullTableDataViaBackend("xlsx", rowIds)) return;
+
         let outputPath = "export.xlsx";
         if (isTauriRuntime()) {
           const { save } = await import("@tauri-apps/plugin-dialog");
@@ -617,9 +638,88 @@ export function useDataGridExport(options: UseDataGridExportOptions) {
     });
   }
 
+  async function exportFullTableDataViaBackend(
+    format: "csv" | "xlsx" | "json" | "markdown" | "sql",
+    rowIds?: number[],
+  ): Promise<boolean> {
+    const meta = tableMeta.value;
+    if (rowIds?.length || context.value !== "table-data" || !meta || !connectionId.value || !database.value) {
+      return false;
+    }
+
+    const extension = format === "markdown" ? "md" : format;
+    const filterName =
+      format === "csv"
+        ? "CSV"
+        : format === "xlsx"
+          ? "Excel"
+          : format === "json"
+            ? "JSON"
+            : format === "markdown"
+              ? "Markdown"
+              : "SQL";
+    let outputPath = `${meta.tableName || "export"}.${extension}`;
+    if (isTauriRuntime()) {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const path = await save({
+        defaultPath: outputPath,
+        filters: [{ name: filterName, extensions: [extension] }],
+      });
+      if (!path) return true;
+      outputPath = path as string;
+    }
+
+    if (exportProgressState) {
+      exportProgressState.value = {
+        title: t("exportProgress.title"),
+        tableName: meta.tableName,
+        format,
+        rowsExported: 0,
+        totalRows: null,
+        status: "Running",
+        errorMessage: null,
+      };
+    }
+    if (exportProgressDialog) exportProgressDialog.value = true;
+
+    await api.startTableExport(
+      {
+        exportId: uuid(),
+        connectionId: connectionId.value,
+        database: database.value,
+        schema: meta.schema,
+        tableName: meta.tableName,
+        filePath: outputPath,
+        format,
+        columns: columns.value,
+        primaryKeys: meta.primaryKeys,
+        whereInput: whereInput.value,
+        orderBy: orderBy.value,
+        skipCount: true,
+        batchSize: exportBatchSize.value,
+      },
+      (progress) => {
+        if (exportProgressState) {
+          exportProgressState.value = {
+            ...exportProgressState.value,
+            tableName: progress.tableName || meta.tableName,
+            rowsExported: progress.rowsExported,
+            totalRows: progress.totalRows,
+            status: progress.status,
+            errorMessage: progress.errorMessage || null,
+          };
+        }
+      },
+    );
+    toast(t("grid.exported"));
+    return true;
+  }
+
   async function exportSql(rowIds?: number[]) {
     await runExclusiveExport(async () => {
       try {
+        if (await exportFullTableDataViaBackend("sql", rowIds)) return;
+
         const result = await resultToExport(rowIds);
         const exportData = sqlInsertExportData(result);
         const content = await formatSqlInsert({

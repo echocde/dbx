@@ -23,6 +23,12 @@ test("normalizes saved query result page size", () => {
   assert.equal(normalizeEditorSettings({ pageSize: 0 }).pageSize, 100);
 });
 
+test("defaults export batch size to 10000 rows", () => {
+  assert.equal(DEFAULT_EDITOR_SETTINGS.exportBatchSize, 10000);
+  assert.equal(normalizeEditorSettings({}).exportBatchSize, 10000);
+  assert.equal(normalizeEditorSettings({ exportBatchSize: 2000 }).exportBatchSize, 2000);
+});
+
 test("normalizes editor theme settings", () => {
   assert.equal(DEFAULT_EDITOR_SETTINGS.theme, "app");
   assert.equal(normalizeEditorSettings({}).theme, "app");

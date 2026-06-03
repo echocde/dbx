@@ -1,15 +1,18 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 
 use crate::connection::AppState;
 use crate::csv_export::{escape_csv, format_csv, value_to_csv_text};
-use crate::database_export::is_export_cancelled;
 pub use crate::database_export::ExportStatus;
-use crate::transfer::{count_sql, execute_on_pool, keyset_pagination_sql, pagination_sql};
+use crate::database_export::{build_export_insert_statements, is_export_cancelled, BuildExportInsertStatementsOptions};
+use crate::transfer::{
+    count_sql_with_where, execute_on_pool, execute_on_pool_with_max_rows, keyset_pagination_sql,
+    pagination_sql_with_filter_order,
+};
 use crate::xlsx_export::{build_xlsx_workbook, XlsxWorksheetData};
 
-const DEFAULT_BATCH_SIZE: usize = 2000;
+const DEFAULT_BATCH_SIZE: usize = 10_000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,10 +23,18 @@ pub struct TableExportRequest {
     pub schema: Option<String>,
     pub table_name: String,
     pub file_path: String,
-    /// "csv" or "xlsx"
+    /// "csv", "xlsx", "json", "markdown", or "sql"
     pub format: String,
     #[serde(default)]
     pub columns: Option<Vec<String>>,
+    #[serde(default)]
+    pub primary_keys: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub where_input: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_by: Option<String>,
+    #[serde(default)]
+    pub skip_count: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub batch_size: Option<usize>,
 }
@@ -49,6 +60,90 @@ fn format_csv_rows(rows: &[Vec<Value>]) -> String {
         .join("\n")
 }
 
+fn write_json_row_object<W: Write>(writer: &mut W, columns: &[String], row: &[Value]) -> Result<(), String> {
+    writer.write_all(b"{\n").map_err(|e| format!("Failed to write JSON: {e}"))?;
+    let mut first = true;
+    for (index, column) in columns.iter().enumerate() {
+        let Some(value) = row.get(index) else {
+            continue;
+        };
+        if !first {
+            writer.write_all(b",\n").map_err(|e| format!("Failed to write JSON: {e}"))?;
+        }
+        writer.write_all(b"  ").map_err(|e| format!("Failed to write JSON: {e}"))?;
+        serde_json::to_writer(&mut *writer, column).map_err(|e| format!("Failed to write JSON: {e}"))?;
+        writer.write_all(b": ").map_err(|e| format!("Failed to write JSON: {e}"))?;
+        serde_json::to_writer(&mut *writer, value).map_err(|e| format!("Failed to write JSON: {e}"))?;
+        first = false;
+    }
+    writer.write_all(b"\n}").map_err(|e| format!("Failed to write JSON: {e}"))
+}
+
+fn display_cell(value: &Value) -> String {
+    match value {
+        Value::Null => "NULL".to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::String(value) => value.clone(),
+        other => other.to_string(),
+    }
+}
+
+fn markdown_cell(value: &str) -> String {
+    value.replace('|', "\\|").replace("\r\n", "<br>").replace('\n', "<br>")
+}
+
+fn format_markdown_header(columns: &[String]) -> String {
+    let header = columns.iter().map(|column| markdown_cell(column)).collect::<Vec<_>>().join(" | ");
+    let separator = columns.iter().map(|_| "---").collect::<Vec<_>>().join(" | ");
+    format!("| {header} |\n| {separator} |\n")
+}
+
+fn format_markdown_rows(rows: &[Vec<Value>]) -> String {
+    rows.iter()
+        .map(|row| {
+            let cells = row.iter().map(|cell| markdown_cell(&display_cell(cell))).collect::<Vec<_>>().join(" | ");
+            format!("| {cells} |")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn table_page_sql(
+    request: &TableExportRequest,
+    db_type: &crate::models::connection::DatabaseType,
+    col_names: &[String],
+    primary_keys: &[String],
+    use_keyset: bool,
+    last_pk_values: &[Value],
+    offset: u64,
+    batch_size: usize,
+) -> String {
+    if use_keyset {
+        keyset_pagination_sql(
+            col_names,
+            &request.table_name,
+            request.schema.as_deref().unwrap_or(""),
+            db_type,
+            primary_keys,
+            last_pk_values,
+            batch_size,
+        )
+    } else {
+        pagination_sql_with_filter_order(
+            col_names,
+            &request.table_name,
+            request.schema.as_deref().unwrap_or(""),
+            db_type,
+            offset,
+            batch_size,
+            request.where_input.as_deref(),
+            request.order_by.as_deref(),
+            primary_keys,
+        )
+    }
+}
+
 pub async fn export_table_data_core(
     state: &AppState,
     request: &TableExportRequest,
@@ -66,34 +161,24 @@ pub async fn export_table_data_core(
     // 2. Get pool
     let pool_key = state.get_or_create_pool(&request.connection_id, Some(&request.database)).await?;
 
-    // 3. Get columns
-    let columns = crate::schema::get_columns_core(
-        state,
-        &request.connection_id,
-        &request.database,
-        request.schema.as_deref().unwrap_or(""),
-        &request.table_name,
-    )
-    .await?;
-
-    let col_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
-
-    // 4. Extract primary keys from column metadata (before column filtering)
-    let primary_keys: Vec<String> = columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.clone()).collect();
-
-    // 5. Optionally filter to requested columns
-    let col_names = if let Some(requested_cols) = &request.columns {
-        if requested_cols.is_empty() {
-            col_names
-        } else {
-            let filtered: Vec<String> = requested_cols.iter().filter(|c| col_names.contains(c)).cloned().collect();
-            if filtered.is_empty() {
-                return Err("None of the requested columns exist in the table".to_string());
-            }
-            filtered
-        }
+    // 3. Resolve columns. Data grid exports can provide columns/primary keys
+    // directly, which avoids expensive metadata round-trips on JDBC drivers.
+    let requested_columns = request.columns.as_ref().filter(|columns| !columns.is_empty());
+    let (col_names, primary_keys) = if let Some(requested_columns) = requested_columns {
+        let primary_keys = request.primary_keys.clone().unwrap_or_default();
+        (requested_columns.clone(), primary_keys)
     } else {
-        col_names
+        let columns = crate::schema::get_columns_core(
+            state,
+            &request.connection_id,
+            &request.database,
+            request.schema.as_deref().unwrap_or(""),
+            &request.table_name,
+        )
+        .await?;
+        let col_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
+        let primary_keys: Vec<String> = columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.clone()).collect();
+        (col_names, primary_keys)
     };
 
     if col_names.is_empty() {
@@ -103,7 +188,10 @@ pub async fn export_table_data_core(
     // Use keyset pagination when all PKs are in the selected (filtered) columns.
     // This avoids the OFFSET performance penalty for large tables.
     // When no PK is available, falls back to offset-based pagination.
-    let use_keyset = !primary_keys.is_empty() && primary_keys.iter().all(|pk| col_names.contains(pk));
+    let has_custom_filter_or_order = request.where_input.as_ref().is_some_and(|value| !value.trim().is_empty())
+        || request.order_by.as_ref().is_some_and(|value| !value.trim().is_empty());
+    let use_keyset =
+        !has_custom_filter_or_order && !primary_keys.is_empty() && primary_keys.iter().all(|pk| col_names.contains(pk));
 
     // PK column indices within result rows (for extracting last-row values)
     let pk_indices: Vec<usize> = if use_keyset {
@@ -112,15 +200,26 @@ pub async fn export_table_data_core(
         Vec::new()
     };
 
-    // 6. Get total row count for progress estimation
-    let count_query = count_sql(&request.table_name, request.schema.as_deref().unwrap_or(""), &db_type);
-    let total_rows = match execute_on_pool(state, &pool_key, &count_query).await {
-        Ok(result) => result.rows.first().and_then(|r| r.first()).and_then(|v| match v {
-            Value::Number(n) => n.as_u64(),
-            Value::String(s) => s.parse::<u64>().ok(),
-            _ => None,
-        }),
-        Err(_) => None,
+    // 6. Get total row count for progress estimation when requested. Data
+    // grid exports skip this by default because COUNT can be the slowest query
+    // on large HANA/JDBC tables, especially with filters.
+    let total_rows = if request.skip_count {
+        None
+    } else {
+        let count_query = count_sql_with_where(
+            &request.table_name,
+            request.schema.as_deref().unwrap_or(""),
+            &db_type,
+            request.where_input.as_deref(),
+        );
+        match execute_on_pool(state, &pool_key, &count_query).await {
+            Ok(result) => result.rows.first().and_then(|r| r.first()).and_then(|v| match v {
+                Value::Number(n) => n.as_u64(),
+                Value::String(s) => s.parse::<u64>().ok(),
+                _ => None,
+            }),
+            Err(_) => None,
+        }
     };
 
     // 7. Emit initial Running progress
@@ -134,7 +233,8 @@ pub async fn export_table_data_core(
     });
 
     // 8. Create output file
-    let mut file = std::fs::File::create(&request.file_path).map_err(|e| format!("Failed to create file: {e}"))?;
+    let file = std::fs::File::create(&request.file_path).map_err(|e| format!("Failed to create file: {e}"))?;
+    let mut file = BufWriter::new(file);
 
     let mut rows_exported: u64 = 0;
     let batch_size = request.batch_size.unwrap_or(DEFAULT_BATCH_SIZE).max(1);
@@ -164,28 +264,18 @@ pub async fn export_table_data_core(
                     return Ok(());
                 }
 
-                let sql = if use_keyset {
-                    keyset_pagination_sql(
-                        &col_names,
-                        &request.table_name,
-                        request.schema.as_deref().unwrap_or(""),
-                        &db_type,
-                        &primary_keys,
-                        &last_pk_values,
-                        batch_size,
-                    )
-                } else {
-                    pagination_sql(
-                        &col_names,
-                        &request.table_name,
-                        request.schema.as_deref().unwrap_or(""),
-                        &db_type,
-                        offset,
-                        batch_size,
-                    )
-                };
+                let sql = table_page_sql(
+                    request,
+                    &db_type,
+                    &col_names,
+                    &primary_keys,
+                    use_keyset,
+                    &last_pk_values,
+                    offset,
+                    batch_size,
+                );
 
-                let result = execute_on_pool(state, &pool_key, &sql).await?;
+                let result = execute_on_pool_with_max_rows(state, &pool_key, &sql, Some(batch_size)).await?;
                 let row_count = result.rows.len();
                 if row_count == 0 {
                     break;
@@ -246,28 +336,18 @@ pub async fn export_table_data_core(
                     return Ok(());
                 }
 
-                let sql = if use_keyset {
-                    keyset_pagination_sql(
-                        &col_names,
-                        &request.table_name,
-                        request.schema.as_deref().unwrap_or(""),
-                        &db_type,
-                        &primary_keys,
-                        &last_pk_values,
-                        batch_size,
-                    )
-                } else {
-                    pagination_sql(
-                        &col_names,
-                        &request.table_name,
-                        request.schema.as_deref().unwrap_or(""),
-                        &db_type,
-                        offset,
-                        batch_size,
-                    )
-                };
+                let sql = table_page_sql(
+                    request,
+                    &db_type,
+                    &col_names,
+                    &primary_keys,
+                    use_keyset,
+                    &last_pk_values,
+                    offset,
+                    batch_size,
+                );
 
-                let result = execute_on_pool(state, &pool_key, &sql).await?;
+                let result = execute_on_pool_with_max_rows(state, &pool_key, &sql, Some(batch_size)).await?;
                 let row_count = result.rows.len();
                 if row_count == 0 {
                     break;
@@ -315,10 +395,223 @@ pub async fn export_table_data_core(
             let xlsx_bytes = build_xlsx_workbook(&workbook_data)?;
             file.write_all(&xlsx_bytes).map_err(|e| format!("Failed to write XLSX file: {e}"))?;
         }
+        "json" => {
+            file.write_all(b"[\n").map_err(|e| format!("Failed to write JSON: {e}"))?;
+            let mut is_first_row = true;
+
+            loop {
+                if is_export_cancelled(&request.export_id).await {
+                    on_progress(TableExportProgress {
+                        export_id: request.export_id.clone(),
+                        table_name: request.table_name.clone(),
+                        rows_exported,
+                        total_rows,
+                        status: ExportStatus::Cancelled,
+                        error_message: Some("Export cancelled".to_string()),
+                    });
+                    return Ok(());
+                }
+
+                let sql = table_page_sql(
+                    request,
+                    &db_type,
+                    &col_names,
+                    &primary_keys,
+                    use_keyset,
+                    &last_pk_values,
+                    offset,
+                    batch_size,
+                );
+                let result = execute_on_pool_with_max_rows(state, &pool_key, &sql, Some(batch_size)).await?;
+                let row_count = result.rows.len();
+                if row_count == 0 {
+                    break;
+                }
+
+                for row in &result.rows {
+                    if !is_first_row {
+                        file.write_all(b",\n").map_err(|e| format!("Failed to write JSON: {e}"))?;
+                    }
+                    write_json_row_object(&mut file, &col_names, row)?;
+                    is_first_row = false;
+                }
+
+                rows_exported += row_count as u64;
+                if use_keyset {
+                    if let Some(last_row) = result.rows.last() {
+                        last_pk_values = pk_indices.iter().map(|&i| last_row[i].clone()).collect();
+                    }
+                } else {
+                    offset += row_count as u64;
+                }
+
+                on_progress(TableExportProgress {
+                    export_id: request.export_id.clone(),
+                    table_name: request.table_name.clone(),
+                    rows_exported,
+                    total_rows,
+                    status: ExportStatus::Running,
+                    error_message: None,
+                });
+
+                if row_count < batch_size {
+                    break;
+                }
+            }
+
+            file.write_all(b"\n]\n").map_err(|e| format!("Failed to write JSON: {e}"))?;
+        }
+        "markdown" | "md" => {
+            file.write_all(format_markdown_header(&col_names).as_bytes())
+                .map_err(|e| format!("Failed to write Markdown: {e}"))?;
+            let mut wrote_rows = false;
+
+            loop {
+                if is_export_cancelled(&request.export_id).await {
+                    on_progress(TableExportProgress {
+                        export_id: request.export_id.clone(),
+                        table_name: request.table_name.clone(),
+                        rows_exported,
+                        total_rows,
+                        status: ExportStatus::Cancelled,
+                        error_message: Some("Export cancelled".to_string()),
+                    });
+                    return Ok(());
+                }
+
+                let sql = table_page_sql(
+                    request,
+                    &db_type,
+                    &col_names,
+                    &primary_keys,
+                    use_keyset,
+                    &last_pk_values,
+                    offset,
+                    batch_size,
+                );
+                let result = execute_on_pool_with_max_rows(state, &pool_key, &sql, Some(batch_size)).await?;
+                let row_count = result.rows.len();
+                if row_count == 0 {
+                    break;
+                }
+
+                let rows_markdown = format_markdown_rows(&result.rows);
+                if !rows_markdown.is_empty() {
+                    if wrote_rows {
+                        file.write_all(b"\n").map_err(|e| format!("Failed to write Markdown: {e}"))?;
+                    }
+                    file.write_all(rows_markdown.as_bytes()).map_err(|e| format!("Failed to write Markdown: {e}"))?;
+                    wrote_rows = true;
+                }
+
+                rows_exported += row_count as u64;
+                if use_keyset {
+                    if let Some(last_row) = result.rows.last() {
+                        last_pk_values = pk_indices.iter().map(|&i| last_row[i].clone()).collect();
+                    }
+                } else {
+                    offset += row_count as u64;
+                }
+
+                on_progress(TableExportProgress {
+                    export_id: request.export_id.clone(),
+                    table_name: request.table_name.clone(),
+                    rows_exported,
+                    total_rows,
+                    status: ExportStatus::Running,
+                    error_message: None,
+                });
+
+                if row_count < batch_size {
+                    break;
+                }
+            }
+
+            file.write_all(b"\n").map_err(|e| format!("Failed to write Markdown: {e}"))?;
+        }
+        "sql" => {
+            let mut wrote_statements = false;
+
+            loop {
+                if is_export_cancelled(&request.export_id).await {
+                    on_progress(TableExportProgress {
+                        export_id: request.export_id.clone(),
+                        table_name: request.table_name.clone(),
+                        rows_exported,
+                        total_rows,
+                        status: ExportStatus::Cancelled,
+                        error_message: Some("Export cancelled".to_string()),
+                    });
+                    return Ok(());
+                }
+
+                let sql = table_page_sql(
+                    request,
+                    &db_type,
+                    &col_names,
+                    &primary_keys,
+                    use_keyset,
+                    &last_pk_values,
+                    offset,
+                    batch_size,
+                );
+                let result = execute_on_pool_with_max_rows(state, &pool_key, &sql, Some(batch_size)).await?;
+                let row_count = result.rows.len();
+                if row_count == 0 {
+                    break;
+                }
+
+                let statements = build_export_insert_statements(BuildExportInsertStatementsOptions {
+                    database_type: Some(db_type),
+                    schema: request.schema.clone(),
+                    table_name: Some(request.table_name.clone()),
+                    qualified_table_name: None,
+                    columns: col_names.clone(),
+                    rows: result.rows.clone(),
+                    batch_size: Some(100),
+                })?;
+                if !statements.is_empty() {
+                    if wrote_statements {
+                        file.write_all(b"\n").map_err(|e| format!("Failed to write SQL: {e}"))?;
+                    }
+                    file.write_all(statements.join("\n").as_bytes())
+                        .map_err(|e| format!("Failed to write SQL: {e}"))?;
+                    wrote_statements = true;
+                }
+
+                rows_exported += row_count as u64;
+                if use_keyset {
+                    if let Some(last_row) = result.rows.last() {
+                        last_pk_values = pk_indices.iter().map(|&i| last_row[i].clone()).collect();
+                    }
+                } else {
+                    offset += row_count as u64;
+                }
+
+                on_progress(TableExportProgress {
+                    export_id: request.export_id.clone(),
+                    table_name: request.table_name.clone(),
+                    rows_exported,
+                    total_rows,
+                    status: ExportStatus::Running,
+                    error_message: None,
+                });
+
+                if row_count < batch_size {
+                    break;
+                }
+            }
+
+            if wrote_statements {
+                file.write_all(b"\n").map_err(|e| format!("Failed to write SQL: {e}"))?;
+            }
+        }
         other => {
             return Err(format!("Unsupported export format: {other}"));
         }
     }
+
+    file.flush().map_err(|e| format!("Failed to flush export file: {e}"))?;
 
     // 8. Emit Done progress
     on_progress(TableExportProgress {
@@ -385,6 +678,19 @@ mod tests {
         let rows = vec![vec![json!("just"), json!("one")]];
         let out = format_csv_rows(&rows);
         assert_eq!(out, "\"just\",\"one\"");
+    }
+
+    #[test]
+    fn writes_json_row_without_allocating_object_map() {
+        let mut out = Vec::new();
+        write_json_row_object(
+            &mut out,
+            &["id".to_string(), "name".to_string(), "missing".to_string()],
+            &[json!(1), json!("Ada")],
+        )
+        .unwrap();
+
+        assert_eq!(String::from_utf8(out).unwrap(), "{\n  \"id\": 1,\n  \"name\": \"Ada\"\n}");
     }
 
     #[test]

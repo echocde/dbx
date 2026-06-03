@@ -1517,8 +1517,12 @@ export interface TableExportRequest {
   schema?: string;
   tableName: string;
   filePath: string;
-  format: "csv" | "xlsx";
+  format: "csv" | "xlsx" | "json" | "markdown" | "sql";
   columns?: string[];
+  primaryKeys?: string[];
+  whereInput?: string;
+  orderBy?: string;
+  skipCount?: boolean;
   batchSize?: number;
 }
 

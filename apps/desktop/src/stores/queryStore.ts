@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { uuid } from "@/lib/utils";
-import { ref, watch, computed } from "vue";
+import { markRaw, ref, watch, computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { DatabaseType, QueryResult, QueryTab } from "@/types/database";
 import { orderPinnedFirst } from "@/lib/pinnedItems";
@@ -28,6 +28,8 @@ import {
 import { AGENT_DRIVER_TYPES } from "@/lib/databaseCapabilities";
 import { editablePrimaryKeys } from "@/lib/tableEditing";
 import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/tableDataExport";
+import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
+import { quoteTableIdentifier } from "@/lib/tableSelectSql";
 import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -37,6 +39,16 @@ import type { SavedSqlFile } from "@/types/database";
 const STORAGE_KEY = "dbx-open-tabs";
 const ACTIVE_TAB_KEY = "dbx-active-tab";
 const ORACLE_LIKE_METADATA_TYPES = new Set<string>(["oracle", "dameng", "oceanbase-oracle"]);
+
+function markQueryResultRowsRaw(result: QueryResult): QueryResult {
+  markRaw(result.rows);
+  return result;
+}
+
+function markQueryResultsRowsRaw(results: QueryResult[]): QueryResult[] {
+  for (const result of results) markQueryResultRowsRaw(result);
+  return results;
+}
 
 async function withFrontendQueryTimeout<T>(promise: Promise<T>, timeoutSecs: number, message: string): Promise<T> {
   if (timeoutSecs === 0) return promise;
@@ -540,12 +552,12 @@ export const useQueryStore = defineStore("query", () => {
 
   function toErrorResult(e: any): NonNullable<QueryTab["result"]> {
     const message = e instanceof Error ? e.message : String(e);
-    return {
+    return markQueryResultRowsRaw({
       columns: ["Error"],
       rows: [[message]],
       affected_rows: 0,
       execution_time_ms: 0,
-    };
+    });
   }
 
   function setErrorResult(id: string, e: any) {
@@ -834,7 +846,9 @@ export const useQueryStore = defineStore("query", () => {
         if (current?.executionId === executionId) {
           current.results = undefined;
           current.activeResultIndex = undefined;
-          current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          current.result = markQueryResultRowsRaw(
+            mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total),
+          );
           touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
@@ -866,7 +880,7 @@ export const useQueryStore = defineStore("query", () => {
         if (current?.executionId === executionId) {
           current.results = undefined;
           current.activeResultIndex = undefined;
-          current.result = mongoCountToQueryResult(result.total, performance.now() - startedAt);
+          current.result = markQueryResultRowsRaw(mongoCountToQueryResult(result.total, performance.now() - startedAt));
           touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
@@ -903,7 +917,9 @@ export const useQueryStore = defineStore("query", () => {
         if (current?.executionId === executionId) {
           current.results = undefined;
           current.activeResultIndex = undefined;
-          current.result = mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total);
+          current.result = markQueryResultRowsRaw(
+            mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total),
+          );
           touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
@@ -961,7 +977,7 @@ export const useQueryStore = defineStore("query", () => {
         if (current?.executionId === executionId) {
           current.results = undefined;
           current.activeResultIndex = undefined;
-          current.result = mongoWriteToQueryResult(affectedRows, performance.now() - startedAt);
+          current.result = markQueryResultRowsRaw(mongoWriteToQueryResult(affectedRows, performance.now() - startedAt));
           touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
@@ -999,10 +1015,12 @@ export const useQueryStore = defineStore("query", () => {
         executionOptions,
       );
       const frontendTimeoutSecs = Math.max(queryTimeoutSecs * 2, 60);
-      const results = await withFrontendQueryTimeout(
-        executionPromise,
-        queryTimeoutSecs === 0 ? 0 : frontendTimeoutSecs,
-        t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }),
+      const results = markQueryResultsRowsRaw(
+        await withFrontendQueryTimeout(
+          executionPromise,
+          queryTimeoutSecs === 0 ? 0 : frontendTimeoutSecs,
+          t("editor.queryTimeoutError", { seconds: frontendTimeoutSecs }),
+        ),
       );
       console.info("[DBX][executeTabSql:execute-multi:done]", {
         traceId,
@@ -1267,6 +1285,70 @@ export const useQueryStore = defineStore("query", () => {
   async function fetchTabResultForExport(id: string): Promise<QueryResult | undefined> {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab?.result) return undefined;
+
+    if (tab.mode === "data") {
+      const connStore = useConnectionStore();
+      await connStore.ensureConnected(tab.connectionId);
+      const conn = connStore.getConfig(tab.connectionId);
+      const tableMeta = tableMetaForDataTab(tab);
+      if (!tableMeta?.tableName) return tab.result;
+
+      const pageLimit = TABLE_DATA_EXPORT_PAGE_SIZE;
+      const primaryKeys = tab.tableMeta
+        ? editablePrimaryKeys(conn?.db_type, tab.tableMeta.columns)
+        : tableMeta.primaryKeys;
+      const fallbackOrderColumns =
+        conn?.db_type === "sqlserver" && !primaryKeys.length
+          ? tableMeta.columns.slice(0, 1).map((column) => column.name)
+          : undefined;
+      const sortOrder =
+        tab.resultSortColumn && tab.resultSortDirection
+          ? `${quoteTableIdentifier(conn?.db_type, tab.resultSortColumn)} ${tab.resultSortDirection.toUpperCase()}`
+          : undefined;
+      const orderBy = tab.orderByInput?.trim() || sortOrder;
+      const queryTimeoutSecs = queryTimeoutSecsForConnection(conn);
+      const rows: QueryResult["rows"] = [];
+      let columns: string[] = [];
+      let executionTimeMs = 0;
+      let offset = 0;
+
+      while (true) {
+        const sql = await api.buildTableSelectSql({
+          databaseType: conn?.db_type,
+          schema: tableMeta.schema,
+          tableName: tableMeta.tableName,
+          columns: tableMeta.columns.map((column) => column.name),
+          primaryKeys,
+          fallbackOrderColumns,
+          whereInput: tab.whereInput,
+          orderBy,
+          limit: pageLimit,
+          offset,
+        });
+        const results = await api.executeMulti(tab.connectionId, tab.database, sql, undefined, undefined, {
+          maxRows: pageLimit,
+          fetchSize: pageLimit,
+          timeoutSecs: queryTimeoutSecs,
+        });
+        const result = results[0];
+        if (!result) break;
+        if (columns.length === 0) columns = result.columns;
+        rows.push(...result.rows);
+        executionTimeMs += result.execution_time_ms ?? 0;
+        if (result.rows.length < pageLimit) break;
+        offset += result.rows.length;
+      }
+
+      return {
+        columns: columns.length ? columns : tab.result.columns,
+        rows,
+        affected_rows: 0,
+        execution_time_ms: executionTimeMs,
+        truncated: false,
+        has_more: false,
+      };
+    }
+
     if (tab.mode !== "query") return tab.result;
 
     const sql = tab.resultSortedSql ?? tab.resultBaseSql ?? tab.lastExecutedSql ?? tab.sql;

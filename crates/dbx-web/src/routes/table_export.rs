@@ -43,6 +43,9 @@ pub async fn start_table_export(
     let ext = match req.format.as_str() {
         "csv" => "csv",
         "xlsx" => "xlsx",
+        "json" => "json",
+        "markdown" | "md" => "md",
+        "sql" => "sql",
         _ => return Err(AppError(format!("Unsupported export format: {}", req.format))),
     };
     let tmp_file = tmp_dir.join(format!("table_export_{export_id}.{ext}"));
@@ -138,6 +141,9 @@ pub async fn table_export_download(
     let (content_type, file_ext) = match format.as_str() {
         "csv" => ("text/csv; charset=utf-8", "csv"),
         "xlsx" => ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"),
+        "json" => ("application/json; charset=utf-8", "json"),
+        "markdown" | "md" => ("text/markdown; charset=utf-8", "md"),
+        "sql" => ("application/sql; charset=utf-8", "sql"),
         _ => return Err(AppError(format!("Unknown format: {format}"))),
     };
 

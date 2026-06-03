@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import { createPinia, setActivePinia } from "pinia";
+import { isReactive } from "vue";
 import { useConnectionStore } from "../../apps/desktop/src/stores/connectionStore.ts";
 import { useQueryStore } from "../../apps/desktop/src/stores/queryStore.ts";
 import type { ConnectionConfig } from "../../apps/desktop/src/types/database.ts";
@@ -947,6 +948,124 @@ test("query result export fetches every paginated page", async () => {
   }
 });
 
+test("table data export fetches every filtered page", async () => {
+  const restoreStorage = installMemoryStorage();
+  setActivePinia(createPinia());
+  const connectionStore = useConnectionStore();
+  const store = useQueryStore();
+  const originalFetch = globalThis.fetch;
+  const buildRequests: unknown[] = [];
+  const executedSqls: string[] = [];
+
+  connectionStore.addEphemeralConnection({ ...conn("conn-1"), db_type: "saphana" });
+  const tabId = store.createTab("conn-1", "db", "users", "data", "public");
+  const tab = store.tabs.find((item) => item.id === tabId);
+  assert.ok(tab);
+  tab.whereInput = "status = 'active'";
+  tab.orderByInput = '"id" DESC';
+  tab.result = {
+    columns: ["id", "status"],
+    rows: [[1, "active"]],
+    affected_rows: 0,
+    execution_time_ms: 1,
+    truncated: false,
+    has_more: true,
+  };
+  tab.tableMeta = {
+    schema: "public",
+    tableName: "users",
+    columns: [
+      {
+        name: "id",
+        data_type: "integer",
+        is_nullable: false,
+        column_default: null,
+        is_primary_key: true,
+        extra: null,
+      },
+      {
+        name: "status",
+        data_type: "varchar",
+        is_nullable: true,
+        column_default: null,
+        is_primary_key: false,
+        extra: null,
+      },
+    ],
+    primaryKeys: ["id"],
+  };
+
+  globalThis.fetch = (async (input, init) => {
+    const url = String(input);
+    if (url === "/api/query/build-table-select-sql") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      buildRequests.push(body.options);
+      const { limit, offset } = body.options;
+      return new Response(
+        JSON.stringify(`SELECT * FROM "public"."users" WHERE (status = 'active') ORDER BY "id" DESC LIMIT ${limit} OFFSET ${offset ?? 0};`),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    if (url === "/api/query/execute-multi") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      executedSqls.push(body.sql);
+      const rows = String(body.sql).includes("OFFSET 0")
+        ? Array.from({ length: 10_000 }, (_, index) => [index + 1, "active"])
+        : [[10_001, "active"], [10_002, "active"]];
+      return new Response(JSON.stringify([{ columns: ["id", "status"], rows, affected_rows: 0, execution_time_ms: 1 }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response("unexpected request", { status: 500 });
+  }) as typeof fetch;
+
+  try {
+    const exported = await store.fetchTabResultForExport(tabId);
+
+    assert.deepEqual(
+      buildRequests.map((request) => ({
+        databaseType: (request as any).databaseType,
+        schema: (request as any).schema,
+        tableName: (request as any).tableName,
+        whereInput: (request as any).whereInput,
+        orderBy: (request as any).orderBy,
+        limit: (request as any).limit,
+        offset: (request as any).offset,
+      })),
+      [
+        {
+          databaseType: "saphana",
+          schema: "public",
+          tableName: "users",
+          whereInput: "status = 'active'",
+          orderBy: '"id" DESC',
+          limit: 10_000,
+          offset: 0,
+        },
+        {
+          databaseType: "saphana",
+          schema: "public",
+          tableName: "users",
+          whereInput: "status = 'active'",
+          orderBy: '"id" DESC',
+          limit: 10_000,
+          offset: 10_000,
+        },
+      ],
+    );
+    assert.deepEqual(executedSqls, [
+      'SELECT * FROM "public"."users" WHERE (status = \'active\') ORDER BY "id" DESC LIMIT 10000 OFFSET 0;',
+      'SELECT * FROM "public"."users" WHERE (status = \'active\') ORDER BY "id" DESC LIMIT 10000 OFFSET 10000;',
+    ]);
+    assert.equal(exported?.rows.length, 10_002);
+    assert.deepEqual(exported?.rows.at(-1), [10_002, "active"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
 test("query execution finishes without waiting for metadata analysis", async () => {
   const restoreStorage = installMemoryStorage();
   setActivePinia(createPinia());
@@ -1091,6 +1210,9 @@ test("multi statement execution shows the first result set by default", async ()
     assert.equal(tab?.activeResultIndex, 1);
     assert.deepEqual(tab?.result?.columns, ["@id"]);
     assert.deepEqual(tab?.result?.rows, [[1]]);
+    assert.equal(isReactive(tab?.result?.rows), false);
+    assert.equal(isReactive(tab?.result?.rows[0]), false);
+    assert.equal(tab?.results?.every((result) => !isReactive(result.rows)), true);
   } finally {
     globalThis.fetch = originalFetch;
     restoreStorage();

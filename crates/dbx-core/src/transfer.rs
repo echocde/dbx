@@ -1248,9 +1248,50 @@ pub fn pagination_sql_with_order(
     }
 }
 
-pub fn count_sql(table: &str, schema: &str, db_type: &DatabaseType) -> String {
+pub fn pagination_sql_with_filter_order(
+    columns: &[String],
+    table: &str,
+    schema: &str,
+    db_type: &DatabaseType,
+    offset: u64,
+    limit: usize,
+    where_input: Option<&str>,
+    order_by: Option<&str>,
+    default_order_columns: &[String],
+) -> String {
     let full_table = qualified_table(table, schema, db_type);
-    format!("SELECT COUNT(*) FROM {full_table}")
+    let col_list = columns.iter().map(|c| quote_identifier(c, db_type)).collect::<Vec<_>>().join(", ");
+    let predicate = crate::sql_dialect::normalize_where_input(where_input);
+    let where_clause = if predicate.is_empty() { String::new() } else { format!(" WHERE ({predicate})") };
+    let order_expression = order_by
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| postgres_order_by_expression(default_order_columns, db_type));
+
+    match db_type {
+        DatabaseType::SqlServer | DatabaseType::Oracle => {
+            let order_by = order_expression.unwrap_or_else(|| "(SELECT NULL)".to_string());
+            format!(
+                "SELECT {col_list} FROM {full_table}{where_clause} ORDER BY {order_by} OFFSET {offset} ROWS FETCH NEXT {limit} ROWS ONLY"
+            )
+        }
+        _ => {
+            let order_by = order_expression.map(|value| format!(" ORDER BY {value}")).unwrap_or_default();
+            format!("SELECT {col_list} FROM {full_table}{where_clause}{order_by} LIMIT {limit} OFFSET {offset}")
+        }
+    }
+}
+
+pub fn count_sql(table: &str, schema: &str, db_type: &DatabaseType) -> String {
+    count_sql_with_where(table, schema, db_type, None)
+}
+
+pub fn count_sql_with_where(table: &str, schema: &str, db_type: &DatabaseType, where_input: Option<&str>) -> String {
+    let full_table = qualified_table(table, schema, db_type);
+    let predicate = crate::sql_dialect::normalize_where_input(where_input);
+    let where_clause = if predicate.is_empty() { String::new() } else { format!(" WHERE ({predicate})") };
+    format!("SELECT COUNT(*) FROM {full_table}{where_clause}")
 }
 
 pub fn keyset_pagination_sql(
@@ -1335,6 +1376,15 @@ fn value_to_sql_literal(value: &serde_json::Value, _db_type: &DatabaseType) -> S
 }
 
 pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Result<db::QueryResult, String> {
+    execute_on_pool_with_max_rows(state, pool_key, sql, None).await
+}
+
+pub async fn execute_on_pool_with_max_rows(
+    state: &AppState,
+    pool_key: &str,
+    sql: &str,
+    max_rows: Option<usize>,
+) -> Result<db::QueryResult, String> {
     let connections = state.connections.read().await;
     let pool = connections.get(pool_key).ok_or("Connection not found")?;
 
@@ -1343,29 +1393,29 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
             let p = p.clone();
             let bare = *mode == crate::connection::MysqlMode::Bare;
             drop(connections);
-            db::mysql::execute_query(&p, sql, bare).await
+            db::mysql::execute_query_with_max_rows(&p, sql, bare, max_rows, Default::default()).await
         }
         PoolKind::Postgres(p) => {
             let p = p.clone();
             drop(connections);
-            db::postgres::execute_query(&p, sql).await
+            db::postgres::execute_query_with_max_rows(&p, sql, max_rows).await
         }
         PoolKind::Sqlite(p) => {
             let p = p.clone();
             drop(connections);
-            db::sqlite::execute_query(&p, sql).await
+            db::sqlite::execute_query_with_max_rows(&p, sql, max_rows).await
         }
         PoolKind::ClickHouse(client) => {
             let client = client.clone();
             let database = database_from_pool_key(pool_key).unwrap_or("default").to_string();
             drop(connections);
-            db::clickhouse_driver::execute_query(&client, &database, sql).await
+            db::clickhouse_driver::execute_query_with_max_rows(&client, &database, sql, max_rows).await
         }
         PoolKind::SqlServer(client) => {
             let client = client.clone();
             drop(connections);
             let mut client = client.lock().await;
-            db::sqlserver::execute_query(&mut client, sql).await
+            db::sqlserver::execute_query_with_max_rows(&mut client, sql, max_rows).await
         }
         PoolKind::Agent(client) => {
             let client = client.clone();
@@ -1377,7 +1427,7 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
                 &sql,
                 database.as_deref(),
                 None,
-                QueryExecutionOptions { max_rows: None, ..QueryExecutionOptions::default() },
+                QueryExecutionOptions { max_rows, fetch_size: max_rows, ..QueryExecutionOptions::default() },
             );
             client.execute_query(params).await
         }
@@ -1387,6 +1437,11 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
             drop(connections);
             tokio::task::spawn_blocking(move || {
                 let con = con.lock().map_err(|e| e.to_string())?;
+                if max_rows.is_some()
+                    && starts_with_executable_sql_keyword(&sql, &["SELECT", "SHOW", "DESCRIBE", "WITH", "PRAGMA"])
+                {
+                    return crate::query::duckdb_execute_with_max_rows(&con, &sql, max_rows);
+                }
                 let start = std::time::Instant::now();
                 if starts_with_executable_sql_keyword(&sql, &["SELECT", "SHOW", "DESCRIBE", "WITH", "PRAGMA"]) {
                     let mut stmt = con.prepare(&sql).map_err(|e| e.to_string())?;
@@ -1447,7 +1502,7 @@ pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Res
             drop(connections);
             tokio::task::spawn_blocking(move || {
                 let con = con.lock().map_err(|e| e.to_string())?;
-                crate::query::duckdb_execute(&con, &sql)
+                crate::query::duckdb_execute_with_max_rows(&con, &sql, max_rows)
             })
             .await
             .map_err(|e| e.to_string())?
@@ -2825,6 +2880,33 @@ mod tests {
         );
 
         assert_eq!(sql, "SELECT \"id\", \"name\" FROM \"public\".\"users\" ORDER BY \"id\" LIMIT 100 OFFSET 200");
+    }
+
+    #[test]
+    fn filtered_pagination_preserves_where_and_order() {
+        let sql = pagination_sql_with_filter_order(
+            &[String::from("id"), String::from("status")],
+            "users",
+            "public",
+            &DatabaseType::SapHana,
+            10_000,
+            2_000,
+            Some("WHERE status = 'active'"),
+            Some("\"id\" DESC"),
+            &[String::from("id")],
+        );
+
+        assert_eq!(
+            sql,
+            "SELECT \"id\", \"status\" FROM \"public\".\"users\" WHERE (status = 'active') ORDER BY \"id\" DESC LIMIT 2000 OFFSET 10000"
+        );
+    }
+
+    #[test]
+    fn filtered_count_preserves_where() {
+        let sql = count_sql_with_where("users", "public", &DatabaseType::SapHana, Some("WHERE status = 'active'"));
+
+        assert_eq!(sql, "SELECT COUNT(*) FROM \"public\".\"users\" WHERE (status = 'active')");
     }
 
     #[test]
