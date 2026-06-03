@@ -271,6 +271,7 @@ const driverProfiles: Record<
   firebird: { type: "firebird", port: 3050, user: "SYSDBA", label: "Firebird", icon: "firebird" },
   exasol: { type: "exasol", port: 8563, user: "sys", label: "Exasol", icon: "exasol" },
   gbase: { type: "gbase", port: 5258, user: "gbasedbt", label: "GBase", icon: "gbase" },
+  gbase8s: { type: "gbase", port: 9088, user: "gbasedbt", label: "GBase 8s", icon: "gbase" },
   opengauss: {
     type: "opengauss",
     port: 5432,
@@ -409,6 +410,12 @@ function switchOceanbaseMode(mode: "mysql" | "oracle") {
   resetTestState();
 }
 
+function switchGbaseProfile(profile: "gbase" | "gbase8s") {
+  applyProfile(profile, false);
+  selectedType.value = "gbase";
+  resetTestState();
+}
+
 watch(
   () => props.editConfig,
   (config) => {
@@ -465,6 +472,9 @@ watch(
       selectedType.value = profile;
       if (profile === "oceanbase") {
         oceanbaseSubMode.value = config.driver_profile === "oceanbase-oracle" ? "oracle" : "mysql";
+      }
+      if (profile === "gbase8s") {
+        selectedType.value = "gbase";
       }
       mongoUseUrl.value = !!config.connection_string;
       jdbcDriverPathsInput.value = (config.jdbc_driver_paths || []).join("\n");
@@ -771,7 +781,7 @@ const canUseProxy = computed(
   () => form.value.db_type !== "sqlite" && form.value.db_type !== "duckdb" && form.value.db_type !== "access",
 );
 const shouldShowAgentDriverInstallHint = computed(() =>
-  showAgentDriverInstallHint(form.value.db_type, agentDrivers.value, selectedType.value),
+  showAgentDriverInstallHint(form.value.db_type, agentDrivers.value, form.value.driver_profile),
 );
 const testResultMessage = computed(() => {
   if (!testResult.value) return "";
@@ -1224,6 +1234,9 @@ function applyConnectionPrefill(draft: ConnectionDeepLinkDraft) {
   if (draft.driverProfile === "oceanbase-oracle") {
     oceanbaseSubMode.value = "oracle";
     selectedType.value = "oceanbase";
+  }
+  if (draft.driverProfile === "gbase8s") {
+    selectedType.value = "gbase";
   }
   customDriverName.value = isCustomCompatibleProfile() ? draft.driverLabel : "";
   mongoUseUrl.value = !!draft.useMongoUrl;
@@ -1810,6 +1823,26 @@ function openExternalUrl(url: string) {
                       @click="switchOceanbaseMode('oracle')"
                     >
                       {{ t("connection.oceanbaseOracleMode") }}
+                    </Button>
+                  </div>
+                </div>
+
+                <div v-if="selectedType === 'gbase'" class="grid grid-cols-4 items-center gap-4">
+                  <Label class="text-right text-xs">{{ t("connection.version") }}</Label>
+                  <div class="col-span-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      :variant="form.driver_profile === 'gbase8s' ? 'outline' : 'default'"
+                      @click="switchGbaseProfile('gbase')"
+                    >
+                      GBase
+                    </Button>
+                    <Button
+                      size="sm"
+                      :variant="form.driver_profile === 'gbase8s' ? 'default' : 'outline'"
+                      @click="switchGbaseProfile('gbase8s')"
+                    >
+                      GBase 8s
                     </Button>
                   </div>
                 </div>

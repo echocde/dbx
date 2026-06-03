@@ -120,6 +120,22 @@ test("parses XuguDB JDBC URLs", () => {
   assert.equal(parsed.urlParams, "charset=utf8");
 });
 
+test("parses GBase 8s JDBC URLs", () => {
+  const parsed = parseConnectionUrl(
+    "jdbc:gbasedbt-sqli://gbasedbt:secret@gbase.example.com:20013/testdb:GBASEDBTSERVER=gbase01;CLIENT_LOCALE=zh_cn.utf8",
+  );
+
+  assert.equal(parsed.dbType, "gbase");
+  assert.equal(parsed.driverProfile, "gbase8s");
+  assert.equal(parsed.driverLabel, "GBase 8s");
+  assert.equal(parsed.host, "gbase.example.com");
+  assert.equal(parsed.port, 20013);
+  assert.equal(parsed.username, "gbasedbt");
+  assert.equal(parsed.password, "secret");
+  assert.equal(parsed.database, "testdb");
+  assert.equal(parsed.urlParams, "GBASEDBTSERVER=gbase01;CLIENT_LOCALE=zh_cn.utf8");
+});
+
 test("parses UCanAccess JDBC URLs as Access database files", () => {
   const parsed = parseConnectionUrl("jdbc:ucanaccess:///Users/me/data/Northwind.accdb;memory=false");
 
