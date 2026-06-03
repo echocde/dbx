@@ -524,6 +524,111 @@ test("closing connection tabs removes every tab for that connection only", async
   }
 });
 
+test("releasing connection tabs keeps SQL tabs and closes object tabs", async () => {
+  const restoreStorage = installMemoryStorage();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    return new Response(JSON.stringify(true), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    setActivePinia(createPinia());
+    const store = useQueryStore();
+    const queryId = store.createTab("conn-1", "db", "draft query", "query");
+    const dataId = store.createTab("conn-1", "db", "users", "data", "public");
+    const objectsId = store.openObjectBrowser("conn-1", "db", "public");
+    const structureId = store.openTableStructure("conn-1", "db", "public", "users");
+    const otherConnectionId = store.createTab("conn-2", "db", "users", "data", "public");
+    const queryTab = store.tabs.find((item) => item.id === queryId);
+    const dataTab = store.tabs.find((item) => item.id === dataId);
+
+    assert.ok(queryTab);
+    assert.ok(dataTab);
+    queryTab.result = {
+      columns: ["payload"],
+      rows: [["query"]],
+      affected_rows: 0,
+      execution_time_ms: 1,
+      session_id: "session-query",
+    };
+    queryTab.resultSessionId = "session-query";
+    dataTab.result = {
+      columns: ["payload"],
+      rows: [["data"]],
+      affected_rows: 0,
+      execution_time_ms: 1,
+      session_id: "session-data",
+    };
+    dataTab.resultSessionId = "session-data";
+    store.activeTabId = dataId;
+
+    store.releaseConnectionTabs("conn-1");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(
+      store.tabs.map((tab) => tab.id),
+      [queryId, otherConnectionId],
+    );
+    assert.equal(store.activeTabId, otherConnectionId);
+    assert.equal(
+      store.tabs.some((tab) => [dataId, objectsId, structureId].includes(tab.id)),
+      false,
+    );
+    assert.equal(queryTab.result, undefined);
+    assert.equal(queryTab.resultSessionId, undefined);
+    assert.equal(dataTab.result, undefined);
+    assert.equal(dataTab.resultSessionId, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
+test("releasing database tabs keeps SQL tabs and closes table tabs for that database only", async () => {
+  const restoreStorage = installMemoryStorage();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    return new Response(JSON.stringify(true), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    setActivePinia(createPinia());
+    const store = useQueryStore();
+    const queryId = store.createTab("conn-1", "db", "draft query", "query");
+    const dataId = store.createTab("conn-1", "db", "users", "data", "public");
+    const otherDbId = store.createTab("conn-1", "analytics", "orders", "data", "public");
+    const otherConnectionId = store.createTab("conn-2", "db", "users", "data", "public");
+    const queryTab = store.tabs.find((item) => item.id === queryId);
+
+    assert.ok(queryTab);
+    queryTab.result = {
+      columns: ["payload"],
+      rows: [["query"]],
+      affected_rows: 0,
+      execution_time_ms: 1,
+      session_id: "session-query",
+    };
+    queryTab.resultSessionId = "session-query";
+
+    store.releaseDatabaseTabs("conn-1", "db");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(
+      store.tabs.map((tab) => tab.id),
+      [queryId, otherDbId, otherConnectionId],
+    );
+    assert.equal(
+      store.tabs.some((tab) => tab.id === dataId),
+      false,
+    );
+    assert.equal(queryTab.result, undefined);
+    assert.equal(queryTab.resultSessionId, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreStorage();
+  }
+});
+
 test("disconnecting a connection closes every tab for that connection", async () => {
   const restoreStorage = installMemoryStorage();
   const originalFetch = globalThis.fetch;

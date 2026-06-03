@@ -1612,18 +1612,17 @@ export default {
     autoSelectActiveSidebarNode: "Always select opened item",
     autoSelectActiveSidebarNodeDescription:
       "When switching tabs, select the matching visible table, collection, or SQL file in the sidebar.",
-    disconnectTabHandlingMode: "Query tabs after disconnect",
+    disconnectTabHandlingMode: "Tabs after disconnect",
     disconnectTabHandlingModeDescription:
-      "Choose how query tabs and result grids should be handled after closing a connection or database.",
+      "Choose how related tabs should be handled after closing a connection or database.",
     disconnectTabHandlingModeCloseTabs: "Close all tabs",
-    disconnectTabHandlingModeCloseTabsDescription:
-      "Close related query tabs entirely, including both SQL text and result grids.",
-    disconnectTabHandlingModeKeepTabsClearResults: "Close result grids, keep SQL tabs",
+    disconnectTabHandlingModeCloseTabsDescription: "Close all related tabs for the connection or database.",
+    disconnectTabHandlingModeKeepTabsClearResults: "Close object tabs, keep SQL tabs",
     disconnectTabHandlingModeKeepTabsClearResultsDescription:
-      "Close result grids while keeping query tabs and SQL text, and also clear execution state and result sessions.",
-    disconnectTabHandlingModeKeepTabsKeepResults: "Do not close tabs or result grids",
+      "Close table data, object browser, and structure tabs while keeping SQL query tabs and SQL text, and also clear execution state and result sessions.",
+    disconnectTabHandlingModeKeepTabsKeepResults: "Do not close related tabs",
     disconnectTabHandlingModeKeepTabsKeepResultsDescription:
-      "Keep query tabs, SQL text, and the current result grids without extra cleanup.",
+      "Keep related tabs, SQL text, and current results without extra cleanup.",
     sidebarHiddenTablePrefixes: "Hidden table name prefixes",
     sidebarHiddenTablePrefixesDescription:
       "One prefix per line. Only sidebar table, view, and collection labels are shortened; tooltips and actions still use the full name.",

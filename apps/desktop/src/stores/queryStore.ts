@@ -389,6 +389,7 @@ export const useQueryStore = defineStore("query", () => {
   }
 
   function releaseTabsWhere(predicate: (tab: QueryTab) => boolean) {
+    closeTabsWhere((tab) => predicate(tab) && tab.mode !== "query");
     tabs.value
       .filter((tab) => predicate(tab))
       .forEach((tab) => {

@@ -1504,18 +1504,18 @@ export default {
     autoSelectActiveSidebarNode: "Seleccionar siempre el elemento abierto",
     autoSelectActiveSidebarNodeDescription:
       "Al cambiar de pestaña, selecciona la tabla, colección o archivo SQL visible correspondiente en la barra lateral.",
-    disconnectTabHandlingMode: "Pestañas de consulta tras desconectar",
+    disconnectTabHandlingMode: "Pestañas tras desconectar",
     disconnectTabHandlingModeDescription:
-      "Elige cómo conservar las pestañas de consulta y las tablas de resultados al cerrar una conexión o base de datos.",
+      "Elige cómo conservar las pestañas relacionadas al cerrar una conexión o base de datos.",
     disconnectTabHandlingModeCloseTabs: "Cerrar todas las pestañas",
     disconnectTabHandlingModeCloseTabsDescription:
-      "Cierra por completo las pestañas de consulta relacionadas, incluyendo el SQL y las tablas de resultados.",
-    disconnectTabHandlingModeKeepTabsClearResults: "Cerrar resultados y conservar pestañas SQL",
+      "Cierra todas las pestañas relacionadas de la conexión o base de datos.",
+    disconnectTabHandlingModeKeepTabsClearResults: "Cerrar objetos y conservar SQL",
     disconnectTabHandlingModeKeepTabsClearResultsDescription:
-      "Cierra las tablas de resultados, conserva las pestañas y el texto SQL, y también limpia el estado de ejecución y las sesiones.",
-    disconnectTabHandlingModeKeepTabsKeepResults: "No cerrar pestañas ni resultados",
+      "Cierra pestañas de datos, explorador de objetos y estructura, conserva las pestañas SQL y limpia el estado de ejecución y las sesiones.",
+    disconnectTabHandlingModeKeepTabsKeepResults: "No cerrar pestañas relacionadas",
     disconnectTabHandlingModeKeepTabsKeepResultsDescription:
-      "Conserva las pestañas de consulta, el texto SQL y las tablas de resultados actuales sin limpieza adicional.",
+      "Conserva las pestañas relacionadas, el texto SQL y los resultados actuales sin limpieza adicional.",
     sidebarHiddenTablePrefixes: "Prefijos ocultos de tablas",
     sidebarHiddenTablePrefixesDescription:
       "Un prefijo por linea. Solo acorta etiquetas de tablas, vistas y colecciones en la barra lateral; las acciones y ayudas usan el nombre completo.",
