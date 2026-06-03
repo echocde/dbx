@@ -6,10 +6,10 @@ use crate::connection::AppState;
 use crate::csv_export::{escape_csv, format_csv, value_to_csv_text};
 use crate::database_export::is_export_cancelled;
 pub use crate::database_export::ExportStatus;
-use crate::transfer::{count_sql, execute_on_pool, pagination_sql};
+use crate::transfer::{count_sql, execute_on_pool, keyset_pagination_sql, pagination_sql};
 use crate::xlsx_export::{build_xlsx_workbook, XlsxWorksheetData};
 
-const DEFAULT_BATCH_SIZE: usize = 500;
+const DEFAULT_BATCH_SIZE: usize = 2000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +24,8 @@ pub struct TableExportRequest {
     pub format: String,
     #[serde(default)]
     pub columns: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub batch_size: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -76,7 +78,10 @@ pub async fn export_table_data_core(
 
     let col_names: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
 
-    // 4. Optionally filter to requested columns
+    // 4. Extract primary keys from column metadata (before column filtering)
+    let primary_keys: Vec<String> = columns.iter().filter(|c| c.is_primary_key).map(|c| c.name.clone()).collect();
+
+    // 5. Optionally filter to requested columns
     let col_names = if let Some(requested_cols) = &request.columns {
         if requested_cols.is_empty() {
             col_names
@@ -95,7 +100,19 @@ pub async fn export_table_data_core(
         return Err("No columns found for table".to_string());
     }
 
-    // 5. Get total row count for progress estimation
+    // Use keyset pagination when all PKs are in the selected (filtered) columns.
+    // This avoids the OFFSET performance penalty for large tables.
+    // When no PK is available, falls back to offset-based pagination.
+    let use_keyset = !primary_keys.is_empty() && primary_keys.iter().all(|pk| col_names.contains(pk));
+
+    // PK column indices within result rows (for extracting last-row values)
+    let pk_indices: Vec<usize> = if use_keyset {
+        primary_keys.iter().map(|pk| col_names.iter().position(|c| c == pk).unwrap()).collect()
+    } else {
+        Vec::new()
+    };
+
+    // 6. Get total row count for progress estimation
     let count_query = count_sql(&request.table_name, request.schema.as_deref().unwrap_or(""), &db_type);
     let total_rows = match execute_on_pool(state, &pool_key, &count_query).await {
         Ok(result) => result.rows.first().and_then(|r| r.first()).and_then(|v| match v {
@@ -106,7 +123,7 @@ pub async fn export_table_data_core(
         Err(_) => None,
     };
 
-    // 6. Emit initial Running progress
+    // 7. Emit initial Running progress
     on_progress(TableExportProgress {
         export_id: request.export_id.clone(),
         table_name: request.table_name.clone(),
@@ -116,12 +133,15 @@ pub async fn export_table_data_core(
         error_message: None,
     });
 
-    // 7. Create output file
+    // 8. Create output file
     let mut file = std::fs::File::create(&request.file_path).map_err(|e| format!("Failed to create file: {e}"))?;
 
     let mut rows_exported: u64 = 0;
+    let batch_size = request.batch_size.unwrap_or(DEFAULT_BATCH_SIZE).max(1);
     let mut offset: u64 = 0;
-    let batch_size = DEFAULT_BATCH_SIZE;
+
+    // Track last primary key values for keyset pagination
+    let mut last_pk_values: Vec<Value> = Vec::new();
 
     match request.format.to_lowercase().as_str() {
         "csv" => {
@@ -144,14 +164,26 @@ pub async fn export_table_data_core(
                     return Ok(());
                 }
 
-                let sql = pagination_sql(
-                    &col_names,
-                    &request.table_name,
-                    request.schema.as_deref().unwrap_or(""),
-                    &db_type,
-                    offset,
-                    batch_size,
-                );
+                let sql = if use_keyset {
+                    keyset_pagination_sql(
+                        &col_names,
+                        &request.table_name,
+                        request.schema.as_deref().unwrap_or(""),
+                        &db_type,
+                        &primary_keys,
+                        &last_pk_values,
+                        batch_size,
+                    )
+                } else {
+                    pagination_sql(
+                        &col_names,
+                        &request.table_name,
+                        request.schema.as_deref().unwrap_or(""),
+                        &db_type,
+                        offset,
+                        batch_size,
+                    )
+                };
 
                 let result = execute_on_pool(state, &pool_key, &sql).await?;
                 let row_count = result.rows.len();
@@ -173,7 +205,15 @@ pub async fn export_table_data_core(
                 }
 
                 rows_exported += row_count as u64;
-                offset += row_count as u64;
+
+                if use_keyset {
+                    // Keyset pagination: track last PK values for next batch
+                    if let Some(last_row) = result.rows.last() {
+                        last_pk_values = pk_indices.iter().map(|&i| last_row[i].clone()).collect();
+                    }
+                } else {
+                    offset += row_count as u64;
+                }
 
                 on_progress(TableExportProgress {
                     export_id: request.export_id.clone(),
@@ -206,14 +246,26 @@ pub async fn export_table_data_core(
                     return Ok(());
                 }
 
-                let sql = pagination_sql(
-                    &col_names,
-                    &request.table_name,
-                    request.schema.as_deref().unwrap_or(""),
-                    &db_type,
-                    offset,
-                    batch_size,
-                );
+                let sql = if use_keyset {
+                    keyset_pagination_sql(
+                        &col_names,
+                        &request.table_name,
+                        request.schema.as_deref().unwrap_or(""),
+                        &db_type,
+                        &primary_keys,
+                        &last_pk_values,
+                        batch_size,
+                    )
+                } else {
+                    pagination_sql(
+                        &col_names,
+                        &request.table_name,
+                        request.schema.as_deref().unwrap_or(""),
+                        &db_type,
+                        offset,
+                        batch_size,
+                    )
+                };
 
                 let result = execute_on_pool(state, &pool_key, &sql).await?;
                 let row_count = result.rows.len();
@@ -223,7 +275,15 @@ pub async fn export_table_data_core(
 
                 all_rows.extend(result.rows);
                 rows_exported += row_count as u64;
-                offset += row_count as u64;
+
+                if use_keyset {
+                    // Keyset pagination: track last PK values for next batch
+                    if let Some(last_row) = all_rows.last() {
+                        last_pk_values = pk_indices.iter().map(|&i| last_row[i].clone()).collect();
+                    }
+                } else {
+                    offset += row_count as u64;
+                }
 
                 on_progress(TableExportProgress {
                     export_id: request.export_id.clone(),
