@@ -95,6 +95,10 @@ pub fn build_table_data_select_sql(options: TableDataSelectSqlOptions) -> String
         table
     };
 
+    if database_type == Some(DatabaseType::Iris) {
+        return format!("SELECT TOP {limit} {select_columns} FROM {table_alias}{where_clause}{order}");
+    }
+
     if database_type.is_some_and(uses_fetch_first) {
         let offset = options
             .offset
@@ -149,6 +153,10 @@ pub fn build_table_select_sql(options: TableSelectSqlOptions<'_>) -> String {
         )
     };
     let limit = options.limit;
+
+    if database_type == Some(DatabaseType::Iris) {
+        return format!("SELECT TOP {limit} {select_columns} FROM {table}{order_by}");
+    }
 
     if database_type.is_some_and(uses_fetch_first) {
         return format!("SELECT {select_columns} FROM {table}{order_by} FETCH FIRST {limit} ROWS ONLY");
@@ -441,6 +449,17 @@ mod tests {
             }),
             "SELECT * FROM cbsdw_dwd.dwd_test_df LIMIT 100;"
         );
+        assert_eq!(
+            build_table_select_sql(TableSelectSqlOptions {
+                database_type: Some(DatabaseType::Iris),
+                schema: Some("Ens"),
+                table_name: "AlarmResponse",
+                columns: &[],
+                order_columns: &[],
+                limit: 100,
+            }),
+            "SELECT TOP 100 * FROM \"Ens\".\"AlarmResponse\""
+        );
     }
 
     #[test]
@@ -476,6 +495,22 @@ mod tests {
                 include_row_id: false,
             }),
             "SELECT * FROM \"public\".\"orders\" WHERE (amount > 10) LIMIT 50 OFFSET 100;"
+        );
+        assert_eq!(
+            build_table_data_select_sql(TableDataSelectSqlOptions {
+                database_type: Some(DatabaseType::Iris),
+                schema: Some("Ens".to_string()),
+                table_name: "AlarmResponse".to_string(),
+                primary_keys: Vec::new(),
+                columns: Vec::new(),
+                fallback_order_columns: Vec::new(),
+                order_by: None,
+                limit: Some(100),
+                offset: None,
+                where_input: None,
+                include_row_id: false,
+            }),
+            "SELECT TOP 100 * FROM \"Ens\".\"AlarmResponse\""
         );
     }
 
