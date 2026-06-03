@@ -5,14 +5,14 @@ use crate::models::connection::{ConnectionConfig, DatabaseType};
 pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> serde_json::Value {
     let agent_database = if config.db_type == DatabaseType::MongoDb {
         mongo_agent_database(config, database)
-    } else if config.db_type == DatabaseType::Oracle {
+    } else if matches!(config.db_type, DatabaseType::Oracle | DatabaseType::OceanbaseOracle) {
         oracle_agent_database(config, database)
     } else {
         database.to_string()
     };
     let connection_string = if config.db_type == DatabaseType::MongoDb {
         config.connection_url_with_host(host, port)
-    } else if config.db_type == DatabaseType::Oracle {
+    } else if matches!(config.db_type, DatabaseType::Oracle | DatabaseType::OceanbaseOracle) {
         oracle_jdbc_connection_string(config, host, port, database)
     } else if matches!(config.db_type, DatabaseType::Kingbase | DatabaseType::Highgo | DatabaseType::Vastbase) {
         postgres_like_agent_jdbc_connection_string(config, host, port, database)
@@ -315,6 +315,19 @@ mod tests {
 
         assert_eq!(params["database"], "SYSDBA:ORCLPDB1");
         assert_eq!(params["sysdba"], true);
+    }
+
+    #[test]
+    fn oceanbase_oracle_uses_oracle_jdbc_connection_string_for_agent_protocol() {
+        let mut cfg = config(DatabaseType::OceanbaseOracle, Some("sys"));
+        cfg.host = "oceanbase.example.com".to_string();
+        cfg.port = 2881;
+
+        let params = agent_connect_params(&cfg, "oceanbase.example.com", 2881, "sys");
+
+        assert_eq!(params["database"], "sys");
+        assert_eq!(params["sysdba"], false);
+        assert_eq!(params["connection_string"], "jdbc:oracle:thin:@//oceanbase.example.com:2881/sys");
     }
 
     #[test]
