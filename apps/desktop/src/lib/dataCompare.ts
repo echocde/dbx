@@ -1,4 +1,4 @@
-import type { DatabaseType, QueryResult } from "@/types/database";
+import type { ColumnInfo, DatabaseType, QueryResult } from "@/types/database";
 
 export type DataCompareCellValue = QueryResult["rows"][number][number];
 
@@ -33,6 +33,7 @@ export interface DataComparePreparationOptions {
   schema?: string;
   columns: string[];
   keyColumns: string[];
+  columnInfo?: ColumnInfo[];
   sourceRows: DataCompareCellValue[][];
   targetRows: DataCompareCellValue[][];
   databaseType?: DatabaseType;
@@ -84,6 +85,7 @@ export interface DataCompareSyncPlanTableOptions {
   schema?: string;
   columns: string[];
   keyColumns: string[];
+  columnInfo?: ColumnInfo[];
   diff: DataCompareResult;
   databaseType?: DatabaseType;
   preSyncStatements?: string[];

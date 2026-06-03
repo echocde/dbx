@@ -18,7 +18,7 @@ import type {
   DataCompareSyncPlan,
   DataCompareSyncPlanTableOptions,
 } from "@/lib/dataCompare";
-import type { DatabaseType } from "@/types/database";
+import type { ColumnInfo, DatabaseType } from "@/types/database";
 import * as api from "@/lib/api";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import {
@@ -33,10 +33,7 @@ import {
   Square,
 } from "lucide-vue-next";
 
-interface CompareColumn {
-  name: string;
-  is_primary_key?: boolean;
-}
+type CompareColumn = ColumnInfo;
 
 interface DataCompareTableTask {
   sourceTable: string;
@@ -65,6 +62,7 @@ interface DataCompareTableResult {
   targetTable: string;
   keyColumns: string[];
   columns: string[];
+  columnInfo: CompareColumn[];
   status: DataCompareTableStatus;
   added: number;
   removed: number;
@@ -584,6 +582,7 @@ function buildSyncPlanTables(): DataCompareSyncPlanTableOptions[] {
       schema: targetSchema.value,
       columns: table.columns,
       keyColumns: table.keyColumns,
+      columnInfo: table.columnInfo,
       diff: buildSelectedDiff(table),
       databaseType: table.databaseType,
       preSyncStatements: table.preSyncStatements ?? [],
@@ -672,6 +671,7 @@ async function startCompare() {
             targetTable: task.targetTable,
             keyColumns: resolvedKeys,
             columns: sourceColumns.map((column) => column.name),
+            columnInfo: sourceColumns,
             status: "different",
             added: preparation.result.added.length,
             removed: 0,
@@ -718,6 +718,9 @@ async function startCompare() {
         const columns = sourceColumns
           .map((column) => column.name)
           .filter((column) => targetColumns.some((target) => target.name === column));
+        const columnInfo = columns
+          .map((column) => targetColumns.find((target) => target.name === column))
+          .filter((column): column is CompareColumn => !!column);
         const missingKeys = resolvedKeys.filter((column) => !columns.includes(column));
         if (missingKeys.length > 0) {
           throw new Error(t("dataCompare.missingKeyColumns", { columns: missingKeys.join(", ") }));
@@ -749,6 +752,7 @@ async function startCompare() {
           targetTable: task.targetTable,
           keyColumns: resolvedKeys,
           columns,
+          columnInfo,
           status,
           added,
           removed,
@@ -772,6 +776,7 @@ async function startCompare() {
           targetTable: task.targetTable,
           keyColumns: keyColumns.value,
           columns: [],
+          columnInfo: [],
           status: "error",
           added: 0,
           removed: 0,

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::connection::AppState;
+use crate::data_grid_sql::{format_grid_sql_literal as format_data_grid_sql_literal, DataGridColumnInfo};
 use crate::models::connection::DatabaseType;
 use crate::query::{execute_sql_statement_with_options, QueryExecutionOptions};
 use crate::schema::get_columns_core;
@@ -30,6 +31,8 @@ pub struct DataComparePreparationOptions {
     pub schema: Option<String>,
     pub columns: Vec<String>,
     pub key_columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_info: Vec<DataGridColumnInfo>,
     #[serde(default)]
     pub source_rows: Vec<Vec<Value>>,
     #[serde(default)]
@@ -122,6 +125,8 @@ pub struct DataCompareSyncPlanTableOptions {
     pub schema: Option<String>,
     pub columns: Vec<String>,
     pub key_columns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub column_info: Vec<DataGridColumnInfo>,
     pub diff: DataCompareResult,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub database_type: Option<DatabaseType>,
@@ -174,6 +179,7 @@ pub fn prepare_data_compare(options: DataComparePreparationOptions) -> Result<Da
             schema: options.schema,
             columns: options.columns,
             key_columns: options.key_columns,
+            column_info: options.column_info,
             diff: result.clone(),
             database_type: options.database_type,
             pre_sync_statements: Vec::new(),
@@ -242,12 +248,21 @@ pub async fn prepare_data_compare_from_tables(
             fetch_batch_size,
         )
     )?;
+    let target_columns = get_columns_core(
+        state,
+        &options.target_connection_id,
+        &options.target_database,
+        &options.target_schema,
+        &options.target_table,
+    )
+    .await?;
 
     let preparation = prepare_data_compare(DataComparePreparationOptions {
         table_name: options.target_table,
         schema: Some(options.target_schema),
         columns: options.columns,
         key_columns: options.key_columns,
+        column_info: target_columns.into_iter().map(data_grid_column_info).collect(),
         source_rows,
         target_rows,
         database_type: Some(target_database_type),
@@ -339,6 +354,7 @@ pub async fn prepare_data_compare_missing_target(
             schema: Some(options.target_schema),
             columns: column_names,
             key_columns: options.key_columns,
+            column_info: source_columns.iter().cloned().map(data_grid_column_info).collect(),
             diff: result.clone(),
             database_type: Some(target_database_type),
             pre_sync_statements: pre_sync_statements.clone(),
@@ -373,6 +389,7 @@ pub fn build_data_compare_sync_plan(options: DataCompareSyncPlanOptions) -> Data
             schema: table.schema,
             columns: table.columns,
             key_columns: table.key_columns,
+            column_info: table.column_info,
             diff: table.diff,
             database_type: table.database_type,
         }));
@@ -518,6 +535,7 @@ struct GenerateDataSyncSqlOptions {
     schema: Option<String>,
     columns: Vec<String>,
     key_columns: Vec<String>,
+    column_info: Vec<DataGridColumnInfo>,
     diff: DataCompareResult,
     database_type: Option<DatabaseType>,
 }
@@ -554,6 +572,7 @@ fn generate_data_sync_statements(options: &GenerateDataSyncSqlOptions) -> Vec<St
         .map(|column| quote_table_identifier(options.database_type, column))
         .collect::<Vec<_>>()
         .join(", ");
+    let column_info = options.column_info.as_slice();
     let added = options
         .diff
         .added
@@ -563,7 +582,11 @@ fn generate_data_sync_statements(options: &GenerateDataSyncSqlOptions) -> Vec<St
                 .columns
                 .iter()
                 .map(|column| {
-                    format_grid_sql_literal(row.values.get(column).unwrap_or(&Value::Null), options.database_type)
+                    format_grid_sql_literal(
+                        row.values.get(column).unwrap_or(&Value::Null),
+                        options.database_type,
+                        column_info_for(column_info, column),
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -582,14 +605,18 @@ fn generate_data_sync_statements(options: &GenerateDataSyncSqlOptions) -> Vec<St
                     format!(
                         "{} = {}",
                         quote_table_identifier(options.database_type, &change.column),
-                        format_grid_sql_literal(&change.source, options.database_type)
+                        format_grid_sql_literal(
+                            &change.source,
+                            options.database_type,
+                            column_info_for(column_info, &change.column),
+                        )
                     )
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
             format!(
                 "UPDATE {table} SET {assignments} WHERE {};",
-                where_by_key(&row.key_values, &options.key_columns, options.database_type)
+                where_by_key(&row.key_values, &options.key_columns, options.database_type, column_info)
             )
         })
         .collect::<Vec<_>>();
@@ -600,7 +627,7 @@ fn generate_data_sync_statements(options: &GenerateDataSyncSqlOptions) -> Vec<St
         .map(|row| {
             format!(
                 "DELETE FROM {table} WHERE {};",
-                where_by_key(&row.key_values, &options.key_columns, options.database_type)
+                where_by_key(&row.key_values, &options.key_columns, options.database_type, column_info)
             )
         })
         .collect::<Vec<_>>();
@@ -745,6 +772,7 @@ fn where_by_key(
     key_values: &HashMap<String, Value>,
     key_columns: &[String],
     database_type: Option<DatabaseType>,
+    column_info: &[DataGridColumnInfo],
 ) -> String {
     key_columns
         .iter()
@@ -752,59 +780,39 @@ fn where_by_key(
             format!(
                 "{} = {}",
                 quote_table_identifier(database_type, column),
-                format_grid_sql_literal(key_values.get(column).unwrap_or(&Value::Null), database_type)
+                format_grid_sql_literal(
+                    key_values.get(column).unwrap_or(&Value::Null),
+                    database_type,
+                    column_info_for(column_info, column),
+                )
             )
         })
         .collect::<Vec<_>>()
         .join(" AND ")
 }
 
-fn format_grid_sql_literal(value: &Value, database_type: Option<DatabaseType>) -> String {
-    match value {
-        Value::Null => "NULL".to_string(),
-        Value::Bool(value) => {
-            if *value {
-                "TRUE".to_string()
-            } else {
-                "FALSE".to_string()
-            }
-        }
-        Value::Number(number) => number.to_string(),
-        Value::String(text) if text.is_empty() && database_type == Some(DatabaseType::SqlServer) => "N''".to_string(),
-        Value::String(text) if text.is_empty() => "''".to_string(),
-        Value::String(text) => {
-            let escaped = format!("'{}'", literal_text(text, database_type).replace('\\', "\\\\").replace('\'', "''"));
-            if database_type == Some(DatabaseType::SqlServer) {
-                format!("N{escaped}")
-            } else {
-                escaped
-            }
-        }
-        other => {
-            let text = other.to_string();
-            let escaped = format!("'{}'", text.replace('\\', "\\\\").replace('\'', "''"));
-            if database_type == Some(DatabaseType::SqlServer) {
-                format!("N{escaped}")
-            } else {
-                escaped
-            }
-        }
-    }
+fn format_grid_sql_literal(
+    value: &Value,
+    database_type: Option<DatabaseType>,
+    column_info: Option<&DataGridColumnInfo>,
+) -> String {
+    format_data_grid_sql_literal(value, database_type, column_info)
 }
 
-fn literal_text(text: &str, database_type: Option<DatabaseType>) -> String {
-    if database_type == Some(DatabaseType::Tdengine) {
-        return format_tdengine_timestamp_literal_text(text);
-    }
-    text.to_string()
+fn column_info_for<'a>(columns: &'a [DataGridColumnInfo], name: &str) -> Option<&'a DataGridColumnInfo> {
+    let normalized = name.to_ascii_lowercase();
+    columns.iter().find(|column| column.name.to_ascii_lowercase() == normalized)
 }
 
-fn format_tdengine_timestamp_literal_text(text: &str) -> String {
-    // Keep non-timestamp text unchanged; TDengine timestamp normalization is UI-parity best effort in Rust.
-    if text.len() < 19 || text.as_bytes().get(10).is_none_or(|ch| *ch != b' ') {
-        return text.to_string();
+fn data_grid_column_info(column: crate::types::ColumnInfo) -> DataGridColumnInfo {
+    DataGridColumnInfo {
+        name: column.name,
+        data_type: column.data_type,
+        is_nullable: column.is_nullable,
+        is_primary_key: column.is_primary_key,
+        column_default: column.column_default,
+        extra: column.extra,
     }
-    text.replacen(' ', "T", 1)
 }
 
 #[cfg(test)]
@@ -812,6 +820,17 @@ mod tests {
     use super::*;
     use crate::models::connection::DatabaseType;
     use serde_json::json;
+
+    fn data_compare_column(name: &str, data_type: &str) -> DataGridColumnInfo {
+        DataGridColumnInfo {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            is_nullable: true,
+            is_primary_key: false,
+            column_default: None,
+            extra: None,
+        }
+    }
 
     #[test]
     fn compares_rows_by_primary_key_and_reports_added_removed_and_modified_rows() {
@@ -851,6 +870,7 @@ mod tests {
             schema: Some("public".to_string()),
             columns: vec!["id".to_string(), "name".to_string(), "active".to_string()],
             key_columns: vec!["id".to_string()],
+            column_info: Vec::new(),
             source_rows: vec![vec![json!(1), json!("Ada"), json!(true)], vec![json!(2), json!("Bob"), json!(false)]],
             target_rows: vec![
                 vec![json!(1), json!("Ada Lovelace"), json!(true)],
@@ -873,6 +893,27 @@ mod tests {
     }
 
     #[test]
+    fn generates_mysql_bit_synchronization_literals_without_string_quotes() {
+        let preparation = prepare_data_compare(DataComparePreparationOptions {
+            table_name: "users".to_string(),
+            schema: None,
+            columns: vec!["id".to_string(), "enabled".to_string(), "flags".to_string()],
+            key_columns: vec!["id".to_string()],
+            column_info: vec![
+                data_compare_column("id", "int"),
+                data_compare_column("enabled", "bit(1)"),
+                data_compare_column("flags", "bit(8)"),
+            ],
+            source_rows: vec![vec![json!(1), json!("0"), json!("10101010")]],
+            target_rows: vec![vec![json!(1), json!("1"), json!("00000001")]],
+            database_type: Some(DatabaseType::Mysql),
+        })
+        .expect("data compare preparation should succeed");
+
+        assert_eq!(preparation.sync_sql, "UPDATE `users` SET `enabled` = 0, `flags` = b'10101010' WHERE `id` = 1;");
+    }
+
+    #[test]
     fn builds_batch_sync_plan_from_selected_diffs() {
         let plan = build_data_compare_sync_plan(DataCompareSyncPlanOptions {
             tables: vec![DataCompareSyncPlanTableOptions {
@@ -880,6 +921,7 @@ mod tests {
                 schema: Some("public".to_string()),
                 columns: vec!["id".to_string(), "name".to_string()],
                 key_columns: vec!["id".to_string()],
+                column_info: Vec::new(),
                 diff: DataCompareResult {
                     added: vec![DataCompareRow {
                         key: "1".to_string(),
@@ -924,6 +966,7 @@ mod tests {
                 schema: Some("public".to_string()),
                 columns: vec!["id".to_string(), "name".to_string()],
                 key_columns: Vec::new(),
+                column_info: Vec::new(),
                 diff: DataCompareResult {
                     added: vec![DataCompareRow {
                         key: "0".to_string(),
