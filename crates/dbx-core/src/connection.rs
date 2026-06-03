@@ -1183,7 +1183,7 @@ mod tests {
 
         let params = agent_connect_params(&config, "oracle.example.com", 1521, "ORCLPDB1");
 
-        assert_eq!(params["database"], "ORCLPDB1");
+        assert_eq!(params["database"], "SYSDBA:ORCLPDB1");
         assert_eq!(params["sysdba"], true);
         assert_eq!(params["connection_string"], "jdbc:oracle:thin:@//oracle.example.com:1521/ORCLPDB1");
     }
