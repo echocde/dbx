@@ -90,7 +90,7 @@ import {
 } from "@/lib/treeNodeClick";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
-import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
+import { generateDatabaseExportId } from "@/lib/databaseExport";
 import {
   buildCreateDatabaseSql,
   buildDuckDbAttachDatabaseSql,
@@ -127,6 +127,7 @@ import {
 } from "@/lib/sidebarTreeSelection";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
+import ExportProgressDialog from "@/components/export/ExportProgressDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatShortcut } from "@/lib/shortcutRegistry";
@@ -161,6 +162,26 @@ type StructureCopyFormat = "tsv" | "markdown";
 type DuplicateStructureSource = TreeNode & { connectionId: string; database: string };
 const { getDatabaseOptions } = useDatabaseOptions();
 const showVisibleDatabasesDialog = ref(false);
+const exportProgressDialogOpen = ref(false);
+const exportProgress = ref<{
+  title: string;
+  tableName: string;
+  format: string;
+  rowsExported: number;
+  totalRows: number | null;
+  status: string;
+  errorMessage: string | null;
+}>({
+  title: "",
+  tableName: "",
+  format: "",
+  rowsExported: 0,
+  totalRows: null,
+  status: "",
+  errorMessage: null,
+});
+const exportCancelled = ref(false);
+const currentExportId = ref("");
 
 const props = defineProps<{
   node: TreeNode;
@@ -752,45 +773,38 @@ async function openData() {
     });
     queryStore.updateSql(tabId, sql);
 
-    queryStore.setTableMeta(tabId, {
-      schema: node.schema,
-      tableName: node.label,
-      columns: [],
-      primaryKeys: [],
-    });
-
-    console.info("[DBX][openData:get-columns:start]", {
-      traceId,
-      database: node.database,
-      schema: querySchema,
-      table: node.label,
-      elapsed: elapsed(),
-    });
-    const columnsPromise = api.getColumns(node.connectionId, node.database, querySchema, node.label);
+    const loadTableMeta = async () => {
+      try {
+        console.info("[DBX][openData:get-columns:start]", {
+          traceId,
+          database: node.database,
+          schema: querySchema,
+          table: node.label,
+          elapsed: elapsed(),
+        });
+        const columns = await api.getColumns(node.connectionId, node.database, querySchema, node.label);
+        console.info("[DBX][openData:get-columns:done]", {
+          traceId,
+          columnCount: columns.length,
+          primaryKeys: columns.filter((column) => column.is_primary_key).map((column) => column.name),
+          elapsed: elapsed(),
+        });
+        const pks = editablePrimaryKeys(config.db_type, columns);
+        queryStore.setTableMeta(tabId, {
+          schema: node.schema,
+          tableName: node.label,
+          columns,
+          primaryKeys: pks,
+        });
+      } catch (error) {
+        console.warn("[DBX][openData:get-columns:error]", { traceId, elapsed: elapsed(), error });
+      }
+    };
 
     console.info("[DBX][openData:execute:start]", { traceId, tabId, elapsed: elapsed() });
-    const dataPromise = queryStore.executeTabSql(tabId, sql);
-    const [columnsResult, dataResult] = await Promise.allSettled([columnsPromise, dataPromise]);
-    if (columnsResult.status === "fulfilled") {
-      const columns = columnsResult.value;
-      console.info("[DBX][openData:get-columns:done]", {
-        traceId,
-        columnCount: columns.length,
-        primaryKeys: columns.filter((column) => column.is_primary_key).map((column) => column.name),
-        elapsed: elapsed(),
-      });
-      const pks = editablePrimaryKeys(config.db_type, columns);
-      queryStore.setTableMeta(tabId, {
-        schema: node.schema,
-        tableName: node.label,
-        columns,
-        primaryKeys: pks,
-      });
-    } else {
-      console.warn("[DBX][openData:get-columns:error]", { traceId, elapsed: elapsed(), error: columnsResult.reason });
-    }
-    if (dataResult.status === "rejected") throw dataResult.reason;
+    await queryStore.executeTabSql(tabId, sql);
     console.info("[DBX][openData:execute:done]", { traceId, tabId, elapsed: elapsed() });
+    void loadTableMeta();
   } catch (e: any) {
     console.error("[DBX][openData:error]", { traceId, elapsed: elapsed(), error: e });
     queryStore.setErrorResult(tabId, e);
@@ -2042,7 +2056,7 @@ async function saveStructurePreview() {
   }
 }
 
-async function exportData(format: "csv" | "json" | "sql") {
+async function exportDataLegacy(format: "csv" | "json" | "sql") {
   const node = props.node;
   if (!node.connectionId || !node.database) return;
   const connectionId = node.connectionId;
@@ -2058,36 +2072,12 @@ async function exportData(format: "csv" | "json" | "sql") {
             (column) => column.name,
           )
         : undefined;
-
-    if (format === "csv" && isTauriRuntime()) {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const outputPath = await save({
-        defaultPath: `${node.label}.csv`,
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-      });
-      if (!outputPath) return;
-      await api.exportTableDataCsv({
-        filePath: outputPath as string,
-        connectionId,
-        database,
-        schema: node.schema,
-        tableName: node.label,
-        columns: queryColumns,
-        timeoutSecs: queryTimeoutSecsForConnection(config),
-      });
-      toast(t("grid.exported"));
-      return;
-    }
-
     const result = await fetchTableDataForExport({
       databaseType: config.db_type,
       schema: node.schema,
       tableName: node.label,
       columns: queryColumns,
-      executePage: (sql) =>
-        api.executeQuery(connectionId, database, sql, undefined, undefined, {
-          timeoutSecs: queryTimeoutSecsForConnection(config),
-        }),
+      executePage: (sql) => api.executeQuery(connectionId, database, sql),
     });
 
     if (format === "csv") {
@@ -2136,7 +2126,15 @@ async function exportData(format: "csv" | "json" | "sql") {
   }
 }
 
-async function exportDataXlsx() {
+async function exportData(format: "csv" | "json" | "sql") {
+  if (format !== "csv") {
+    await exportDataLegacy(format);
+    return;
+  }
+  await exportTableData("csv");
+}
+
+async function exportTableData(format: "csv" | "xlsx") {
   const node = props.node;
   if (!node.connectionId || !node.database) return;
   const connectionId = node.connectionId;
@@ -2146,38 +2144,91 @@ async function exportDataXlsx() {
 
   try {
     await connectionStore.ensureConnected(connectionId);
-    const queryColumns =
-      config.db_type === "neo4j"
-        ? (await api.getColumns(connectionId, database, node.schema || database, node.label)).map(
-            (column) => column.name,
-          )
-        : undefined;
-    const result = await fetchTableDataForExport({
-      databaseType: config.db_type,
-      schema: node.schema,
-      tableName: node.label,
-      columns: queryColumns,
-      executePage: (sql) =>
-        api.executeQuery(connectionId, database, sql, undefined, undefined, {
-          timeoutSecs: queryTimeoutSecsForConnection(config),
-        }),
-    });
 
-    let outputPath = `${node.label}.xlsx`;
+    // Step 1: Open save dialog FIRST
+    let outputPath = `${node.label}.${format}`;
     if (isTauriRuntime()) {
       const { save } = await import("@tauri-apps/plugin-dialog");
       const path = await save({
         defaultPath: outputPath,
-        filters: [{ name: "Excel", extensions: ["xlsx"] }],
+        filters: [{ name: format === "csv" ? "CSV" : "Excel", extensions: [format] }],
       });
       if (!path) return;
       outputPath = path as string;
     }
-    await api.exportQueryResultXlsx(outputPath, node.label, result.columns, result.rows);
-    toast(t("grid.exported"));
+
+    // Step 2: Prepare progress state and open dialog
+    const exportId = generateDatabaseExportId();
+    currentExportId.value = exportId;
+    exportCancelled.value = false;
+    exportProgress.value = {
+      title: t("exportProgress.title"),
+      tableName: node.label,
+      format,
+      rowsExported: 0,
+      totalRows: null,
+      status: "Running",
+      errorMessage: null,
+    };
+    exportProgressDialogOpen.value = true;
+
+    // Step 3: Get query columns for neo4j
+    const queryColumns =
+      config.db_type === "neo4j"
+        ? (await api.getColumns(connectionId, database, node.schema || database, node.label)).map((c) => c.name)
+        : undefined;
+
+    // Step 4: Start streaming export
+    const request: api.TableExportRequest = {
+      exportId,
+      connectionId,
+      database,
+      schema: node.schema || undefined,
+      tableName: node.label,
+      filePath: outputPath,
+      format,
+      columns: queryColumns,
+    };
+
+    await api.startTableExport(request, (progress) => {
+      exportProgress.value = {
+        ...exportProgress.value,
+        rowsExported: progress.rowsExported,
+        totalRows: progress.totalRows,
+        status: progress.status,
+        errorMessage: progress.errorMessage || null,
+      };
+      if (progress.status === "Done") {
+        toast(t("grid.exported"));
+      } else if (progress.status === "Error") {
+        toast(t("grid.exportFailed", { message: progress.errorMessage || "" }), 5000);
+      }
+    });
   } catch (e: any) {
-    toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+    if (!exportCancelled.value) {
+      exportProgress.value = {
+        ...exportProgress.value,
+        status: "Error",
+        errorMessage: e?.message || String(e),
+      };
+      toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
+    }
   }
+}
+
+async function cancelExport() {
+  exportCancelled.value = true;
+  if (currentExportId.value) {
+    try {
+      await api.cancelTableExport(currentExportId.value);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+async function exportDataXlsx() {
+  await exportTableData("xlsx");
 }
 
 function editConnection() {
@@ -3658,6 +3709,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
     :confirm-label="t('contextMenu.dropSchema')"
     @confirm="confirmDropSchema"
   />
+
+  <ExportProgressDialog v-model:open="exportProgressDialogOpen" v-bind="exportProgress" @cancel="cancelExport" />
 </template>
 
 <style>

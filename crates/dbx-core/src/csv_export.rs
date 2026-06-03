@@ -27,11 +27,11 @@ pub struct TableCsvExportOptions {
     pub timeout_secs: Option<u64>,
 }
 
-fn escape_csv(value: &str) -> String {
+pub(crate) fn escape_csv(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
-fn value_to_csv_text(value: &Value) -> String {
+pub(crate) fn value_to_csv_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
         Value::Bool(v) => v.to_string(),

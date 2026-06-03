@@ -49,6 +49,8 @@ import type {
   TableImportProgress,
   DatabaseExportRequest,
   ExportProgress,
+  TableExportRequest,
+  TableExportProgress,
   TableCsvExportOptions,
   XlsxCellValue,
   QueryPaginationExecutionPlanOptions,
@@ -1069,6 +1071,68 @@ export async function exportDatabaseSql(
 
 export async function cancelDatabaseExport(exportId: string): Promise<void> {
   await post("/api/export/database/cancel", { exportId });
+}
+
+// --- Table Export ---
+
+export async function startTableExport(
+  request: TableExportRequest,
+  onProgress: (progress: TableExportProgress) => void,
+): Promise<TableExportProgress> {
+  const { exportId } = request;
+
+  return new Promise((resolve, reject) => {
+    let started = false;
+    let settled = false;
+    const eventSource = new EventSource(`/api/export/table/progress/${exportId}`);
+
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      eventSource.close();
+      callback();
+    };
+
+    eventSource.onopen = () => {
+      if (started) return;
+      started = true;
+      post("/api/export/table", { request }).catch((error) => {
+        finish(() => reject(error));
+      });
+    };
+
+    eventSource.onmessage = (event) => {
+      const progress: TableExportProgress = JSON.parse(event.data);
+      onProgress(progress);
+      if (progress.status === "Done" || progress.status === "Error" || progress.status === "Cancelled") {
+        if (progress.status === "Error") {
+          finish(() => reject(new Error(progress.errorMessage || "Export failed")));
+        } else if (progress.status === "Done") {
+          // Trigger browser download
+          downloadTableExportFile(exportId, request.format);
+          finish(() => resolve(progress));
+        } else {
+          finish(() => resolve(progress));
+        }
+      }
+    };
+
+    eventSource.onerror = () => {
+      finish(() => reject(new Error("Export progress connection lost")));
+    };
+  });
+}
+
+function downloadTableExportFile(exportId: string, format: string): void {
+  const ext = format === "csv" ? "csv" : "xlsx";
+  const a = document.createElement("a");
+  a.href = `/api/export/table/download/${exportId}`;
+  a.download = `table_export_${exportId}.${ext}`;
+  a.click();
+}
+
+export async function cancelTableExport(exportId: string): Promise<void> {
+  return post("/api/export/table/cancel", { exportId });
 }
 
 export async function exportQueryResultCsv(

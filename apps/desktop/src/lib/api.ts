@@ -188,6 +188,8 @@ export const exportTableDataCsv = forward("exportTableDataCsv");
 export const exportQueryResultXlsx = forward("exportQueryResultXlsx");
 export const exportQueryResultJson = forward("exportQueryResultJson");
 export const exportQueryResultMarkdown = forward("exportQueryResultMarkdown");
+export const startTableExport = forward("startTableExport");
+export const cancelTableExport = forward("cancelTableExport");
 
 // Redis
 export const redisListDatabases = forward("redisListDatabases");
@@ -286,4 +288,7 @@ export type {
   TableImportProgress,
   DatabaseExportRequest,
   ExportProgress,
+  TableExportProgress,
+  TableExportStatus,
+  TableExportRequest,
 } from "./tauri";
