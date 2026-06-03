@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import LightDropdown from "@/components/ui/LightDropdown.vue";
 import WindowControls from "@/components/layout/WindowControls.vue";
+import ExportProgressPopover from "@/components/export/ExportProgressPopover.vue";
 import { shouldReserveMacTrafficLightInset, useWindowControls } from "@/composables/useWindowControls";
 import { currentLocale, setLocale, type Locale } from "@/i18n";
 import type { AppThemeMode } from "@/lib/appTheme";
@@ -192,6 +193,8 @@ function onToolbarDblClick(e: MouseEvent) {
       </TooltipTrigger>
       <TooltipContent>{{ t("updates.check") }}</TooltipContent>
     </Tooltip>
+
+    <ExportProgressPopover />
 
     <Tooltip>
       <TooltipTrigger as-child>

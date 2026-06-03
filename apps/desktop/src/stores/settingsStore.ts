@@ -217,6 +217,7 @@ export interface EditorSettings {
   columnFormatters: Record<string, ColumnFormatterConfig>;
   customColumnFormatters: Record<string, CustomColumnFormatterConfig>;
   snippets: SqlSnippet[];
+  exportBatchSize: number;
 }
 
 export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }[] = [
@@ -273,6 +274,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   columnFormatters: {},
   customColumnFormatters: {},
   snippets: DEFAULT_SQL_SNIPPETS,
+  exportBatchSize: 2000,
 };
 
 export const STORAGE_KEY = "dbx-editor-settings";
@@ -402,6 +404,12 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     columnFormatters: normalizeColumnFormatters(settings.columnFormatters),
     customColumnFormatters: normalizeCustomColumnFormatters(settings.customColumnFormatters),
     snippets: normalizeSqlSnippets(settings.snippets, existing?.snippets),
+    exportBatchSize:
+      typeof settings.exportBatchSize === "number" &&
+      settings.exportBatchSize >= 100 &&
+      settings.exportBatchSize <= 100000
+        ? Math.round(settings.exportBatchSize)
+        : DEFAULT_EDITOR_SETTINGS.exportBatchSize,
   };
 }
 
@@ -544,6 +552,8 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.customColumnFormatters !== undefined)
       editorSettings.value.customColumnFormatters = partial.customColumnFormatters;
     if (partial.snippets !== undefined) editorSettings.value.snippets = normalizeSqlSnippets(partial.snippets);
+    if (partial.exportBatchSize !== undefined)
+      editorSettings.value.exportBatchSize = Math.min(100000, Math.max(100, Math.round(partial.exportBatchSize)));
     saveEditorSettings(editorSettings.value);
   }
 

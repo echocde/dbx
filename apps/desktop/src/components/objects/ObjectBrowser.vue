@@ -42,7 +42,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
-import ExportProgressDialog from "@/components/export/ExportProgressDialog.vue";
 import * as api from "@/lib/api";
 import type { ConnectionConfig, ObjectInfo, ObjectSourceKind } from "@/types/database";
 import { isSchemaAware } from "@/lib/databaseCapabilities";
@@ -75,6 +74,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useExportTracker } from "@/composables/useExportTracker";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useQueryStore } from "@/stores/queryStore";
 import QueryEditor from "@/components/editor/QueryEditor.vue";
@@ -156,15 +156,8 @@ const showBatchDropConfirm = ref(false);
 const batchDropPreviewSql = ref("");
 let loadId = 0;
 
-// Export progress state
-const showExportProgress = ref(false);
-const exportProgressId = ref("");
-const exportProgressTableName = ref("");
-const exportProgressFormat = ref("");
-const exportProgressRows = ref(0);
-const exportProgressTotal = ref<number | null>(null);
-const exportProgressStatus = ref<string>("");
-const exportProgressError = ref<string | null>(null);
+// Export via background tracker
+const { addTask: addExportTask } = useExportTracker();
 
 const needsSchema = computed(() => isSchemaAware(props.connection.db_type));
 const tableCount = computed(() => rows.value.filter((row) => row.type === "TABLE").length);
@@ -868,16 +861,8 @@ async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx") {
     filePath = `__web_export_${webExportId}.${format}`;
   }
 
-  // Set up progress state and open dialog
-  const exportId = generateDatabaseExportId();
-  exportProgressId.value = exportId;
-  exportProgressTableName.value = row.name;
-  exportProgressFormat.value = format;
-  exportProgressRows.value = 0;
-  exportProgressTotal.value = null;
-  exportProgressStatus.value = "Running";
-  exportProgressError.value = null;
-  showExportProgress.value = true;
+  // Register task in export tracker (background)
+  const task = addExportTask(row.name, format, filePath);
 
   // Get columns for neo4j only
   const queryColumns =
@@ -888,7 +873,7 @@ async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx") {
       : undefined;
 
   const request: api.TableExportRequest = {
-    exportId,
+    exportId: task.exportId,
     connectionId: props.connection.id,
     database: props.database,
     schema,
@@ -896,28 +881,19 @@ async function exportTableData(row: ObjectBrowserRow, format: "csv" | "xlsx") {
     filePath,
     format,
     columns: queryColumns,
+    batchSize: settingsStore.editorSettings.exportBatchSize,
   };
 
   try {
     await api.startTableExport(request, (progress) => {
-      exportProgressRows.value = progress.rowsExported;
-      exportProgressTotal.value = progress.totalRows;
-      exportProgressStatus.value = progress.status;
-      exportProgressError.value = progress.errorMessage || null;
+      task.rowsExported = progress.rowsExported;
+      task.totalRows = progress.totalRows;
+      task.status = progress.status;
+      task.errorMessage = progress.errorMessage || null;
     });
     toast(t("grid.exported"));
   } catch (e: any) {
-    if (exportProgressStatus.value !== "Cancelled") {
-      exportProgressStatus.value = "Error";
-      exportProgressError.value = e?.message || String(e);
-      toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
-    }
-  }
-}
-
-async function cancelExport() {
-  if (exportProgressId.value) {
-    await api.cancelTableExport(exportProgressId.value);
+    toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
   }
 }
 
@@ -1708,18 +1684,6 @@ function getObjectBrowserMenuItems(item: ObjectBrowserRow): ContextMenuItem[] {
       </DialogFooter>
     </DialogContent>
   </Dialog>
-
-  <ExportProgressDialog
-    v-model:open="showExportProgress"
-    :title="t('grid.exporting')"
-    :table-name="exportProgressTableName"
-    :format="exportProgressFormat"
-    :rows-exported="exportProgressRows"
-    :total-rows="exportProgressTotal"
-    :status="exportProgressStatus"
-    :error-message="exportProgressError"
-    @cancel="cancelExport"
-  />
 </template>
 
 <style scoped>

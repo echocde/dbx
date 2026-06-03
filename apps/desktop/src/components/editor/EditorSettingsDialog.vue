@@ -117,6 +117,7 @@ const editAutoSelectActiveSidebarNode = ref(settingsStore.editorSettings.autoSel
 const editSidebarHiddenTablePrefixes = ref(settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n"));
 const editSidebarHideTableComments = ref(settingsStore.editorSettings.sidebarHideTableComments);
 const editSidebarAllowHorizontalScroll = ref(settingsStore.editorSettings.sidebarAllowHorizontalScroll);
+const editExportBatchSize = ref(settingsStore.editorSettings.exportBatchSize);
 const redisScanPageSizeOptions = [200, 1000, 5000, 10000];
 const systemFonts = ref<string[]>([]);
 const systemFontsLoading = ref(false);
@@ -253,6 +254,7 @@ watch(
       editSidebarHiddenTablePrefixes.value = settingsStore.editorSettings.sidebarHiddenTablePrefixes.join("\n");
       editSidebarHideTableComments.value = settingsStore.editorSettings.sidebarHideTableComments;
       editSidebarAllowHorizontalScroll.value = settingsStore.editorSettings.sidebarAllowHorizontalScroll;
+      editExportBatchSize.value = settingsStore.editorSettings.exportBatchSize;
       editSnippets.value = settingsStore.editorSettings.snippets.map((s) => ({ ...s }));
       void loadSystemFontOptions();
     }
@@ -292,6 +294,7 @@ function hasChanges(): boolean {
     editAutoSelectActiveSidebarNode.value !== settingsStore.editorSettings.autoSelectActiveSidebarNode ||
     editSidebarHideTableComments.value !== settingsStore.editorSettings.sidebarHideTableComments ||
     editSidebarAllowHorizontalScroll.value !== settingsStore.editorSettings.sidebarAllowHorizontalScroll ||
+    editExportBatchSize.value !== settingsStore.editorSettings.exportBatchSize ||
     JSON.stringify(normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value)) !==
       JSON.stringify(settingsStore.editorSettings.sidebarHiddenTablePrefixes) ||
     JSON.stringify(editSnippets.value) !== JSON.stringify(settingsStore.editorSettings.snippets)
@@ -320,6 +323,7 @@ async function persistSettings() {
     sidebarHideTableComments: editSidebarHideTableComments.value,
     sidebarAllowHorizontalScroll: editSidebarAllowHorizontalScroll.value,
     sidebarHiddenTablePrefixes: normalizeSidebarHiddenTablePrefixes(editSidebarHiddenTablePrefixes.value),
+    exportBatchSize: editExportBatchSize.value,
     snippets: editSnippets.value,
   });
   await settingsStore.updateDesktopSettings({
@@ -360,6 +364,7 @@ function resetDefaults() {
   editSidebarHideTableComments.value = DEFAULT_EDITOR_SETTINGS.sidebarHideTableComments;
   editSidebarAllowHorizontalScroll.value = DEFAULT_EDITOR_SETTINGS.sidebarAllowHorizontalScroll;
   editSidebarHiddenTablePrefixes.value = DEFAULT_EDITOR_SETTINGS.sidebarHiddenTablePrefixes.join("\n");
+  editExportBatchSize.value = DEFAULT_EDITOR_SETTINGS.exportBatchSize;
   editSnippets.value = DEFAULT_SQL_SNIPPETS.map((s) => ({ ...s }));
 }
 
@@ -428,6 +433,7 @@ type SettingsCategory =
   | "editor"
   | "appearance"
   | "navigation"
+  | "data"
   | "redis"
   | "shortcuts"
   | "snippets"
@@ -440,6 +446,7 @@ const settingsCategoryNav = computed<{ value: SettingsCategory; label: string }[
   { value: "editor", label: t("settings.editorTab") },
   { value: "appearance", label: t("settings.appearanceTab") },
   { value: "navigation", label: t("settings.navigationTab") },
+  { value: "data", label: t("settings.dataTab") },
   { value: "redis", label: t("settings.redisTab") },
   { value: "shortcuts", label: t("settings.shortcutsTab") },
   { value: "snippets", label: t("settings.snippetsTab") },
@@ -453,6 +460,7 @@ const settingsTabsWithApplyFooter = new Set<SettingsCategory>([
   "editor",
   "appearance",
   "navigation",
+  "data",
   "redis",
   "shortcuts",
   "snippets",
@@ -1524,6 +1532,35 @@ watch(
                 <p class="text-xs text-muted-foreground">
                   {{ t("settings.sidebarHiddenTablePrefixesDescription") }}
                 </p>
+              </div>
+            </section>
+
+            <!-- Data Tab -->
+            <section v-else-if="activeSettingsTab === 'data'" class="flex flex-col gap-5 py-2">
+              <div class="space-y-3">
+                <div class="text-sm font-medium text-muted-foreground">{{ t("settings.exportSection") }}</div>
+                <div class="space-y-2">
+                  <Label>{{ t("settings.exportBatchSize") }}</Label>
+                  <div class="flex items-center gap-3">
+                    <Input
+                      type="number"
+                      list="export-batch-sizes"
+                      min="100"
+                      max="100000"
+                      step="100"
+                      v-model.number="editExportBatchSize"
+                      class="h-9 w-28 [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <datalist id="export-batch-sizes">
+                      <option value="500" />
+                      <option value="1000" />
+                      <option value="2000" />
+                      <option value="5000" />
+                      <option value="10000" />
+                    </datalist>
+                    <span class="text-xs text-muted-foreground">{{ t("settings.exportBatchSizeDescription") }}</span>
+                  </div>
+                </div>
               </div>
             </section>
 

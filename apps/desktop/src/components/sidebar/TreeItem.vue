@@ -90,7 +90,6 @@ import {
 } from "@/lib/treeNodeClick";
 import { formatSqlInsert } from "@/lib/exportFormats";
 import { fetchTableDataForExport } from "@/lib/tableDataExport";
-import { generateDatabaseExportId } from "@/lib/databaseExport";
 import {
   buildCreateDatabaseSql,
   buildDuckDbAttachDatabaseSql,
@@ -127,7 +126,7 @@ import {
 } from "@/lib/sidebarTreeSelection";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
-import ExportProgressDialog from "@/components/export/ExportProgressDialog.vue";
+import { useExportTracker } from "@/composables/useExportTracker";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { copyToClipboard } from "@/lib/clipboard";
 import { formatShortcut } from "@/lib/shortcutRegistry";
@@ -162,26 +161,7 @@ type StructureCopyFormat = "tsv" | "markdown";
 type DuplicateStructureSource = TreeNode & { connectionId: string; database: string };
 const { getDatabaseOptions } = useDatabaseOptions();
 const showVisibleDatabasesDialog = ref(false);
-const exportProgressDialogOpen = ref(false);
-const exportProgress = ref<{
-  title: string;
-  tableName: string;
-  format: string;
-  rowsExported: number;
-  totalRows: number | null;
-  status: string;
-  errorMessage: string | null;
-}>({
-  title: "",
-  tableName: "",
-  format: "",
-  rowsExported: 0,
-  totalRows: null,
-  status: "",
-  errorMessage: null,
-});
-const exportCancelled = ref(false);
-const currentExportId = ref("");
+const { addTask: addExportTask } = useExportTracker();
 
 const props = defineProps<{
   node: TreeNode;
@@ -2157,20 +2137,8 @@ async function exportTableData(format: "csv" | "xlsx") {
       outputPath = path as string;
     }
 
-    // Step 2: Prepare progress state and open dialog
-    const exportId = generateDatabaseExportId();
-    currentExportId.value = exportId;
-    exportCancelled.value = false;
-    exportProgress.value = {
-      title: t("exportProgress.title"),
-      tableName: node.label,
-      format,
-      rowsExported: 0,
-      totalRows: null,
-      status: "Running",
-      errorMessage: null,
-    };
-    exportProgressDialogOpen.value = true;
+    // Step 2: Register task in export tracker (background)
+    const task = addExportTask(node.label, format, outputPath);
 
     // Step 3: Get query columns for neo4j
     const queryColumns =
@@ -2178,9 +2146,9 @@ async function exportTableData(format: "csv" | "xlsx") {
         ? (await api.getColumns(connectionId, database, node.schema || database, node.label)).map((c) => c.name)
         : undefined;
 
-    // Step 4: Start streaming export
+    // Step 4: Start streaming export (background, non-blocking)
     const request: api.TableExportRequest = {
-      exportId,
+      exportId: task.exportId,
       connectionId,
       database,
       schema: node.schema || undefined,
@@ -2188,16 +2156,14 @@ async function exportTableData(format: "csv" | "xlsx") {
       filePath: outputPath,
       format,
       columns: queryColumns,
+      batchSize: settingsStore.editorSettings.exportBatchSize,
     };
 
     await api.startTableExport(request, (progress) => {
-      exportProgress.value = {
-        ...exportProgress.value,
-        rowsExported: progress.rowsExported,
-        totalRows: progress.totalRows,
-        status: progress.status,
-        errorMessage: progress.errorMessage || null,
-      };
+      task.rowsExported = progress.rowsExported;
+      task.totalRows = progress.totalRows;
+      task.status = progress.status;
+      task.errorMessage = progress.errorMessage || null;
       if (progress.status === "Done") {
         toast(t("grid.exported"));
       } else if (progress.status === "Error") {
@@ -2205,25 +2171,7 @@ async function exportTableData(format: "csv" | "xlsx") {
       }
     });
   } catch (e: any) {
-    if (!exportCancelled.value) {
-      exportProgress.value = {
-        ...exportProgress.value,
-        status: "Error",
-        errorMessage: e?.message || String(e),
-      };
-      toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
-    }
-  }
-}
-
-async function cancelExport() {
-  exportCancelled.value = true;
-  if (currentExportId.value) {
-    try {
-      await api.cancelTableExport(currentExportId.value);
-    } catch {
-      /* ignore */
-    }
+    toast(t("grid.exportFailed", { message: e?.message || String(e) }), 5000);
   }
 }
 
@@ -3709,8 +3657,6 @@ function treeItemMenuItems(): ContextMenuItem[] {
     :confirm-label="t('contextMenu.dropSchema')"
     @confirm="confirmDropSchema"
   />
-
-  <ExportProgressDialog v-model:open="exportProgressDialogOpen" v-bind="exportProgress" @cancel="cancelExport" />
 </template>
 
 <style>

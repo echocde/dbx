@@ -1253,6 +1253,58 @@ pub fn count_sql(table: &str, schema: &str, db_type: &DatabaseType) -> String {
     format!("SELECT COUNT(*) FROM {full_table}")
 }
 
+pub fn keyset_pagination_sql(
+    columns: &[String],
+    table: &str,
+    schema: &str,
+    db_type: &DatabaseType,
+    primary_keys: &[String],
+    last_pk_values: &[serde_json::Value],
+    limit: usize,
+) -> String {
+    let full_table = qualified_table(table, schema, db_type);
+    let col_list = columns.iter().map(|c| quote_identifier(c, db_type)).collect::<Vec<_>>().join(", ");
+    let order =
+        primary_keys.iter().map(|pk| format!("{} ASC", quote_identifier(pk, db_type))).collect::<Vec<_>>().join(", ");
+
+    let where_clause = if primary_keys.is_empty() || last_pk_values.is_empty() {
+        String::new()
+    } else {
+        let pk_list = primary_keys.iter().map(|pk| quote_identifier(pk, db_type)).collect::<Vec<_>>().join(", ");
+        let vals = last_pk_values.iter().map(|v| value_to_sql_literal(v, db_type)).collect::<Vec<_>>().join(", ");
+        if primary_keys.len() == 1 {
+            format!(" WHERE {} > {}", pk_list, vals)
+        } else {
+            format!(" WHERE ({}) > ({})", pk_list, vals)
+        }
+    };
+
+    match db_type {
+        DatabaseType::SqlServer | DatabaseType::Oracle => {
+            format!("SELECT {col_list} FROM {full_table}{where_clause} ORDER BY {order} FETCH NEXT {limit} ROWS ONLY")
+        }
+        _ => {
+            format!("SELECT {col_list} FROM {full_table}{where_clause} ORDER BY {order} LIMIT {limit}")
+        }
+    }
+}
+
+fn value_to_sql_literal(value: &serde_json::Value, db_type: &DatabaseType) -> String {
+    match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => quote_string_literal(s),
+        _ => quote_string_literal(&value.to_string()),
+    }
+}
+
 pub async fn execute_on_pool(state: &AppState, pool_key: &str, sql: &str) -> Result<db::QueryResult, String> {
     let connections = state.connections.read().await;
     let pool = connections.get(pool_key).ok_or("Connection not found")?;

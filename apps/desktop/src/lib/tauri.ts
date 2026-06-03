@@ -1519,6 +1519,7 @@ export interface TableExportRequest {
   filePath: string;
   format: "csv" | "xlsx";
   columns?: string[];
+  batchSize?: number;
 }
 
 export interface TableCsvExportOptions {
