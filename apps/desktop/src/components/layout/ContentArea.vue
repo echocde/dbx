@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, defineAsyncComponent, watch, nextTick } from "vue";
+import { computed, ref, defineAsyncComponent, watch, nextTick, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Check,
@@ -24,13 +24,25 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import QueryEditor from "@/components/editor/QueryEditor.vue";
 import ColumnInfoPanel from "@/components/editor/ColumnInfoPanel.vue";
 import type { ColumnInfo } from "@/components/editor/ColumnInfoPanel.vue";
-const DataGrid = defineAsyncComponent(async () => {
-  const startedAt = performance.now();
-  console.info("[DBX][DataGrid:load:start]");
-  const component = await import("@/components/grid/DataGrid.vue");
-  console.info("[DBX][DataGrid:load:done]", { elapsed: `${Math.round(performance.now() - startedAt)}ms` });
-  return component;
-});
+let dataGridComponentPromise: Promise<typeof import("@/components/grid/DataGrid.vue")> | undefined;
+function loadDataGridComponent() {
+  if (!dataGridComponentPromise) {
+    dataGridComponentPromise = (async () => {
+      const startedAt = performance.now();
+      console.info("[DBX][DataGrid:load:start]");
+      const component = await import("@/components/grid/DataGrid.vue");
+      console.info("[DBX][DataGrid:load:done]", { elapsed: `${Math.round(performance.now() - startedAt)}ms` });
+      return component;
+    })();
+  }
+  return dataGridComponentPromise;
+}
+
+function preloadDataGridComponent() {
+  void loadDataGridComponent();
+}
+
+const DataGrid = defineAsyncComponent(loadDataGridComponent);
 const RedisKeyBrowser = defineAsyncComponent(() => import("@/components/redis/RedisKeyBrowser.vue"));
 const MongoDocBrowser = defineAsyncComponent(() => import("@/components/mongo/MongoDocBrowser.vue"));
 const ObjectBrowser = defineAsyncComponent(() => import("@/components/objects/ObjectBrowser.vue"));
@@ -103,6 +115,23 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const queryStore = useQueryStore();
+
+onMounted(() => {
+  const preload = () => preloadDataGridComponent();
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(preload, { timeout: 1500 });
+  } else {
+    setTimeout(preload, 300);
+  }
+});
+
+watch(
+  () => [props.activeTab.mode, !!props.activeTab.result] as const,
+  ([mode, hasResult]) => {
+    if (mode === "data" || hasResult) preloadDataGridComponent();
+  },
+  { immediate: true },
+);
 
 // Column info panel state
 const showColumnInfo = ref(false);
