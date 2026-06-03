@@ -289,10 +289,14 @@ async fn list_databases_once(state: &AppState, connection_id: &str) -> Result<Ve
     }
 
     let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
+    let db_config = connection_config(state, connection_id).await;
     let connections = state.connections.read().await;
     let pool = connections.get(connection_id).ok_or("Connection not found")?;
 
     match pool {
+        PoolKind::Mysql(p, _) if db_config.as_ref().is_some_and(is_doris_family_config) => {
+            db::mysql::list_databases_show(p).await
+        }
         PoolKind::Mysql(p, mode) => dispatch_mysql!(p, mode, db::mysql::list_databases, db::ob_oracle::list_databases),
         PoolKind::Postgres(p) => db::postgres::list_databases(p).await,
         PoolKind::Sqlite(p) => db::sqlite::list_databases(p).await,
@@ -369,6 +373,7 @@ async fn list_tables_once(
 ) -> Result<Vec<db::TableInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
     let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
+    let db_config = connection_config(state, connection_id).await;
 
     {
         let connections = state.connections.read().await;
@@ -410,6 +415,9 @@ async fn list_tables_once(
     let pool = connections.get(&pool_key).ok_or("Pool not found")?;
 
     match pool {
+        PoolKind::Mysql(p, _) if db_config.as_ref().is_some_and(is_doris_family_config) => {
+            db::mysql::list_tables_show(p, database).await.map(|tables| filter_table_infos(tables, filter, limit))
+        }
         PoolKind::Mysql(p, mode) => {
             dispatch_mysql!(p, mode, db::mysql::list_tables, db::ob_oracle::list_tables, schema)
                 .map(|tables| filter_table_infos(tables, filter, limit))
@@ -628,6 +636,8 @@ async fn list_objects_once(
             // Note: mysql and ob_oracle take different second args (database vs schema)
             if *mode == MysqlMode::OceanBaseOracle {
                 db::ob_oracle::list_objects(p, schema).await
+            } else if db_config.as_ref().is_some_and(is_doris_family_config) {
+                db::mysql::list_table_objects_show(p, database).await
             } else {
                 db::mysql::list_objects(p, database).await
             }
@@ -744,6 +754,7 @@ pub async fn get_columns_core(
 ) -> Result<Vec<db::ColumnInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
     let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
+    let db_config = connection_config(state, connection_id).await;
 
     {
         let connections = state.connections.read().await;
@@ -805,6 +816,9 @@ pub async fn get_columns_core(
     let pool = connections.get(&pool_key).ok_or("Pool not found")?;
 
     match pool {
+        PoolKind::Mysql(p, _) if db_config.as_ref().is_some_and(is_doris_family_config) => {
+            db::mysql::get_columns_show(p, database, table).await.map(deduplicate_column_infos)
+        }
         PoolKind::Mysql(p, mode) => {
             dispatch_mysql!(p, mode, db::mysql::get_columns, db::ob_oracle::get_columns, database, table)
                 .map(deduplicate_column_infos)
@@ -1016,6 +1030,11 @@ async fn connection_config(state: &AppState, connection_id: &str) -> Option<Conn
 fn is_opengauss_family_config(config: &ConnectionConfig) -> bool {
     matches!(config.db_type, DatabaseType::OpenGauss | DatabaseType::Gaussdb)
         || matches!(config.driver_profile.as_deref(), Some("opengauss" | "gaussdb"))
+}
+
+fn is_doris_family_config(config: &ConnectionConfig) -> bool {
+    matches!(config.db_type, DatabaseType::Doris | DatabaseType::StarRocks)
+        || matches!(config.driver_profile.as_deref(), Some("doris" | "selectdb" | "starrocks"))
 }
 
 fn sql_string(value: &str) -> String {

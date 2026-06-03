@@ -5,6 +5,7 @@ use mysql_async::prelude::*;
 use percent_encoding::percent_decode_str;
 use rust_decimal::Decimal;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -65,6 +66,13 @@ fn get_str_by_name(row: &mysql_async::Row, name: &str) -> String {
 fn get_opt_str(row: &mysql_async::Row, name: &str) -> Option<String> {
     row_get::<String, _>(row, name)
         .or_else(|| row_get::<Vec<u8>, _>(row, name).map(|b| String::from_utf8_lossy(&b).to_string()))
+}
+
+fn get_opt_metadata_string(row: &mysql_async::Row, name: &str) -> Option<String> {
+    get_opt_str(row, name)
+        .or_else(|| row_get::<NaiveDateTime, _>(row, name).map(|value| value.to_string()))
+        .or_else(|| row_get::<NaiveDate, _>(row, name).map(|value| value.to_string()))
+        .or_else(|| row_get::<NaiveTime, _>(row, name).map(|value| value.to_string()))
 }
 
 fn numeric_metadata_u64_to_i32(value: Option<u64>) -> Option<i32> {
@@ -719,6 +727,15 @@ pub async fn list_databases(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, Strin
     Ok(rows.iter().map(|row| DatabaseInfo { name: get_str(row, 0) }).collect())
 }
 
+pub async fn list_databases_show(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, String> {
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let result = conn.query_iter("SHOW DATABASES").await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    let mut databases: Vec<DatabaseInfo> = rows.iter().map(|row| DatabaseInfo { name: get_str(row, 0) }).collect();
+    databases.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(databases)
+}
+
 pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableInfo>, String> {
     let sql = format!(
         "SELECT TABLE_NAME, TABLE_TYPE, TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = {} ORDER BY TABLE_NAME",
@@ -738,6 +755,87 @@ pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableIn
             parent_name: None,
         })
         .collect())
+}
+
+#[derive(Clone, Debug, Default)]
+struct TableStatusMeta {
+    comment: Option<String>,
+    created_at: Option<String>,
+    updated_at: Option<String>,
+}
+
+async fn list_table_status_show(pool: &MySqlPool, database: &str) -> Result<HashMap<String, TableStatusMeta>, String> {
+    let sql = format!("SHOW TABLE STATUS FROM {}", quote_identifier(database));
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .map(|row| {
+            (
+                get_str_by_name(row, "Name"),
+                TableStatusMeta {
+                    comment: get_opt_metadata_string(row, "Comment").filter(|s| !s.is_empty()),
+                    created_at: get_opt_metadata_string(row, "Create_time"),
+                    updated_at: get_opt_metadata_string(row, "Update_time"),
+                },
+            )
+        })
+        .filter(|(name, _)| !name.is_empty())
+        .collect())
+}
+
+async fn list_table_names_show(pool: &MySqlPool, database: &str) -> Result<Vec<TableInfo>, String> {
+    let sql = format!("SHOW FULL TABLES FROM {}", quote_identifier(database));
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = match conn.query_iter(&sql).await {
+        Ok(result) => result.collect_and_drop().await.map_err(|e| e.to_string())?,
+        Err(_) => {
+            let sql = format!("SHOW TABLES FROM {}", quote_identifier(database));
+            let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+            result.collect_and_drop().await.map_err(|e| e.to_string())?
+        }
+    };
+    let mut tables: Vec<TableInfo> = rows
+        .iter()
+        .map(|row| {
+            let table_type = get_str(row, 1);
+            TableInfo {
+                name: get_str(row, 0),
+                table_type: if table_type.is_empty() { "TABLE".to_string() } else { table_type },
+                comment: None,
+                parent_schema: None,
+                parent_name: None,
+            }
+        })
+        .collect();
+    tables.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(tables)
+}
+
+async fn list_tables_show_with_status(
+    pool: &MySqlPool,
+    database: &str,
+) -> Result<(Vec<TableInfo>, HashMap<String, TableStatusMeta>), String> {
+    let (tables, status) = tokio::join!(list_table_names_show(pool, database), list_table_status_show(pool, database));
+    let mut tables = tables?;
+    let status = match status {
+        Ok(status) => status,
+        Err(err) => {
+            log::warn!("Skipping table status for database `{}`: {}", database, err);
+            HashMap::new()
+        }
+    };
+    for table in &mut tables {
+        if let Some(meta) = status.get(&table.name) {
+            table.comment = meta.comment.clone();
+        }
+    }
+    Ok((tables, status))
+}
+
+pub async fn list_tables_show(pool: &MySqlPool, database: &str) -> Result<Vec<TableInfo>, String> {
+    list_tables_show_with_status(pool, database).await.map(|(tables, _)| tables)
 }
 
 fn list_tables_objects_sql(database: &str) -> String {
@@ -824,6 +922,43 @@ pub async fn list_objects(pool: &MySqlPool, database: &str) -> Result<Vec<Object
     Ok(objects)
 }
 
+pub async fn list_table_objects_show(pool: &MySqlPool, database: &str) -> Result<Vec<ObjectInfo>, String> {
+    let (tables, routines) =
+        tokio::join!(list_tables_show_with_status(pool, database), list_routine_objects(pool, database));
+    let (tables, status) = tables?;
+    let mut objects: Vec<ObjectInfo> = tables
+        .into_iter()
+        .map(|table| {
+            let meta = status.get(&table.name);
+            ObjectInfo {
+                name: table.name,
+                object_type: if table.table_type.eq_ignore_ascii_case("VIEW") { "VIEW" } else { "TABLE" }.to_string(),
+                schema: Some(database.to_string()),
+                comment: table.comment,
+                created_at: meta.and_then(|meta| meta.created_at.clone()),
+                updated_at: meta.and_then(|meta| meta.updated_at.clone()),
+                parent_schema: table.parent_schema,
+                parent_name: table.parent_name,
+            }
+        })
+        .collect();
+
+    match routines {
+        Ok(routines) => objects.extend(routines),
+        Err(err) => log::warn!("Skipping routines for database `{}` in object browser: {}", database, err),
+    }
+
+    Ok(objects)
+}
+
+async fn list_routine_objects(pool: &MySqlPool, database: &str) -> Result<Vec<ObjectInfo>, String> {
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let routines_sql = list_routines_sql(database);
+    let result = conn.query_iter(&routines_sql).await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    Ok(rows.iter().map(|row| row_to_object(row, database)).collect())
+}
+
 pub async fn list_completion_objects(pool: &MySqlPool, database: &str) -> Result<Vec<ObjectInfo>, String> {
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
     let mut objects = Vec::new();
@@ -890,6 +1025,37 @@ pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Resul
                 numeric_precision: get_opt_i32(row, "NUMERIC_PRECISION"),
                 numeric_scale: get_opt_i32(row, "NUMERIC_SCALE"),
                 character_maximum_length: get_opt_i32(row, "CHARACTER_MAXIMUM_LENGTH"),
+            }
+        })
+        .collect())
+}
+
+pub async fn get_columns_show(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
+    let sql = format!("SHOW FULL COLUMNS FROM {}.{}", quote_identifier(database), quote_identifier(table));
+    let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
+    let rows: Vec<mysql_async::Row> = match conn.query_iter(&sql).await {
+        Ok(result) => result.collect_and_drop().await.map_err(|e| e.to_string())?,
+        Err(_) => {
+            let sql = format!("SHOW COLUMNS FROM {}.{}", quote_identifier(database), quote_identifier(table));
+            let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+            result.collect_and_drop().await.map_err(|e| e.to_string())?
+        }
+    };
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let key = get_str_by_name(row, "Key");
+            ColumnInfo {
+                name: get_str_by_name(row, "Field"),
+                data_type: get_str_by_name(row, "Type"),
+                is_nullable: get_str_by_name(row, "Null").eq_ignore_ascii_case("YES"),
+                column_default: get_opt_str(row, "Default"),
+                is_primary_key: key.eq_ignore_ascii_case("PRI"),
+                extra: get_opt_str(row, "Extra"),
+                comment: get_opt_str(row, "Comment").filter(|s| !s.is_empty()),
+                numeric_precision: None,
+                numeric_scale: None,
+                character_maximum_length: None,
             }
         })
         .collect())

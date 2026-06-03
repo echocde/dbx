@@ -137,6 +137,51 @@ pub async fn connect_mysql_metadata_pool(
     }
 }
 
+pub async fn connect_bare_metadata_pool(
+    db_config: &ConnectionConfig,
+    host: &str,
+    port: u16,
+    connect_timeout: std::time::Duration,
+) -> Result<db::mysql::MySqlPool, String> {
+    let url = connection_url_for_endpoint(db_config, host, port);
+    if db_config.effective_database().is_none() {
+        return db::mysql::connect_bare(&url, connect_timeout).await;
+    }
+
+    let mut unscoped_config = db_config.clone();
+    unscoped_config.database = None;
+    let unscoped_url = connection_url_for_endpoint(&unscoped_config, host, port);
+    if unscoped_url == url {
+        return db::mysql::connect_bare(&url, connect_timeout).await;
+    }
+
+    let preferred = db::mysql::connect_bare(&url, connect_timeout);
+    let unscoped = db::mysql::connect_bare(&unscoped_url, connect_timeout);
+    tokio::pin!(preferred);
+    tokio::pin!(unscoped);
+
+    tokio::select! {
+        result = &mut preferred => match result {
+            Ok(pool) => Ok(pool),
+            Err(preferred_err) => match (&mut unscoped).await {
+                Ok(pool) => Ok(pool),
+                Err(unscoped_err) => Err(format!(
+                    "Connection with the configured database failed: {preferred_err}\n\nConnection without a default database also failed: {unscoped_err}"
+                )),
+            },
+        },
+        result = &mut unscoped => match result {
+            Ok(pool) => Ok(pool),
+            Err(unscoped_err) => match (&mut preferred).await {
+                Ok(pool) => Ok(pool),
+                Err(preferred_err) => Err(format!(
+                    "Connection with the configured database failed: {preferred_err}\n\nConnection without a default database also failed: {unscoped_err}"
+                )),
+            },
+        },
+    }
+}
+
 fn mysql_metadata_fallback_url(
     config: &ConnectionConfig,
     db_config: &ConnectionConfig,
@@ -276,7 +321,12 @@ impl AppState {
                 PoolKind::Mysql(pool, mode)
             }
             DatabaseType::Doris | DatabaseType::StarRocks => {
-                PoolKind::Mysql(db::mysql::connect_bare(&url, connect_timeout).await?, MysqlMode::Bare)
+                let pool = if database.is_none() {
+                    connect_bare_metadata_pool(&db_config, &host, port, connect_timeout).await?
+                } else {
+                    db::mysql::connect_bare(&url, connect_timeout).await?
+                };
+                PoolKind::Mysql(pool, MysqlMode::Bare)
             }
             DatabaseType::Postgres | DatabaseType::Redshift | DatabaseType::Gaussdb | DatabaseType::OpenGauss => {
                 PoolKind::Postgres(db::postgres::connect(&url, connect_timeout).await?)

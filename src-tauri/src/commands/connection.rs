@@ -6,8 +6,9 @@ pub use dbx_core::agent_connection::{
     oracle_auth_fallback_profiles, should_retry_oracle_with_10g_driver,
 };
 pub use dbx_core::connection::{
-    connect_mysql_metadata_pool, connection_url_for_endpoint, expand_tilde, metadata_connection_config,
-    probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState, MysqlMode, PoolKind,
+    connect_bare_metadata_pool, connect_mysql_metadata_pool, connection_url_for_endpoint, expand_tilde,
+    metadata_connection_config, probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState, MysqlMode,
+    PoolKind,
 };
 use dbx_core::database_capabilities;
 use dbx_core::db;
@@ -439,9 +440,10 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             let (pool, mode) = connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout).await?;
             PoolKind::Mysql(pool, mode)
         }
-        DatabaseType::Doris | DatabaseType::StarRocks => {
-            PoolKind::Mysql(db::mysql::connect_bare(&url, connect_timeout).await?, MysqlMode::Bare)
-        }
+        DatabaseType::Doris | DatabaseType::StarRocks => PoolKind::Mysql(
+            connect_bare_metadata_pool(&db_config, &host, port, connect_timeout).await?,
+            MysqlMode::Bare,
+        ),
         DatabaseType::Postgres | DatabaseType::Redshift | DatabaseType::Gaussdb | DatabaseType::OpenGauss => {
             PoolKind::Postgres(db::postgres::connect(&url, connect_timeout).await?)
         }
