@@ -1292,6 +1292,7 @@ export function getSqlCompletionContext(sql: string, cursor: number): SqlComplet
 }
 
 function parseTrailingIdentifierContext(input: string): { start: number; prefix: string; qualifier?: string } | null {
+  if (/\s$/.test(input)) return null;
   let i = input.length - 1;
   while (i >= 0 && /\s/.test(input[i] ?? "")) i--;
   if (i < 0) return null;
