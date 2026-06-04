@@ -11,6 +11,7 @@ const assetIcons: Record<string, string> = {
   postgres: "postgres",
   postgresql: "postgres",
   sqlite: "sqlite",
+  rqlite: "rqlite.png",
   redis: "redis",
   mongodb: "mongodb",
   clickhouse: "clickhouse",

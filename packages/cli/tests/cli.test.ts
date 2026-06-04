@@ -51,7 +51,7 @@ const diagnostics: DbxDiagnostics = {
   loadedConnectionCount: 2,
   bridgePortFile: "/tmp/dbx/mcp-bridge-port",
   bridgePortFileExists: false,
-  directQueryTypes: ["postgres", "mysql", "sqlite"],
+  directQueryTypes: ["postgres", "mysql", "sqlite", "rqlite"],
   bridgeRequiredTypes: ["oracle", "mongodb"],
 };
 
@@ -154,6 +154,7 @@ test("prints capabilities as json", async () => {
   const payload = JSON.parse(result.stdout) as { directQueryTypes: string[]; bridgeRequiredTypes: string[] };
   assert.ok(payload.directQueryTypes.includes("postgres"));
   assert.ok(payload.directQueryTypes.includes("sqlite"));
+  assert.ok(payload.directQueryTypes.includes("rqlite"));
   assert.ok(payload.bridgeRequiredTypes.includes("oracle"));
 });
 

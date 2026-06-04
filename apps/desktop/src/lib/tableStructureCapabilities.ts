@@ -222,6 +222,7 @@ const capabilityByType: Partial<Record<DatabaseType, TableStructureCapabilities>
   vastbase: postgresCapabilities,
   kingbase: postgresCapabilities,
   sqlite: sqliteCapabilities,
+  rqlite: sqliteCapabilities,
   duckdb: duckdbCapabilities,
   sqlserver: sqlserverCapabilities,
   oracle: oracleCapabilities,

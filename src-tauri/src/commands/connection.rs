@@ -395,6 +395,19 @@ pub async fn test_connection(state: State<'_, Arc<AppState>>, config: Connection
                     .await
                     .map(|_| "Connection successful".to_string())
             }
+            DatabaseType::Rqlite => {
+                let client = db::rqlite_driver::RqliteClient::new(
+                    &url,
+                    config.url_params.as_deref(),
+                    &config.username,
+                    &config.password,
+                    config.ssl,
+                    connect_timeout,
+                )?;
+                db::rqlite_driver::test_connection(&client, connect_timeout)
+                    .await
+                    .map(|_| "Connection successful".to_string())
+            }
             db_type if database_capabilities::is_agent_type(&db_type) => {
                 test_agent_connection(state.inner(), &config, &host, port).await
             }
@@ -548,6 +561,18 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
             );
             db::elasticsearch_driver::test_connection(&mut client, connect_timeout).await?;
             PoolKind::Elasticsearch(client)
+        }
+        DatabaseType::Rqlite => {
+            let client = db::rqlite_driver::RqliteClient::new(
+                &url,
+                db_config.url_params.as_deref(),
+                &db_config.username,
+                &db_config.password,
+                db_config.ssl,
+                connect_timeout,
+            )?;
+            db::rqlite_driver::test_connection(&client, connect_timeout).await?;
+            PoolKind::Rqlite(client)
         }
         db_type if database_capabilities::is_agent_type(&db_type) => {
             connect_agent_pool(state.inner(), &db_config, &host, port).await?

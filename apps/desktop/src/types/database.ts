@@ -2,6 +2,7 @@ export type DatabaseType =
   | "mysql"
   | "postgres"
   | "sqlite"
+  | "rqlite"
   | "redis"
   | "duckdb"
   | "clickhouse"

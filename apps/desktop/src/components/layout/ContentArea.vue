@@ -158,6 +158,7 @@ const activeSqlFormatDialect = computed<SqlFormatDialect>(() => {
     case "postgres":
       return "postgres";
     case "sqlite":
+    case "rqlite":
       return "sqlite";
     case "sqlserver":
       return "sqlserver";

@@ -241,7 +241,7 @@ fn capabilities_for(database_type: Option<DatabaseType>) -> TableStructureCapabi
             comment: true,
             ..base
         },
-        Some(DatabaseType::Sqlite) => TableStructureCapabilities {
+        Some(DatabaseType::Sqlite | DatabaseType::Rqlite) => TableStructureCapabilities {
             dialect: StructureDialect::Sqlite,
             add_column: true,
             drop_column: true,
@@ -1963,6 +1963,34 @@ mod tests {
         assert_eq!(
             result.warnings,
             vec!["SQLite cannot safely alter existing column \"name\" without rebuilding the table."]
+        );
+    }
+
+    #[test]
+    fn builds_rqlite_changes_with_sqlite_dialect() {
+        let mut email = column("email");
+        email.data_type = "text".to_string();
+        email.is_nullable = false;
+        let mut email_index = index("idx_users_email", &["email"]);
+        email_index.filter = "email IS NOT NULL".to_string();
+
+        let result = build_table_structure_change_sql(TableStructureSqlOptions {
+            database_type: Some(DatabaseType::Rqlite),
+            schema: None,
+            table_name: "users".to_string(),
+            columns: vec![email],
+            indexes: vec![email_index],
+            table_comment: None,
+            original_table_comment: None,
+        });
+
+        assert_eq!(result.warnings, Vec::<String>::new());
+        assert_eq!(
+            result.statements,
+            vec![
+                "ALTER TABLE \"users\" ADD COLUMN \"email\" text NOT NULL;",
+                "CREATE INDEX \"idx_users_email\" ON \"users\" (\"email\") WHERE email IS NOT NULL;",
+            ]
         );
     }
 

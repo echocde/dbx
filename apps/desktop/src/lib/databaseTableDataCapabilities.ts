@@ -49,6 +49,7 @@ const NAVICAT_STYLE_TABLE_DATA_TYPES = new Set<DatabaseType>([
   "mysql",
   "postgres",
   "sqlite",
+  "rqlite",
   "duckdb",
   "sqlserver",
   "oracle",
