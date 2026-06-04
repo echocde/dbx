@@ -6174,6 +6174,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                   <LightTooltip
                     v-for="col in renderedGridColumns"
                     :key="`${col.name}-${col.actualColIdx}`"
+                    :text="col.name"
                     side="bottom"
                     :side-offset="4"
                   >
