@@ -52,7 +52,14 @@ export function parseFilterValue(rawValue: string, columnInfo?: Pick<DataGridCol
 
   if ((isNumericType(dataType) || !dataType) && isNumericLiteral(unquoted)) {
     const numeric = Number(unquoted);
-    if (Number.isFinite(numeric)) return numeric;
+    if (Number.isFinite(numeric)) {
+      // Keep large integers as strings to avoid JS precision loss (> Number.MAX_SAFE_INTEGER).
+      // The Rust backend parses strings exactly via serde_json::Number, so this is safe.
+      if (Number.isInteger(numeric) && Math.abs(numeric) > Number.MAX_SAFE_INTEGER) {
+        return unquoted;
+      }
+      return numeric;
+    }
   }
 
   return unquoted;
