@@ -1,6 +1,6 @@
-name: Detect abusive issue content
+name: Issue moderation
 
-# 这段 workflow 只用于检测并处理极少数恶意诽谤型 Issue 和评论。
+# 这段 workflow 只用于检测并处理极少数恶意诽谤型 Issue。
 # 我们不希望仓库的 issue 区变成争吵、造谣或情绪宣泄的地方，也不希望真正来反馈问题、
 # 提交建议、讨论兼容性的用户被这些内容打扰。
 #
@@ -19,8 +19,7 @@ name: Detect abusive issue content
 # 也避免让恶意内容通过 issue 区获得更多曝光。
 #
 # 如果将来确实有人提出具体、可核验、善意的问题，维护者仍然可以正常回应；这个 workflow 只匹配非常窄的
-# 关键词范围：“刷星”以及大小写不敏感的“刷star”。同样的规则也适用于别人 Issue 下面的评论，
-# 避免正常的问题讨论被无关攻击打断。
+# 关键词范围：“刷星”以及大小写不敏感的“刷star”。
 #
 # This workflow exists only for a small number of abusive or defamatory issues.
 # We do not want the issue tracker to become a place for rumors, arguments, or repeated bad-faith accusations.
@@ -36,35 +35,31 @@ name: Detect abusive issue content
 #
 # Honest questions and evidence-based discussion are welcome. Repeated claims such as "刷星" or "刷star" without
 # evidence are not useful technical feedback, and they make the issue tracker worse for everyone who is here to
-# report bugs or improve the software. For those narrow cases, we choose to delete the issue or comment quietly instead
-# of amplifying it through public arguments. The same narrow rule also applies to comments under other people's issues,
-# so normal technical discussions are not derailed by unrelated accusations.
+# report bugs or improve the software. For those narrow cases, we choose to delete the issue quietly instead
+# of amplifying it through public arguments.
 
 on:
   issues:
     types: [opened]
-  issue_comment:
-    types: [created, edited]
 
 permissions:
   issues: write
 
 jobs:
-  delete-issue:
+  issue-policy:
+    name: Review issue content
     runs-on: ubuntu-latest
     if: github.event_name == 'issues'
     steps:
-      - name: Check issue keywords
+      - name: Evaluate issue content
         id: check
-        env:
-          EVENT_PATH: ${{ github.event_path }}
         run: |
           python3 - <<'PYEOF'
           import json
           import os
           import re
 
-          with open(os.environ["EVENT_PATH"], encoding="utf-8") as f:
+          with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as f:
               event = json.load(f)
 
           issue = event["issue"]
@@ -82,7 +77,7 @@ jobs:
               f.write(f"issue_number={issue['number']}\n")
           PYEOF
 
-      - name: Delete abusive issue
+      - name: Apply issue policy
         if: steps.check.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.ISSUE_DELETE_TOKEN || github.token }}
@@ -90,41 +85,3 @@ jobs:
         # Deleting issues may require an admin-scoped token. If github.token is
         # not enough in this repository, set ISSUE_DELETE_TOKEN in repo secrets.
         run: gh issue delete "$ISSUE_NUMBER" --yes --repo "$GITHUB_REPOSITORY"
-
-  delete-comment:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'issue_comment'
-    steps:
-      - name: Check comment keywords
-        id: check
-        env:
-          EVENT_PATH: ${{ github.event_path }}
-        run: |
-          python3 - <<'PYEOF'
-          import json
-          import os
-          import re
-
-          with open(os.environ["EVENT_PATH"], encoding="utf-8") as f:
-              event = json.load(f)
-
-          comment = event["comment"]
-          text = comment.get("body") or ""
-
-          # Keep this intentionally narrow. It only matches "刷星" and
-          # case-insensitive variants of "刷star", including optional spaces.
-          matched = re.search(r"刷\s*(?:星|star)", text, re.IGNORECASE) is not None
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write(f"matched={'true' if matched else 'false'}\n")
-              f.write(f"comment_id={comment['id']}\n")
-          PYEOF
-
-      - name: Delete abusive comment
-        if: steps.check.outputs.matched == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.ISSUE_DELETE_TOKEN || github.token }}
-          COMMENT_ID: ${{ steps.check.outputs.comment_id }}
-        # Deleting comments may require an admin-scoped token. If github.token is
-        # not enough in this repository, set ISSUE_DELETE_TOKEN in repo secrets.
-        run: gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID"
