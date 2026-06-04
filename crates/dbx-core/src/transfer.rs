@@ -2146,7 +2146,7 @@ where
             source_db_type,
             table_comment.as_deref(),
         );
-        log::info!("[transfer] creating target table: {}", &ddl[..ddl.len().min(200)]);
+        log::info!("[transfer] creating target table: {}", ddl.chars().take(200).collect::<String>());
         let table_exists = match execute_on_pool(state, target_pool_key, &ddl).await {
             Ok(_) => true,
             Err(e) => {
