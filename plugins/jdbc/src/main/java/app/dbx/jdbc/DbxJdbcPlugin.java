@@ -1018,8 +1018,10 @@ public final class DbxJdbcPlugin {
         ArrayNode result = MAPPER.createArrayNode();
         String resolvedTable = oracleResolveTable(conn, owner, table);
         Set<String> pks = oraclePrimaryKeys(conn, owner, resolvedTable);
+        // data_default is a LONG column — it must be read first in JDBC, before any other
+        // column, otherwise the data is truncated. We put it at position 1 for this reason.
         String sql =
-            "SELECT c.column_name, c.data_type, c.nullable, c.data_default, " +
+            "SELECT c.data_default, c.column_name, c.data_type, c.nullable, " +
             "c.data_precision, c.data_scale, c.char_length, cc.comments " +
             "FROM all_tab_columns c " +
             "LEFT JOIN all_col_comments cc ON cc.owner = c.owner AND cc.table_name = c.table_name AND cc.column_name = c.column_name " +
@@ -1029,11 +1031,13 @@ public final class DbxJdbcPlugin {
             ps.setString(2, resolvedTable);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
+                    // data_default is a LONG — read it first, before all other columns.
+                    String dataDefault = rs.getString("data_default");
                     String name = rs.getString("column_name");
                     ObjectNode item = columnNode(result, name);
                     item.put("data_type", rs.getString("data_type"));
                     item.put("is_nullable", !"N".equals(rs.getString("nullable")));
-                    putNullablePreferValue(item, "column_default", rs.getString("data_default"));
+                    putNullablePreferValue(item, "column_default", dataDefault);
                     item.put("is_primary_key", pks.contains(name));
                     item.putNull("extra");
                     putNullablePreferValue(item, "comment", rs.getString("comments"));
