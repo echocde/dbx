@@ -1167,6 +1167,7 @@ export default {
     apply: "应用变更",
     ready: "可执行",
     saved: "表结构已更新",
+    copySql: "复制 SQL",
     extendedProperties: "扩展属性",
     autoIncrement: "自增",
     onUpdateCurrentTimestamp: "自动更新时间",

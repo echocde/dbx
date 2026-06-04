@@ -1147,6 +1147,7 @@ export default {
     apply: "套用變更",
     ready: "可執行",
     saved: "資料表結構已更新",
+    copySql: "複製 SQL",
     extendedProperties: "擴充屬性",
     autoIncrement: "自動遞增",
     onUpdateCurrentTimestamp: "自動更新時間",

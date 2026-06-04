@@ -1191,6 +1191,7 @@ export default {
     apply: "Apply Changes",
     ready: "Ready",
     saved: "Table structure updated",
+    copySql: "Copy SQL",
     extendedProperties: "Extended",
     autoIncrement: "Auto Increment",
     onUpdateCurrentTimestamp: "Auto Update Time",

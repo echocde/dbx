@@ -1083,6 +1083,7 @@ export default {
     apply: "Aplicar cambios",
     ready: "Listo",
     saved: "Estructura de tabla actualizada",
+    copySql: "Copiar SQL",
     extendedProperties: "Extendido",
     autoIncrement: "Auto Incremento",
     onUpdateCurrentTimestamp: "Actualización Auto",
