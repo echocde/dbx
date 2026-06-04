@@ -22,6 +22,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { useQueryStore } from "@/stores/queryStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useTabScroll } from "@/composables/useTabScroll";
+import { useTabDrag } from "@/composables/useTabDrag";
 import {
   connectionColor,
   shouldShowTabOverflowControls,
@@ -44,6 +45,9 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const queryStore = useQueryStore();
 const settingsStore = useSettingsStore();
+const tabDrag = useTabDrag((draggedId, targetId, position) => {
+  queryStore.reorderTab(draggedId, targetId, position);
+});
 const editingTabId = ref<string | null>(null);
 const editingTitle = ref("");
 const compactTabTitle = computed({
@@ -231,6 +235,22 @@ function activateTab(tabId: string) {
   emit("close-driver-store");
 }
 
+function handleTabClick(tab: QueryTab) {
+  if (tabDrag.state.wasDragged) return;
+  activateTab(tab.id);
+}
+
+function tabDropStyle(tabId: string) {
+  if (!tabDrag.state.active) return {};
+  if (tabDrag.state.draggedId === tabId) return { opacity: 0.4 };
+  if (tabDrag.state.targetId !== tabId) return {};
+  const dropColor = `var(--ring)`;
+  if (tabDrag.state.dropPosition === "before") {
+    return { boxShadow: `inset 3px 0 0 0 ${dropColor}` };
+  }
+  return { boxShadow: `inset -3px 0 0 0 ${dropColor}` };
+}
+
 const tabsContainerStyle = computed<CSSProperties>(() => ({
   msOverflowStyle: "none",
   scrollbarWidth: "none",
@@ -306,14 +326,15 @@ const tabOverflowControlClass = computed(() =>
                           : 'border-border/60 text-foreground/70 hover:border-border hover:text-foreground/90',
                       ]
                 "
-                :style="tabColorStyle(tab)"
+                :style="[tabColorStyle(tab), tabDropStyle(tab.id)]"
                 :data-active-tab="tab.id === queryStore.activeTabId && !showDriverStore"
-                @click="
-                  queryStore.activeTabId = tab.id;
-                  emit('close-driver-store');
-                "
+                @click="handleTabClick(tab)"
                 @dblclick.stop="startRenameTab(tab)"
                 @mousedown.middle.prevent="queryStore.closeTab(tab.id)"
+                @mousedown="tabDrag.startDrag($event, tab.id)"
+                @mouseenter="tabDrag.updateTarget($event, tab.id)"
+                @mousemove="tabDrag.updateTarget($event, tab.id)"
+                @mouseleave="tabDrag.clearTarget(tab.id)"
               >
                 <span class="shrink-0" :class="tabIconClass(tab)">
                   <Table2 v-if="tab.mode === 'data'" class="h-3.5 w-3.5" />
