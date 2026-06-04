@@ -23,6 +23,7 @@ export const SCHEMA_AWARE_TYPES = new Set<DatabaseType>([
   "h2",
   "snowflake",
   "trino",
+  "hive",
   "db2",
   "tdengine",
   "xugu",
@@ -212,6 +213,8 @@ export const TREE_SCHEMA_TYPES = new Set<DatabaseType>([
   "iris",
   "duckdb",
 ]);
+
+export const DATABASE_OBJECT_TREE_TYPES = new Set<DatabaseType>(["jdbc"]);
 
 export const PG_LIKE_STRUCTURE_TYPES = new Set<DatabaseType>(["postgres", "redshift", "gaussdb", "opengauss"]);
 

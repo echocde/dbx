@@ -660,7 +660,7 @@ pub async fn do_execute(
             let session = session.clone();
             let sql = sql.to_string();
             let schema = schema.map(str::to_string);
-            let database = config.effective_database().unwrap_or("").to_string();
+            let database = database.unwrap_or_else(|| config.effective_database().unwrap_or("")).to_string();
             let max_rows = options.max_rows;
             let plugin_timeout = query_timeout;
             drop(connections);

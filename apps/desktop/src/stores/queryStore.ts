@@ -30,6 +30,7 @@ import { editablePrimaryKeys } from "@/lib/tableEditing";
 import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/tableDataExport";
 import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
 import { quoteTableIdentifier } from "@/lib/tableSelectSql";
+import { connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
 import * as api from "@/lib/api";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -117,6 +118,39 @@ export const useQueryStore = defineStore("query", () => {
   const restored = loadSavedTabs();
   const tabs = ref<QueryTab[]>(restored.tabs);
   const activeTabId = ref<string | null>(restored.activeTabId);
+  const tableStructureRefreshVersions = ref<Record<string, number>>({});
+
+  function tableStructureKey(
+    connectionId: string,
+    database: string,
+    schema: string | undefined,
+    tableName: string,
+  ): string {
+    return [connectionId, database, schema || "", tableName].map((part) => part.toLowerCase()).join("\u0000");
+  }
+
+  function invalidateTableStructure(
+    connectionId: string,
+    database: string,
+    schema: string | undefined,
+    tableName: string,
+  ) {
+    if (!tableName) return;
+    const key = tableStructureKey(connectionId, database, schema, tableName);
+    tableStructureRefreshVersions.value = {
+      ...tableStructureRefreshVersions.value,
+      [key]: (tableStructureRefreshVersions.value[key] ?? 0) + 1,
+    };
+  }
+
+  function tableStructureRefreshVersion(
+    connectionId: string,
+    database: string,
+    schema: string | undefined,
+    tableName: string,
+  ): number {
+    return tableStructureRefreshVersions.value[tableStructureKey(connectionId, database, schema, tableName)] ?? 0;
+  }
   const MAX_CACHED_RESULTS = 5;
 
   async function closeResultSession(tab: QueryTab | undefined, preserveSessionId?: string) {
@@ -810,6 +844,7 @@ export const useQueryStore = defineStore("query", () => {
       const connStore = useConnectionStore();
       await connStore.ensureConnected(tab.connectionId);
       const conn = connStore.getConfig(tab.connectionId);
+      const effectiveDbType = effectiveDatabaseTypeForConnection(conn);
       const useAgentCursor = !!conn?.db_type && AGENT_DRIVER_TYPES.has(conn.db_type);
       const queryTimeoutSecs = queryTimeoutSecsForConnection(conn);
       const settingsStore = useSettingsStore();
@@ -819,7 +854,7 @@ export const useQueryStore = defineStore("query", () => {
         const plan = await api.prepareQueryPaginationExecutionPlan({
           sql,
           queryBaseSql,
-          databaseType: conn?.db_type,
+          databaseType: effectiveDbType,
           pagination,
           useAgentCursor,
         });
@@ -1015,7 +1050,8 @@ export const useQueryStore = defineStore("query", () => {
         ...(clientSessionId ? { clientSessionId } : {}),
         timeoutSecs: queryTimeoutSecs,
       };
-      const executionSchema = tab.mode === "data" ? undefined : tab.schema;
+      const executionSchema =
+        tab.mode === "data" || connectionUsesDatabaseObjectTreeMode(conn) ? undefined : tab.schema;
       const executionPromise = api.executeMulti(
         tab.connectionId,
         tab.database,
@@ -1304,16 +1340,17 @@ export const useQueryStore = defineStore("query", () => {
       if (!tableMeta?.tableName) return tab.result;
 
       const pageLimit = TABLE_DATA_EXPORT_PAGE_SIZE;
+      const effectiveDbType = effectiveDatabaseTypeForConnection(conn);
       const primaryKeys = tab.tableMeta
-        ? editablePrimaryKeys(conn?.db_type, tab.tableMeta.columns)
+        ? editablePrimaryKeys(effectiveDbType, tab.tableMeta.columns)
         : tableMeta.primaryKeys;
       const fallbackOrderColumns =
-        conn?.db_type === "sqlserver" && !primaryKeys.length
+        effectiveDbType === "sqlserver" && !primaryKeys.length
           ? tableMeta.columns.slice(0, 1).map((column) => column.name)
           : undefined;
       const sortOrder =
         tab.resultSortColumn && tab.resultSortDirection
-          ? `${quoteTableIdentifier(conn?.db_type, tab.resultSortColumn)} ${tab.resultSortDirection.toUpperCase()}`
+          ? `${quoteTableIdentifier(effectiveDbType, tab.resultSortColumn)} ${tab.resultSortDirection.toUpperCase()}`
           : undefined;
       const orderBy = tab.orderByInput?.trim() || sortOrder;
       const queryTimeoutSecs = queryTimeoutSecsForConnection(conn);
@@ -1324,7 +1361,7 @@ export const useQueryStore = defineStore("query", () => {
 
       while (true) {
         const sql = await api.buildTableSelectSql({
-          databaseType: conn?.db_type,
+          databaseType: effectiveDbType,
           schema: tableMeta.schema,
           tableName: tableMeta.tableName,
           columns: tableMeta.columns.map((column) => column.name),
@@ -1367,6 +1404,7 @@ export const useQueryStore = defineStore("query", () => {
     const connStore = useConnectionStore();
     await connStore.ensureConnected(tab.connectionId);
     const conn = connStore.getConfig(tab.connectionId);
+    const effectiveDbType = effectiveDatabaseTypeForConnection(conn);
     const queryTimeoutSecs = queryTimeoutSecsForConnection(conn);
     const useAgentCursor = !!conn?.db_type && AGENT_DRIVER_TYPES.has(conn.db_type);
     const queryBaseSql = tab.resultBaseSql ?? sql;
@@ -1383,7 +1421,7 @@ export const useQueryStore = defineStore("query", () => {
         const plan = await api.prepareQueryPaginationExecutionPlan({
           sql,
           queryBaseSql,
-          databaseType: conn?.db_type,
+          databaseType: effectiveDbType,
           pagination: { limit: pageLimit, offset, sessionId },
           useAgentCursor,
         });
@@ -1455,6 +1493,8 @@ export const useQueryStore = defineStore("query", () => {
     updateSchema,
     updateConnection,
     setTableMeta,
+    invalidateTableStructure,
+    tableStructureRefreshVersion,
     setObjectSource,
     setExecuting,
     setErrorResult,

@@ -9,6 +9,7 @@ import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
 import * as api from "@/lib/api";
 import type { QueryTab } from "@/types/database";
 import { useToast } from "@/composables/useToast";
+import { effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 
 export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>) {
   const { t } = useI18n();
@@ -19,7 +20,7 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
 
   function quoteIdent(tab: QueryTab, name: string): string {
     const config = connectionStore.getConfig(tab.connectionId);
-    return quoteTableIdentifier(config?.db_type, name);
+    return quoteTableIdentifier(effectiveDatabaseTypeForConnection(config), name);
   }
 
   function buildTableSql(
@@ -27,20 +28,21 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
     options: { orderBy?: string; limit?: number; offset?: number; whereInput?: string } = {},
   ): Promise<string> {
     const config = connectionStore.getConfig(tab.connectionId);
+    const effectiveDbType = effectiveDatabaseTypeForConnection(config);
     const tableMeta = tableMetaForDataTab(tab);
     const primaryKeys = tab.tableMeta
-      ? editablePrimaryKeys(config?.db_type, tab.tableMeta.columns)
+      ? editablePrimaryKeys(effectiveDbType, tab.tableMeta.columns)
       : (tableMeta?.primaryKeys ?? []);
     if (tab.tableMeta && primaryKeys.join("\0") !== tab.tableMeta.primaryKeys.join("\0")) {
       tab.tableMeta.primaryKeys = primaryKeys;
     }
     const fallbackOrderColumns =
-      config?.db_type === "sqlserver" && !primaryKeys.length
+      effectiveDbType === "sqlserver" && !primaryKeys.length
         ? tableMeta?.columns.slice(0, 1).map((column) => column.name)
         : undefined;
-    const useRowId = usesSyntheticRowIdKey(config?.db_type, primaryKeys);
+    const useRowId = usesSyntheticRowIdKey(effectiveDbType, primaryKeys);
     return buildTableSelectSql({
-      databaseType: config?.db_type,
+      databaseType: effectiveDbType,
       schema: tableMeta?.schema,
       tableName: tableMeta?.tableName ?? "",
       columns: tableMeta?.columns.map((column) => column.name),
@@ -166,7 +168,7 @@ export function useDataGridActions(activeTab: ComputedRef<QueryTab | undefined>)
     const config = connectionStore.getConfig(tab.connectionId);
     const built = await api.buildSortedQuerySql({
       originalSql: baseSql,
-      databaseType: config?.db_type,
+      databaseType: effectiveDatabaseTypeForConnection(config),
       resultColumns: tab.result?.columns ?? [],
       columnIndex,
       column,

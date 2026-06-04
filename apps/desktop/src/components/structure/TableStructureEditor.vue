@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConnectionStore } from "@/stores/connectionStore";
+import { useQueryStore } from "@/stores/queryStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useSettingsStore, type StructureEditorDensity } from "@/stores/settingsStore";
 import { useTheme } from "@/composables/useTheme";
@@ -44,6 +45,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
 import { type EditableStructureColumn, type EditableStructureIndex } from "@/lib/tableStructureEditorSql";
 import { getTableStructureCapabilities } from "@/lib/tableStructureCapabilities";
+import { connectionObjectTreeQuerySchema, effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import {
   buildStructureTargetLabel,
   combineDataTypeForDatabase,
@@ -60,6 +62,7 @@ import * as api from "@/lib/api";
 const { t } = useI18n();
 const { isDark } = useTheme();
 const store = useConnectionStore();
+const queryStore = useQueryStore();
 const historyStore = useHistoryStore();
 const settingsStore = useSettingsStore();
 const { toast } = useToast();
@@ -283,7 +286,7 @@ function onIndexColResize(e: MouseEvent, col: number) {
 }
 
 const connection = computed(() => (props.connectionId ? store.getConfig(props.connectionId) : undefined));
-const databaseType = computed(() => connection.value?.db_type);
+const databaseType = computed(() => effectiveDatabaseTypeForConnection(connection.value));
 const structureCapabilities = computed(() => getTableStructureCapabilities(databaseType.value));
 const structureDialect = computed(() => structureCapabilities.value.dialect);
 const isTableCommentDisabled = computed(() => !structureCapabilities.value.comment);
@@ -355,7 +358,12 @@ const indexColLabels = computed(() => [
   t("structureEditor.comment"),
   t("structureEditor.actions"),
 ]);
-const targetSchema = computed(() => props.schema || props.database || "");
+const metadataSchema = computed(() => connectionObjectTreeQuerySchema(connection.value, props.database, props.schema));
+const refreshVersion = computed(() =>
+  props.connectionId && props.tableName
+    ? queryStore.tableStructureRefreshVersion(props.connectionId, props.database, props.schema, props.tableName)
+    : 0,
+);
 const isCreateMode = computed(() => !props.tableName);
 const newTableName = ref("");
 const tableComment = ref("");
@@ -434,18 +442,18 @@ async function loadStructure(silent = false) {
   errorMessage.value = "";
   try {
     await store.ensureConnected(props.connectionId);
-    const nextColumns = await api.getColumns(props.connectionId, props.database, targetSchema.value, props.tableName);
+    const nextColumns = await api.getColumns(props.connectionId, props.database, metadataSchema.value, props.tableName);
     const [nextIndexes, nextForeignKeys, nextTriggers] = await Promise.all([
-      api.listIndexes(props.connectionId, props.database, targetSchema.value, props.tableName).catch(() => []),
-      api.listForeignKeys(props.connectionId, props.database, targetSchema.value, props.tableName).catch(() => []),
-      api.listTriggers(props.connectionId, props.database, targetSchema.value, props.tableName).catch(() => []),
+      api.listIndexes(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []),
+      api.listForeignKeys(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []),
+      api.listTriggers(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []),
     ]);
     columns.value = createColumnDrafts(nextColumns, databaseType.value);
     indexes.value = createIndexDrafts(nextIndexes);
     foreignKeys.value = nextForeignKeys;
     triggers.value = nextTriggers;
     try {
-      const tables = await api.listTables(props.connectionId, props.database, targetSchema.value);
+      const tables = await api.listTables(props.connectionId, props.database, metadataSchema.value);
       const table = tables.find(
         (t) => t.name.toLowerCase() === props.tableName!.toLowerCase() && t.table_type !== "VIEW",
       );
@@ -746,7 +754,10 @@ onMounted(() => {
   void loadStructure();
 });
 
-onActivated(registerStructureEditorShortcuts);
+onActivated(() => {
+  registerStructureEditorShortcuts();
+  if (!isCreateMode.value) void loadStructure(true);
+});
 onDeactivated(unregisterStructureEditorShortcuts);
 onBeforeUnmount(() => {
   unregisterStructureEditorShortcuts();
@@ -759,6 +770,11 @@ watch(
   },
   { deep: true, immediate: true },
 );
+
+watch(refreshVersion, (version, previous) => {
+  if (version === previous || !version || isCreateMode.value) return;
+  void loadStructure(true);
+});
 </script>
 
 <template>

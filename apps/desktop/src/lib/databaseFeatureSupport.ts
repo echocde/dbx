@@ -4,6 +4,7 @@ import {
   AGENT_DRIVER_TYPES,
   CREATE_DATABASE_SUPPORTED_TYPES,
   DATABASE_SEARCH_SUPPORTED_TYPES,
+  DATABASE_OBJECT_TREE_TYPES,
   DIAGRAM_SUPPORTED_TYPES,
   FETCH_FIRST_TYPES,
   FIELD_LINEAGE_SUPPORTED_TYPES,
@@ -22,6 +23,29 @@ export function isSchemaAware(dbType?: DatabaseType): boolean {
 
 export function usesTreeSchemaMode(dbType?: DatabaseType): boolean {
   return !!dbType && TREE_SCHEMA_TYPES.has(dbType);
+}
+
+export function usesDatabaseObjectTreeMode(dbType?: DatabaseType): boolean {
+  return !!dbType && DATABASE_OBJECT_TREE_TYPES.has(dbType);
+}
+
+export function databaseObjectTreeQuerySchema(
+  dbType: DatabaseType | undefined,
+  database: string,
+  schema?: string,
+): string {
+  if (usesDatabaseObjectTreeMode(dbType)) return "";
+  return schema || database;
+}
+
+export function databaseObjectTreeNodeSchema(
+  dbType: DatabaseType | undefined,
+  database: string,
+  schema?: string,
+): string | undefined {
+  if (usesDatabaseObjectTreeMode(dbType)) return undefined;
+  if (schema) return schema;
+  return isSchemaAware(dbType) ? database : undefined;
 }
 
 export function isSingleDatabase(dbType?: DatabaseType): boolean {
@@ -74,6 +98,7 @@ export function supportsObjectBrowser(dbType?: DatabaseType): boolean {
 
 export function supportsObjectBrowserTreeNode(dbType: DatabaseType | undefined, nodeType: TreeNodeType): boolean {
   if (!supportsObjectBrowser(dbType)) return false;
+  if (nodeType === "database" && usesDatabaseObjectTreeMode(dbType)) return true;
   if (nodeType === "database" && isSchemaAware(dbType) && dbType !== "sqlserver") return false;
   return nodeType === "database" || nodeType === "schema" || nodeType === "object-browser";
 }

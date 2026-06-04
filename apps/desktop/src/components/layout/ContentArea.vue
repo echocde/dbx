@@ -54,6 +54,7 @@ import { canCancelQueryExecution, queryExecutionLabelKey } from "@/lib/queryExec
 import { databaseDisplayNameForTab } from "@/lib/tabPresentation";
 import { isTableDataEditable } from "@/lib/tableEditing";
 import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
+import { effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import type { QueryTab, ConnectionConfig } from "@/types/database";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
 
@@ -148,9 +149,10 @@ const redisKeyBrowserRef = ref<SearchableBrowserHandle>();
 const objectBrowserRef = ref<SearchableBrowserHandle>();
 const activeTableMeta = computed(() => props.activeTab.tableMeta);
 const activeDataTabTableMeta = computed(() => tableMetaForDataTab(props.activeTab));
+const activeEffectiveDatabaseType = computed(() => effectiveDatabaseTypeForConnection(props.activeConnection));
 
 const activeSqlFormatDialect = computed<SqlFormatDialect>(() => {
-  switch (props.activeConnection?.db_type) {
+  switch (activeEffectiveDatabaseType.value) {
     case "mysql":
       return "mysql";
     case "postgres":
@@ -165,8 +167,8 @@ const activeSqlFormatDialect = computed<SqlFormatDialect>(() => {
 });
 
 const editorDialect = computed<"mysql" | "postgres" | "sqlserver">(() => {
-  if (props.activeConnection?.db_type === "postgres") return "postgres";
-  if (props.activeConnection?.db_type === "sqlserver") return "sqlserver";
+  if (activeEffectiveDatabaseType.value === "postgres") return "postgres";
+  if (activeEffectiveDatabaseType.value === "sqlserver") return "sqlserver";
   return "mysql";
 });
 
@@ -367,7 +369,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
               :connection-id="activeTab.connectionId"
               :database="activeTab.database"
               :schema="activeTab.schema"
-              :database-type="activeConnection?.db_type"
+              :database-type="activeEffectiveDatabaseType"
               :dialect="editorDialect"
               :format-dialect="activeSqlFormatDialect"
               :format-request-id="formatSqlRequestId"
@@ -552,7 +554,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 :editable="!!activeTab.queryAnalysis"
                 :source-columns="activeTab.querySourceColumns"
                 context="results"
-                :database-type="activeConnection?.db_type"
+                :database-type="activeEffectiveDatabaseType"
                 :connection-id="activeTab.connectionId"
                 :database="activeTab.database"
                 :schema="activeTab.schema"
@@ -799,10 +801,10 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           :initial-order-by-input="activeTab.orderByInput"
           :sql="activeTab.sql"
           :loading="activeTab.isExecuting"
-          :editable="isTableDataEditable(activeConnection?.db_type, activeTableMeta?.primaryKeys ?? [])"
+          :editable="isTableDataEditable(activeEffectiveDatabaseType, activeTableMeta?.primaryKeys ?? [])"
           context="table-data"
           :initial-where-input="activeTab.whereInput"
-          :database-type="activeConnection?.db_type"
+          :database-type="activeEffectiveDatabaseType"
           :connection-id="activeTab.connectionId"
           :database="activeTab.database"
           :table-meta="activeDataTabTableMeta"

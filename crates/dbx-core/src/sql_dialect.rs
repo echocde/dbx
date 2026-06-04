@@ -170,7 +170,10 @@ pub fn build_table_select_sql(options: TableSelectSqlOptions<'_>) -> String {
 }
 
 pub fn qualified_table_name(database_type: Option<DatabaseType>, schema: Option<&str>, table_name: &str) -> String {
-    if database_type.is_some_and(is_schema_aware) && schema.is_some_and(|schema| !schema.trim().is_empty()) {
+    if database_type.is_some_and(is_schema_aware)
+        && database_type != Some(DatabaseType::Jdbc)
+        && schema.is_some_and(|schema| !schema.trim().is_empty())
+    {
         return format!(
             "{}.{}",
             quote_table_identifier(database_type, schema.unwrap()),
@@ -358,6 +361,7 @@ pub fn is_schema_aware(database_type: DatabaseType) -> bool {
             | DatabaseType::H2
             | DatabaseType::Snowflake
             | DatabaseType::Trino
+            | DatabaseType::Hive
             | DatabaseType::Db2
             | DatabaseType::Tdengine
             | DatabaseType::DuckDb
@@ -405,10 +409,7 @@ mod tests {
     fn qualifies_schema_only_for_schema_aware_databases() {
         assert_eq!(qualified_table_name(Some(DatabaseType::Postgres), Some("public"), "users"), "\"public\".\"users\"");
         assert_eq!(qualified_table_name(Some(DatabaseType::Mysql), Some("public"), "users"), "`users`");
-        assert_eq!(
-            qualified_table_name(Some(DatabaseType::Jdbc), Some("cbsdw_dwd"), "dwd_test_df"),
-            "cbsdw_dwd.dwd_test_df"
-        );
+        assert_eq!(qualified_table_name(Some(DatabaseType::Jdbc), Some("cbsdw_dwd"), "dwd_test_df"), "dwd_test_df");
     }
 
     #[test]
@@ -447,7 +448,18 @@ mod tests {
                 order_columns: &[],
                 limit: 100,
             }),
-            "SELECT * FROM cbsdw_dwd.dwd_test_df LIMIT 100;"
+            "SELECT * FROM dwd_test_df LIMIT 100;"
+        );
+        assert_eq!(
+            build_table_select_sql(TableSelectSqlOptions {
+                database_type: Some(DatabaseType::Hive),
+                schema: Some("test"),
+                table_name: "dws_event_analyse",
+                columns: &[],
+                order_columns: &[],
+                limit: 100,
+            }),
+            "SELECT * FROM `test`.`dws_event_analyse` LIMIT 100;"
         );
         assert_eq!(
             build_table_select_sql(TableSelectSqlOptions {

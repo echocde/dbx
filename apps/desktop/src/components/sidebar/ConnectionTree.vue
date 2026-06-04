@@ -9,6 +9,7 @@ import type { QueryTab, TreeNode, TreeNodeType } from "@/types/database";
 import { filterSidebarSearchRootsByConnectionState, filterSidebarTree } from "@/lib/sidebarSearchTree";
 import { isCancelSearchShortcut } from "@/lib/keyboardShortcuts";
 import { usesTreeSchemaMode } from "@/lib/databaseFeatureSupport";
+import { connectionUsesDatabaseObjectTreeMode } from "@/lib/jdbcDialect";
 import {
   findSidebarNodeForActiveTab,
   findNodePathForActiveTab,
@@ -277,7 +278,7 @@ async function ensureTreeLoadedForTab(tab: QueryTab) {
   try {
     if (config.db_type === "sqlserver") {
       await store.loadSqlServerDatabaseObjects(connId, tab.database);
-    } else if (usesTreeSchemaMode(config.db_type)) {
+    } else if (usesTreeSchemaMode(config.db_type) && !connectionUsesDatabaseObjectTreeMode(config)) {
       await store.loadSchemas(connId, tab.database);
       // If we have a schema, also load tables under that schema
       if (tab.schema) {

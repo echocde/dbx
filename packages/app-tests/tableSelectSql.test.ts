@@ -7,7 +7,7 @@ test("JDBC table identifiers avoid double quotes for Kyuubi-compatible names", (
   assert.equal(quoteTableIdentifier("jdbc", "dwd_test_df"), "dwd_test_df");
   assert.equal(
     qualifiedTableName({ databaseType: "jdbc", schema: "cbsdw_dwd", tableName: "dwd_test_df" }),
-    "cbsdw_dwd.dwd_test_df",
+    "dwd_test_df",
   );
 });
 

@@ -225,6 +225,16 @@ final class DbxJdbcPluginTest {
               "connection_string": "jdbc:h2:mem:dbx_quirks"
             }
             """);
+        JsonNode mysql = MAPPER.readTree("""
+            {
+              "connection_string": "jdbc:mysql://127.0.0.1:9030/demo"
+            }
+            """);
+        JsonNode kyuubi = MAPPER.readTree("""
+            {
+              "jdbc_driver_class": "org.apache.kyuubi.jdbc.KyuubiHiveDriver"
+            }
+            """);
 
         assertEquals(true, DbxJdbcPlugin.driverQuirks(yashan).skipExecutionContext());
         assertEquals(true, DbxJdbcPlugin.driverQuirks(yashan).useOracleMetadata());
@@ -234,6 +244,9 @@ final class DbxJdbcPluginTest {
         assertEquals(false, DbxJdbcPlugin.driverQuirks(h2).skipExecutionContext());
         assertEquals(false, DbxJdbcPlugin.driverQuirks(h2).useOracleMetadata());
         assertEquals(false, DbxJdbcPlugin.driverQuirks(h2).caseInsensitiveSchemaMetadata());
+        assertEquals(false, DbxJdbcPlugin.driverQuirks(h2).useCatalogFallbackSql());
+        assertEquals(true, DbxJdbcPlugin.driverQuirks(mysql).useCatalogFallbackSql());
+        assertEquals(true, DbxJdbcPlugin.driverQuirks(kyuubi).useCatalogFallbackSql());
     }
 
     @Test

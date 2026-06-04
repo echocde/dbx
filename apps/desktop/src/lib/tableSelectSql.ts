@@ -1,5 +1,5 @@
 import type { DatabaseType } from "../types/database.ts";
-import { isSchemaAware } from "./databaseCapabilities.ts";
+import { isSchemaAware, usesDatabaseObjectTreeMode } from "./databaseCapabilities.ts";
 import * as api from "./api.ts";
 
 export interface BuildTableSelectSqlOptions {
@@ -39,7 +39,7 @@ export function qualifiedTableName(
   options: Pick<BuildTableSelectSqlOptions, "databaseType" | "schema" | "tableName">,
 ): string {
   const { databaseType, schema, tableName } = options;
-  if (isSchemaAware(databaseType) && schema) {
+  if (isSchemaAware(databaseType) && !usesDatabaseObjectTreeMode(databaseType) && schema) {
     return `${quoteTableIdentifier(databaseType, schema)}.${quoteTableIdentifier(databaseType, tableName)}`;
   }
   return quoteTableIdentifier(databaseType, tableName);

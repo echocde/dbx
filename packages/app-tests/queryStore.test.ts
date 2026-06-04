@@ -1258,6 +1258,21 @@ test("new table structure tabs can open multiple drafts while existing tables st
   }
 });
 
+test("table structure refresh versions are scoped by table target", () => {
+  setActivePinia(createPinia());
+  const store = useQueryStore();
+
+  assert.equal(store.tableStructureRefreshVersion("conn-1", "db", "public", "users"), 0);
+
+  store.invalidateTableStructure("conn-1", "db", "public", "users");
+  store.invalidateTableStructure("conn-1", "db", "public", "users");
+  store.invalidateTableStructure("conn-1", "db", undefined, "users");
+
+  assert.equal(store.tableStructureRefreshVersion("conn-1", "db", "public", "users"), 2);
+  assert.equal(store.tableStructureRefreshVersion("conn-1", "db", undefined, "users"), 1);
+  assert.equal(store.tableStructureRefreshVersion("conn-1", "db", "public", "orders"), 0);
+});
+
 test("reorderTab keeps pinned tabs before unpinned tabs after reorder", () => {
   setActivePinia(createPinia());
   const store = useQueryStore();

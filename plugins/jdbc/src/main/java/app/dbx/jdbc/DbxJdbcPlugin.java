@@ -44,11 +44,17 @@ import java.util.logging.Logger;
 public final class DbxJdbcPlugin {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MAX_ROWS = 10_000;
-    private static final JdbcDriverQuirks DEFAULT_QUIRKS = new JdbcDriverQuirks(false, false, false);
-    private static final JdbcDriverQuirks YASHAN_QUIRKS = new JdbcDriverQuirks(true, true, false);
-    private static final JdbcDriverQuirks IRIS_QUIRKS = new JdbcDriverQuirks(true, false, true);
-    private static final JdbcDriverQuirks ORACLE_QUIRKS = new JdbcDriverQuirks(false, true, false);
+    private static final JdbcDriverQuirks DEFAULT_QUIRKS = new JdbcDriverQuirks(false, false, false, false);
+    private static final JdbcDriverQuirks USE_CATALOG_QUIRKS = new JdbcDriverQuirks(false, false, false, true);
+    private static final JdbcDriverQuirks YASHAN_QUIRKS = new JdbcDriverQuirks(true, true, false, false);
+    private static final JdbcDriverQuirks IRIS_QUIRKS = new JdbcDriverQuirks(true, false, true, false);
+    private static final JdbcDriverQuirks ORACLE_QUIRKS = new JdbcDriverQuirks(false, true, false, false);
     private static final List<JdbcDriverQuirkRule> DRIVER_QUIRK_RULES = List.of(
+        new JdbcDriverQuirkRule("jdbc:mysql:", USE_CATALOG_QUIRKS),
+        new JdbcDriverQuirkRule("jdbc:mariadb:", USE_CATALOG_QUIRKS),
+        new JdbcDriverQuirkRule("jdbc:starrocks:", USE_CATALOG_QUIRKS),
+        new JdbcDriverQuirkRule("jdbc:doris:", USE_CATALOG_QUIRKS),
+        new JdbcDriverQuirkRule("jdbc:hive2:", USE_CATALOG_QUIRKS),
         new JdbcDriverQuirkRule("jdbc:yasdb:", YASHAN_QUIRKS),
         new JdbcDriverQuirkRule("jdbc:iris:", IRIS_QUIRKS),
         new JdbcDriverQuirkRule("jdbc:oracle:", ORACLE_QUIRKS),
@@ -61,7 +67,8 @@ public final class DbxJdbcPlugin {
     record JdbcDriverQuirks(
         boolean skipExecutionContext,
         boolean useOracleMetadata,
-        boolean caseInsensitiveSchemaMetadata
+        boolean caseInsensitiveSchemaMetadata,
+        boolean useCatalogFallbackSql
     ) {
     }
 
@@ -327,10 +334,14 @@ public final class DbxJdbcPlugin {
         if (driverQuirks(connection).skipExecutionContext()) {
             return;
         }
-        if (database != null) {
+        String catalog = emptyToNull(database);
+        if (catalog != null) {
             try {
-                conn.setCatalog(database);
+                conn.setCatalog(catalog);
             } catch (SQLFeatureNotSupportedException | AbstractMethodError ignored) {
+            }
+            if (driverQuirks(connection).useCatalogFallbackSql()) {
+                applyUseCatalogFallback(conn, catalog);
             }
         }
         if (schema != null) {
@@ -341,6 +352,20 @@ public final class DbxJdbcPlugin {
         }
     }
 
+    private static void applyUseCatalogFallback(Connection conn, String catalog) {
+        try (Statement statement = conn.createStatement()) {
+            statement.execute("USE " + quoteJdbcIdentifier(catalog));
+        } catch (SQLException | AbstractMethodError ignored) {
+        }
+    }
+
+    private static String quoteJdbcIdentifier(String identifier) {
+        if (identifier != null && identifier.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            return identifier;
+        }
+        return "`" + identifier.replace("`", "``") + "`";
+    }
+
     static JdbcDriverQuirks driverQuirks(JsonNode connection) {
         String url = optionalText(connection, "connection_string");
         for (JdbcDriverQuirkRule rule : DRIVER_QUIRK_RULES) {
@@ -348,7 +373,27 @@ public final class DbxJdbcPlugin {
                 return rule.quirks();
             }
         }
+        if (isKyuubiDriver(connection)) {
+            return USE_CATALOG_QUIRKS;
+        }
         return DEFAULT_QUIRKS;
+    }
+
+    private static boolean isKyuubiDriver(JsonNode connection) {
+        String driverClass = optionalText(connection, "jdbc_driver_class");
+        if (driverClass != null && driverClass.toLowerCase(Locale.ROOT).contains("kyuubi")) {
+            return true;
+        }
+        JsonNode paths = connection.path("jdbc_driver_paths");
+        if (!paths.isArray()) {
+            return false;
+        }
+        for (JsonNode path : paths) {
+            if (path.asText("").toLowerCase(Locale.ROOT).contains("kyuubi")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean urlMatchesPrefix(String url, String prefix) {
@@ -523,6 +568,9 @@ public final class DbxJdbcPlugin {
             primaryKeys = safePrimaryKeys(meta, null, schemaPattern, table);
             appendColumns(result, meta, null, schemaPattern, table, primaryKeys);
         }
+        if (quirks.useCatalogFallbackSql()) {
+            mergeShowFullColumnComments(conn, result, schemaPattern, table);
+        }
         return result;
     }
 
@@ -666,6 +714,41 @@ public final class DbxJdbcPlugin {
                 putNullableInt(item, "character_maximum_length", rs.getObject("COLUMN_SIZE"));
             }
         }
+    }
+
+    private static void mergeShowFullColumnComments(Connection conn, ArrayNode result, String schema, String table) {
+        String target = qualifiedJdbcTableName(schema, table);
+        try (Statement statement = conn.createStatement(); ResultSet rs = statement.executeQuery("SHOW FULL COLUMNS FROM " + target)) {
+            int fieldIndex = resultSetColumnIndex(rs, "Field");
+            int commentIndex = resultSetColumnIndex(rs, "Comment");
+            if (fieldIndex <= 0 || commentIndex <= 0) {
+                return;
+            }
+            while (rs.next()) {
+                String name = rs.getString(fieldIndex);
+                String comment = rs.getString(commentIndex);
+                if (name != null) {
+                    putNullablePreferValue(columnNode(result, name), "comment", comment);
+                }
+            }
+        } catch (SQLException | AbstractMethodError ignored) {
+        }
+    }
+
+    private static String qualifiedJdbcTableName(String schema, String table) {
+        String tableName = quoteJdbcIdentifier(table);
+        String schemaName = emptyToNull(schema);
+        return schemaName == null ? tableName : quoteJdbcIdentifier(schemaName) + "." + tableName;
+    }
+
+    private static int resultSetColumnIndex(ResultSet rs, String label) throws SQLException {
+        ResultSetMetaData meta = rs.getMetaData();
+        for (int i = 1; i <= meta.getColumnCount(); i++) {
+            if (label.equalsIgnoreCase(meta.getColumnLabel(i)) || label.equalsIgnoreCase(meta.getColumnName(i))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static void closeSharedConnection() {
