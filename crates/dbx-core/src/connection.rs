@@ -47,6 +47,7 @@ pub enum PoolKind {
     Mysql(db::mysql::MySqlPool, MysqlMode),
     Postgres(deadpool_postgres::Pool),
     Sqlite(db::sqlite::SqliteHandle),
+    Rqlite(db::rqlite_driver::RqliteClient),
     Redis(db::redis_driver::RedisConnection),
     DuckDb(Arc<std::sync::Mutex<duckdb::Connection>>),
     MongoDb(mongodb::Client),
@@ -342,6 +343,18 @@ impl AppState {
                 PoolKind::Sqlite(
                     db::sqlite::connect_path_with_extensions(&expand_tilde(&db_config.host), extensions).await?,
                 )
+            }
+            DatabaseType::Rqlite => {
+                let client = db::rqlite_driver::RqliteClient::new(
+                    &url,
+                    db_config.url_params.as_deref(),
+                    &db_config.username,
+                    &db_config.password,
+                    db_config.ssl,
+                    connect_timeout,
+                )?;
+                db::rqlite_driver::test_connection(&client, connect_timeout).await?;
+                PoolKind::Rqlite(client)
             }
             DatabaseType::Redis => {
                 let con = if db_config.uses_redis_cluster() {
@@ -919,6 +932,7 @@ pub async fn close_pool_kind(pool: PoolKind) {
         }
         PoolKind::Postgres(p) => p.close(),
         PoolKind::Sqlite(_) => {}
+        PoolKind::Rqlite(_) => {}
         PoolKind::Redis(_) => {}
         PoolKind::DuckDb(con) => {
             crate::db::duckdb_driver::close_connection(con);

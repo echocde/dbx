@@ -11,6 +11,7 @@ const expected: Record<string, string> = {
   redshift: "postgresql://user:password@host:port/database",
   redis: "redis://:password@host:port/0",
   sqlite: "sqlite:///absolute/path/to/database.db",
+  rqlite: "http://user:password@host:4001",
   duckdb: "duckdb:///absolute/path/to/database.duckdb",
   access: "jdbc:ucanaccess:///absolute/path/to/database.accdb",
   mongodb: "mongodb://user:password@host:port/database",

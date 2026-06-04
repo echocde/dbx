@@ -175,6 +175,14 @@ test("uses Navicat-style table editing defaults for updateable SQL table engines
     requiresTransactionalTableForExistingRows: false,
     transaction: true,
   });
+  assert.deepEqual(getDatabaseCapability("rqlite").tableData, {
+    insert: true,
+    updateRequiresPrimaryKey: false,
+    deleteRequiresPrimaryKey: false,
+    keylessRowPredicate: true,
+    requiresTransactionalTableForExistingRows: false,
+    transaction: true,
+  });
 });
 
 test("keeps conservative table editing defaults for unknown database types", () => {
@@ -205,6 +213,7 @@ test("describes feature support through capability helpers", () => {
   assert.equal(supportsTableStructureEditing("opengauss"), true);
   assert.equal(supportsTableStructureEditing("redshift"), true);
   assert.equal(supportsTableStructureEditing("clickhouse"), true);
+  assert.equal(supportsTableStructureEditing("rqlite"), true);
   assert.equal(supportsTableStructureEditing("mongodb"), false);
   assert.equal(supportsDatabaseCreation("clickhouse"), true);
   assert.equal(supportsDatabaseCreation("sqlite"), false);
@@ -220,6 +229,7 @@ test("describes feature support through capability helpers", () => {
   assert.equal(supportsObjectBrowser("mongodb"), false);
   assert.equal(supportsTableTruncate("mysql"), true);
   assert.equal(supportsTableTruncate("duckdb"), false);
+  assert.equal(supportsTableTruncate("rqlite"), false);
 });
 
 test("object browser entry follows database tree shape", () => {

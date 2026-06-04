@@ -169,6 +169,7 @@ pub enum DatabaseType {
     Mysql,
     Postgres,
     Sqlite,
+    Rqlite,
     Redis,
     #[serde(rename = "duckdb")]
     DuckDb,
@@ -301,6 +302,7 @@ impl ConnectionConfig {
             },
             DatabaseType::Redshift => Some("dev"),
             DatabaseType::ClickHouse => Some("default"),
+            DatabaseType::Rqlite => Some("main"),
             DatabaseType::Gaussdb | DatabaseType::OpenGauss => Some("postgres"),
             DatabaseType::Kingbase | DatabaseType::Vastbase => Some("postgres"),
             DatabaseType::Highgo => Some("highgo"),
@@ -386,6 +388,7 @@ impl ConnectionConfig {
                 format!("postgres://{host}:{port}{db_part}{suffix}")
             }
             DatabaseType::ClickHouse => clickhouse_http_url(self, raw_host, port),
+            DatabaseType::Rqlite => rqlite_http_url(self, raw_host, port),
             DatabaseType::SqlServer => {
                 format!("server=tcp:{host},{port};database={}", self.database.as_deref().unwrap_or("master"))
             }
@@ -489,6 +492,7 @@ impl ConnectionConfig {
                 format!("postgres://{}:{}@{host}:{port}{db_part}{suffix}", username, password)
             }
             DatabaseType::ClickHouse => clickhouse_http_url(self, raw_host, port),
+            DatabaseType::Rqlite => rqlite_http_url(self, raw_host, port),
             DatabaseType::SqlServer => format!(
                 "server=tcp:{host},{port};user={};password={};database={}",
                 self.username,
@@ -823,6 +827,31 @@ fn clickhouse_http_url(config: &ConnectionConfig, host: &str, port: u16) -> Stri
     }
     let scheme = if config.clickhouse_uses_tls() { "https" } else { "http" };
     format!("{scheme}://{}:{port}", bracket_ipv6(trimmed))
+}
+
+fn rqlite_http_url(config: &ConnectionConfig, host: &str, port: u16) -> String {
+    let trimmed = host.trim();
+    if let Some(rest) = trimmed.strip_prefix("https://") {
+        return format!("https://{}", trim_http_host_port(rest, port));
+    }
+    if let Some(rest) = trimmed.strip_prefix("http://") {
+        let scheme = if config.ssl { "https" } else { "http" };
+        return format!("{scheme}://{}", trim_http_host_port(rest, port));
+    }
+    let scheme = if config.ssl { "https" } else { "http" };
+    format!("{scheme}://{}:{port}", bracket_ipv6(trimmed))
+}
+
+fn trim_http_host_port(value: &str, default_port: u16) -> String {
+    let authority = value.trim_end_matches('/').split('/').next().unwrap_or(value).split('?').next().unwrap_or(value);
+    if authority.starts_with('[') && !authority.contains("]:") {
+        return format!("{authority}:{default_port}");
+    }
+    if authority.rsplit_once(':').is_some() {
+        authority.to_string()
+    } else {
+        format!("{authority}:{default_port}")
+    }
 }
 
 fn trim_clickhouse_host_port(value: &str, default_port: u16) -> String {
