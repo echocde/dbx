@@ -104,7 +104,20 @@ const cases: PromptEvalCase[] = [
     action: "generate",
     mode: "ask",
     context: { truncated: true },
-    mustInclude: [/Schema context is truncated/, /不要猜测/, /@table/, /只读探索查询/],
+    mustInclude: [/Schema context is truncated/, /不要猜测/, /@table/, /只读探索\/元数据查询/],
+  },
+  {
+    name: "focused table context tells agent to verify table inventory with metadata SQL",
+    action: "generate",
+    mode: "agent",
+    context: { schemaScope: "focused_table" },
+    mustInclude: [
+      /focused table only; not a complete database table list/,
+      /不要直接断言不存在/,
+      /只读元数据查询/,
+      /有哪些表/,
+    ],
+    mustNotInclude: [/Schema context is complete\./],
   },
   {
     name: "sqlserver generation requires dialect-specific pagination and quoting",

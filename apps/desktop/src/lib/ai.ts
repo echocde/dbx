@@ -40,6 +40,7 @@ export interface AiContext {
   lastError?: string;
   lastResultPreview?: string;
   tables: AiSchemaTable[];
+  schemaScope?: "focused_table" | "database";
   truncated: boolean;
 }
 
@@ -140,6 +141,7 @@ export function buildSystemPrompt(action: AiAction, context: AiContext, mode: Ai
   const schema = formatSchema(context);
   const resultPreview = context.lastResultPreview ? `\nLast result preview:\n${context.lastResultPreview}\n` : "";
   const lastError = context.lastError ? `\nLast error:\n${context.lastError}\n` : "";
+  const schemaScope = context.schemaScope ?? "database";
 
   const isZh = isChineseLocale(currentLocale());
 
@@ -149,11 +151,17 @@ export function buildSystemPrompt(action: AiAction, context: AiContext, mode: Ai
     ...buildActionPromptLines(action, isZh),
   ];
 
-  if (context.truncated) {
+  if (schemaScope === "focused_table") {
     lines.push(
       isZh
-        ? "Schema 已截断：如果请求可能涉及未出现的表或字段，不要猜测。请让用户用 @table 指定相关表，或先生成只读探索查询。"
-        : "Schema is truncated: if the request may involve tables or columns not shown, do not guess. Ask the user to mention the relevant @table, or generate a read-only exploration query first.",
+        ? "Schema 上下文只覆盖当前打开的表；数据库中可能还有其他表。用户询问当前有哪些表、某表是否存在，或提到上下文中不存在的表时，不要直接断言不存在，优先生成只读元数据查询来核实。"
+        : "Schema context covers only the currently opened table; the database may contain other tables. When the user asks what tables exist, whether a table exists, or mentions a table absent from context, do not conclude it is missing; prefer a read-only metadata query to verify.",
+    );
+  } else if (context.truncated) {
+    lines.push(
+      isZh
+        ? "Schema 已截断：如果请求可能涉及未出现的表或字段，不要猜测。请让用户用 @table 指定相关表，或先生成只读探索/元数据查询。"
+        : "Schema is truncated: if the request may involve tables or columns not shown, do not guess. Ask the user to mention the relevant @table, or generate a read-only exploration/metadata query first.",
     );
   }
 
@@ -165,7 +173,7 @@ export function buildSystemPrompt(action: AiAction, context: AiContext, mode: Ai
     `Database type: ${context.databaseType}`,
     `Connection: ${context.connectionName}`,
     `Database: ${context.database}`,
-    context.truncated ? "Schema context is truncated." : "Schema context is complete.",
+    schemaCoverageLine(context, isZh),
     "",
     `Current SQL:\n${context.currentSql.trim() || "(empty)"}`,
     lastError,
@@ -186,8 +194,11 @@ function buildBasePromptLines(isZh: boolean): string[] {
       ? "严格使用当前数据库方言；标识符引用、分页、日期函数、字符串拼接、LIMIT/TOP/OFFSET 语法必须匹配数据库类型。"
       : "Strictly use the active database dialect; identifier quoting, pagination, date functions, string concatenation, and LIMIT/TOP/OFFSET syntax must match the database type.",
     isZh
-      ? "下面的 Schema 上下文已包含表、列、索引和外键信息，直接使用即可。不要查询 information_schema 或系统表来获取结构信息。"
-      : "The schema context below already contains tables, columns, indexes, and foreign keys — use it directly. Do NOT query information_schema or system tables.",
+      ? "对于普通数据查询，优先使用下面已加载的 Schema 上下文，不要为了重复确认已给出的结构而查询 information_schema 或系统表。"
+      : "For ordinary data queries, prefer the loaded schema context below. Do not query information_schema or system tables merely to rediscover structure already provided.",
+    isZh
+      ? "例外：当用户明确询问当前有哪些表/Schema、某张表是否存在、或需要盘点数据库对象时，应生成符合当前方言的只读元数据查询（例如 SHOW TABLES、information_schema、sqlite_master 等）。"
+      : "Exception: when the user explicitly asks what tables/schemas exist, whether a table exists, or asks for database object inventory, generate a read-only metadata query appropriate for the active dialect (for example SHOW TABLES, information_schema, sqlite_master).",
     isZh
       ? "表注释和列注释是语义别名；当用户用中文业务名描述表或字段时，优先根据注释匹配真实表名和字段名。"
       : "Table and column comments are semantic aliases; when the user describes tables or fields by business names, prefer matching those comments to the real table and column names.",
@@ -222,6 +233,9 @@ function buildModePromptLines(mode: AiAssistantMode, isZh: boolean): string[] {
       isZh
         ? "如果安全执行条件不满足，先说明原因，再给只读预览或澄清问题。"
         : "If safe execution requirements are not met, explain why first, then provide a read-only preview or a clarifying question.",
+      isZh
+        ? "当用户问“有哪些表”“当前表列表”“表是否存在”这类元数据问题时，优先返回一个可执行的只读元数据 SQL，让系统执行后再基于结果回答。"
+        : "When the user asks metadata questions such as what tables exist, the current table list, or whether a table exists, prefer returning one executable read-only metadata SQL so the system can run it before answering from results.",
     ];
   }
 
@@ -230,6 +244,17 @@ function buildModePromptLines(mode: AiAssistantMode, isZh: boolean): string[] {
       ? "你处于 Ask 模式。只生成 SQL 和说明，不要暗示已经执行或即将自动执行。"
       : "You are in Ask mode. Generate SQL and explanations only; do not imply that anything has run or will auto-run.",
   ];
+}
+
+function schemaCoverageLine(context: AiContext, isZh: boolean): string {
+  if (context.schemaScope === "focused_table") {
+    return isZh
+      ? "Schema context scope: focused table only; not a complete database table list."
+      : "Schema context scope: focused table only; not a complete database table list.";
+  }
+  return context.truncated
+    ? "Schema context is truncated."
+    : "Schema context is complete for the loaded database scope.";
 }
 
 function buildActionPromptLines(action: AiAction, isZh: boolean): string[] {
@@ -293,8 +318,10 @@ export async function buildAiContext(
   const tables: AiSchemaTable[] = [];
   const tableKeys = new Set<string>();
   let truncated = false;
+  let schemaScope: AiContext["schemaScope"] = "database";
 
   if (tab.tableMeta) {
+    schemaScope = "focused_table";
     const s = tab.tableMeta.schema ?? "";
     const tName = tab.tableMeta.tableName;
     const [indexes, foreignKeys] = await Promise.all([
@@ -376,6 +403,7 @@ export async function buildAiContext(
     lastError: extractLastError(tab.result),
     lastResultPreview: formatResultPreview(tab.result),
     tables,
+    schemaScope,
     truncated,
   };
 }

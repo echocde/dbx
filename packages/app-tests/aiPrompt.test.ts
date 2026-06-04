@@ -81,6 +81,15 @@ test("prompt gives explicit guidance for truncated schema context", () => {
   assert.match(prompt, /@table/);
 });
 
+test("focused table context is not presented as a complete table list", () => {
+  const prompt = buildSystemPrompt("generate", context({ schemaScope: "focused_table" }), "agent");
+
+  assert.match(prompt, /focused table only; not a complete database table list/);
+  assert.match(prompt, /当前打开的表/);
+  assert.match(prompt, /只读元数据查询/);
+  assert.doesNotMatch(prompt, /Schema context is complete\./);
+});
+
 test("prompt enforces database dialect and single executable statement safety", () => {
   const prompt = buildSystemPrompt("generate", context({ databaseType: "sqlserver" }), "agent");
 
