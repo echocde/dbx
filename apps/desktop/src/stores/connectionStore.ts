@@ -21,7 +21,11 @@ import type { SqlCompletionColumn, SqlCompletionObject, SqlCompletionTable } fro
 import * as api from "@/lib/api";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { isSchemaAware, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
-import { buildDatabaseTreeNodes, buildDuckDbConnectionTreeNodes } from "@/lib/databaseTree";
+import {
+  buildDatabaseTreeNodes,
+  buildDuckDbConnectionTreeNodes,
+  shouldIncludeDefaultDatabaseNode,
+} from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
 import { findDatabaseTreeNode } from "@/lib/treeRefreshTarget";
 import { shouldMarkDisconnected } from "@/lib/connectionHealth";
@@ -852,7 +856,8 @@ export const useConnectionStore = defineStore("connection", () => {
         const children = withSavedSqlRoot(
           connectionId,
           buildDatabaseTreeNodes(connectionId, visibleDatabases, {
-            includeDefaultWhenEmpty: usesTreeSchemaMode(config?.db_type),
+            includeDefaultWhenEmpty:
+              usesTreeSchemaMode(config?.db_type) || shouldIncludeDefaultDatabaseNode(config, visibleDatabases),
           }),
           node,
         );

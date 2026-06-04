@@ -718,22 +718,50 @@ pub async fn connect_bare(url: &str, fallback_timeout: Duration) -> Result<MySql
 
 pub async fn list_databases(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, String> {
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
-    let result = conn
-        .query_iter("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = match conn.query_iter("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME").await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            log::debug!("Falling back to SHOW DATABASES after information_schema.SCHEMATA failed: {err}");
+            return list_databases_show(pool).await;
+        }
+    };
     let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
+    let databases = database_infos_from_names(rows.iter().map(|row| get_str(row, 0)), false);
 
-    Ok(rows.iter().map(|row| DatabaseInfo { name: get_str(row, 0) }).collect())
+    if databases.is_empty() {
+        log::debug!("Falling back to SHOW DATABASES after information_schema.SCHEMATA returned no named databases");
+        return list_databases_show(pool).await;
+    }
+
+    Ok(databases)
 }
 
 pub async fn list_databases_show(pool: &MySqlPool) -> Result<Vec<DatabaseInfo>, String> {
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
     let result = conn.query_iter("SHOW DATABASES").await.map_err(|e| e.to_string())?;
     let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
-    let mut databases: Vec<DatabaseInfo> = rows.iter().map(|row| DatabaseInfo { name: get_str(row, 0) }).collect();
+    Ok(database_infos_from_names(rows.iter().map(|row| get_str(row, 0)), true))
+}
+
+fn database_infos_from_names(
+    names: impl IntoIterator<Item = String>,
+    include_catalogless_when_blank: bool,
+) -> Vec<DatabaseInfo> {
+    let mut saw_row = false;
+    let mut databases: Vec<DatabaseInfo> = names
+        .into_iter()
+        .filter_map(|name| {
+            saw_row = true;
+            let name = name.trim().to_string();
+            (!name.is_empty()).then_some(DatabaseInfo { name })
+        })
+        .collect();
     databases.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(databases)
+    if databases.is_empty() && saw_row && include_catalogless_when_blank {
+        return vec![DatabaseInfo { name: String::new() }];
+    }
+    databases
 }
 
 pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableInfo>, String> {
@@ -742,19 +770,37 @@ pub async fn list_tables(pool: &MySqlPool, database: &str) -> Result<Vec<TableIn
         quote_value(database),
     );
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
-    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+    let result = match conn.query_iter(&sql).await {
+        Ok(result) => result,
+        Err(err) => {
+            log::debug!(
+                "Falling back to SHOW TABLES for database `{database}` after information_schema.TABLES failed: {err}"
+            );
+            return list_tables_show(pool, database).await;
+        }
+    };
     let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
 
-    Ok(rows
+    let tables: Vec<TableInfo> = rows
         .iter()
-        .map(|row| TableInfo {
-            name: get_str_by_name(row, "TABLE_NAME"),
-            table_type: get_str_by_name(row, "TABLE_TYPE"),
-            comment: get_opt_str(row, "TABLE_COMMENT").filter(|s| !s.is_empty()),
-            parent_schema: None,
-            parent_name: None,
+        .filter_map(|row| {
+            let name = get_str_by_name(row, "TABLE_NAME").trim().to_string();
+            (!name.is_empty()).then_some(TableInfo {
+                name,
+                table_type: get_str_by_name(row, "TABLE_TYPE"),
+                comment: get_opt_str(row, "TABLE_COMMENT").filter(|s| !s.is_empty()),
+                parent_schema: None,
+                parent_name: None,
+            })
         })
-        .collect())
+        .collect();
+
+    if tables.is_empty() {
+        log::debug!("Falling back to SHOW TABLES for database `{database}` after information_schema.TABLES returned no named tables");
+        return list_tables_show(pool, database).await;
+    }
+
+    Ok(tables)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -765,7 +811,11 @@ struct TableStatusMeta {
 }
 
 async fn list_table_status_show(pool: &MySqlPool, database: &str) -> Result<HashMap<String, TableStatusMeta>, String> {
-    let sql = format!("SHOW TABLE STATUS FROM {}", quote_identifier(database));
+    let sql = if database.trim().is_empty() {
+        "SHOW TABLE STATUS".to_string()
+    } else {
+        format!("SHOW TABLE STATUS FROM {}", quote_identifier(database))
+    };
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
     let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
     let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
@@ -786,31 +836,44 @@ async fn list_table_status_show(pool: &MySqlPool, database: &str) -> Result<Hash
 }
 
 async fn list_table_names_show(pool: &MySqlPool, database: &str) -> Result<Vec<TableInfo>, String> {
-    let sql = format!("SHOW FULL TABLES FROM {}", quote_identifier(database));
+    let sql = show_tables_sql(database, true);
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
     let rows: Vec<mysql_async::Row> = match conn.query_iter(&sql).await {
         Ok(result) => result.collect_and_drop().await.map_err(|e| e.to_string())?,
         Err(_) => {
-            let sql = format!("SHOW TABLES FROM {}", quote_identifier(database));
+            let sql = show_tables_sql(database, false);
             let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
             result.collect_and_drop().await.map_err(|e| e.to_string())?
         }
     };
     let mut tables: Vec<TableInfo> = rows
         .iter()
-        .map(|row| {
+        .filter_map(|row| {
+            let name = get_str(row, 0).trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
             let table_type = get_str(row, 1);
-            TableInfo {
-                name: get_str(row, 0),
+            Some(TableInfo {
+                name,
                 table_type: if table_type.is_empty() { "TABLE".to_string() } else { table_type },
                 comment: None,
                 parent_schema: None,
                 parent_name: None,
-            }
+            })
         })
         .collect();
     tables.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(tables)
+}
+
+fn show_tables_sql(database: &str, full: bool) -> String {
+    let prefix = if full { "SHOW FULL TABLES" } else { "SHOW TABLES" };
+    if database.trim().is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{prefix} FROM {}", quote_identifier(database))
+    }
 }
 
 async fn list_tables_show_with_status(
@@ -1005,16 +1068,27 @@ fn columns_sql(database: &str, table: &str) -> String {
 pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
     let sql = columns_sql(database, table);
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
-    let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
+    let result = match conn.query_iter(&sql).await {
+        Ok(result) => result,
+        Err(err) => {
+            log::debug!(
+                "Falling back to SHOW COLUMNS for `{database}`.`{table}` after information_schema.COLUMNS failed: {err}"
+            );
+            return get_columns_show(pool, database, table).await;
+        }
+    };
     let rows: Vec<mysql_async::Row> = result.collect_and_drop().await.map_err(|e| e.to_string())?;
 
-    Ok(rows
+    let columns: Vec<ColumnInfo> = rows
         .iter()
-        .map(|row| {
-            let name = get_str_by_name(row, "COLUMN_NAME");
+        .filter_map(|row| {
+            let name = get_str_by_name(row, "COLUMN_NAME").trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
             let column_key = get_str_by_name(row, "COLUMN_KEY");
             let from_pk_join = row.get::<i32, &str>("is_pk").unwrap_or(0) == 1;
-            ColumnInfo {
+            Some(ColumnInfo {
                 is_primary_key: from_pk_join || column_key.eq_ignore_ascii_case("PRI"),
                 name,
                 data_type: get_str_by_name(row, "COLUMN_TYPE"),
@@ -1025,28 +1099,41 @@ pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Resul
                 numeric_precision: get_opt_i32(row, "NUMERIC_PRECISION"),
                 numeric_scale: get_opt_i32(row, "NUMERIC_SCALE"),
                 character_maximum_length: get_opt_i32(row, "CHARACTER_MAXIMUM_LENGTH"),
-            }
+            })
         })
-        .collect())
+        .collect();
+
+    if columns.is_empty() {
+        log::debug!(
+            "Falling back to SHOW COLUMNS for `{database}`.`{table}` after information_schema.COLUMNS returned no named columns"
+        );
+        return get_columns_show(pool, database, table).await;
+    }
+
+    Ok(columns)
 }
 
 pub async fn get_columns_show(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
-    let sql = format!("SHOW FULL COLUMNS FROM {}.{}", quote_identifier(database), quote_identifier(table));
+    let sql = show_columns_sql(database, table, true);
     let mut conn = pool.get_conn().await.map_err(|e| e.to_string())?;
     let rows: Vec<mysql_async::Row> = match conn.query_iter(&sql).await {
         Ok(result) => result.collect_and_drop().await.map_err(|e| e.to_string())?,
         Err(_) => {
-            let sql = format!("SHOW COLUMNS FROM {}.{}", quote_identifier(database), quote_identifier(table));
+            let sql = show_columns_sql(database, table, false);
             let result = conn.query_iter(&sql).await.map_err(|e| e.to_string())?;
             result.collect_and_drop().await.map_err(|e| e.to_string())?
         }
     };
     Ok(rows
         .iter()
-        .map(|row| {
+        .filter_map(|row| {
+            let name = get_str_by_name(row, "Field").trim().to_string();
+            if name.is_empty() {
+                return None;
+            }
             let key = get_str_by_name(row, "Key");
-            ColumnInfo {
-                name: get_str_by_name(row, "Field"),
+            Some(ColumnInfo {
+                name,
                 data_type: get_str_by_name(row, "Type"),
                 is_nullable: get_str_by_name(row, "Null").eq_ignore_ascii_case("YES"),
                 column_default: get_opt_str(row, "Default"),
@@ -1056,9 +1143,18 @@ pub async fn get_columns_show(pool: &MySqlPool, database: &str, table: &str) -> 
                 numeric_precision: None,
                 numeric_scale: None,
                 character_maximum_length: None,
-            }
+            })
         })
         .collect())
+}
+
+fn show_columns_sql(database: &str, table: &str, full: bool) -> String {
+    let prefix = if full { "SHOW FULL COLUMNS FROM" } else { "SHOW COLUMNS FROM" };
+    if database.trim().is_empty() {
+        format!("{prefix} {}", quote_identifier(table))
+    } else {
+        format!("{prefix} {}.{}", quote_identifier(database), quote_identifier(table))
+    }
 }
 
 fn query_result_row_limit(max_rows: Option<usize>) -> usize {
@@ -1483,6 +1579,27 @@ mod tests {
         assert!(!sql.contains("UNION"));
         assert!(sql.contains("CREATE_TIME"));
         assert!(sql.contains("UPDATE_TIME"));
+    }
+
+    #[test]
+    fn mysql_database_infos_filter_blank_names_and_keep_catalogless_marker() {
+        let regular = database_infos_from_names(vec!["".to_string(), " app ".to_string(), "mysql".to_string()], true);
+        assert_eq!(regular.iter().map(|db| db.name.as_str()).collect::<Vec<_>>(), vec!["app", "mysql"]);
+
+        let catalogless = database_infos_from_names(vec!["".to_string(), "   ".to_string()], true);
+        assert_eq!(catalogless.iter().map(|db| db.name.as_str()).collect::<Vec<_>>(), vec![""]);
+
+        let no_marker = database_infos_from_names(vec!["".to_string()], false);
+        assert!(no_marker.is_empty());
+    }
+
+    #[test]
+    fn mysql_show_metadata_sql_supports_catalogless_services() {
+        assert_eq!(show_tables_sql("", true), "SHOW FULL TABLES");
+        assert_eq!(show_tables_sql("", false), "SHOW TABLES");
+        assert_eq!(show_tables_sql("app", true), "SHOW FULL TABLES FROM `app`");
+        assert_eq!(show_columns_sql("", "idx", true), "SHOW FULL COLUMNS FROM `idx`");
+        assert_eq!(show_columns_sql("app", "idx", false), "SHOW COLUMNS FROM `app`.`idx`");
     }
 
     #[test]
