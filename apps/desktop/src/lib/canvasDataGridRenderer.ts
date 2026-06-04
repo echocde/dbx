@@ -92,10 +92,30 @@ function canvasTabularFontFamily(fontFamily: string): string {
   return `"Geist Variable Tabular", ${fontFamily}`;
 }
 
+const FIT_CANVAS_TEXT_CACHE_MAX = 10000;
+const fitCanvasTextCache = new Map<string, string>();
+
+export function clearFitCanvasTextCache(): void {
+  fitCanvasTextCache.clear();
+}
+
 function fitCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
-  if (maxWidth <= 0 || ctx.measureText(text).width <= maxWidth) return text;
+  if (maxWidth <= 0) return "";
+  const font = ctx.font;
+  const cacheKey = `${font}|${text}|${maxWidth}`;
+  const cached = fitCanvasTextCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  if (ctx.measureText(text).width <= maxWidth) {
+    if (fitCanvasTextCache.size >= FIT_CANVAS_TEXT_CACHE_MAX) fitCanvasTextCache.clear();
+    fitCanvasTextCache.set(cacheKey, text);
+    return text;
+  }
   const ellipsis = "...";
-  if (ctx.measureText(ellipsis).width > maxWidth) return "";
+  if (ctx.measureText(ellipsis).width > maxWidth) {
+    if (fitCanvasTextCache.size >= FIT_CANVAS_TEXT_CACHE_MAX) fitCanvasTextCache.clear();
+    fitCanvasTextCache.set(cacheKey, "");
+    return "";
+  }
   let low = 0;
   let high = text.length;
   while (low < high) {
@@ -103,7 +123,10 @@ function fitCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
     if (ctx.measureText(`${text.slice(0, mid)}${ellipsis}`).width <= maxWidth) low = mid;
     else high = mid - 1;
   }
-  return `${text.slice(0, low)}${ellipsis}`;
+  const result = `${text.slice(0, low)}${ellipsis}`;
+  if (fitCanvasTextCache.size >= FIT_CANVAS_TEXT_CACHE_MAX) fitCanvasTextCache.clear();
+  fitCanvasTextCache.set(cacheKey, result);
+  return result;
 }
 
 function canvasFont(style: {
@@ -390,7 +413,7 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
         const textMaxWidth = Math.max(0, x + colWidth - textLeft - 12);
         const isEditingThisCell = editingCell?.rowId === item.id && editingCell.col === actualColIdx;
         const displayText = isEditingThisCell ? "" : formatCell(value, actualColIdx);
-        const text = isEditingThisCell || isScrolling ? displayText : fitCanvasText(ctx, displayText, textMaxWidth);
+        const text = isEditingThisCell ? displayText : fitCanvasText(ctx, displayText, textMaxWidth);
         ctx.fillText(text, textLeft, y + CANVAS_DATA_GRID_ROW_HEIGHT / 2);
         if (item.isDeleted && text) {
           const textWidth = Math.min(ctx.measureText(text).width, textMaxWidth);
