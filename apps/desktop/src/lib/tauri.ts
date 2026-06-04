@@ -112,6 +112,35 @@ export interface DriverStoreUsage {
   agent_drivers: DriverStoreUsageItem[];
 }
 
+export type DriverRuntimeHealth = "healthy" | "warning" | "error";
+export type DriverRuntimeStatus = "running" | "stopped" | "error" | "unknown";
+
+export interface DriverRuntimeInfo {
+  id: string;
+  driver_key: string;
+  label: string;
+  kind: string;
+  source: string;
+  status: DriverRuntimeStatus;
+  pid: number | null;
+  memory_bytes: number | null;
+  cpu_percent: number | null;
+  uptime_seconds: number | null;
+  version: string | null;
+  last_error: string | null;
+  can_stop: boolean;
+  can_restart: boolean;
+  control_unavailable_reason: string | null;
+}
+
+export interface DriverRuntimeSummary {
+  running_count: number;
+  total_memory_bytes: number;
+  last_error: string | null;
+  health: DriverRuntimeHealth;
+  runtimes: DriverRuntimeInfo[];
+}
+
 export interface DesktopSettings {
   show_tray_icon: boolean;
   icon_theme: "default" | "black";
@@ -858,6 +887,18 @@ export async function listInstalledAgents(): Promise<AgentDriverInfo[]> {
 
 export async function getDriverStoreUsage(): Promise<DriverStoreUsage> {
   return invoke("get_driver_store_usage");
+}
+
+export async function getDriverRuntimeSummary(): Promise<DriverRuntimeSummary> {
+  return invoke("get_driver_runtime_summary");
+}
+
+export async function stopDriverRuntime(runtimeId: string): Promise<void> {
+  return invoke("stop_driver_runtime", { runtimeId });
+}
+
+export async function restartDriverRuntime(runtimeId: string): Promise<void> {
+  return invoke("restart_driver_runtime", { runtimeId });
 }
 
 export async function installAgent(dbType: string): Promise<void> {

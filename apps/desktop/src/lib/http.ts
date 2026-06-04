@@ -28,6 +28,7 @@ import type {
   AiConversation,
   AiModelInfo,
   DriverStoreUsage,
+  DriverRuntimeSummary,
   UpgradeAllAgentDriversResult,
   AgentUpdateBlocker,
   DesktopSettings,
@@ -238,6 +239,18 @@ export async function listInstalledAgents(): Promise<AgentDriverInfo[]> {
 
 export async function getDriverStoreUsage(): Promise<DriverStoreUsage> {
   return get("/api/agents/storage-usage");
+}
+
+export async function getDriverRuntimeSummary(): Promise<DriverRuntimeSummary> {
+  return get("/api/agents/runtime");
+}
+
+export async function stopDriverRuntime(runtimeId: string): Promise<void> {
+  await post("/api/agents/runtime/stop", { runtimeId });
+}
+
+export async function restartDriverRuntime(runtimeId: string): Promise<void> {
+  await post("/api/agents/runtime/restart", { runtimeId });
 }
 
 export async function installAgent(dbType: string): Promise<void> {

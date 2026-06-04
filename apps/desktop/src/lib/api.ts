@@ -49,6 +49,9 @@ export const uninstallJdbcPlugin = forward("uninstallJdbcPlugin");
 export const listInstalledAgentsLocal = forward("listInstalledAgentsLocal");
 export const listInstalledAgents = forward("listInstalledAgents");
 export const getDriverStoreUsage = forward("getDriverStoreUsage");
+export const getDriverRuntimeSummary = forward("getDriverRuntimeSummary");
+export const stopDriverRuntime = forward("stopDriverRuntime");
+export const restartDriverRuntime = forward("restartDriverRuntime");
 export const installAgent = forward("installAgent");
 export const upgradeAllAgents = forward("upgradeAllAgents");
 export const checkAgentUpdateBlockers = forward("checkAgentUpdateBlockers");
@@ -257,6 +260,10 @@ export type {
   AgentDriverInfo,
   DriverStoreUsage,
   DriverStoreUsageItem,
+  DriverRuntimeHealth,
+  DriverRuntimeStatus,
+  DriverRuntimeInfo,
+  DriverRuntimeSummary,
   JavaRuntimeMode,
   JavaRuntimeConfig,
   DriverInstallProgress,
