@@ -405,7 +405,10 @@ impl ConnectionConfig {
                         suffix.push_str("&directConnection=true");
                     }
                 }
-                format!("mongodb://{host}:{port}{db_part}{suffix}")
+                let scheme = if self.ssl { "mongodb+srv" } else { "mongodb" };
+                // SRV URLs resolve the port via DNS SRV records, so we omit the explicit port.
+                let addr = if self.ssl { host.to_string() } else { format!("{host}:{port}") };
+                format!("{scheme}://{addr}{db_part}{suffix}")
             }
             DatabaseType::Oracle => format!("oracle://{host}:{port}{db_part}"),
             DatabaseType::Elasticsearch => {
@@ -508,10 +511,13 @@ impl ConnectionConfig {
                         suffix.push_str("&directConnection=true");
                     }
                 }
+                let scheme = if self.ssl { "mongodb+srv" } else { "mongodb" };
+                // SRV URLs resolve the port via DNS SRV records, so we omit the explicit port.
+                let addr = if self.ssl { host.to_string() } else { format!("{host}:{port}") };
                 if self.username.is_empty() {
-                    format!("mongodb://{host}:{port}{db_part}{suffix}")
+                    format!("{scheme}://{addr}{db_part}{suffix}")
                 } else {
-                    format!("mongodb://{username}:{password}@{host}:{port}{db_part}{suffix}")
+                    format!("{scheme}://{username}:{password}@{addr}{db_part}{suffix}")
                 }
             }
             DatabaseType::Oracle => {
