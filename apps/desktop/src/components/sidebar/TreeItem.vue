@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
+import { ref, computed, nextTick, watch, onBeforeUnmount, inject } from "vue";
 import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
 import { useI18n } from "vue-i18n";
 import { translateBackendError } from "@/i18n/backend-errors";
@@ -127,8 +127,10 @@ import { hasTreeNodeDatabaseContext } from "@/lib/treeNodeContext";
 import { sidebarDisplayTableName } from "@/lib/sidebarTableNameDisplay";
 import {
   selectedTreeNodesInVisibleOrder as orderSelectedTreeNodes,
+  treeSelectionRangeIdsByIndex,
   treeSelectionRangeIds,
 } from "@/lib/sidebarTreeSelection";
+import { sidebarTreeContextKey } from "@/lib/sidebarTreeContext";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
 import { useExportTracker, type ExportTask } from "@/composables/useExportTracker";
@@ -174,7 +176,6 @@ const props = defineProps<{
   dragDisabled?: boolean;
   pendingRename?: boolean;
   highlighted?: boolean;
-  visibleNodes?: TreeNode[];
 }>();
 
 const emit = defineEmits<{
@@ -186,6 +187,7 @@ const emit = defineEmits<{
 const usesFullWidthLabel = computed(() =>
   usesFullWidthTreeLabel(props.node.type, settingsStore.editorSettings.sidebarAllowHorizontalScroll),
 );
+const sidebarTreeContext = inject(sidebarTreeContextKey, null);
 const rowWidthClass = computed(() => (usesFullWidthLabel.value ? "w-max min-w-full" : "w-full min-w-0"));
 const labelWidthClass = computed(() =>
   usesFullWidthLabel.value ? "shrink-0 whitespace-nowrap" : "min-w-0 flex-1 truncate",
@@ -459,7 +461,7 @@ function runRowClickAction() {
 }
 
 function visibleTreeNodes(): TreeNode[] {
-  if (props.visibleNodes) return props.visibleNodes;
+  if (sidebarTreeContext) return sidebarTreeContext.getVisibleNodes();
   return flattenTree(connectionStore.treeNodes).map((item) => item.node);
 }
 
@@ -485,10 +487,20 @@ function toggleTreeNodeSelection(node: TreeNode) {
 function selectTreeNodeRange(node: TreeNode) {
   const visible = visibleTreeNodes();
   const anchorId = connectionStore.treeSelectionAnchorId || connectionStore.selectedTreeNodeId || node.id;
+  const currentIndex = sidebarTreeContext ? sidebarTreeContext.getVisibleNodeIndex(node.id) : -1;
+  const anchorIndex = sidebarTreeContext ? sidebarTreeContext.getVisibleNodeIndex(anchorId) : -1;
+
+  if (sidebarTreeContext && currentIndex >= 0 && anchorIndex >= 0) {
+    connectionStore.selectedTreeNodeIds = treeSelectionRangeIdsByIndex(visible, currentIndex, anchorIndex, node.id);
+    connectionStore.selectedTreeNodeId = node.id;
+    return;
+  }
+
   if (!visible.some((item) => item.id === anchorId) || !visible.some((item) => item.id === node.id)) {
     selectSingleTreeNode(node);
     return;
   }
+
   const rangeIds = treeSelectionRangeIds(visible, node.id, anchorId, connectionStore.selectedTreeNodeId);
   connectionStore.selectedTreeNodeIds = rangeIds;
   connectionStore.selectedTreeNodeId = node.id;
