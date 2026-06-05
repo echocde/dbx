@@ -110,20 +110,14 @@ function fitCanvasText(ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
     fitCanvasTextCache.set(cacheKey, text);
     return text;
   }
-  const ellipsis = "...";
-  if (ctx.measureText(ellipsis).width > maxWidth) {
-    if (fitCanvasTextCache.size >= FIT_CANVAS_TEXT_CACHE_MAX) fitCanvasTextCache.clear();
-    fitCanvasTextCache.set(cacheKey, "");
-    return "";
-  }
   let low = 0;
   let high = text.length;
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
-    if (ctx.measureText(`${text.slice(0, mid)}${ellipsis}`).width <= maxWidth) low = mid;
+    if (ctx.measureText(text.slice(0, mid)).width <= maxWidth) low = mid;
     else high = mid - 1;
   }
-  const result = `${text.slice(0, low)}${ellipsis}`;
+  const result = text.slice(0, low);
   if (fitCanvasTextCache.size >= FIT_CANVAS_TEXT_CACHE_MAX) fitCanvasTextCache.clear();
   fitCanvasTextCache.set(cacheKey, result);
   return result;
@@ -410,9 +404,11 @@ export function drawCanvasDataGrid(options: DrawCanvasDataGridOptions) {
         ctx.font = value === null ? italicFont : typeof value === "number" ? tabularFont : normalFont;
         setCanvasNumericVariant(ctx, typeof value === "number" ? "tabular-nums" : "normal");
         const textLeft = x + 12;
-        const textMaxWidth = Math.max(0, x + colWidth - textLeft - 12);
+        const paddedMaxWidth = Math.max(0, x + colWidth - textLeft - 12);
         const isEditingThisCell = editingCell?.rowId === item.id && editingCell.col === actualColIdx;
         const displayText = isEditingThisCell ? "" : formatCell(value, actualColIdx);
+        const needsTruncation = ctx.measureText(displayText).width > paddedMaxWidth;
+        const textMaxWidth = needsTruncation ? Math.max(0, x + colWidth - textLeft) : paddedMaxWidth;
         const text = isEditingThisCell ? displayText : fitCanvasText(ctx, displayText, textMaxWidth);
         ctx.fillText(text, textLeft, y + CANVAS_DATA_GRID_ROW_HEIGHT / 2);
         if (item.isDeleted && text) {
