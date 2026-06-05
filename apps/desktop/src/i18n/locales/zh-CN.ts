@@ -1270,6 +1270,8 @@ export default {
     viewMember: "查看完整内容",
     copyMember: "复制成员",
     copied: "已复制",
+    copyInsertStatement: "复制插入语句",
+    copyInsertStatementBinary: "二进制数据无法生成插入语句",
     editMember: "编辑",
     jsonView: "JSON 视图",
     rawContent: "原始内容",

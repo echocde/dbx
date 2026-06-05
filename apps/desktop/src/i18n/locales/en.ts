@@ -1295,6 +1295,8 @@ export default {
     viewMember: "View full value",
     copyMember: "Copy member",
     copied: "Copied",
+    copyInsertStatement: "Copy Insert Statement",
+    copyInsertStatementBinary: "Cannot generate insert statement for binary data",
     editMember: "Edit",
     jsonView: "JSON view",
     rawContent: "Raw content",
