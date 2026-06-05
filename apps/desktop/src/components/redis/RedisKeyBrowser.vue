@@ -831,7 +831,7 @@ defineExpose({ focusSearch });
       <!-- Workspace (right) -->
       <Pane :size="64" :min-size="36">
         <div class="h-full min-w-0 bg-background flex flex-col overflow-hidden">
-          <Tabs v-model="activeSidePanel" class="h-full min-h-0 gap-0">
+          <Tabs v-model="activeSidePanel" :unmount-on-hide="false" class="h-full min-h-0 gap-0">
             <div class="h-9 shrink-0 border-b bg-background px-3 flex items-center">
               <TabsList class="h-7 gap-1 p-0.5">
                 <TabsTrigger value="detail" class="h-6 flex-none gap-1.5 rounded-md px-2 text-xs">
