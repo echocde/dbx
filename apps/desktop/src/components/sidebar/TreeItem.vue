@@ -3752,27 +3752,29 @@ function treeItemMenuItems(): ContextMenuItem[] {
 
 /* Unfocused: subtle gray */
 .tree-item-active {
-  background-color: var(--tree-connection-active-bg, oklch(0.94 0 0)) !important;
+  background-color: var(--tree-connection-active-bg, rgb(235 235 235)) !important;
 }
 :root.dark .tree-item-active {
-  background-color: var(--tree-connection-active-bg, oklch(0.26 0 0)) !important;
+  background-color: var(--tree-connection-active-bg, rgb(36 36 36)) !important;
 }
 
 /* Focused: soft blue */
 .tree-item-active:focus {
-  background-color: var(--tree-connection-active-focus-bg, oklch(0.91 0.03 250)) !important;
+  background-color: var(--tree-connection-active-focus-bg, rgb(211 227 245)) !important;
 }
 :root.dark .tree-item-active:focus {
-  background-color: var(--tree-connection-active-focus-bg, oklch(0.35 0.06 250)) !important;
+  background-color: var(--tree-connection-active-focus-bg, rgb(33 60 89)) !important;
 }
 
 /* Locate highlight: instant amber, then fade on removal */
 .tree-item-highlight {
+  background-color: rgb(253 225 167) !important;
   background-color: oklch(0.92 0.08 85) !important;
   transition: background-color 0.8s ease-out 0.6s;
 }
 
 :root.dark .tree-item-highlight {
+  background-color: rgb(110 67 0) !important;
   background-color: oklch(0.42 0.12 80) !important;
   transition: background-color 0.8s ease-out 0.6s;
 }

@@ -34,6 +34,24 @@ export const DATA_GRID_DARK_SEARCH_COLORS = {
   currentBorder: "rgb(239 177 0)",
 } as const;
 export const DATA_GRID_DARK_ROW_NUMBER_BG = "rgb(35 37 42)";
+const DATA_GRID_DARK_ROW_NUMBER_NEW_BG = "rgb(33 45 40)";
+const DATA_GRID_DARK_ROW_NUMBER_EDITED_BG = "rgb(48 41 28)";
+const DATA_GRID_DARK_ROW_NUMBER_DELETED_BG = "rgb(55 31 32)";
+const DATA_GRID_LIGHT_ROW_NUMBER_NEW_BG = "rgb(219 244 233)";
+const DATA_GRID_LIGHT_ROW_NUMBER_EDITED_BG = "rgb(253 241 219)";
+const DATA_GRID_LIGHT_ROW_NUMBER_DELETED_BG = "rgb(255 244 244)";
+const SUPPORTS_COLOR_MIX =
+  typeof CSS !== "undefined" &&
+  typeof CSS.supports === "function" &&
+  CSS.supports("color", "color-mix(in oklab, black 50%, white)");
+const SUPPORTS_OKLCH =
+  typeof CSS !== "undefined" &&
+  typeof CSS.supports === "function" &&
+  CSS.supports("color", "oklch(0.845 0.143 164.978)");
+
+function colorValue(fallback: string, preferred: string, supported: boolean): string {
+  return supported ? preferred : fallback;
+}
 
 export function cssVarColor(getVar: (name: string) => string, name: string, fallback: string): string {
   const value = getVar(name).trim();
@@ -64,39 +82,75 @@ export function resolveDataGridPaintTheme(options: {
   isDark: boolean;
 }): DataGridPaintTheme {
   const { getVar, isDark } = options;
-  const background = cssVarColor(getVar, "--background", isDark ? "oklch(0.19 0.004 285)" : "oklch(1 0 0)");
-  const foreground = cssVarColor(getVar, "--foreground", isDark ? "oklch(0.88 0.006 285)" : "oklch(0.145 0 0)");
-  const mutedForeground = cssVarColor(
-    getVar,
-    "--muted-foreground",
-    isDark ? "oklch(0.68 0.008 285)" : "oklch(0.556 0 0)",
+  const background = cssVarColor(getVar, "--background", isDark ? "rgb(19 20 22)" : "rgb(255 255 255)");
+  const foreground = cssVarColor(getVar, "--foreground", isDark ? "rgb(215 215 219)" : "rgb(10 10 10)");
+  const mutedForeground = cssVarColor(getVar, "--muted-foreground", isDark ? "rgb(151 152 157)" : "rgb(115 115 115)");
+  const primary = cssVarColor(getVar, "--primary", isDark ? "rgb(208 208 214)" : "rgb(23 23 23)");
+  const destructive = cssVarColor(getVar, "--destructive", isDark ? "rgb(243 98 95)" : "rgb(231 0 11)");
+  const accent = cssVarColor(getVar, "--accent", isDark ? "rgb(46 47 51)" : "rgb(245 245 245)");
+  const activeSurface = isDark
+    ? "rgb(64 64 64)"
+    : colorValue("rgb(232 232 232)", `color-mix(in oklab, ${primary} 10%, ${background})`, SUPPORTS_COLOR_MIX);
+  const rowMuted = colorValue(
+    isDark ? "rgb(32 32 34)" : "rgb(248 248 248)",
+    `color-mix(in oklab, ${cssVarColor(getVar, "--muted", isDark ? "rgb(42 42 45)" : "rgb(245 245 245)")} 30%, transparent)`,
+    SUPPORTS_COLOR_MIX,
   );
-  const primary = cssVarColor(getVar, "--primary", isDark ? "oklch(0.86 0.008 285)" : "oklch(0.205 0 0)");
-  const muted = cssVarColor(getVar, "--muted", isDark ? "oklch(0.285 0.006 285)" : "oklch(0.97 0 0)");
-  const destructive = cssVarColor(getVar, "--destructive", "oklch(0.6 0.22 25)");
-  const accent = cssVarColor(getVar, "--accent", isDark ? "oklch(0.269 0 0)" : "oklch(0.97 0 0)");
-  const yellow500 = "oklch(0.795 0.184 86.047)";
-  const activeSurface = isDark ? "rgb(64 64 64)" : `color-mix(in oklab, ${primary} 10%, ${background})`;
-  const rowMuted = `color-mix(in oklab, ${muted} 30%, transparent)`;
-  const rowNew = `color-mix(in oklab, ${primary} 5%, transparent)`;
-  const rowDeleted = `color-mix(in oklab, ${destructive} 5%, transparent)`;
+  const rowNew = colorValue(
+    isDark ? "rgb(51 51 55)" : "rgb(243 243 243)",
+    `color-mix(in oklab, ${primary} 5%, transparent)`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const rowDeleted = colorValue(
+    isDark ? "rgb(55 31 32)" : "rgb(255 244 244)",
+    `color-mix(in oklab, ${destructive} 5%, transparent)`,
+    SUPPORTS_COLOR_MIX,
+  );
   const cellActive = activeSurface;
-  const cellDirty = `color-mix(in oklab, ${yellow500} 10%, transparent)`;
-  const cellSelected = `color-mix(in oklab, ${primary} 25%, transparent)`;
-  const cellSelectedDirty = `color-mix(in oklab, oklch(0.8 0.15 85) 30%, color-mix(in oklab, ${primary} 18%, transparent))`;
-  const cellSelectedBorder = `color-mix(in oklab, ${primary} 70%, transparent)`;
-  const cellHover = `color-mix(in oklab, ${accent} 50%, transparent)`;
+  const cellDirty = colorValue(
+    isDark ? "rgb(94 75 26)" : "rgb(255 248 230)",
+    `color-mix(in oklab, ${colorValue("rgb(240 177 0)", "oklch(0.795 0.184 86.047)", SUPPORTS_OKLCH)} 10%, transparent)`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const cellSelected = colorValue(
+    isDark ? "rgb(66 67 70)" : "rgb(226 226 226)",
+    `color-mix(in oklab, ${primary} 25%, transparent)`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const cellSelectedDirty = colorValue(
+    isDark ? "rgb(94 75 26)" : "rgb(244 229 186)",
+    `color-mix(in oklab, ${colorValue("rgb(234 181 50)", "oklch(0.8 0.15 85)", SUPPORTS_OKLCH)} 30%, color-mix(in oklab, ${primary} 18%, transparent))`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const cellSelectedBorder = colorValue(
+    isDark ? "rgb(170 170 175)" : "rgb(90 90 90)",
+    `color-mix(in oklab, ${primary} 70%, transparent)`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const cellHover = colorValue(accent, `color-mix(in oklab, ${accent} 50%, transparent)`, SUPPORTS_COLOR_MIX);
   const cellSearch = isDark ? DATA_GRID_DARK_SEARCH_COLORS.match : "rgb(253 245 184)";
   const cellCurrentSearch = isDark ? DATA_GRID_DARK_SEARCH_COLORS.current : "rgb(253 224 71 / 52%)";
   const cellCurrentSearchBorder = isDark ? DATA_GRID_DARK_SEARCH_COLORS.currentBorder : "rgb(234 179 8 / 82%)";
   const rowNumberDefault = isDark
     ? DATA_GRID_DARK_ROW_NUMBER_BG
     : paintToken(getVar, "--data-grid-row-number-default-bg", "rgb(255 255 255)");
-  const rowNumberNew = `color-mix(in oklab, rgb(16 185 129) 15%, ${background})`;
-  const rowNumberEdited = `color-mix(in oklab, rgb(245 158 11) 15%, ${background})`;
-  const rowNumberDeleted = `color-mix(in oklab, ${destructive} 15%, ${background})`;
+  const rowNumberNew = colorValue(
+    isDark ? DATA_GRID_DARK_ROW_NUMBER_NEW_BG : DATA_GRID_LIGHT_ROW_NUMBER_NEW_BG,
+    `color-mix(in oklab, rgb(16 185 129) 15%, ${background})`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const rowNumberEdited = colorValue(
+    isDark ? DATA_GRID_DARK_ROW_NUMBER_EDITED_BG : DATA_GRID_LIGHT_ROW_NUMBER_EDITED_BG,
+    `color-mix(in oklab, rgb(245 158 11) 15%, ${background})`,
+    SUPPORTS_COLOR_MIX,
+  );
+  const rowNumberDeleted = colorValue(
+    isDark ? DATA_GRID_DARK_ROW_NUMBER_DELETED_BG : DATA_GRID_LIGHT_ROW_NUMBER_DELETED_BG,
+    `color-mix(in oklab, ${destructive} 15%, ${background})`,
+    SUPPORTS_COLOR_MIX,
+  );
   const rowNumberActive = activeSurface;
-  const rowNumberSelected = `color-mix(in oklab, ${primary} 25%, ${background})`;
+  const rowNumberSelected = cellSelected;
 
   return {
     background,
@@ -123,8 +177,16 @@ export function resolveDataGridPaintTheme(options: {
     rowNumberActive: paintToken(getVar, "--data-grid-row-number-active-bg", rowNumberActive),
     rowNumberSelected: paintToken(getVar, "--data-grid-row-number-selected-bg", rowNumberSelected),
     rowNumberTextClean: mutedForeground,
-    rowNumberTextNew: isDark ? "oklch(0.845 0.143 164.978)" : "oklch(0.508 0.118 165.612)",
-    rowNumberTextEdited: isDark ? "oklch(0.879 0.169 91.605)" : "oklch(0.555 0.163 48.998)",
+    rowNumberTextNew: colorValue(
+      isDark ? "rgb(94 233 181)" : "rgb(0 122 85)",
+      isDark ? "oklch(0.845 0.143 164.978)" : "oklch(0.508 0.118 165.612)",
+      SUPPORTS_OKLCH,
+    ),
+    rowNumberTextEdited: colorValue(
+      isDark ? "rgb(255 210 48)" : "rgb(187 77 0)",
+      isDark ? "oklch(0.879 0.169 91.605)" : "oklch(0.555 0.163 48.998)",
+      SUPPORTS_OKLCH,
+    ),
     rowNumberTextDeleted: destructive,
   };
 }

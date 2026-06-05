@@ -8183,35 +8183,68 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
 <style scoped>
 [data-grid-root] {
-  --data-grid-row-muted-bg: color-mix(in oklab, var(--muted) 30%, transparent);
-  --data-grid-row-new-bg: color-mix(in oklab, var(--primary) 5%, transparent);
-  --data-grid-row-deleted-bg: color-mix(in oklab, var(--destructive) 5%, transparent);
-  --data-grid-cell-active-bg: color-mix(in oklab, var(--primary) 15%, transparent);
-  --data-grid-cell-dirty-bg: color-mix(in oklab, oklch(79.5% 0.184 86.047) 10%, transparent);
-  --data-grid-cell-selected-bg: color-mix(in oklab, var(--primary) 25%, transparent);
-  --data-grid-cell-selected-dirty-bg: color-mix(
-    in oklab,
-    oklch(0.8 0.15 85) 30%,
-    color-mix(in oklab, var(--primary) 18%, transparent)
-  );
-  --data-grid-cell-selected-border: color-mix(in oklab, var(--primary) 70%, transparent);
-  --data-grid-cell-hover-bg: color-mix(in oklab, var(--accent) 50%, transparent);
+  --data-grid-row-muted-bg: rgb(248 248 248);
+  --data-grid-row-new-bg: rgb(243 243 243);
+  --data-grid-row-deleted-bg: rgb(255 244 244);
+  --data-grid-cell-active-bg: rgb(232 232 232);
+  --data-grid-cell-dirty-bg: rgb(255 248 230);
+  --data-grid-cell-selected-bg: rgb(226 226 226);
+  --data-grid-cell-selected-dirty-bg: rgb(244 229 186);
+  --data-grid-cell-selected-border: rgb(90 90 90);
+  --data-grid-cell-hover-bg: rgb(245 245 245);
   --data-grid-cell-search-bg: rgb(253 245 184);
   --data-grid-cell-current-search-bg: rgb(253 224 71 / 52%);
   --data-grid-cell-current-search-border: rgb(234 179 8 / 82%);
   --data-grid-row-number-default-bg: rgb(255 255 255);
-  --data-grid-row-number-new-bg: color-mix(in oklab, rgb(16 185 129) 15%, var(--background));
-  --data-grid-row-number-edited-bg: color-mix(in oklab, rgb(245 158 11) 15%, var(--background));
-  --data-grid-row-number-deleted-bg: color-mix(in oklab, var(--destructive) 15%, var(--background));
-  --data-grid-row-number-active-bg: color-mix(in oklab, var(--primary) 15%, var(--background));
-  --data-grid-row-number-selected-bg: color-mix(in oklab, var(--primary) 25%, var(--background));
+  --data-grid-row-number-new-bg: rgb(219 244 233);
+  --data-grid-row-number-edited-bg: rgb(253 241 219);
+  --data-grid-row-number-deleted-bg: rgb(255 244 244);
+  --data-grid-row-number-active-bg: rgb(232 232 232);
+  --data-grid-row-number-selected-bg: rgb(226 226 226);
 }
 
 :global(.dark) [data-grid-root] {
+  --data-grid-row-muted-bg: rgb(32 32 34);
+  --data-grid-row-new-bg: rgb(51 51 55);
+  --data-grid-row-deleted-bg: rgb(55 31 32);
+  --data-grid-cell-active-bg: rgb(64 64 64);
+  --data-grid-cell-dirty-bg: rgb(94 75 26);
+  --data-grid-cell-selected-bg: rgb(66 67 70);
+  --data-grid-cell-selected-dirty-bg: rgb(94 75 26);
+  --data-grid-cell-selected-border: rgb(170 170 175);
+  --data-grid-cell-hover-bg: rgb(46 47 51);
   --data-grid-cell-search-bg: rgb(72 57 8);
   --data-grid-cell-current-search-bg: rgb(116 87 0);
   --data-grid-cell-current-search-border: rgb(239 177 0);
   --data-grid-row-number-default-bg: rgb(35 37 42);
+  --data-grid-row-number-new-bg: rgb(33 45 40);
+  --data-grid-row-number-edited-bg: rgb(48 41 28);
+  --data-grid-row-number-deleted-bg: rgb(55 31 32);
+  --data-grid-row-number-active-bg: rgb(64 64 64);
+  --data-grid-row-number-selected-bg: rgb(66 67 70);
+}
+
+@supports (background: color-mix(in oklab, white 50%, transparent)) {
+  [data-grid-root] {
+    --data-grid-row-muted-bg: color-mix(in oklab, var(--muted) 30%, transparent);
+    --data-grid-row-new-bg: color-mix(in oklab, var(--primary) 5%, transparent);
+    --data-grid-row-deleted-bg: color-mix(in oklab, var(--destructive) 5%, transparent);
+    --data-grid-cell-active-bg: color-mix(in oklab, var(--primary) 15%, transparent);
+    --data-grid-cell-dirty-bg: color-mix(in oklab, rgb(240 177 0) 10%, transparent);
+    --data-grid-cell-selected-bg: color-mix(in oklab, var(--primary) 25%, transparent);
+    --data-grid-cell-selected-dirty-bg: color-mix(
+      in oklab,
+      rgb(234 181 50) 30%,
+      color-mix(in oklab, var(--primary) 18%, transparent)
+    );
+    --data-grid-cell-selected-border: color-mix(in oklab, var(--primary) 70%, transparent);
+    --data-grid-cell-hover-bg: color-mix(in oklab, var(--accent) 50%, transparent);
+    --data-grid-row-number-new-bg: color-mix(in oklab, rgb(16 185 129) 15%, var(--background));
+    --data-grid-row-number-edited-bg: color-mix(in oklab, rgb(245 158 11) 15%, var(--background));
+    --data-grid-row-number-deleted-bg: color-mix(in oklab, var(--destructive) 15%, var(--background));
+    --data-grid-row-number-active-bg: color-mix(in oklab, var(--primary) 15%, var(--background));
+    --data-grid-row-number-selected-bg: color-mix(in oklab, var(--primary) 25%, var(--background));
+  }
 }
 
 .data-grid-topbar {
@@ -8335,15 +8368,18 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 }
 
 .ddl-code :deep(.ddl-kw) {
+  color: rgb(39 132 213);
   color: oklch(0.6 0.15 250);
   font-weight: 600;
 }
 
 .ddl-code :deep(.ddl-ident) {
+  color: rgb(58 168 91);
   color: oklch(0.65 0.15 150);
 }
 
 .ddl-code :deep(.ddl-str) {
+  color: rgb(213 111 44);
   color: oklch(0.65 0.15 50);
 }
 </style>
