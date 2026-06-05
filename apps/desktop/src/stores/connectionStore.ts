@@ -29,6 +29,7 @@ import {
 import {
   buildDatabaseTreeNodes,
   buildDuckDbConnectionTreeNodes,
+  sortSidebarNames,
   shouldIncludeDefaultDatabaseNode,
 } from "@/lib/databaseTree";
 import { buildSqlServerDatabaseTreeNodes, SQLSERVER_DEFAULT_SCHEMA } from "@/lib/sqlServerTree";
@@ -54,6 +55,7 @@ import {
   treeNodeSchemaCachePrefix,
 } from "@/lib/treeNodeContext";
 import { decodeSchemaTreeCache, encodeSchemaTreeCache } from "@/lib/schemaTreeCache";
+import { sortSidebarTreeChildrenForParent } from "@/lib/sidebarNodeOrdering";
 import { prunePinnedTreeNodeIdsForConnection } from "@/lib/pinnedTreeNodeIds";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -451,7 +453,11 @@ export const useConnectionStore = defineStore("connection", () => {
     const payload = await api.loadSchemaCache<unknown>(cacheKey).catch(() => null);
     const decoded = decodeSchemaTreeCache<TreeNode[]>(payload);
     if (!decoded) return { hit: false, isStale: false };
-    const normalizedChildren = normalizeCataloglessDatabaseNodes(expandCachedObjectBrowserNodes(decoded.children));
+    const normalizedChildren = sortSidebarTreeChildrenForParent(
+      node,
+      normalizeCataloglessDatabaseNodes(expandCachedObjectBrowserNodes(decoded.children)),
+      node.connectionId ? getConfig(node.connectionId)?.db_type : undefined,
+    );
     setChildren(
       node,
       node.type === "connection" && node.connectionId
@@ -830,7 +836,7 @@ export const useConnectionStore = defineStore("connection", () => {
         }
         const schemas = await api.listSchemas(connectionId, effectiveDb);
         const visibleSchemas = filterDatabaseNamesForConnection(schemas, config);
-        const schemaNodes: TreeNode[] = visibleSchemas.map((s) => ({
+        const schemaNodes: TreeNode[] = sortSidebarNames(visibleSchemas).map((s) => ({
           id: `${connectionId}:${s}:${s}`,
           label: s,
           type: "schema" as const,
@@ -950,7 +956,7 @@ export const useConnectionStore = defineStore("connection", () => {
         node,
         withSavedSqlRoot(
           connectionId,
-          visibleDbs.map((db) => ({
+          sortSidebarNames(visibleDbs).map((db) => ({
             id: `${connectionId}:${db}`,
             label: db,
             type: "mongo-db" as const,
@@ -981,7 +987,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const collections = await api.mongoListCollections(connectionId, database);
       setChildren(
         node,
-        collections.map((col) => ({
+        sortSidebarNames(collections).map((col) => ({
           id: `${nodeId}:${col}`,
           label: col,
           type: "mongo-collection" as const,
@@ -1016,7 +1022,7 @@ export const useConnectionStore = defineStore("connection", () => {
         }
       }
 
-      const schemas = await api.listSchemas(connectionId, database);
+      const schemas = sortSidebarNames(await api.listSchemas(connectionId, database));
       const children = schemas.map((s) => ({
         id: `${connectionId}:${database}:${s}`,
         label: s,
