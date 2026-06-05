@@ -1271,6 +1271,7 @@ export default {
     title: "Operación peligrosa",
     message:
       "Esta sentencia SQL puede modificar o eliminar datos de forma irreversible. ¿Estás seguro de que deseas ejecutarla?",
+    suppressFuturePrompts: "No volver a preguntar para SQL peligroso",
     deleteMessage: "Esta operación de eliminación puede ser irreversible. ¿Continuar?",
     deleteConfirm: "Confirmar eliminación",
     deleteRowMessage:
@@ -1596,6 +1597,9 @@ export default {
     executeModeCurrent: "Ejecutar sentencia en el cursor",
     wordWrap: "Ajuste de línea",
     wordWrapDescription: "Ajustar las líneas largas de SQL al ancho del editor",
+    confirmDangerousSqlExecution: "Confirmar antes de SQL peligroso",
+    confirmDangerousSqlExecutionDescription:
+      "Cuando se desactiva, ALTER, DROP, DELETE, TRUNCATE y otras sentencias peligrosas se ejecutan sin el diálogo de advertencia.",
     redisScanPageSize: "Cantidad de escaneo Redis",
     redisScanPageSizeDescription: "Claves solicitadas por página SCAN al explorar claves Redis.",
     redisScanPageSizeOption: "{count} claves",

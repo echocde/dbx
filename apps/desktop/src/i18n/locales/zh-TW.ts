@@ -1335,6 +1335,7 @@ export default {
   dangerDialog: {
     title: "危險操作",
     message: "此 SQL 語句可能不可逆地修改或刪除資料，確認要執行嗎？",
+    suppressFuturePrompts: "之後執行危險 SQL 不再提示",
     deleteMessage: "此刪除操作可能不可逆，確認要繼續嗎？",
     deleteConfirm: "確認刪除",
     deleteRowMessage: "此列將被標記為刪除，儲存後會從資料庫刪除，確認要繼續嗎？",
@@ -1641,6 +1642,8 @@ export default {
     executeModeCurrent: "執行指標所在語句",
     wordWrap: "自動換行",
     wordWrapDescription: "長 SQL 在編輯器寬度內自動折行顯示",
+    confirmDangerousSqlExecution: "執行危險 SQL 前彈出確認",
+    confirmDangerousSqlExecutionDescription: "關閉後，ALTER、DROP、DELETE、TRUNCATE 等危險 SQL 會直接執行。",
     redisScanPageSize: "Redis 掃描數量",
     redisScanPageSizeDescription: "瀏覽 Redis Key 時每次 SCAN 請求的 Key 數量。",
     redisScanPageSizeOption: "{count} 個 Key",

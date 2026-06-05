@@ -1382,6 +1382,7 @@ export default {
   dangerDialog: {
     title: "Dangerous Operation",
     message: "This SQL statement may modify or delete data irreversibly. Are you sure you want to execute it?",
+    suppressFuturePrompts: "Do not ask again for dangerous SQL",
     deleteMessage: "This delete operation may be irreversible. Continue?",
     deleteConfirm: "Confirm Delete",
     deleteRowMessage: "This row will be marked for deletion and removed from the database after saving. Continue?",
@@ -1706,6 +1707,9 @@ export default {
     executeModeCurrent: "Execute statement at cursor",
     wordWrap: "Word wrap",
     wordWrapDescription: "Wrap long SQL lines within the editor width",
+    confirmDangerousSqlExecution: "Confirm before dangerous SQL",
+    confirmDangerousSqlExecutionDescription:
+      "When disabled, ALTER, DROP, DELETE, TRUNCATE, and other dangerous SQL run without the warning dialog.",
     redisScanPageSize: "Redis scan count",
     redisScanPageSizeDescription: "Keys requested per Redis SCAN page when browsing keys.",
     redisScanPageSizeOption: "{count} keys",
