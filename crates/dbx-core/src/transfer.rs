@@ -78,7 +78,7 @@ pub fn quote_identifier(name: &str, db_type: &DatabaseType) -> String {
 
 pub fn qualified_table(table: &str, schema: &str, db_type: &DatabaseType) -> String {
     let qt = quote_identifier(table, db_type);
-    if schema.is_empty() {
+    if schema.is_empty() || matches!(db_type, DatabaseType::Mysql) {
         qt
     } else {
         format!("{}.{}", quote_identifier(schema, db_type), qt)
@@ -3102,6 +3102,20 @@ mod tests {
         );
 
         assert_eq!(sql, "INSERT INTO `policies` (`insurance_start_time`) VALUES\n('2026-05-12 00:00:00')");
+    }
+
+    #[test]
+    fn mysql_insert_omits_database_qualified_table_name() {
+        let sql = generate_insert_typed(
+            &[String::from("id")],
+            &[Some(String::from("int"))],
+            &[vec![json!(1)]],
+            "users",
+            "app",
+            &DatabaseType::Mysql,
+        );
+
+        assert_eq!(sql, "INSERT INTO `users` (`id`) VALUES\n(1)");
     }
 
     #[test]
