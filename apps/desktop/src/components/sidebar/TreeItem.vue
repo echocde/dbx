@@ -768,6 +768,12 @@ async function openData() {
     return queryStore.createTab(node.connectionId, node.database, node.label, "data", tableSchema);
   })();
   console.info("[DBX][openData:tab-created]", { traceId, tabId, elapsed: elapsed() });
+  queryStore.setTableMeta(tabId, {
+    schema: tableSchema,
+    tableName: node.label,
+    columns: [],
+    primaryKeys: [],
+  });
   queryStore.setExecuting(tabId, true);
 
   try {
