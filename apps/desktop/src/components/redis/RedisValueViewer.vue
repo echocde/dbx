@@ -594,7 +594,10 @@ function startEditTtl() {
 async function saveTtl() {
   const val = ttlInput.value.trim();
   const ttl = val === "" || val === "-1" ? -1 : parseInt(val, 10);
-  if (isNaN(ttl)) return;
+  if (isNaN(ttl)) {
+    toast(t("redis.ttlInvalid"), 3000);
+    return;
+  }
   await api.redisSetTtl(props.connectionId, props.db, props.keyRaw, ttl);
   editingTtl.value = false;
   await load();
@@ -606,7 +609,10 @@ function cancelEditTtl() {
 
 // Hash
 async function hashSet() {
-  if (!newField.value) return;
+  if (!newField.value.trim()) {
+    toast(t("redis.fieldRequired"), 3000);
+    return;
+  }
   await api.redisHashSet(props.connectionId, props.db, props.keyRaw, newField.value, newValue.value);
   newField.value = "";
   newValue.value = "";
@@ -623,7 +629,10 @@ function requestHashDel(field: string) {
 
 // List
 async function listPush() {
-  if (!newValue.value) return;
+  if (!newValue.value.trim()) {
+    toast(t("redis.valueRequired"), 3000);
+    return;
+  }
   await api.redisListPush(props.connectionId, props.db, props.keyRaw, newValue.value);
   newValue.value = "";
   await load();
@@ -639,7 +648,10 @@ function requestListRemove(index: number) {
 
 // Set
 async function setAdd() {
-  if (!newValue.value) return;
+  if (!newValue.value.trim()) {
+    toast(t("redis.memberRequired"), 3000);
+    return;
+  }
   await api.redisSetAdd(props.connectionId, props.db, props.keyRaw, newValue.value);
   newValue.value = "";
   await load();
@@ -655,7 +667,10 @@ function requestSetRemove(member: string) {
 
 // ZSet
 async function zsetAdd() {
-  if (!newValue.value) return;
+  if (!newValue.value.trim()) {
+    toast(t("redis.memberRequired"), 3000);
+    return;
+  }
   const score = parseFloat(newScore.value || "0");
   await api.redisZadd(props.connectionId, props.db, props.keyRaw, newValue.value, score);
   newValue.value = "";
