@@ -6135,6 +6135,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           @blur="commitEdit"
                           @click.stop
                           @keydown.stop="onEditKeydown"
+                          @paste.stop
                         />
                       </template>
                       <template v-else>
@@ -6770,6 +6771,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                         @blur="commitEdit"
                         @click.stop
                         @keydown.stop="onEditKeydown"
+                        @paste.stop
                       />
                     </div>
                     <div
@@ -6944,6 +6946,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           @blur="commitEdit"
                           @click.stop
                           @keydown.stop="onEditKeydown"
+                          @paste.stop
                         />
                       </template>
                       <template v-else>
