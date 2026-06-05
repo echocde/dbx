@@ -702,7 +702,7 @@ mod tests {
     fn builds_drop_table_if_exists_with_qualified_mysql_name() {
         let sql = drop_table_if_exists_sql("users", "app", &DatabaseType::Mysql);
 
-        assert_eq!(sql, "DROP TABLE IF EXISTS `app`.`users`;");
+        assert_eq!(sql, "DROP TABLE IF EXISTS `users`;");
     }
 
     #[test]

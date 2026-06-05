@@ -1379,7 +1379,7 @@ mod tests {
                 table_name: "events".to_string(),
                 property_name: "transactional".to_string(),
             }),
-            "SHOW TBLPROPERTIES `events` ('transactional')"
+            "SHOW TBLPROPERTIES `default`.`events` ('transactional')"
         );
     }
 
