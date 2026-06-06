@@ -1541,6 +1541,28 @@ const POSTGRES_INDEXES_COMPAT_SQL: &str = "SELECT i.relname AS index_name, \
              GROUP BY i.relname, i.oid, ix.indisunique, ix.indisprimary, ix.indpred, ix.indrelid, am.amname, ix.indkey \
              ORDER BY i.relname";
 
+const POSTGRES_INDEXES_OPENGAUSS_SQL: &str = "SELECT i.relname AS index_name, \
+             array_agg(COALESCE(a.attname, pg_get_indexdef(ix.indexrelid, k.n::int, true)) ORDER BY k.n) AS columns, \
+             ix.indisunique AS is_unique, \
+             ix.indisprimary AS is_primary, \
+             pg_get_expr(ix.indpred, ix.indrelid) AS filter_expr, \
+             am.amname AS index_type, \
+             NULL::smallint AS nkeyatts, \
+             ix.indkey AS indkey, \
+             obj_description(i.oid, 'pg_class') AS index_comment \
+             FROM pg_index ix \
+             JOIN pg_class t ON t.oid = ix.indrelid \
+             JOIN pg_class i ON i.oid = ix.indexrelid \
+             JOIN pg_namespace n ON n.oid = t.relnamespace \
+             JOIN pg_am am ON am.oid = i.relam \
+             JOIN LATERAL ( \
+                 SELECT unnest(ix.indkey) AS attnum, generate_series(1, array_length(ix.indkey, 1)) AS n \
+             ) AS k ON true \
+             LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum AND k.attnum > 0 \
+             WHERE n.nspname = $1 AND t.relname = $2 \
+             GROUP BY i.relname, i.oid, ix.indisunique, ix.indisprimary, ix.indpred, ix.indrelid, am.amname, ix.indkey \
+             ORDER BY i.relname";
+
 async fn list_indexes_with_sql(
     client: &deadpool_postgres::Client,
     sql: &str,
@@ -1579,14 +1601,21 @@ pub async fn list_indexes(pool: &Pool, schema: &str, table: &str) -> Result<Vec<
         Err(primary_error) => match list_indexes_with_sql(&client, POSTGRES_INDEXES_COMPAT_SQL, schema, table).await {
             Ok(indexes) => Ok(indexes),
             Err(fallback_error) => {
-                let primary_message = pg_error_to_string(primary_error);
-                let fallback_message = pg_error_to_string(fallback_error);
-                log::debug!(
-                    "[postgres][list_indexes:compat-failed] primary_error={} fallback_error={}",
-                    primary_message,
-                    fallback_message
-                );
-                Err(fallback_message)
+                match list_indexes_with_sql(&client, POSTGRES_INDEXES_OPENGAUSS_SQL, schema, table).await {
+                    Ok(indexes) => Ok(indexes),
+                    Err(opengauss_error) => {
+                        let primary_message = pg_error_to_string(primary_error);
+                        let fallback_message = pg_error_to_string(fallback_error);
+                        let opengauss_message = pg_error_to_string(opengauss_error);
+                        log::debug!(
+                        "[postgres][list_indexes:opengauss-failed] primary_error={} fallback_error={} opengauss_error={}",
+                        primary_message,
+                        fallback_message,
+                        opengauss_message
+                    );
+                        Err(opengauss_message)
+                    }
+                }
             }
         },
     }
@@ -2026,6 +2055,14 @@ mod tests {
         assert!(POSTGRES_INDEXES_SQL.contains("ix.indnkeyatts"));
         assert!(!POSTGRES_INDEXES_COMPAT_SQL.contains("ix.indnkeyatts"));
         assert!(POSTGRES_INDEXES_COMPAT_SQL.contains("NULL::smallint AS nkeyatts"));
+    }
+
+    #[test]
+    fn postgres_index_metadata_has_opengauss_compatible_fallback() {
+        assert!(!POSTGRES_INDEXES_OPENGAUSS_SQL.contains("WITH ORDINALITY"));
+        assert!(POSTGRES_INDEXES_OPENGAUSS_SQL.contains("generate_series"));
+        assert!(POSTGRES_INDEXES_OPENGAUSS_SQL.contains("array_length"));
+        assert!(POSTGRES_INDEXES_OPENGAUSS_SQL.contains("NULL::smallint AS nkeyatts"));
     }
 
     #[test]
