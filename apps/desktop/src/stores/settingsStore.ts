@@ -191,7 +191,6 @@ export type DataGridRenderMode = (typeof DATA_GRID_RENDER_MODES)[number];
 const DISCONNECT_TAB_HANDLING_MODES = ["close-tabs", "keep-tabs-clear-results", "keep-tabs-keep-results"] as const;
 export type DisconnectTabHandlingMode = (typeof DISCONNECT_TAB_HANDLING_MODES)[number];
 
-// 自定义主题颜色配置
 export interface CustomThemeColors {
   keyword: string;
   field: string;
@@ -227,7 +226,7 @@ export interface CustomTheme {
 }
 
 export const DEFAULT_CUSTOM_THEMES: CustomTheme[] = [
-  { id: "default", name: "自定义", colors: { ...DEFAULT_CUSTOM_THEME_COLORS } },
+  { id: "default", name: "Custom", colors: { ...DEFAULT_CUSTOM_THEME_COLORS } },
 ];
 
 export interface EditorSettings {
@@ -279,7 +278,7 @@ export const EDITOR_THEMES: { value: EditorTheme; label: string; dark: boolean }
   { value: "duotone-light", label: "Duotone Light", dark: false },
   { value: "duotone-dark", label: "Duotone Dark", dark: true },
   { value: "xcode", label: "Xcode", dark: false },
-  { value: "custom", label: "Custom (可自定义)", dark: true },
+  { value: "custom", label: "Custom", dark: true },
 ];
 
 const EDITOR_THEME_VALUES = new Set<EditorTheme>(EDITOR_THEMES.map((theme) => theme.value));
@@ -438,15 +437,14 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     },
     customThemes: (() => {
       if (Array.isArray(settings.customThemes) && settings.customThemes.length > 0) {
-        // 自动重命名"默认"为"自定义"
-        return settings.customThemes.map((theme) => (theme.name === "默认" ? { ...theme, name: "自定义" } : theme));
+        return settings.customThemes.map((theme) => (theme.name === "默认" ? { ...theme, name: "Custom" } : theme));
       }
       return [
         ...(settings.customThemeColors
           ? [
               {
                 id: "migrated",
-                name: "已迁移",
+                name: "Migrated",
                 colors: { ...DEFAULT_CUSTOM_THEME_COLORS, ...settings.customThemeColors },
               },
             ]
@@ -627,7 +625,6 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.activeCustomThemeId !== undefined) {
       editorSettings.value.activeCustomThemeId = partial.activeCustomThemeId;
     }
-    // 同步 customThemeColors 为当前激活主题的颜色（兼容回退逻辑）
     if (partial.customThemes !== undefined || partial.activeCustomThemeId !== undefined) {
       const themes = editorSettings.value.customThemes;
       const activeId = editorSettings.value.activeCustomThemeId;
