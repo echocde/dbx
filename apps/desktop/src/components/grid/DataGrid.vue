@@ -138,6 +138,7 @@ import {
   dataGridColumnDetailTsv,
   dataGridRowDetailJson,
   dataGridRowDetailTsv,
+  filterDataGridDetailFields,
   type DataGridCellDetail,
 } from "@/lib/dataGridDetail";
 import {
@@ -428,6 +429,9 @@ const rowDetailDialogOpen = ref(false);
 const rowDetailDialogRowId = ref<number | null>(null);
 const columnDetailDialogOpen = ref(false);
 const columnDetailDialogColumnIndex = ref<number | null>(null);
+const cellDetailJsonView = ref(false);
+const rowDetailSearch = ref("");
+const columnDetailSearch = ref("");
 const isResizingDetail = ref(false);
 const imagePreviewOpen = ref(false);
 const imagePreviewSrc = ref("");
@@ -2699,16 +2703,31 @@ const columnDetail = computed(() => {
   });
 });
 
+const filteredRowDetailFields = computed(() =>
+  rowDetail.value ? filterDataGridDetailFields(rowDetail.value.fields, rowDetailSearch.value) : [],
+);
+
+const filteredColumnDetailFields = computed(() =>
+  columnDetail.value ? filterDataGridDetailFields(columnDetail.value.fields, columnDetailSearch.value) : [],
+);
+
 watch(cellDetailDialogOpen, (open) => {
-  if (!open) cellDetailDialogTarget.value = null;
+  if (open) cellDetailJsonView.value = false;
+  else cellDetailDialogTarget.value = null;
 });
 
 watch(rowDetailDialogOpen, (open) => {
-  if (!open) rowDetailDialogRowId.value = null;
+  if (!open) {
+    rowDetailDialogRowId.value = null;
+    rowDetailSearch.value = "";
+  }
 });
 
 watch(columnDetailDialogOpen, (open) => {
-  if (!open) columnDetailDialogColumnIndex.value = null;
+  if (!open) {
+    columnDetailDialogColumnIndex.value = null;
+    columnDetailSearch.value = "";
+  }
 });
 
 watch(sideGeometryPreviewOpen, async (open) => {
@@ -4467,6 +4486,14 @@ function copyDialogCellFormattedJson() {
   const detail = dialogCellDetail.value;
   if (!detail?.formattedJson) return;
   copyText(detail.formattedJson);
+}
+
+function copyDialogCellCurrentValue() {
+  if (cellDetailJsonView.value && dialogCellDetail.value?.formattedJson) {
+    copyDialogCellFormattedJson();
+  } else {
+    copyDialogCellValue();
+  }
 }
 
 function copyDialogCellColumnName() {
@@ -8000,6 +8027,17 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               <div class="text-muted-foreground">{{ t("grid.cellValue") }}</div>
               <div class="flex items-center gap-1">
                 <Button
+                  v-if="dialogCellDetail.formattedJson"
+                  :variant="cellDetailJsonView ? 'secondary' : 'ghost'"
+                  size="sm"
+                  class="h-6 gap-1 px-2 text-xs"
+                  :title="t('grid.formattedJson')"
+                  @click="cellDetailJsonView = !cellDetailJsonView"
+                >
+                  <Code2 class="h-3 w-3" />
+                  {{ t("grid.formattedJson") }}
+                </Button>
+                <Button
                   v-if="dialogCellDetail.isEditable"
                   variant="ghost"
                   size="icon"
@@ -8014,7 +8052,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                   size="icon"
                   class="h-6 w-6"
                   :title="t('grid.copyValue')"
-                  @click="copyDialogCellValue"
+                  @click="copyDialogCellCurrentValue"
                 >
                   <Copy class="h-3 w-3" />
                 </Button>
@@ -8079,46 +8117,37 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             <pre
               class="max-h-[44vh] overflow-auto rounded border bg-muted/20 p-3 font-mono text-xs whitespace-pre-wrap break-words"
               :class="{ 'italic text-muted-foreground': dialogCellDetail.value === null }"
-              >{{ dialogCellDetail.rawValuePreview }}</pre
+              >{{
+                cellDetailJsonView && dialogCellDetail.formattedJson
+                  ? dialogCellDetail.formattedJson
+                  : dialogCellDetail.rawValuePreview
+              }}</pre
             >
-            <div v-if="dialogCellDetail.isValuePreviewTruncated" class="text-[11px] text-muted-foreground">
+            <div
+              v-if="dialogCellDetail.isValuePreviewTruncated && !cellDetailJsonView"
+              class="text-[11px] text-muted-foreground"
+            >
               {{ t("grid.largeValuePreviewHint", { count: dialogCellDetail.rawValuePreview.length }) }}
             </div>
           </div>
 
-          <div v-if="dialogCellDetail.displayValuePreview !== dialogCellDetail.rawValuePreview" class="space-y-1">
+          <div
+            v-if="dialogCellDetail.displayValuePreview !== dialogCellDetail.rawValuePreview && !cellDetailJsonView"
+            class="space-y-1"
+          >
             <div class="text-muted-foreground">{{ t("grid.formattedValue") }}</div>
-            <pre class="max-h-40 overflow-auto rounded border bg-muted/20 p-3 font-mono text-xs whitespace-pre-wrap">{{
-              dialogCellDetail.displayValuePreview
-            }}</pre>
-          </div>
-
-          <div v-if="dialogCellDetail.formattedJson" class="space-y-1">
-            <div class="flex items-center justify-between gap-2">
-              <div class="text-muted-foreground">{{ t("grid.formattedJson") }}</div>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-6 px-2 text-xs"
-                :title="t('grid.copyValue')"
-                @click="copyDialogCellFormattedJson"
-              >
-                <Copy class="h-3 w-3" />
-              </Button>
-            </div>
             <pre
-              class="max-h-[44vh] overflow-auto rounded border bg-muted/20 p-3 font-mono text-xs whitespace-pre-wrap"
-              >{{ dialogCellDetail.formattedJson }}</pre
+              class="max-h-40 overflow-auto rounded border bg-muted/20 p-3 font-mono text-xs whitespace-pre-wrap break-words"
+              >{{ dialogCellDetail.displayValuePreview }}</pre
             >
           </div>
         </div>
 
         <DialogFooter class="shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" class="h-7 text-xs" @click="copyDialogCellColumnName">
-              <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyColumnName") }}
-            </Button>
-          </div>
+          <div class="flex flex-wrap gap-2"></div>
+          <Button variant="ghost" size="sm" class="h-7 text-xs" @click="copyDialogCellColumnName">
+            <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyColumnName") }}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -8132,8 +8161,18 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
           </DialogTitle>
         </DialogHeader>
 
-        <div class="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-          <span>{{ t("grid.columnsCount", { count: rowDetail.fields.length }) }}</span>
+        <div class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          <span class="whitespace-nowrap">{{ t("grid.columnsCount", { count: rowDetail.fields.length }) }}</span>
+          <div class="relative ml-auto w-56 max-w-full">
+            <Search
+              class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              v-model="rowDetailSearch"
+              :placeholder="t('grid.detailSearchPlaceholder')"
+              class="h-7 pl-7 text-xs"
+            />
+          </div>
         </div>
 
         <div class="min-h-0 flex-1 overflow-auto rounded border">
@@ -8148,13 +8187,13 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             </thead>
             <tbody>
               <tr
-                v-for="(field, fieldIndex) in rowDetail.fields"
+                v-for="(field, fieldIndex) in filteredRowDetailFields"
                 :key="`${field.colIndex}:${field.column}`"
                 class="border-b align-top last:border-b-0"
               >
                 <td class="px-3 py-2 text-muted-foreground tabular-nums">{{ fieldIndex + 1 }}</td>
                 <td class="px-3 py-2">
-                  <div class="font-medium break-all">{{ field.column }}</div>
+                  <div class="font-medium break-words">{{ field.column }}</div>
                   <div
                     :class="field.type ? typeColorClass(field.type) : 'text-muted-foreground'"
                     class="mt-1 text-[11px]"
@@ -8165,7 +8204,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                     {{ field.comment }}
                   </div>
                 </td>
-                <td class="min-w-0 px-3 py-2">
+                <td class="w-full max-w-0 px-3 py-2">
                   <div class="mb-1 text-[11px] text-muted-foreground">
                     {{ field.value === null ? t("grid.nullValue") : t("grid.valueLength") }}:
                     {{ field.value === null ? "true" : field.length }}
@@ -8216,15 +8255,23 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               </tr>
             </tbody>
           </table>
+          <div
+            v-if="rowDetailSearch && !filteredRowDetailFields.length"
+            class="px-3 py-6 text-center text-xs text-muted-foreground"
+          >
+            {{ t("grid.detailSearchNoMatch") }}
+          </div>
         </div>
 
-        <DialogFooter class="shrink-0 justify-start gap-2">
-          <Button variant="outline" size="sm" class="h-7 text-xs" @click="copyRowDetailJson">
-            <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyRow") }}
-          </Button>
-          <Button variant="outline" size="sm" class="h-7 text-xs" @click="copyRowDetailTsv">
-            <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyRowTsv") }}
-          </Button>
+        <DialogFooter class="shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" class="h-7 text-xs" @click="copyRowDetailJson">
+              <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyRow") }}
+            </Button>
+            <Button variant="outline" size="sm" class="h-7 text-xs" @click="copyRowDetailTsv">
+              <Copy class="mr-1.5 h-3 w-3" /> {{ t("grid.copyRowTsv") }}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -8261,6 +8308,20 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
           </div>
         </div>
 
+        <div class="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+          <span class="whitespace-nowrap">{{ t("grid.rowCount") }}: {{ columnDetail.fields.length }}</span>
+          <div class="relative ml-auto w-56 max-w-full">
+            <Search
+              class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              v-model="columnDetailSearch"
+              :placeholder="t('grid.detailSearchPlaceholder')"
+              class="h-7 pl-7 text-xs"
+            />
+          </div>
+        </div>
+
         <div class="min-h-0 flex-1 overflow-auto rounded border">
           <table class="w-full min-w-[500px] text-xs">
             <thead class="sticky top-0 z-10 bg-muted/80 text-muted-foreground backdrop-blur">
@@ -8272,12 +8333,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             </thead>
             <tbody>
               <tr
-                v-for="field in columnDetail.fields"
+                v-for="field in filteredColumnDetailFields"
                 :key="`${field.rowId}:${field.colIndex}`"
                 class="border-b align-top last:border-b-0"
               >
                 <td class="px-3 py-2 tabular-nums">{{ field.rowNumber }}</td>
-                <td class="min-w-0 px-3 py-2">
+                <td class="w-full max-w-0 px-3 py-2">
                   <div class="mb-1 text-[11px] text-muted-foreground">
                     {{ field.value === null ? t("grid.nullValue") : t("grid.valueLength") }}:
                     {{ field.value === null ? "true" : field.length }}
@@ -8328,6 +8389,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               </tr>
             </tbody>
           </table>
+          <div
+            v-if="columnDetailSearch && !filteredColumnDetailFields.length"
+            class="px-3 py-6 text-center text-xs text-muted-foreground"
+          >
+            {{ t("grid.detailSearchNoMatch") }}
+          </div>
         </div>
 
         <DialogFooter class="shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
