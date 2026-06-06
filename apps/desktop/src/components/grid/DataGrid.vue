@@ -576,6 +576,23 @@ function localFilterActive(colIdx: number): boolean {
 
 const localFilterCount = computed(() => Object.values(localColumnFilters.value).filter((values) => values.size).length);
 const hasLocalColumnFilters = computed(() => localFilterCount.value > 0);
+const filterButtonCount = computed(() => structuredFilterCount.value + localFilterCount.value);
+const filterButtonActive = computed(() => hasStructuredFilters.value || hasLocalColumnFilters.value);
+const localFilterSummaries = computed(() =>
+  Object.entries(localColumnFilters.value)
+    .filter(([, selected]) => selected.size > 0)
+    .map(([columnIndexText, selected]) => {
+      const columnIndex = Number(columnIndexText);
+      const labelByKey = new Map(buildLocalFilterOptions(columnIndex).map((option) => [option.key, option.label]));
+      const values = [...selected].map((key) => labelByKey.get(key) ?? key);
+      return {
+        columnIndex,
+        columnName: props.result.columns[columnIndex] ?? `#${columnIndex + 1}`,
+        values: values.slice(0, 3),
+        hiddenValueCount: Math.max(0, values.length - 3),
+      };
+    }),
+);
 
 function rowMatchesLocalColumnFilters(data: CellValue[]): boolean {
   const activeEntries = Object.entries(localColumnFilters.value).filter(([, selected]) => selected.size > 0);
@@ -996,10 +1013,10 @@ function resetStructuredFilters() {
 }
 
 async function clearAllFilters() {
-  if (!canUseWhereSearch.value) return;
   whereFilterInput.value = "";
   resetStructuredFilters();
-  await applyWhereFilter();
+  clearLocalFilter();
+  if (canUseWhereSearch.value) await applyWhereFilter();
 }
 
 function buildGroupedWhere(conditions: string[], rules: StructuredFilterRule[]): string {
@@ -5570,7 +5587,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </SelectContent>
               </Select>
             </div>
-            <template v-if="hasLocalColumnFilters">
+            <template v-if="hasLocalColumnFilters && !canShowWhereSearch">
               <div class="flex items-center gap-1 px-2 py-0.5 min-w-0">
                 <button
                   type="button"
@@ -5584,11 +5601,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </button>
               </div>
             </template>
-
             <template v-if="canShowWhereSearch">
               <div ref="searchSplitContainerRef" class="flex flex-1 min-w-0">
                 <div
-                  class="flex flex-1 items-center gap-1 px-2 py-0.5 border-l min-w-0 relative"
+                  class="flex flex-1 items-center gap-1 px-2 py-0.5 min-w-0 relative"
+                  :class="{ 'border-l': useTransaction && editable && (tableMeta || customSave) }"
                   :style="whereSearchPaneStyle"
                 >
                   <Popover v-model:open="filterBuilderOpen">
@@ -5597,7 +5614,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                         type="button"
                         class="relative flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[11px] font-medium transition-colors"
                         :class="
-                          hasStructuredFilters
+                          filterButtonActive
                             ? 'border-primary/40 bg-primary/10 text-primary hover:bg-primary/15'
                             : 'border-border/70 text-muted-foreground hover:bg-accent hover:text-foreground'
                         "
@@ -5606,10 +5623,10 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       >
                         <Filter class="h-3 w-3" />
                         <span
-                          v-if="structuredFilterCount"
+                          v-if="filterButtonCount"
                           class="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] leading-none text-primary-foreground"
                         >
-                          {{ structuredFilterCount }}
+                          {{ filterButtonCount }}
                         </span>
                       </button>
                     </PopoverTrigger>
@@ -5620,6 +5637,58 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                           <Plus class="mr-1 h-3.5 w-3.5" />
                           {{ t("grid.filterBuilderAddRule") }}
                         </Button>
+                      </div>
+
+                      <div
+                        v-if="hasLocalColumnFilters"
+                        class="space-y-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2"
+                      >
+                        <div class="flex items-center justify-between gap-3">
+                          <div class="flex min-w-0 items-center gap-2 text-xs font-medium text-primary">
+                            <Filter class="h-3.5 w-3.5 shrink-0" />
+                            <span class="truncate">{{
+                              t("grid.localFiltersActive", { count: localFilterCount })
+                            }}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            class="h-7 shrink-0 px-2 text-xs"
+                            @click="clearLocalFilter()"
+                          >
+                            <X class="mr-1 h-3.5 w-3.5" />
+                            {{ t("grid.clearLocalFiltersShort") }}
+                          </Button>
+                        </div>
+                        <div class="space-y-1">
+                          <div
+                            v-for="summary in localFilterSummaries"
+                            :key="summary.columnIndex"
+                            class="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)_auto] items-center gap-2 rounded border border-primary/10 bg-background/70 px-2 py-1 text-xs"
+                          >
+                            <span class="truncate font-medium text-foreground" :title="summary.columnName">
+                              {{ summary.columnName }}
+                            </span>
+                            <span class="min-w-0 truncate font-mono text-muted-foreground">
+                              <template v-for="(value, valueIndex) in summary.values" :key="valueIndex">
+                                <span v-if="valueIndex > 0">, </span>
+                                <span>{{ value }}</span>
+                              </template>
+                              <span v-if="summary.hiddenValueCount">
+                                {{ t("grid.localFilterMoreValues", { count: summary.hiddenValueCount }) }}
+                              </span>
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              class="h-6 w-6 text-muted-foreground hover:text-destructive"
+                              :title="t('grid.clearFilter')"
+                              @click="clearLocalFilter(summary.columnIndex)"
+                            >
+                              <X class="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
                       </div>
 
                       <div v-if="structuredFilterRules.length" class="space-y-2">
