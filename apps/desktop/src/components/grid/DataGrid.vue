@@ -3896,6 +3896,17 @@ function selectTransposeCell(rowIndex: number, actualColIdx: number, event: Mous
     selectSingleCell(rowIndex, visibleColIdx);
   }
   transposeRowIndex.value = rowIndex;
+  gridRef.value?.focus({ preventScroll: true });
+}
+
+function showTransposeCellDetails(rowIndex: number, actualColIdx: number) {
+  const visibleColIdx = visibleColumnIndexes.value.indexOf(actualColIdx);
+  if (visibleColIdx < 0) return;
+  contextHeaderColumn.value = null;
+  contextHeaderColumnIndex.value = null;
+  clearRowSelection();
+  selectSingleCell(rowIndex, visibleColIdx);
+  transposeRowIndex.value = rowIndex;
   showCellDetails(rowIndex, actualColIdx);
   gridRef.value?.focus({ preventScroll: true });
 }
@@ -6327,7 +6338,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                             class="flex h-5 w-5 items-center justify-center rounded bg-background/90 text-muted-foreground shadow-sm ring-1 ring-border hover:text-foreground"
                             :title="t('grid.cellDetails')"
                             @mousedown.stop
-                            @click.stop="showCellDetails(cell.recordIndex, cell.valueIndex)"
+                            @click.stop="showTransposeCellDetails(cell.recordIndex, cell.valueIndex)"
                           >
                             <Info class="h-3 w-3" />
                           </button>
