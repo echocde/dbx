@@ -797,6 +797,7 @@ export default {
     exportEncrypted: "导出",
     decryptImport: "解密并导入",
     wrongPassphrase: "密码短语错误或文件已损坏",
+    cryptoUnavailable: "当前浏览器环境不支持加密配置导入，请使用 HTTPS、localhost 或 DBX 桌面版。",
     exportSuccess: "连接配置导出成功",
     importSuccess: "已导入 {count} 个连接",
     importNavicatSuccess: "已导入 {count} 个 Navicat 连接，若个别连接密码为空请补填后测试连接",

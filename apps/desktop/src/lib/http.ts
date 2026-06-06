@@ -167,6 +167,10 @@ export async function loadConnections(): Promise<ConnectionConfig[]> {
   return get("/api/connection/list");
 }
 
+export async function decryptConfig(payload: unknown, passphrase: string): Promise<string> {
+  return post("/api/app-settings/config/decrypt", { payload, passphrase });
+}
+
 export async function listSystemFonts(): Promise<string[]> {
   return get("/api/system/fonts");
 }

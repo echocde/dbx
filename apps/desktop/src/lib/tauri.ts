@@ -839,6 +839,11 @@ export async function loadConnections(): Promise<ConnectionConfig[]> {
   return invoke("load_connections");
 }
 
+export async function decryptConfig(payload: unknown, passphrase: string): Promise<string> {
+  const { decryptConfig: decryptConfigPayload } = await import("@/lib/configCrypto");
+  return decryptConfigPayload(payload as any, passphrase);
+}
+
 export async function listPlugins(): Promise<InstalledPlugin[]> {
   return invoke("list_plugins");
 }

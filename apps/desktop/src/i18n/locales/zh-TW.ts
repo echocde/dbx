@@ -777,6 +777,7 @@ export default {
     exportEncrypted: "匯出",
     decryptImport: "解密並匯入",
     wrongPassphrase: "加密密碼錯誤或檔案已損壞",
+    cryptoUnavailable: "目前瀏覽器環境不支援加密設定匯入，請使用 HTTPS、localhost 或 DBX 桌面版。",
     exportSuccess: "連線設定匯出成功",
     importSuccess: "已匯入 {count} 個連線",
     importNavicatSuccess: "已匯入 {count} 個 Navicat 連線，若個別連線密碼為空請補填後測試連線",

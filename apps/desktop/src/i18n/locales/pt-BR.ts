@@ -827,6 +827,8 @@ export default {
     exportEncrypted: "Exportar",
     decryptImport: "Descriptografar e Importar",
     wrongPassphrase: "Frase secreta incorreta ou arquivo corrompido",
+    cryptoUnavailable:
+      "A importação criptografada não está disponível neste contexto do navegador. Use HTTPS, localhost ou DBX Desktop.",
     exportSuccess: "Conexões exportadas com sucesso",
     importSuccess: "{count} conexão(ões) importada(s)",
     importNavicatSuccess:

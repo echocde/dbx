@@ -813,6 +813,8 @@ export default {
     exportEncrypted: "Export",
     decryptImport: "Decrypt & Import",
     wrongPassphrase: "Wrong passphrase or corrupted file",
+    cryptoUnavailable:
+      "Encrypted config import is unavailable in this browser context. Use HTTPS, localhost, or DBX Desktop.",
     exportSuccess: "Connections exported successfully",
     importSuccess: "Imported {count} connection(s)",
     importNavicatSuccess:
