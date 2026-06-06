@@ -73,6 +73,7 @@
     "vue-virtual-scroller": "^3.0.4"
   },
   "devDependencies": {
+    "@lezer/highlight": "^1.2.3",
     "@oxfmt/binding-darwin-arm64": "0.53.0",
     "@oxlint/binding-darwin-arm64": "1.68.0",
     "@tailwindcss/vite": "^4.3.0",

@@ -138,6 +138,9 @@ importers:
         specifier: ^3.0.4
         version: 3.0.4(vue@3.5.35(typescript@6.0.3))
     devDependencies:
+      '@lezer/highlight':
+        specifier: ^1.2.3
+        version: 1.2.3
       '@oxfmt/binding-darwin-arm64':
         specifier: 0.53.0
         version: 0.53.0
