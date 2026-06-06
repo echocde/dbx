@@ -1493,6 +1493,23 @@ const visibleSourceColumns = computed(() => {
   if (!props.sourceColumns || props.sourceColumns.length !== props.result.columns.length) return undefined;
   return visibleColumnIndexes.value.map((index) => props.sourceColumns?.[index]);
 });
+const tableColumnTypesByName = computed(() => {
+  const map = new Map<string, string>();
+  for (const column of props.tableMeta?.columns ?? []) {
+    map.set(column.name.toLocaleLowerCase(), column.data_type);
+  }
+  return map;
+});
+const visibleColumnTypes = computed(() =>
+  visibleColumnIndexes.value.map((index) => {
+    const resultColumn = props.result.columns[index]?.toLocaleLowerCase();
+    const sourceColumn = props.sourceColumns?.[index]?.toLocaleLowerCase();
+    return (
+      (sourceColumn ? tableColumnTypesByName.value.get(sourceColumn) : undefined) ||
+      (resultColumn ? tableColumnTypesByName.value.get(resultColumn) : undefined)
+    );
+  }),
+);
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
 const displayableColumnCount = computed(() => displayableColumnIndexes.value.length);
 const hiddenColumnCount = computed(() => displayableColumnCount.value - visibleColumnCount.value);
@@ -3736,6 +3753,7 @@ const {
   database: computed(() => props.database),
   context: computed(() => props.context),
   sourceColumns: visibleSourceColumns,
+  columnTypes: visibleColumnTypes,
   whereInput: computed(() => currentWhereInput()),
   orderBy: computed(() => currentOrderBy()),
   exportBatchSize: computed(() => settingsStore.editorSettings.exportBatchSize),
