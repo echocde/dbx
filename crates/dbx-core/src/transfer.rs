@@ -1183,6 +1183,7 @@ fn max_transfer_write_rows(db_type: &DatabaseType, mode: &TransferMode) -> usize
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_transfer_write_sql(
     mode: &TransferMode,
     columns: &[String],
@@ -1199,6 +1200,7 @@ fn generate_transfer_write_sql(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_transfer_write_sql_batches(
     mode: &TransferMode,
     columns: &[String],
@@ -1307,6 +1309,7 @@ pub fn pagination_sql_with_order(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn pagination_sql_with_filter_order(
     columns: &[String],
     table: &str,
@@ -3085,24 +3088,9 @@ mod tests {
             visible_databases: None,
             attached_databases: Vec::new(),
             color: None,
-            ssh_enabled: false,
-            ssh_host: String::new(),
-            ssh_port: 22,
-            ssh_user: String::new(),
-            ssh_password: String::new(),
-            ssh_key_path: String::new(),
-            ssh_key_passphrase: String::new(),
-            ssh_expose_lan: false,
-            ssh_connect_timeout_secs: 5,
-            ssh_tunnels: Vec::new(),
+            transport_layers: Vec::new(),
             connect_timeout_secs: 5,
             query_timeout_secs: 30,
-            proxy_enabled: false,
-            proxy_type: crate::models::connection::ProxyType::Socks5,
-            proxy_host: String::new(),
-            proxy_port: 1080,
-            proxy_username: String::new(),
-            proxy_password: String::new(),
             ssl: false,
             ca_cert_path: String::new(),
             sysdba: false,
