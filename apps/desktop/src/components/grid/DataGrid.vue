@@ -1835,7 +1835,9 @@ const canGoNextPage = computed(() => {
     totalRowCount: hasKnownTotalRowCount.value ? displayedTotalRowCount.value : undefined,
   });
 });
-const canJumpLastPage = computed(() => canGoNextPage.value && (!!props.tableMeta || !!props.countSql));
+const canJumpLastPage = computed(
+  () => canGoNextPage.value && (hasKnownTotalRowCount.value || !!props.tableMeta || !!props.countSql),
+);
 const totalRowCountBusy = computed(() => props.totalRowCountLoading === true || manualTotalRowCountLoading.value);
 const canCalculateTotalRowCount = computed(
   () => !isResultsContext.value && !!props.connectionId && (!!props.tableMeta || !!props.countSql),
@@ -1967,6 +1969,16 @@ function applyCustomPageSize() {
 }
 
 async function lastPage() {
+  if (hasKnownTotalRowCount.value) {
+    const total = displayedTotalRowCount.value ?? 0;
+    if (total <= 0) return;
+    const lastPageNum = Math.ceil(total / pageSize.value);
+    if (lastPageNum <= currentPage.value) return;
+    currentPage.value = lastPageNum;
+    resetGridVerticalScroll(true);
+    emit("paginate", (lastPageNum - 1) * pageSize.value, pageSize.value, currentWhereInput(), currentOrderBy());
+    return;
+  }
   if (!props.connectionId) return;
   const countTarget = await buildCurrentCountTarget();
   const sql = countTarget?.sql;
@@ -5587,7 +5599,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </SelectContent>
               </Select>
             </div>
-            <template v-if="hasLocalColumnFilters && !canShowWhereSearch">
+            <template v-if="hasLocalColumnFilters && !canShowWhereSearch && !hasSearchBarSlot">
               <div class="flex items-center gap-1 px-2 py-0.5 min-w-0">
                 <button
                   type="button"
@@ -5929,7 +5941,13 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               </div>
             </template>
 
-            <slot name="search-bar" />
+            <slot
+              name="search-bar"
+              :local-filter-count="localFilterCount"
+              :has-local-column-filters="hasLocalColumnFilters"
+              :local-filter-summaries="localFilterSummaries"
+              :clear-local-filter="clearLocalFilter"
+            />
 
             <div class="flex shrink-0 items-center gap-1 px-1 ml-auto">
               <Tooltip v-if="showQueryEditReadyBadge">
