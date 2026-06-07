@@ -561,6 +561,8 @@ export default {
     noComment: "Sin comentario",
     formattedJson: "JSON formateado",
     formattedValue: "Valor formateado",
+    detailSearchPlaceholder: "Buscar campo o valor…",
+    detailSearchNoMatch: "Sin coincidencias",
     rawValue: "Valor sin procesar",
     largeValuePreviewHint: "Mostrando los primeros {count} caracteres. Copiar sigue usando el valor completo.",
     copyValue: "Copiar valor",

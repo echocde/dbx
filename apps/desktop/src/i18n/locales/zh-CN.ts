@@ -590,6 +590,8 @@ export default {
     noComment: "暂无注释",
     formattedJson: "格式化 JSON",
     formattedValue: "格式化值",
+    detailSearchPlaceholder: "搜索字段名或值…",
+    detailSearchNoMatch: "无匹配项",
     rawValue: "原始值",
     largeValuePreviewHint: "仅预览前 {count} 个字符，复制仍会使用完整值。",
     copyValue: "复制值",

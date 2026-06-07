@@ -600,6 +600,8 @@ export default {
     noComment: "Nessun commento",
     formattedJson: "JSON Formattato",
     formattedValue: "Valore Formattato",
+    detailSearchPlaceholder: "Cerca campo o valore…",
+    detailSearchNoMatch: "Nessun risultato",
     rawValue: "Valore Grezzo",
     largeValuePreviewHint: "Anteprima dei primi {count} caratteri. La copia utilizzerà comunque il valore completo.",
     copyValue: "Copia Valore",

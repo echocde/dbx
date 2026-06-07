@@ -599,6 +599,8 @@ export default {
     noComment: "Sem comentário",
     formattedJson: "JSON Formatado",
     formattedValue: "Valor Formatado",
+    detailSearchPlaceholder: "Buscar campo ou valor…",
+    detailSearchNoMatch: "Nenhuma correspondência",
     rawValue: "Valor Bruto",
     largeValuePreviewHint: "Visualizando os primeiros {count} caracteres. A cópia ainda usa o valor completo.",
     copyValue: "Copiar Valor",
