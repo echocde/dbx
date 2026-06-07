@@ -242,6 +242,7 @@ export const useConnectionStore = defineStore("connection", () => {
       postgres: "PostgreSQL",
       sqlite: "SQLite",
       redis: "Redis",
+      etcd: "etcd",
       duckdb: "DuckDB",
       clickhouse: "ClickHouse",
       sqlserver: "SQL Server",
@@ -703,6 +704,8 @@ export const useConnectionStore = defineStore("connection", () => {
     clearLoadedChildrenCache(connectionId);
     if (config.db_type === "redis") {
       await loadRedisDatabases(connectionId);
+    } else if (config.db_type === "etcd") {
+      await loadEtcdRoot(connectionId);
     } else if (config.db_type === "mongodb") {
       await loadMongoDatabases(connectionId);
     } else {
@@ -948,6 +951,40 @@ export const useConnectionStore = defineStore("connection", () => {
               isExpanded: false,
               children: [],
             })),
+          node,
+        ),
+      );
+      node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
+    } finally {
+      node.isLoading = false;
+    }
+  }
+
+  async function loadEtcdRoot(connectionId: string) {
+    const node = findNode(treeNodes.value, connectionId);
+    if (!node) return;
+
+    node.isLoading = true;
+    try {
+      await ensureConnected(connectionId);
+      setChildren(
+        node,
+        withSavedSqlRoot(
+          connectionId,
+          [
+            {
+              id: `${connectionId}:etcd`,
+              label: "Keys",
+              type: "etcd-root" as const,
+              connectionId,
+              database: "",
+              isExpanded: false,
+              children: [],
+            },
+          ],
           node,
         ),
       );
@@ -1466,6 +1503,8 @@ export const useConnectionStore = defineStore("connection", () => {
       const config = getConfig(node.connectionId);
       if (config?.db_type === "redis") {
         await loadRedisDatabases(node.connectionId);
+      } else if (config?.db_type === "etcd") {
+        await loadEtcdRoot(node.connectionId);
       } else if (config?.db_type === "mongodb" || config?.db_type === "elasticsearch") {
         await loadMongoDatabases(node.connectionId);
       } else {
@@ -2254,6 +2293,7 @@ export const useConnectionStore = defineStore("connection", () => {
     initFromDisk,
     loadDatabases,
     loadRedisDatabases,
+    loadEtcdRoot,
     updateRedisDbKeyStats,
     loadMongoDatabases,
     loadMongoCollections,

@@ -1,5 +1,6 @@
 pub mod agent_catalog;
 pub mod agent_connection;
+pub mod agent_kv;
 pub mod agent_manager;
 pub mod agent_runtime;
 pub mod agent_service;

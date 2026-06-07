@@ -220,6 +220,12 @@ export const redisFlushDb = forward("redisFlushDb");
 export const redisExecuteCommand = forward("redisExecuteCommand");
 export const redisLoadMore = forward("redisLoadMore");
 
+// etcd
+export const etcdListPrefix = forward("etcdListPrefix");
+export const etcdGet = forward("etcdGet");
+export const etcdPut = forward("etcdPut");
+export const etcdDelete = forward("etcdDelete");
+
 // MongoDB
 export const mongoListDatabases = forward("mongoListDatabases");
 export const mongoListCollections = forward("mongoListCollections");
@@ -281,6 +287,14 @@ export type {
   RedisScanResult,
   RedisCommandSafety,
   RedisCommandResult,
+  KvValueEncoding,
+  KvValue,
+  KvKeyMetadata,
+  KvKeySummary,
+  KvListPrefixResponse,
+  KvGetResponse,
+  KvPutResponse,
+  KvDeleteResponse,
   MongoDocumentResult,
   HistoryEntry,
   SqlFileStatus,

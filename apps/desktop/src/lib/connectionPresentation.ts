@@ -100,6 +100,9 @@ export function connectionUrlPlaceholder(dbType: DatabaseType): string {
     case "redis":
       return "redis://:password@host:port/0";
 
+    case "etcd":
+      return "etcd://host:2379";
+
     case "sqlite":
       return "sqlite:///absolute/path/to/database.db";
 

@@ -34,7 +34,7 @@ export const SCHEMA_AWARE_TYPES = new Set<DatabaseType>([
   "duckdb",
 ]);
 
-export const SQL_FILE_UNSUPPORTED_TYPES = new Set<DatabaseType>(["redis", "mongodb", "elasticsearch"]);
+export const SQL_FILE_UNSUPPORTED_TYPES = new Set<DatabaseType>(["redis", "mongodb", "elasticsearch", "etcd"]);
 
 export const DIAGRAM_SUPPORTED_TYPES = new Set<DatabaseType>([
   "mysql",
@@ -109,6 +109,7 @@ export const DATABASE_SEARCH_SUPPORTED_TYPES = new Set<DatabaseType>([
   "tdengine",
   "xugu",
   "iotdb",
+  "etcd",
   "iris",
 ]);
 

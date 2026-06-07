@@ -14,6 +14,7 @@ import {
   TableProperties,
   ChevronDown,
   ChevronUp,
+  Inbox,
   RefreshCcw,
   Wrench,
 } from "@lucide/vue";
@@ -44,6 +45,7 @@ function preloadDataGridComponent() {
 
 const DataGrid = defineAsyncComponent(loadDataGridComponent);
 const RedisKeyBrowser = defineAsyncComponent(() => import("@/components/redis/RedisKeyBrowser.vue"));
+const EtcdKeyBrowser = defineAsyncComponent(() => import("@/components/etcd/EtcdKeyBrowser.vue"));
 const MongoDocBrowser = defineAsyncComponent(() => import("@/components/mongo/MongoDocBrowser.vue"));
 const ObjectBrowser = defineAsyncComponent(() => import("@/components/objects/ObjectBrowser.vue"));
 const TableStructureEditor = defineAsyncComponent(() => import("@/components/structure/TableStructureEditor.vue"));
@@ -147,6 +149,7 @@ const columnVisibilityOptions = computed(
   () => dataGridRef.value?.filteredColumnVisibilityOptions(columnVisibilitySearch.value) ?? [],
 );
 const redisKeyBrowserRef = ref<SearchableBrowserHandle>();
+const etcdKeyBrowserRef = ref<SearchableBrowserHandle>();
 const objectBrowserRef = ref<SearchableBrowserHandle>();
 const activeTableMeta = computed(() => props.activeTab.tableMeta);
 const activeDataTabTableMeta = computed(() => tableMetaForDataTab(props.activeTab));
@@ -344,6 +347,7 @@ function onHandleCloseColumnPanel() {
 
 function focusSearch(): boolean {
   if (props.activeTab.mode === "redis") return redisKeyBrowserRef.value?.focusSearch() ?? false;
+  if (props.activeTab.mode === "etcd") return etcdKeyBrowserRef.value?.focusSearch() ?? false;
   if (props.activeTab.mode === "objects") return objectBrowserRef.value?.focusSearch() ?? false;
   if (props.activeTab.mode === "query") return queryEditorRef.value?.openSearch() ?? false;
   return dataGridRef.value?.focusSearch() ?? false;
@@ -898,6 +902,13 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           :connection-id="activeTab.connectionId"
           :db="Number(activeTab.database)"
         />
+      </div>
+    </template>
+
+    <!-- etcd mode: key browser -->
+    <template v-else-if="activeTab.mode === 'etcd'">
+      <div class="flex-1 min-h-0">
+        <EtcdKeyBrowser ref="etcdKeyBrowserRef" :key="activeTab.id" :connection-id="activeTab.connectionId" />
       </div>
     </template>
 

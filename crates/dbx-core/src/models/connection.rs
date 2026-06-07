@@ -34,6 +34,10 @@ pub struct ConnectionConfig {
     pub ssl: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub ca_cert_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub client_cert_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub client_key_path: String,
     #[serde(default)]
     pub sysdba: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -54,6 +58,8 @@ pub struct ConnectionConfig {
     pub redis_sentinel_tls: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub redis_cluster_nodes: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub etcd_endpoints: String,
     /// Typed configuration for external tabular sources.
     #[serde(default)]
     pub external_config: Option<serde_json::Value>,
@@ -255,6 +261,7 @@ pub enum DatabaseType {
     Tdengine,
     Xugu,
     Iotdb,
+    Etcd,
     #[serde(rename = "iris")]
     Iris,
     Jdbc,
@@ -293,6 +300,10 @@ struct ConnectionConfigData {
     #[serde(default)]
     pub ca_cert_path: String,
     #[serde(default)]
+    pub client_cert_path: String,
+    #[serde(default)]
+    pub client_key_path: String,
+    #[serde(default)]
     pub sysdba: bool,
     #[serde(default)]
     pub oracle_connection_type: Option<String>,
@@ -312,6 +323,8 @@ struct ConnectionConfigData {
     pub redis_sentinel_tls: bool,
     #[serde(default)]
     pub redis_cluster_nodes: String,
+    #[serde(default)]
+    pub etcd_endpoints: String,
     #[serde(default)]
     pub external_config: Option<serde_json::Value>,
     #[serde(default)]
@@ -344,6 +357,8 @@ impl From<ConnectionConfigData> for ConnectionConfig {
             query_timeout_secs: data.query_timeout_secs,
             ssl: data.ssl,
             ca_cert_path: data.ca_cert_path,
+            client_cert_path: data.client_cert_path,
+            client_key_path: data.client_key_path,
             sysdba: data.sysdba,
             oracle_connection_type: data.oracle_connection_type,
             connection_string: data.connection_string,
@@ -354,6 +369,7 @@ impl From<ConnectionConfigData> for ConnectionConfig {
             redis_sentinel_password: data.redis_sentinel_password,
             redis_sentinel_tls: data.redis_sentinel_tls,
             redis_cluster_nodes: data.redis_cluster_nodes,
+            etcd_endpoints: data.etcd_endpoints,
             external_config: data.external_config,
             jdbc_driver_class: data.jdbc_driver_class,
             jdbc_driver_paths: data.jdbc_driver_paths,
@@ -691,6 +707,9 @@ impl ConnectionConfig {
                     format!("{base}?{params}")
                 }
             }
+            DatabaseType::Etcd => {
+                format!("etcd://{host}:{port}")
+            }
             DatabaseType::Iris => format!("iris://{host}:{port}{db_part}"),
             DatabaseType::Jdbc => "jdbc:<redacted>".to_string(),
         }
@@ -869,6 +888,13 @@ impl ConnectionConfig {
                     base
                 } else {
                     format!("{base}?{params}")
+                }
+            }
+            DatabaseType::Etcd => {
+                if self.username.is_empty() {
+                    format!("etcd://{host}:{port}")
+                } else {
+                    format!("etcd://{}:{}@{host}:{port}", username, password)
                 }
             }
             DatabaseType::Iris => {
@@ -1288,6 +1314,8 @@ mod tests {
             query_timeout_secs: default_query_timeout_secs(),
             ssl: false,
             ca_cert_path: String::new(),
+            client_cert_path: String::new(),
+            client_key_path: String::new(),
             sysdba: false,
             oracle_connection_type: None,
             connection_string: None,
@@ -1298,6 +1326,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),

@@ -118,6 +118,8 @@ const defaultForm = (): ConnectionForm => ({
   query_timeout_secs: 30,
   ssl: false,
   ca_cert_path: "",
+  client_cert_path: "",
+  client_key_path: "",
   sysdba: false,
   oracle_connection_type: "service_name",
   connection_string: undefined,
@@ -130,6 +132,7 @@ const defaultForm = (): ConnectionForm => ({
   redis_sentinel_password: "",
   redis_sentinel_tls: false,
   redis_cluster_nodes: "",
+  etcd_endpoints: "",
 });
 
 function defaultSshTunnel(): SshTunnelConfig {
@@ -405,6 +408,7 @@ const driverProfiles: Record<
   tdengine: { type: "tdengine", port: 6041, user: "root", label: "TDengine", icon: "tdengine" },
   xugu: { type: "xugu", port: 5138, user: "", label: "虚谷 XuguDB", icon: "xugu" },
   iotdb: { type: "iotdb", port: 6667, user: "root", label: "Apache IoTDB", icon: "iotdb" },
+  etcd: { type: "etcd", port: 2379, user: "", label: "etcd", icon: "etcd" },
   iris: { type: "iris", port: 1972, user: "_SYSTEM", label: "IRIS", icon: "iris" },
   custom_mysql: {
     type: "mysql",
@@ -515,6 +519,8 @@ watch(
         query_timeout_secs: config.query_timeout_secs ?? 30,
         ssl: config.ssl || false,
         ca_cert_path: config.ca_cert_path || "",
+        client_cert_path: config.client_cert_path || "",
+        client_key_path: config.client_key_path || "",
         sysdba: config.sysdba || isOracleSysUser(config),
         oracle_connection_type: config.oracle_connection_type || "service_name",
         connection_string: config.connection_string,
@@ -527,6 +533,7 @@ watch(
         redis_sentinel_password: config.redis_sentinel_password || "",
         redis_sentinel_tls: config.redis_sentinel_tls || false,
         redis_cluster_nodes: config.redis_cluster_nodes || "",
+        etcd_endpoints: config.etcd_endpoints || "",
       };
       selectedTransportLayerId.value = form.value.transport_layers?.[0]?.id || null;
       selectedType.value = profile;
@@ -664,6 +671,7 @@ const iconTypeMap: Record<string, string> = {
   tdengine: "tdengine",
   xugu: "xugu",
   iotdb: "iotdb",
+  etcd: "etcd",
   dm: "dm",
   h2: "h2",
   snowflake: "snowflake",
@@ -737,6 +745,7 @@ const dbOptions = [
   { value: "sundb", label: "SunDB" },
   { value: "xugu", label: "虚谷 XuguDB" },
   { value: "iotdb", label: "Apache IoTDB" },
+  { value: "etcd", label: "etcd" },
   { value: "iris", label: "IRIS" },
   { value: "jdbc", label: "JDBC" },
   { value: "custom_mysql", label: "Custom (MySQL)" },
@@ -789,6 +798,7 @@ const tlsCapableDatabaseTypes = new Set<DatabaseType>([
   "kwdb",
   "opengauss",
   "redis",
+  "etcd",
   "clickhouse",
   "elasticsearch",
 ]);
@@ -854,6 +864,12 @@ const redisTlsInsecure = computed({
   get: () => getUrlParam(form.value.url_params, "insecure").toLowerCase() === "true",
   set: (value: boolean) => {
     form.value.url_params = setUrlParam(form.value.url_params, "insecure", value ? "true" : "");
+  },
+});
+const etcdEndpointsLines = computed({
+  get: () => form.value.etcd_endpoints || "",
+  set: (value: string) => {
+    form.value.etcd_endpoints = normalizeEndpointLines(value);
   },
 });
 const canUseTransportLayers = computed(() => form.value.db_type !== "sqlite" && form.value.db_type !== "access");
@@ -1019,7 +1035,25 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
     config.redis_sentinel_tls = undefined;
     config.redis_cluster_nodes = undefined;
   }
-  if (config.db_type !== "mysql" && config.db_type !== "clickhouse") {
+  if (config.db_type === "etcd") {
+    config.etcd_endpoints = normalizeEndpointLines(config.etcd_endpoints || "");
+    const firstEndpoint = firstEtcdEndpoint(config.etcd_endpoints);
+    if (firstEndpoint) {
+      config.host = firstEndpoint.host;
+      config.port = firstEndpoint.port;
+      config.ssl = firstEndpoint.scheme === "https" || !!config.ssl;
+    }
+    config.client_cert_path = config.client_cert_path?.trim() || "";
+    config.client_key_path = config.client_key_path?.trim() || "";
+    if ((config.client_cert_path && !config.client_key_path) || (!config.client_cert_path && config.client_key_path)) {
+      throw new Error(t("connection.etcdClientCertPairRequired"));
+    }
+  } else {
+    config.etcd_endpoints = undefined;
+    config.client_cert_path = undefined;
+    config.client_key_path = undefined;
+  }
+  if (config.db_type !== "mysql" && config.db_type !== "clickhouse" && config.db_type !== "etcd") {
     config.ca_cert_path = undefined;
   } else {
     config.ca_cert_path = config.ca_cert_path?.trim() || "";
@@ -1172,6 +1206,10 @@ function normalizeRedisClusterNodes(value: string): string {
 }
 
 function normalizeRedisNodeList(value: string): string {
+  return normalizeEndpointLines(value);
+}
+
+function normalizeEndpointLines(value: string): string {
   return value
     .split(/[\n,;]+/)
     .map((node) => node.trim())
@@ -1216,6 +1254,36 @@ function parseRedisEndpoint(value: string, defaultPort: number): { host: string;
     return { host: parts[0], port: Number.isFinite(port) && port > 0 ? port : defaultPort };
   }
   return { host: endpoint, port: defaultPort };
+}
+
+function firstEtcdEndpoint(value?: string): { scheme?: string; host: string; port: number } | null {
+  const first = normalizeEndpointLines(value || "")
+    .split("\n")
+    .find(Boolean);
+  if (!first) return null;
+  return parseEtcdEndpoint(first);
+}
+
+function parseEtcdEndpoint(value: string): { scheme?: string; host: string; port: number } {
+  const trimmed = value.trim().replace(/^.*@/, "");
+  const schemeMatch = trimmed.match(/^(https?):\/\//i);
+  const scheme = schemeMatch?.[1].toLowerCase();
+  const endpoint = trimmed.replace(/^https?:\/\//i, "").replace(/[/?#].*$/, "");
+  if (endpoint.startsWith("[")) {
+    const end = endpoint.indexOf("]");
+    if (end > 0) {
+      const host = endpoint.slice(1, end);
+      const portText = endpoint.slice(end + 1).replace(/^:/, "");
+      const port = Number(portText);
+      return { scheme, host, port: Number.isFinite(port) && port > 0 ? port : 2379 };
+    }
+  }
+  const parts = endpoint.split(":");
+  if (parts.length === 2) {
+    const port = Number(parts[1]);
+    return { scheme, host: parts[0], port: Number.isFinite(port) && port > 0 ? port : 2379 };
+  }
+  return { scheme, host: endpoint, port: 2379 };
 }
 
 function isOracleSysUser(config: Pick<ConnectionConfig, "db_type" | "username">): boolean {
@@ -1595,6 +1663,34 @@ async function browsePostgresTlsFile(target: "root" | "cert" | "key") {
         postgresClientCertPath.value = selected;
       } else {
         postgresClientKeyPath.value = selected;
+      }
+    }
+  }
+}
+
+async function browseEtcdTlsFile(target: "ca" | "cert" | "key") {
+  if (isTauriRuntime()) {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({
+      title:
+        target === "ca"
+          ? t("connection.etcdCaCertBrowse")
+          : target === "cert"
+            ? t("connection.etcdClientCertBrowse")
+            : t("connection.etcdClientKeyBrowse"),
+      multiple: false,
+      filters: [
+        { name: "PEM", extensions: ["pem", "crt", "cer", "key"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (selected && typeof selected === "string") {
+      if (target === "ca") {
+        form.value.ca_cert_path = selected;
+      } else if (target === "cert") {
+        form.value.client_cert_path = selected;
+      } else {
+        form.value.client_key_path = selected;
       }
     }
   }
@@ -2222,6 +2318,37 @@ function openExternalUrl(url: string) {
                   </div>
                 </template>
 
+                <!-- etcd: endpoints, user, password, TLS -->
+                <template v-else-if="form.db_type === 'etcd'">
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right">{{ t("connection.host") }}</Label>
+                    <Input v-model="form.host" class="col-span-2" />
+                    <Input v-model.number="form.port" type="number" class="col-span-1" />
+                  </div>
+                  <div class="grid grid-cols-4 items-start gap-4">
+                    <Label class="text-right mt-2">{{ t("connection.etcdEndpoints") }}</Label>
+                    <div class="col-span-3 space-y-1">
+                      <textarea
+                        v-model="etcdEndpointsLines"
+                        class="flex min-h-[76px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        placeholder="http://127.0.0.1:2379&#10;https://etcd-2:2379"
+                        spellcheck="false"
+                      />
+                      <p class="text-xs text-muted-foreground">
+                        {{ t("connection.etcdEndpointsHint") }}
+                      </p>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right">{{ t("connection.user") }}</Label>
+                    <Input v-model="form.username" class="col-span-3" />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right">{{ t("connection.password") }}</Label>
+                    <Input v-model="form.password" type="password" class="col-span-3" />
+                  </div>
+                </template>
+
                 <!-- MongoDB: URL or form -->
                 <template v-else-if="form.db_type === 'mongodb'">
                   <div class="grid grid-cols-4 items-center gap-4">
@@ -2454,6 +2581,93 @@ function openExternalUrl(url: string) {
                     </span>
                   </label>
                 </div>
+
+                <template v-if="form.db_type === 'etcd'">
+                  <div class="grid grid-cols-4 items-start gap-4">
+                    <Label class="pt-2 text-right text-xs">
+                      <span class="inline-flex items-center justify-end gap-1">
+                        <ShieldCheck class="h-3.5 w-3.5" />
+                        {{ t("connection.caCertPath") }}
+                      </span>
+                    </Label>
+                    <div class="col-span-3 space-y-2">
+                      <div class="flex items-center gap-1">
+                        <Input
+                          v-model="form.ca_cert_path"
+                          class="flex-1"
+                          :placeholder="t('connection.etcdCaCertPlaceholder')"
+                        />
+                        <Tooltip v-if="isDesktop">
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              class="h-9 w-9 shrink-0"
+                              @click="browseEtcdTlsFile('ca')"
+                            >
+                              <FolderOpen class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.etcdCaCertBrowse") }}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-4 items-start gap-4">
+                    <Label class="pt-2 text-right text-xs">
+                      <span class="inline-flex items-center justify-end gap-1">
+                        <KeyRound class="h-3.5 w-3.5" />
+                        {{ t("connection.etcdClientAuth") }}
+                      </span>
+                    </Label>
+                    <div class="col-span-3 grid gap-2">
+                      <div class="flex items-center gap-1">
+                        <Input
+                          v-model="form.client_cert_path"
+                          class="flex-1"
+                          :placeholder="t('connection.etcdClientCertPlaceholder')"
+                        />
+                        <Tooltip v-if="isDesktop">
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              class="h-9 w-9 shrink-0"
+                              @click="browseEtcdTlsFile('cert')"
+                            >
+                              <FolderOpen class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.etcdClientCertBrowse") }}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <div class="flex items-center gap-1">
+                        <Input
+                          v-model="form.client_key_path"
+                          class="flex-1"
+                          :placeholder="t('connection.etcdClientKeyPlaceholder')"
+                        />
+                        <Tooltip v-if="isDesktop">
+                          <TooltipTrigger as-child>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              class="h-9 w-9 shrink-0"
+                              @click="browseEtcdTlsFile('key')"
+                            >
+                              <FolderOpen class="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{{ t("connection.etcdClientKeyBrowse") }}</TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <p class="text-[11px] leading-4 text-muted-foreground">
+                        {{ t("connection.etcdClientCertHint") }}
+                      </p>
+                    </div>
+                  </div>
+                </template>
 
                 <template v-if="supportsMysqlTlsOptions">
                   <div class="grid grid-cols-4 items-center gap-4">

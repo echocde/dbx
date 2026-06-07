@@ -21,6 +21,8 @@ pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, da
     } else {
         config.connection_string.as_deref().unwrap_or("").to_string()
     };
+    let etcd_endpoints =
+        if config.db_type == DatabaseType::Etcd { normalize_etcd_endpoints(config, host, port) } else { String::new() };
 
     serde_json::json!({
         "host": host,
@@ -31,6 +33,11 @@ pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, da
         "sysdba": oracle_uses_sysdba(config),
         "url_params": config.url_params.as_deref().unwrap_or(""),
         "connection_string": connection_string,
+        "ssl": config.ssl,
+        "ca_cert_path": config.ca_cert_path,
+        "client_cert_path": config.client_cert_path,
+        "client_key_path": config.client_key_path,
+        "etcd_endpoints": etcd_endpoints,
     })
 }
 
@@ -190,6 +197,15 @@ fn sap_hana_jdbc_connection_string(config: &ConnectionConfig, host: &str, port: 
     }
 }
 
+fn normalize_etcd_endpoints(config: &ConnectionConfig, host: &str, port: u16) -> String {
+    let endpoints = config.etcd_endpoints.trim();
+    if !endpoints.is_empty() {
+        return endpoints.to_string();
+    }
+    let scheme = if config.ssl { "https" } else { "http" };
+    format!("{scheme}://{host}:{port}")
+}
+
 fn append_agent_url_params(base: String, params: Option<&str>) -> String {
     let params = params.unwrap_or("").trim().trim_start_matches(['?', '&']);
     if params.is_empty() {
@@ -225,6 +241,8 @@ mod tests {
             query_timeout_secs: default_query_timeout_secs(),
             ssl: false,
             ca_cert_path: String::new(),
+            client_cert_path: String::new(),
+            client_key_path: String::new(),
             sysdba: false,
             oracle_connection_type: None,
             connection_string: None,
@@ -235,6 +253,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),

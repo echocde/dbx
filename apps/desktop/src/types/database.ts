@@ -46,6 +46,7 @@ export type DatabaseType =
   | "tdengine"
   | "xugu"
   | "iotdb"
+  | "etcd"
   | "iris"
   | "jdbc";
 
@@ -76,6 +77,8 @@ export interface ConnectionConfig {
   query_timeout_secs?: number;
   ssl?: boolean;
   ca_cert_path?: string;
+  client_cert_path?: string;
+  client_key_path?: string;
   sysdba?: boolean;
   oracle_connection_type?: "service_name" | "sid";
   connection_string?: string;
@@ -88,6 +91,7 @@ export interface ConnectionConfig {
   redis_sentinel_password?: string;
   redis_sentinel_tls?: boolean;
   redis_cluster_nodes?: string;
+  etcd_endpoints?: string;
   one_time?: boolean;
 }
 
@@ -305,6 +309,7 @@ export type TreeNodeType =
   | "fkey"
   | "trigger"
   | "redis-db"
+  | "etcd-root"
   | "mongo-db"
   | "mongo-collection";
 
@@ -384,7 +389,7 @@ export interface QueryTab {
   executionId?: string;
   isExplaining?: boolean;
   explainExecutionId?: string;
-  mode: "data" | "query" | "redis" | "mongo" | "objects" | "structure";
+  mode: "data" | "query" | "redis" | "mongo" | "etcd" | "objects" | "structure";
   structureTableName?: string;
   objectBrowser?: {
     schema?: string;

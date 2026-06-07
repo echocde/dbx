@@ -243,6 +243,11 @@ async fn main() {
         .route("/redis/delete-keys", post(routes::redis::delete_keys))
         .route("/redis/flush-db", post(routes::redis::flush_db))
         .route("/redis/execute-command", post(routes::redis::execute_command))
+        // etcd
+        .route("/etcd/list-prefix", post(routes::etcd::list_prefix))
+        .route("/etcd/get", post(routes::etcd::get))
+        .route("/etcd/put", post(routes::etcd::put))
+        .route("/etcd/delete", post(routes::etcd::delete))
         // MongoDB
         .route("/mongo/list-databases", post(routes::mongo::list_databases))
         .route("/mongo/list-collections", post(routes::mongo::list_collections))

@@ -1209,6 +1209,74 @@ export async function redisLoadMore(
   return invoke("redis_load_more", { connectionId, db, keyRaw, keyType, cursor, count });
 }
 
+// --- etcd ---
+export type KvValueEncoding = "utf8" | "base64";
+
+export interface KvValue {
+  encoding: KvValueEncoding;
+  data: string;
+}
+
+export interface KvKeyMetadata {
+  createRevision?: number | null;
+  modRevision?: number | null;
+  version?: number | null;
+  lease?: number | null;
+  valueSize?: number | null;
+}
+
+export interface KvKeySummary extends KvKeyMetadata {
+  key: string;
+}
+
+export interface KvListPrefixResponse {
+  keys: KvKeySummary[];
+  continuation?: string | null;
+  revision?: number | null;
+}
+
+export interface KvGetResponse {
+  found: boolean;
+  key?: string | null;
+  value?: KvValue | null;
+  metadata?: KvKeyMetadata | null;
+}
+
+export interface KvPutResponse {
+  revision?: number | null;
+}
+
+export interface KvDeleteResponse {
+  deleted: number;
+  revision?: number | null;
+}
+
+export async function etcdListPrefix(
+  connectionId: string,
+  prefix: string,
+  limit: number,
+  continuation?: string | null,
+): Promise<KvListPrefixResponse> {
+  return invoke("etcd_list_prefix", { connectionId, prefix, limit, continuation });
+}
+
+export async function etcdGet(connectionId: string, key: string): Promise<KvGetResponse> {
+  return invoke("etcd_get", { connectionId, key });
+}
+
+export async function etcdPut(
+  connectionId: string,
+  key: string,
+  value: KvValue,
+  lease?: number | null,
+): Promise<KvPutResponse> {
+  return invoke("etcd_put", { connectionId, key, value, lease });
+}
+
+export async function etcdDelete(connectionId: string, key: string): Promise<KvDeleteResponse> {
+  return invoke("etcd_delete", { connectionId, key });
+}
+
 // --- MongoDB ---
 export interface MongoDocumentResult {
   documents: any[];

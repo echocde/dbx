@@ -256,6 +256,8 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Zap, colorClass: "text-orange-300" };
     case "redis-db":
       return { icon: Database, colorClass: "text-red-400" };
+    case "etcd-root":
+      return { icon: Database, colorClass: "text-sky-500" };
     case "mongo-db":
       return { icon: Database, colorClass: "text-yellow-500" };
     case "mongo-collection":
@@ -379,6 +381,8 @@ async function toggle() {
       const config = connectionStore.getConfig(node.connectionId);
       if (config?.db_type === "redis") {
         await connectionStore.loadRedisDatabases(node.connectionId);
+      } else if (config?.db_type === "etcd") {
+        await connectionStore.loadEtcdRoot(node.connectionId);
       } else if (config?.db_type === "mongodb" || config?.db_type === "elasticsearch") {
         await connectionStore.loadMongoDatabases(node.connectionId);
       } else {
@@ -387,6 +391,9 @@ async function toggle() {
     } else if (node.type === "redis-db" && node.connectionId && node.database) {
       const tabTitle = `${connectionStore.getConfig(node.connectionId)?.name || "Redis"}:db${node.database}`;
       queryStore.createTab(node.connectionId, node.database, tabTitle, "redis");
+    } else if (node.type === "etcd-root" && node.connectionId) {
+      const tabTitle = `${connectionStore.getConfig(node.connectionId)?.name || "etcd"}:keys`;
+      queryStore.createTab(node.connectionId, "", tabTitle, "etcd");
     } else if (node.type === "mongo-db" && node.connectionId && node.database) {
       await connectionStore.loadMongoCollections(node.connectionId, node.database);
     } else if (node.type === "mongo-collection" && node.connectionId && node.database) {
@@ -3040,6 +3047,11 @@ function treeItemMenuItems(): ContextMenuItem[] {
   }
 
   // 5. Redis DB / Mongo DB
+  if (node.type === "etcd-root") {
+    items.push({ label: t("contextMenu.openConnection"), action: toggle, icon: Database });
+    return items;
+  }
+
   if (node.type === "redis-db" || node.type === "mongo-db") {
     items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
     if (!isNodeDefaultDatabase.value) {

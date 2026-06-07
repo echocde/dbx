@@ -40,6 +40,11 @@ import type {
   RedisValue,
   RedisScanResult,
   RedisCommandResult,
+  KvValue,
+  KvListPrefixResponse,
+  KvGetResponse,
+  KvPutResponse,
+  KvDeleteResponse,
   MongoDocumentResult,
   HistoryEntry,
   SqlFileRequest,
@@ -1386,6 +1391,36 @@ export async function redisLoadMore(
   count: number,
 ): Promise<RedisValue> {
   return post("/api/redis/load-more", { connectionId, db, keyRaw, keyType, cursor, count });
+}
+
+// ---------------------------------------------------------------------------
+// etcd
+// ---------------------------------------------------------------------------
+
+export async function etcdListPrefix(
+  connectionId: string,
+  prefix: string,
+  limit: number,
+  continuation?: string | null,
+): Promise<KvListPrefixResponse> {
+  return post("/api/etcd/list-prefix", { connectionId, prefix, limit, continuation });
+}
+
+export async function etcdGet(connectionId: string, key: string): Promise<KvGetResponse> {
+  return post("/api/etcd/get", { connectionId, key });
+}
+
+export async function etcdPut(
+  connectionId: string,
+  key: string,
+  value: KvValue,
+  lease?: number | null,
+): Promise<KvPutResponse> {
+  return post("/api/etcd/put", { connectionId, key, value, lease });
+}
+
+export async function etcdDelete(connectionId: string, key: string): Promise<KvDeleteResponse> {
+  return post("/api/etcd/delete", { connectionId, key });
 }
 
 // ---------------------------------------------------------------------------
