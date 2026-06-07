@@ -779,6 +779,18 @@ mod tests {
     }
 
     #[test]
+    fn uses_fetch_first_pagination_for_db2() {
+        let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
+            original_sql: "SELECT id FROM users".to_string(),
+            database_type: Some(DatabaseType::Db2),
+            limit: 100,
+            offset: 0,
+        });
+
+        assert_eq!(result.sql.unwrap(), "SELECT id FROM users FETCH FIRST 100 ROWS ONLY;");
+    }
+
+    #[test]
     fn uses_mysql_style_alias_for_pagination() {
         let result = build_paginated_query_sql(PaginatedQuerySqlOptions {
             original_sql: "SELECT id FROM users WHERE active = 1".to_string(),

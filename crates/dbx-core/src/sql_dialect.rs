@@ -99,6 +99,17 @@ pub fn build_table_data_select_sql(options: TableDataSelectSqlOptions) -> String
         return format!("SELECT TOP {limit} {select_columns} FROM {table_alias}{where_clause}{order}");
     }
 
+    if database_type == Some(DatabaseType::Db2) && options.offset.is_some_and(|offset| offset > 0) {
+        return build_db2_table_select_page_sql(
+            &table_alias,
+            &where_clause,
+            order_by,
+            &options.columns,
+            limit,
+            options.offset.unwrap_or(0),
+        );
+    }
+
     if database_type.is_some_and(uses_fetch_first) {
         let offset = options
             .offset
@@ -311,6 +322,41 @@ fn build_sqlserver_table_select_sql(
     )
 }
 
+fn build_db2_table_select_page_sql(
+    table: &str,
+    where_clause: &str,
+    order_by: Option<&str>,
+    columns: &[String],
+    limit: usize,
+    offset: usize,
+) -> String {
+    let columns_sql = if columns.is_empty() {
+        "*".to_string()
+    } else {
+        columns
+            .iter()
+            .map(|column| quote_table_identifier(Some(DatabaseType::Db2), column))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let inner_columns = if columns.is_empty() {
+        "dbx_t.*".to_string()
+    } else {
+        columns
+            .iter()
+            .map(|column| format!("dbx_t.{}", quote_table_identifier(Some(DatabaseType::Db2), column)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let order = order_by.map(|order_by| format!("ORDER BY {order_by}")).unwrap_or_default();
+    let row_number = quote_table_identifier(Some(DatabaseType::Db2), "__dbx_row_num");
+    let end = offset + limit;
+
+    format!(
+        "SELECT {columns_sql} FROM (SELECT {inner_columns}, ROW_NUMBER() OVER ({order}) AS {row_number} FROM {table} dbx_t{where_clause}) dbx_page WHERE {row_number} > {offset} AND {row_number} <= {end} ORDER BY {row_number}"
+    )
+}
+
 fn build_neo4j_table_select_sql(options: &TableDataSelectSqlOptions, limit: usize) -> String {
     let label = quote_table_identifier(Some(DatabaseType::Neo4j), &options.table_name);
     let predicate = normalize_where_input(options.where_input.as_deref());
@@ -385,7 +431,7 @@ pub fn is_schema_aware(database_type: DatabaseType) -> bool {
 }
 
 pub fn uses_fetch_first(database_type: DatabaseType) -> bool {
-    matches!(database_type, DatabaseType::Oracle | DatabaseType::Dameng)
+    matches!(database_type, DatabaseType::Oracle | DatabaseType::Dameng | DatabaseType::Db2)
 }
 
 fn is_simple_informix_identifier(name: &str) -> bool {
@@ -460,6 +506,17 @@ mod tests {
                 limit: 100,
             }),
             "SELECT TOP (100) [id], [name] FROM [dbo].[users] ORDER BY [id] ASC"
+        );
+        assert_eq!(
+            build_table_select_sql(TableSelectSqlOptions {
+                database_type: Some(DatabaseType::Db2),
+                schema: Some("DB2INST1"),
+                table_name: "USERS",
+                columns: &columns,
+                order_columns: &keys,
+                limit: 100,
+            }),
+            "SELECT \"id\", \"name\" FROM \"DB2INST1\".\"USERS\" ORDER BY \"id\" ASC FETCH FIRST 100 ROWS ONLY"
         );
         assert_eq!(
             build_table_select_sql(TableSelectSqlOptions {
@@ -540,6 +597,38 @@ mod tests {
                 include_row_id: false,
             }),
             "SELECT * FROM \"public\".\"orders\" WHERE (amount > 10) LIMIT 50 OFFSET 100;"
+        );
+        assert_eq!(
+            build_table_data_select_sql(TableDataSelectSqlOptions {
+                database_type: Some(DatabaseType::Db2),
+                schema: Some("DB2INST1".to_string()),
+                table_name: "ORDERS".to_string(),
+                primary_keys: Vec::new(),
+                columns: Vec::new(),
+                fallback_order_columns: Vec::new(),
+                order_by: None,
+                limit: Some(50),
+                offset: None,
+                where_input: Some("WHERE amount > 10".to_string()),
+                include_row_id: false,
+            }),
+            "SELECT * FROM \"DB2INST1\".\"ORDERS\" WHERE (amount > 10) FETCH FIRST 50 ROWS ONLY"
+        );
+        assert_eq!(
+            build_table_data_select_sql(TableDataSelectSqlOptions {
+                database_type: Some(DatabaseType::Db2),
+                schema: Some("DB2INST1".to_string()),
+                table_name: "ORDERS".to_string(),
+                primary_keys: vec!["ID".to_string()],
+                columns: vec!["ID".to_string(), "AMOUNT".to_string()],
+                fallback_order_columns: Vec::new(),
+                order_by: None,
+                limit: Some(50),
+                offset: Some(100),
+                where_input: Some("WHERE amount > 10".to_string()),
+                include_row_id: false,
+            }),
+            "SELECT \"ID\", \"AMOUNT\" FROM (SELECT dbx_t.\"ID\", dbx_t.\"AMOUNT\", ROW_NUMBER() OVER (ORDER BY \"ID\" ASC) AS \"__dbx_row_num\" FROM \"DB2INST1\".\"ORDERS\" dbx_t WHERE (amount > 10)) dbx_page WHERE \"__dbx_row_num\" > 100 AND \"__dbx_row_num\" <= 150 ORDER BY \"__dbx_row_num\""
         );
         assert_eq!(
             build_table_data_select_sql(TableDataSelectSqlOptions {
