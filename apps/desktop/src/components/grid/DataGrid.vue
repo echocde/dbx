@@ -3328,6 +3328,8 @@ const canvasContentHeight = computed(() => Math.max(1, displayRowCount.value * C
 const canvasRenderStyleKey = computed(
   () => `${settingsStore.editorSettings.theme}:${settingsStore.editorSettings.uiScale}:${isDark.value}`,
 );
+const CANVAS_MOUSE_WHEEL_SCROLL_MULTIPLIER = 1.5;
+const CANVAS_TRACKPAD_DELTA_THRESHOLD = 40;
 let canvasResizeObserver: ResizeObserver | null = null;
 let canvasDrawFrame = 0;
 let dataGridIsActive = true;
@@ -3441,6 +3443,55 @@ function onCanvasScroll(event: Event) {
   recordScrollPosition({ top: scrollTop, left: scrollLeft });
   markGridScrolling();
   scheduleCanvasDraw();
+}
+
+function canvasWheelDeltaToPixels(delta: number, deltaMode: number, pageSize: number): number {
+  if (deltaMode === WheelEvent.DOM_DELTA_LINE) return delta * CANVAS_DATA_GRID_ROW_HEIGHT;
+  if (deltaMode === WheelEvent.DOM_DELTA_PAGE) return delta * pageSize;
+  return delta;
+}
+
+function shouldAccelerateCanvasWheel(event: WheelEvent): boolean {
+  if (event.ctrlKey || event.metaKey) return false;
+  if (event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return true;
+  return (
+    Math.abs(event.deltaY) >= CANVAS_TRACKPAD_DELTA_THRESHOLD ||
+    Math.abs(event.deltaX) >= CANVAS_TRACKPAD_DELTA_THRESHOLD
+  );
+}
+
+function onCanvasWheel(event: WheelEvent) {
+  if (!shouldAccelerateCanvasWheel(event)) return;
+  const scroller = canvasScrollerElement();
+  if (!scroller) return;
+
+  const verticalDelta = canvasWheelDeltaToPixels(event.deltaY, event.deltaMode, scroller.clientHeight);
+  const horizontalDelta = canvasWheelDeltaToPixels(event.deltaX, event.deltaMode, scroller.clientWidth);
+  const shiftedHorizontalDelta =
+    event.shiftKey && Math.abs(verticalDelta) > Math.abs(horizontalDelta) ? verticalDelta : 0;
+  const nextTop =
+    shiftedHorizontalDelta === 0
+      ? Math.max(
+          0,
+          Math.min(
+            scroller.scrollHeight - scroller.clientHeight,
+            scroller.scrollTop + verticalDelta * CANVAS_MOUSE_WHEEL_SCROLL_MULTIPLIER,
+          ),
+        )
+      : scroller.scrollTop;
+  const nextLeft = Math.max(
+    0,
+    Math.min(
+      scroller.scrollWidth - scroller.clientWidth,
+      scroller.scrollLeft + (horizontalDelta + shiftedHorizontalDelta) * CANVAS_MOUSE_WHEEL_SCROLL_MULTIPLIER,
+    ),
+  );
+
+  if (nextTop === scroller.scrollTop && nextLeft === scroller.scrollLeft) return;
+  event.preventDefault();
+  scroller.scrollTop = nextTop;
+  scroller.scrollLeft = nextLeft;
+  onCanvasScroll({ target: scroller } as unknown as Event);
 }
 
 function onCanvasMouseMove(event: MouseEvent) {
@@ -6941,6 +6992,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 class="data-grid-scroller canvas-grid-scroller flex-1 overflow-auto overscroll-none bg-background"
                 :class="{ 'is-scrolling': isScrolling }"
                 @scroll="onCanvasScroll"
+                @wheel="onCanvasWheel"
               >
                 <div class="relative" :style="{ width: `${totalWidth}px`, height: `${canvasContentHeight}px` }">
                   <canvas
