@@ -101,17 +101,28 @@ export function selectionMatchOccurrences(): Extension {
       maxMatches: 500,
     }),
     selectionMatchScrollbar,
-    EditorView.baseTheme({
+    EditorView.theme({
       "&": {
+        "--dbx-selection-match-background": "rgb(59 130 246 / 0.07)",
+        "--dbx-selection-match-border": "rgb(59 130 246 / 0.24)",
+        "--dbx-selection-match-main-background": "rgb(59 130 246 / 0.11)",
+        "--dbx-selection-match-main-border": "rgb(59 130 246 / 0.36)",
         position: "relative",
       },
+      ".dark &": {
+        "--dbx-selection-match-background": "rgb(147 197 253 / 0.12)",
+        "--dbx-selection-match-border": "rgb(147 197 253 / 0.3)",
+        "--dbx-selection-match-main-background": "rgb(147 197 253 / 0.18)",
+        "--dbx-selection-match-main-border": "rgb(147 197 253 / 0.42)",
+      },
       ".cm-selectionMatch": {
-        backgroundColor: "color-mix(in oklab, var(--foreground) 8%, transparent)",
-        outline: "1px solid color-mix(in oklab, var(--foreground) 10%, transparent)",
+        backgroundColor: "var(--dbx-selection-match-background)",
+        borderRadius: "2px",
+        boxShadow: "inset 0 0 0 1px var(--dbx-selection-match-border)",
       },
       ".cm-selectionMatch-main": {
-        backgroundColor: "color-mix(in oklab, var(--primary) 14%, transparent)",
-        outline: "1px solid color-mix(in oklab, var(--primary) 24%, transparent)",
+        backgroundColor: "var(--dbx-selection-match-main-background)",
+        boxShadow: "inset 0 0 0 1px var(--dbx-selection-match-main-border)",
       },
       ".cm-selectionMatchScrollbarLayer": {
         bottom: "2px",
