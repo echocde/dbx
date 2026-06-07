@@ -225,7 +225,9 @@ pub fn build_sorted_query_sql(options: SortedQuerySqlOptions) -> QuerySqlBuildRe
     }
 
     let aliases = build_derived_column_aliases(&options.result_columns);
-    let use_derived_column_aliases = options.database_type != Some(DatabaseType::Mysql);
+    let use_derived_column_aliases = options.database_type != Some(DatabaseType::Mysql)
+        && options.database_type != Some(DatabaseType::Sqlite)
+        && options.database_type != Some(DatabaseType::DuckDb);
     let sort_alias = if use_derived_column_aliases {
         aliases
             .get(options.column_index)
