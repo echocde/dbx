@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { sortSidebarTreeChildrenForParent } from "../../apps/desktop/src/lib/sidebarNodeOrdering.ts";
 import type { TreeNode } from "../../apps/desktop/src/types/database.ts";
 

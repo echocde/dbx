@@ -23,7 +23,7 @@
     "./sql-safety": "./dist/sql-safety.js"
   },
   "scripts": {
-    "test": "tsx --test tests/*.test.ts",
+    "test": "vitest run --config vitest.config.ts",
     "build": "tsc",
     "prepublishOnly": "tsc"
   },

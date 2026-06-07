@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import { test } from "vitest";
 import type { Backend, ConnectionConfig } from "@dbx-app/node-core";
 import { createDbxMcpServer, DBX_MCP_PACKAGE_VERSION } from "../src/index.js";
 

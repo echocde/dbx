@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import {
   SCHEMA_AWARE_TYPES,
   TREE_SCHEMA_TYPES,

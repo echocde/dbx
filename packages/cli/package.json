@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "start": "tsx src/cli.ts",
-    "test": "pnpm --filter @dbx-app/node-core build && tsx --test tests/*.test.ts",
+    "test": "pnpm --filter @dbx-app/node-core build && vitest run --config vitest.config.ts",
     "build": "pnpm --filter @dbx-app/node-core build && tsc",
     "prepublishOnly": "tsc"
   },

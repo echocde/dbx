@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import test from "node:test";
+import { test } from "vitest";
 import { qualifiedTableName, quoteTableIdentifier } from "../../apps/desktop/src/lib/tableSelectSql.ts";
 
 test("JDBC table identifiers avoid double quotes for Kyuubi-compatible names", () => {

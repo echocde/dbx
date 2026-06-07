@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { isDefaultDatabase, resolveDefaultDatabase } from "../../apps/desktop/src/lib/defaultDatabase.ts";
 
 test("优先使用连接上已保存的默认数据库", () => {

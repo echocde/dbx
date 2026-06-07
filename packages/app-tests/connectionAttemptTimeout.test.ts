@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import test from "node:test";
+import { test } from "vitest";
 import {
   CONNECTION_ATTEMPT_TIMEOUT_BUFFER_MS,
   MONGO_LEGACY_FALLBACK_TIMEOUT_BUFFER_MS,
