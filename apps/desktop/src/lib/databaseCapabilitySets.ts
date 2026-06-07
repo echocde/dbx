@@ -169,7 +169,6 @@ export const CREATE_DATABASE_SUPPORTED_TYPES = new Set<DatabaseType>([
   "sqlserver",
   "clickhouse",
   "oracle",
-  "dameng",
   "gaussdb",
   "kwdb",
   "opengauss",

@@ -26,6 +26,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
+import java.lang.reflect.Method;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -170,6 +171,14 @@ public final class DbxJdbcPlugin {
                 optionalText(params, "schema"),
                 requireText(params, "table")
             );
+            case "getExplainInfo" -> getExplainInfo(
+                connection,
+                requireText(params, "sql"),
+                optionalText(params, "database"),
+                optionalText(params, "schema"),
+                nonNegativeInt(params, "timeoutSecs", -1),
+                optionalText(params, "mode")
+            );
             default -> throw new IllegalArgumentException("Unsupported JDBC plugin method: " + method);
         };
     }
@@ -312,6 +321,107 @@ public final class DbxJdbcPlugin {
         }
     }
 
+    /**
+     * Get DM execution plan using DmdbConnection.getExplainInfo() via reflection.
+     *
+     * Two modes:
+     *   mode="explain" (default) — dmConn.getExplainInfo(sqlStr) — direct plan, no execution
+     *   mode="autotrace"         — execute SQL, then dmConn.getExplainInfo(stmt) — actual stats
+     *
+     * Falls back to standard EXPLAIN if DM driver is not available.
+     */
+    private static JsonNode getExplainInfo(
+        JsonNode connection,
+        String sql,
+        String database,
+        String schema,
+        int timeoutSecs,
+        String mode
+    ) throws Exception {
+        Connection conn = openConnection(connection);
+        applyExecutionContext(connection, conn, database, schema);
+
+        boolean autotrace = "autotrace".equalsIgnoreCase(mode);
+        String planText = null;
+        String dmMethod = null;
+
+        if (autotrace) {
+            if (!isSafeAutotraceSql(sql)) {
+                throw new IllegalArgumentException("unsafe");
+            }
+            // ── Autotrace mode: execute SQL first, then getExplainInfo(stmt) ──
+            boolean monitorEnabled = false;
+            try (Statement s = conn.createStatement()) {
+                s.execute("SF_SET_SESSION_PARA_VALUE('MONITOR_SQL_EXEC', 1)");
+                monitorEnabled = true;
+            } catch (Exception ignored) {}
+
+            try {
+                try (Statement stmt = conn.createStatement()) {
+                    if (timeoutSecs >= 0) {
+                        try { stmt.setQueryTimeout(timeoutSecs); } catch (SQLFeatureNotSupportedException ignored) {}
+                    }
+                    boolean hasResultSet = stmt.execute(trimStatementSql(sql));
+                    if (hasResultSet) {
+                        try (ResultSet rs = stmt.getResultSet()) {
+                            while (rs.next()) { /* consume */ }
+                        }
+                    }
+
+                    // Try DM getExplainInfo(Statement)
+                    try {
+                        Class<?> dmConnClass = Class.forName("dm.jdbc.driver.DmdbConnection");
+                        if (dmConnClass.isInstance(conn)) {
+                            Method m = dmConnClass.getMethod("getExplainInfo", Statement.class);
+                            planText = (String) m.invoke(dmConnClass.cast(conn), stmt);
+                            dmMethod = "getExplainInfo(stmt)";
+                        }
+                    } catch (ClassNotFoundException | NoSuchMethodException e) {
+                        // Not DM or DM driver version doesn't support it
+                    }
+                }
+            } finally {
+                if (monitorEnabled) {
+                    try (Statement s = conn.createStatement()) {
+                        s.execute("SF_SET_SESSION_PARA_VALUE('MONITOR_SQL_EXEC', 0)");
+                    } catch (Exception ignored) {}
+                }
+            }
+        } else {
+            // ── Explain mode: direct plan via getExplainInfo(sqlStr), no execution ──
+            try {
+                Class<?> dmConnClass = Class.forName("dm.jdbc.driver.DmdbConnection");
+                if (dmConnClass.isInstance(conn)) {
+                    Method m = dmConnClass.getMethod("getExplainInfo", String.class);
+                    planText = (String) m.invoke(dmConnClass.cast(conn), sql);
+                    dmMethod = "getExplainInfo(sql)";
+                }
+            } catch (ClassNotFoundException | NoSuchMethodException e) {
+                // Not DM or DM driver version doesn't support it
+            }
+        }
+
+        // Fallback: if DM method didn't work, try standard EXPLAIN
+        if (planText == null || planText.trim().isEmpty()) {
+            try (Statement explainStmt = conn.createStatement();
+                 ResultSet rs = explainStmt.executeQuery("EXPLAIN " + sql)) {
+                StringBuilder sb = new StringBuilder();
+                while (rs.next()) {
+                    sb.append(rs.getString(1)).append("\n");
+                }
+                planText = sb.toString().trim();
+            }
+            dmMethod = "explain(sql)";
+        }
+
+        ObjectNode result = MAPPER.createObjectNode();
+        result.put("ok", true);
+        result.put("plan", planText != null ? planText : "");
+        result.put("has_actual_stats", "getExplainInfo(stmt)".equals(dmMethod));
+        result.put("mode", autotrace ? "autotrace" : "explain");
+        return result;
+    }
+
     private static void applyStatementOptions(Statement statement, int maxRows, int fetchSize, int timeoutSecs)
         throws SQLException {
         statement.setMaxRows((int) Math.min(Integer.MAX_VALUE, (long) maxRows + 1L));
@@ -331,6 +441,133 @@ public final class DbxJdbcPlugin {
 
     private static String trimStatementSql(String sql) {
         return sql == null ? "" : sql.trim().replaceFirst(";\\s*$", "");
+    }
+
+    private static boolean isSafeAutotraceSql(String sql) {
+        String stripped = stripCommentsAndLiterals(trimStatementSql(sql));
+        if (stripped.isBlank()) {
+            return false;
+        }
+        String[] statements = stripped.split(";", -1);
+        for (int i = 1; i < statements.length; i++) {
+            if (!statements[i].isBlank()) {
+                return false;
+            }
+        }
+        String lower = statements[0].stripLeading().toLowerCase(Locale.ROOT);
+        boolean readOnly = lower.equals("select")
+            || lower.startsWith("select ")
+            || lower.startsWith("select\n")
+            || lower.equals("with")
+            || lower.startsWith("with ")
+            || lower.startsWith("with\n")
+            || lower.equals("table")
+            || lower.startsWith("table ")
+            || lower.startsWith("table\n")
+            || lower.equals("values")
+            || lower.startsWith("values ")
+            || lower.startsWith("values\n");
+        if (!readOnly) {
+            return false;
+        }
+        for (String keyword : new String[] {"drop", "delete", "truncate", "alter", "update", "merge", "replace", "insert", "create"}) {
+            if (containsWord(lower, keyword)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean containsWord(String source, String word) {
+        int index = source.indexOf(word);
+        while (index >= 0) {
+            boolean before = index == 0 || !isIdentifierChar(source.charAt(index - 1));
+            int afterIndex = index + word.length();
+            boolean after = afterIndex >= source.length() || !isIdentifierChar(source.charAt(afterIndex));
+            if (before && after) {
+                return true;
+            }
+            index = source.indexOf(word, index + 1);
+        }
+        return false;
+    }
+
+    private static boolean isIdentifierChar(char ch) {
+        return Character.isLetterOrDigit(ch) || ch == '_';
+    }
+
+    private static String stripCommentsAndLiterals(String sql) {
+        StringBuilder output = new StringBuilder(sql.length());
+        boolean inLineComment = false;
+        boolean inBlockComment = false;
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+
+        for (int i = 0; i < sql.length(); i++) {
+            char ch = sql.charAt(i);
+            char next = i + 1 < sql.length() ? sql.charAt(i + 1) : '\0';
+
+            if (inLineComment) {
+                if (ch == '\n') {
+                    inLineComment = false;
+                    output.append(' ');
+                }
+                continue;
+            }
+            if (inBlockComment) {
+                if (ch == '*' && next == '/') {
+                    i++;
+                    inBlockComment = false;
+                    output.append(' ');
+                }
+                continue;
+            }
+            if (inSingleQuote) {
+                if (ch == '\'' && next == '\'') {
+                    i++;
+                } else if (ch == '\'') {
+                    inSingleQuote = false;
+                }
+                output.append(' ');
+                continue;
+            }
+            if (inDoubleQuote) {
+                if (ch == '"' && next == '"') {
+                    i++;
+                } else if (ch == '"') {
+                    inDoubleQuote = false;
+                }
+                output.append(' ');
+                continue;
+            }
+
+            if (ch == '-' && next == '-') {
+                i++;
+                inLineComment = true;
+                continue;
+            }
+            if (ch == '#') {
+                inLineComment = true;
+                continue;
+            }
+            if (ch == '/' && next == '*') {
+                i++;
+                inBlockComment = true;
+                continue;
+            }
+            if (ch == '\'') {
+                inSingleQuote = true;
+                output.append(' ');
+                continue;
+            }
+            if (ch == '"') {
+                inDoubleQuote = true;
+                output.append(' ');
+                continue;
+            }
+            output.append(ch);
+        }
+        return output.toString();
     }
 
     private static void applyExecutionContext(JsonNode connection, Connection conn, String database, String schema) throws SQLException {
