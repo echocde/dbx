@@ -214,6 +214,7 @@ pub enum DatabaseType {
     Doris,
     #[serde(rename = "starrocks")]
     StarRocks,
+    Databend,
     Redshift,
     Dameng,
     Kingbase,
@@ -606,7 +607,7 @@ impl ConnectionConfig {
                 let fragment = self.redis_tls_insecure_fragment();
                 format!("{scheme}://{host}:{port}/{fragment}")
             }
-            DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
+            DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Databend => {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
                 format!("mysql://{host}:{port}{db_part}{suffix}")
             }
@@ -719,7 +720,7 @@ impl ConnectionConfig {
                     format!("{scheme}://{username}:{password}@{host}:{port}/{fragment}")
                 }
             }
-            DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
+            DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Databend => {
                 let suffix = if params.is_empty() { String::new() } else { format!("?{params}") };
                 format!("mysql://{}:{}@{host}:{port}{db_part}{suffix}", username, password)
             }
@@ -886,7 +887,9 @@ impl ConnectionConfig {
         }
         match self.db_type {
             DatabaseType::Mysql => normalize_mysql_url_params(value, self.ssl, self.ca_cert_path.trim().is_empty()),
-            DatabaseType::Doris | DatabaseType::StarRocks => normalize_bare_mysql_url_params(value),
+            DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Databend => {
+                normalize_bare_mysql_url_params(value)
+            }
             DatabaseType::Postgres | DatabaseType::Redshift => normalize_postgres_url_params(value, self.ssl),
             DatabaseType::MongoDb => value.trim_start_matches('?').to_string(),
             _ => value.trim_start_matches('?').to_string(),

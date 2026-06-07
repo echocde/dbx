@@ -213,6 +213,7 @@ pub fn quote_table_identifier(database_type: Option<DatabaseType>, name: &str) -
         Some(
             DatabaseType::Mysql
             | DatabaseType::Hive
+            | DatabaseType::Databend
             | DatabaseType::Tdengine
             | DatabaseType::Access
             | DatabaseType::Bigquery,
@@ -418,6 +419,7 @@ pub fn is_schema_aware(database_type: DatabaseType) -> bool {
             | DatabaseType::OpenGauss
             | DatabaseType::OceanbaseOracle
             | DatabaseType::Gbase
+            | DatabaseType::Databend
             | DatabaseType::Jdbc
             | DatabaseType::H2
             | DatabaseType::Snowflake
@@ -472,6 +474,7 @@ mod tests {
         assert_eq!(qualified_table_name(Some(DatabaseType::Postgres), Some("public"), "users"), "\"public\".\"users\"");
         assert_eq!(qualified_table_name(Some(DatabaseType::Kwdb), Some("public"), "users"), "\"public\".\"users\"");
         assert_eq!(qualified_table_name(Some(DatabaseType::Mysql), Some("public"), "users"), "`users`");
+        assert_eq!(qualified_table_name(Some(DatabaseType::Databend), Some("dbx_test"), "users"), "`dbx_test`.`users`");
         assert_eq!(qualified_table_name(Some(DatabaseType::Jdbc), Some("cbsdw_dwd"), "dwd_test_df"), "dwd_test_df");
         assert_eq!(qualified_table_name(Some(DatabaseType::Iotdb), Some("root.test"), "device2"), "root.test.device2");
         assert_eq!(
@@ -528,6 +531,17 @@ mod tests {
                 limit: 100,
             }),
             "SELECT * FROM dwd_test_df LIMIT 100;"
+        );
+        assert_eq!(
+            build_table_select_sql(TableSelectSqlOptions {
+                database_type: Some(DatabaseType::Databend),
+                schema: Some("dbx_test"),
+                table_name: "jdbc_probe",
+                columns: &[],
+                order_columns: &[],
+                limit: 500,
+            }),
+            "SELECT * FROM `dbx_test`.`jdbc_probe` LIMIT 500;"
         );
         assert_eq!(
             build_table_select_sql(TableSelectSqlOptions {

@@ -12,6 +12,7 @@ export type DatabaseType =
   | "elasticsearch"
   | "doris"
   | "starrocks"
+  | "databend"
   | "redshift"
   | "dameng"
   | "gaussdb"

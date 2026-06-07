@@ -117,6 +117,7 @@ import { buildRoutineRenameObjectSourceStatements, supportsSourceBackedRoutineRe
 import { buildViewDdl } from "@/lib/viewDdl";
 import { getTableStructureCapabilities } from "@/lib/tableStructureCapabilities";
 import {
+  connectionObjectTreeNodeSchema,
   connectionObjectTreeQuerySchema,
   connectionUsesDatabaseObjectTreeMode,
   effectiveDatabaseTypeForConnection,
@@ -753,7 +754,7 @@ async function openData() {
     table: node.label,
     dbType: config?.db_type,
   });
-  const tableSchema = connectionUsesDatabaseObjectTreeMode(config) ? undefined : node.schema;
+  const tableSchema = connectionObjectTreeNodeSchema(config, node.database, node.schema);
   const tabId = (() => {
     if (settingsStore.editorSettings.reuseDataTab) {
       const existing = queryStore.tabs.find(

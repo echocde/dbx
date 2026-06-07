@@ -62,6 +62,13 @@ const AGENT_CATALOG: &[AgentCatalogEntry] = &[
         profiles: &[],
     },
     AgentCatalogEntry {
+        db_type: DatabaseType::Databend,
+        key: "databend",
+        label: "Databend",
+        store_visible: true,
+        profiles: &[],
+    },
+    AgentCatalogEntry {
         db_type: DatabaseType::Databricks,
         key: "databricks",
         label: "Databricks SQL",

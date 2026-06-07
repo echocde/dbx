@@ -36,6 +36,7 @@ export const BRIDGE_REQUIRED_TYPES = [
   "highgo",
   "vastbase",
   "goldendb",
+  "databend",
   "yashandb",
   "databricks",
   "saphana",

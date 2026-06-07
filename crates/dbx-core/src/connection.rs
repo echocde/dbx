@@ -321,7 +321,7 @@ impl AppState {
                     connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout).await?;
                 PoolKind::Mysql(pool, mode)
             }
-            DatabaseType::Doris | DatabaseType::StarRocks => {
+            DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Databend => {
                 let pool = if database.is_none() {
                     connect_bare_metadata_pool(&db_config, &host, port, connect_timeout).await?
                 } else {

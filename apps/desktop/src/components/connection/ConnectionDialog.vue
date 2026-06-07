@@ -332,6 +332,7 @@ const driverProfiles: Record<
     icon: "oceanbase",
   },
   goldendb: { type: "goldendb", port: 3306, user: "root", label: "GoldenDB", icon: "goldendb" },
+  databend: { type: "databend", port: 8000, user: "databend", label: "Databend", icon: "databend" },
   tdsql: { type: "mysql", port: 3306, user: "root", label: "TDSQL", icon: "tdsql" },
   polardb: { type: "mysql", port: 3306, user: "root", label: "PolarDB", icon: "polardb" },
   greatsql: { type: "mysql", port: 3306, user: "root", label: "GreatSQL", icon: "greatsql" },
@@ -600,6 +601,7 @@ function defaultDatabaseForProfile() {
   if (form.value.db_type === "redshift") return "dev";
   if (form.value.db_type === "gaussdb") return "postgres";
   if (form.value.db_type === "kwdb") return "defaultdb";
+  if (form.value.db_type === "databend") return "default";
   if (selectedType.value === "cockroachdb") return "defaultdb";
   if (form.value.db_type === "highgo") return "highgo";
   if (form.value.db_type === "yashandb") return "yasdb";
@@ -636,6 +638,7 @@ const iconTypeMap: Record<string, string> = {
   oceanbase: "oceanbase",
   "oceanbase-oracle": "oceanbase",
   goldendb: "goldendb",
+  databend: "databend",
   tdsql: "tdsql",
   polardb: "polardb",
   greatsql: "greatsql",
@@ -699,6 +702,7 @@ const dbOptions = [
   { value: "tidb", label: "TiDB" },
   { value: "oceanbase", label: "OceanBase" },
   { value: "goldendb", label: "GoldenDB" },
+  { value: "databend", label: "Databend" },
   { value: "tdsql", label: "TDSQL" },
   { value: "polardb", label: "PolarDB" },
   { value: "greatsql", label: "GreatSQL" },

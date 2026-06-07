@@ -30,7 +30,11 @@ import { editablePrimaryKeys } from "@/lib/tableEditing";
 import { TABLE_DATA_EXPORT_PAGE_SIZE } from "@/lib/tableDataExport";
 import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
 import { quoteTableIdentifier } from "@/lib/tableSelectSql";
-import { connectionUsesDatabaseObjectTreeMode, effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
+import {
+  connectionUsesDatabaseObjectTreeMode,
+  connectionUsesSchemaExecutionContext,
+  effectiveDatabaseTypeForConnection,
+} from "@/lib/jdbcDialect";
 import { queryTimeoutSecsForConnection } from "@/lib/queryTimeout";
 import { clearDataGridPendingSnapshotsForTab } from "@/composables/useDataGridEditor";
 import {
@@ -1161,8 +1165,11 @@ export const useQueryStore = defineStore("query", () => {
         ...(clientSessionId ? { clientSessionId } : {}),
         timeoutSecs: queryTimeoutSecs,
       };
-      const executionSchema =
-        tab.mode === "data" || connectionUsesDatabaseObjectTreeMode(conn) ? undefined : tab.schema;
+      const executionSchema = connectionUsesSchemaExecutionContext(conn)
+        ? tab.schema || tab.database
+        : tab.mode === "data" || connectionUsesDatabaseObjectTreeMode(conn)
+          ? undefined
+          : tab.schema;
       const executionPromise = api.executeMulti(
         tab.connectionId,
         tab.database,
