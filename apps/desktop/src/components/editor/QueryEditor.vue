@@ -66,6 +66,7 @@ import {
   fontSizeFromWheelDelta,
 } from "@/lib/editorZoom";
 import { shortcutToCodeMirrorKey } from "@/lib/shortcutRegistry";
+import { trimmedSelectionLayer } from "@/lib/codemirrorTrimmedSelectionLayer";
 import * as api from "@/lib/api";
 import {
   areSqlSemanticDiagnosticsEqual,
@@ -87,7 +88,6 @@ import type {
   SqlTableReference,
   SqlTextSpan,
 } from "@/types/database";
-import { vscodeSelectionLayer } from "@/lib/codemirrorVscodeSelectionLayer";
 
 const props = defineProps<{
   modelValue: string;
@@ -1486,7 +1486,7 @@ onMounted(async () => {
       history(),
       foldGutter(),
       drawSelection(),
-      vscodeSelectionLayer(),
+      trimmedSelectionLayer(),
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
