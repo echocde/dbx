@@ -54,6 +54,7 @@ import { canCancelQueryExecution, queryExecutionLabelKey } from "@/lib/queryExec
 import { databaseDisplayNameForTab } from "@/lib/tabPresentation";
 import { isTableDataEditable } from "@/lib/tableEditing";
 import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
+import { formatShortcut } from "@/lib/shortcutRegistry";
 import { effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
 import type { QueryTab, ConnectionConfig } from "@/types/database";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
@@ -176,6 +177,12 @@ const editorDialect = computed<"mysql" | "postgres" | "sqlserver">(() => {
 });
 
 const shortcutModifier = computed(() => (navigator.platform.toLowerCase().includes("mac") ? "Cmd" : "Ctrl"));
+
+const modRKeys = computed(() =>
+  formatShortcut("Mod+R")
+    .split("+")
+    .map((key) => (key === "Cmd" ? "⌘" : key)),
+);
 
 const hasNumericData = computed(() => {
   const r = props.activeTab.result;
@@ -352,6 +359,10 @@ function handleModRTarget(target: Element): boolean {
   if (target.closest("[data-query-editor-root]")) return queryEditorRef.value?.openReplace() ?? false;
   if (target.closest("[data-cell-detail-editor-root]")) return dataGridRef.value?.openCellDetailSearch() ?? false;
   if (target.closest("[data-grid-root]")) return refreshData();
+  if (props.activeTab.mode === "data" && !props.activeTab.result && !props.activeTab.isExecuting) {
+    emit("reload");
+    return true;
+  }
   return false;
 }
 
@@ -860,6 +871,16 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
         <div v-else class="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground text-sm">
           <Inbox class="h-8 w-8 opacity-60" />
           <div>{{ t("grid.dataUnavailable") }}</div>
+          <div class="text-xs text-muted-foreground/70 inline-flex items-center gap-1">
+            <span>{{ t("grid.dataUnavailableHintPrefix") }}</span>
+            <kbd
+              v-for="key in modRKeys"
+              :key="key"
+              class="min-w-5 rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 text-center font-mono text-[12px] leading-none text-muted-foreground shadow-xs"
+              >{{ key }}</kbd
+            >
+            <span>{{ t("grid.dataUnavailableHintSuffix") }}</span>
+          </div>
           <Button variant="outline" size="sm" class="h-7 gap-1.5" @click="emit('reload')">
             <RefreshCcw class="h-3.5 w-3.5" />
             {{ t("grid.refresh") }}

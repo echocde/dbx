@@ -631,6 +631,8 @@ export default {
     tableInfoNoResults: "无匹配结果",
     queryError: "查询出错",
     dataUnavailable: "表数据需要重新加载。",
+    dataUnavailableHintPrefix: "按 ",
+    dataUnavailableHintSuffix: " 或点击下方刷新按钮重新加载。",
     refresh: "刷新",
     commit: "提交",
     rollback: "回滚",

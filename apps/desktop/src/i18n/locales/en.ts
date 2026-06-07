@@ -636,6 +636,8 @@ export default {
     tableInfoNoResults: "No results",
     queryError: "Query Error",
     dataUnavailable: "Table data needs to be reloaded.",
+    dataUnavailableHintPrefix: "Press ",
+    dataUnavailableHintSuffix: " or click Refresh below to reload.",
     refresh: "Refresh",
     commit: "Commit",
     rollback: "Rollback",
