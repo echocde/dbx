@@ -273,7 +273,7 @@ fn mysql_value_to_json(row: &mysql_async::Row, idx: usize) -> serde_json::Value 
     }
 
     row_get::<String, _>(row, idx)
-        .map(serde_json::Value::String)
+        .map(|s| serde_json::Value::String(fix_potential_double_encoding(&s)))
         .or_else(|| row_get::<i64, _>(row, idx).map(super::safe_i64_to_json))
         .or_else(|| row_get::<u64, _>(row, idx).map(super::safe_u64_to_json))
         .or_else(|| row_get::<i32, _>(row, idx).map(|v| serde_json::Value::Number(v.into())))
@@ -1049,7 +1049,8 @@ pub async fn list_completion_objects(pool: &MySqlPool, database: &str) -> Result
 
 fn columns_sql(database: &str, table: &str) -> String {
     format!(
-        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, \
+        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, \
+         c.COLUMN_COMMENT, \
          c.COLUMN_KEY, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.CHARACTER_MAXIMUM_LENGTH, \
          CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS is_pk \
          FROM information_schema.COLUMNS c \
@@ -1063,6 +1064,70 @@ fn columns_sql(database: &str, table: &str) -> String {
         quote_value(database),
         quote_value(table),
     )
+}
+
+/// Attempt to reverse CP1252→UTF-8 double-encoding.
+///
+/// When Chinese text is written to MySQL through a connection with the wrong
+/// charset (e.g. latin1/CP1252), each byte of the correct UTF-8 representation
+/// is stored as a separate CP1252 character, then re-encoded as UTF-8 on read.
+///
+/// Example: "主键" → UTF-8 bytes [E4 B8 BB E9 94 AE]
+///   → each byte → CP1252 char → UTF-8 re-encoded → garbled text
+///   → reversal: map each char back to its CP1252 byte, decode as UTF-8
+fn fix_potential_double_encoding(s: &str) -> String {
+    // Map each character to its CP1252 byte value
+    let mut bytes = Vec::with_capacity(s.len());
+    for c in s.chars() {
+        let byte = match c as u32 {
+            // Characters in CP1252 that differ from Latin-1 (0x80-0x9F range)
+            0x20AC => 0x80, // €
+            0x201A => 0x82, // ‚
+            0x0192 => 0x83, // ƒ
+            0x201E => 0x84, // „
+            0x2026 => 0x85, // …
+            0x2020 => 0x86, // †
+            0x2021 => 0x87, // ‡
+            0x02C6 => 0x88, // ˆ
+            0x2030 => 0x89, // ‰
+            0x0160 => 0x8A, // Š
+            0x2039 => 0x8B, // ‹
+            0x0152 => 0x8C, // Œ
+            0x017D => 0x8E, // Ž
+            0x2018 => 0x91, // '
+            0x2019 => 0x92, // '
+            0x201C => 0x93, // " left double quotation mark
+            0x201D => 0x94, // " right double quotation mark
+            0x2022 => 0x95, // •
+            0x2013 => 0x96, // –
+            0x2014 => 0x97, // —
+            0x02DC => 0x98, // ˜
+            0x2122 => 0x99, // ™
+            0x0161 => 0x9A, // š
+            0x203A => 0x9B, // ›
+            0x0153 => 0x9C, // œ
+            0x017E => 0x9E, // ž
+            0x0178 => 0x9F, // Ÿ
+            v if v <= 0xFF => v as u8,
+            _ => return s.to_string(), // contains non-Latin1 char, skip
+        };
+        bytes.push(byte);
+    }
+
+    // Try decoding the bytes as UTF-8
+    match String::from_utf8(bytes) {
+        Ok(decoded) => {
+            // Only use the decoded version if it actually contains
+            // multi-byte UTF-8 characters (CJK, etc. > U+00FF),
+            // confirming the reversal was successful
+            if decoded.chars().any(|c| c > '\u{00FF}') {
+                decoded
+            } else {
+                s.to_string()
+            }
+        }
+        Err(_) => s.to_string(),
+    }
 }
 
 pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Result<Vec<ColumnInfo>, String> {
@@ -1095,7 +1160,9 @@ pub async fn get_columns(pool: &MySqlPool, database: &str, table: &str) -> Resul
                 is_nullable: get_str_by_name(row, "IS_NULLABLE") == "YES",
                 column_default: get_opt_str(row, "COLUMN_DEFAULT"),
                 extra: get_opt_str(row, "EXTRA"),
-                comment: get_opt_str(row, "COLUMN_COMMENT").filter(|s| !s.is_empty()),
+                comment: get_opt_str(row, "COLUMN_COMMENT")
+                    .map(|s| fix_potential_double_encoding(&s))
+                    .filter(|s| !s.is_empty()),
                 numeric_precision: get_opt_i32(row, "NUMERIC_PRECISION"),
                 numeric_scale: get_opt_i32(row, "NUMERIC_SCALE"),
                 character_maximum_length: get_opt_i32(row, "CHARACTER_MAXIMUM_LENGTH"),
@@ -1139,7 +1206,9 @@ pub async fn get_columns_show(pool: &MySqlPool, database: &str, table: &str) -> 
                 column_default: get_opt_str(row, "Default"),
                 is_primary_key: key.eq_ignore_ascii_case("PRI"),
                 extra: get_opt_str(row, "Extra"),
-                comment: get_opt_str(row, "Comment").filter(|s| !s.is_empty()),
+                comment: get_opt_str(row, "Comment")
+                    .map(|s| fix_potential_double_encoding(&s))
+                    .filter(|s| !s.is_empty()),
                 numeric_precision: None,
                 numeric_scale: None,
                 character_maximum_length: None,
