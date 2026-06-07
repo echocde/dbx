@@ -253,6 +253,7 @@ pub enum DatabaseType {
     Sundb,
     Tdengine,
     Xugu,
+    Iotdb,
     #[serde(rename = "iris")]
     Iris,
     Jdbc,
@@ -681,6 +682,14 @@ impl ConnectionConfig {
             DatabaseType::Sundb => format!("sundb://{host}:{port}{db_part}"),
             DatabaseType::Tdengine => format!("tdengine://{host}:{port}{db_part}"),
             DatabaseType::Xugu => format!("xugu://{host}:{port}{db_part}"),
+            DatabaseType::Iotdb => {
+                let base = format!("iotdb://{host}:{port}{db_part}");
+                if params.is_empty() {
+                    base
+                } else {
+                    format!("{base}?{params}")
+                }
+            }
             DatabaseType::Iris => format!("iris://{host}:{port}{db_part}"),
             DatabaseType::Jdbc => "jdbc:<redacted>".to_string(),
         }
@@ -852,6 +861,14 @@ impl ConnectionConfig {
             }
             DatabaseType::Xugu => {
                 format!("xugu://{}:{}@{host}:{port}{db_part}", username, password)
+            }
+            DatabaseType::Iotdb => {
+                let base = format!("iotdb://{}:{}@{host}:{port}{db_part}", username, password);
+                if params.is_empty() {
+                    base
+                } else {
+                    format!("{base}?{params}")
+                }
             }
             DatabaseType::Iris => {
                 format!("iris://{}:{}@{host}:{port}{db_part}", username, password)

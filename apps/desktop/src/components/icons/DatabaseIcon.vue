@@ -68,6 +68,7 @@ const assetIcons: Record<string, string> = {
   polardb: "polardb.webp",
   greatsql: "greatsql.webp",
   xugu: "xugu.png",
+  iotdb: "iotdb",
   iris: "iris.png",
 };
 

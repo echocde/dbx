@@ -15,3 +15,15 @@ test("JDBC table identifiers use backticks only when quoting is needed", () => {
   assert.equal(quoteTableIdentifier("jdbc", "daily orders"), "`daily orders`");
   assert.equal(quoteTableIdentifier("jdbc", "daily`orders"), "`daily``orders`");
 });
+
+test("IoTDB table identifiers use tree paths without SQL quotes", () => {
+  assert.equal(quoteTableIdentifier("iotdb", "root.test.device2"), "root.test.device2");
+  assert.equal(
+    qualifiedTableName({ databaseType: "iotdb", schema: "root.test", tableName: "device2" }),
+    "root.test.device2",
+  );
+  assert.equal(
+    qualifiedTableName({ databaseType: "iotdb", schema: "root.test", tableName: "root.test.device2" }),
+    "root.test.device2",
+  );
+});

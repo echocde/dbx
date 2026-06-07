@@ -49,6 +49,7 @@ const SCHEME_PROFILES: Record<string, ConnectionProfile> = {
   tdengine: { type: "tdengine", profile: "tdengine", label: "TDengine", defaultPort: 6041 },
   "taos-ws": { type: "tdengine", profile: "tdengine", label: "TDengine", defaultPort: 6041 },
   xugu: { type: "xugu", profile: "xugu", label: "XuguDB", defaultPort: 5138 },
+  iotdb: { type: "iotdb", profile: "iotdb", label: "Apache IoTDB", defaultPort: 6667 },
   iris: { type: "iris", profile: "iris", label: "IRIS", defaultPort: 1972 },
 };
 

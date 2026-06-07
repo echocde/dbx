@@ -136,6 +136,9 @@ export function connectionUrlPlaceholder(dbType: DatabaseType): string {
     case "xugu":
       return "xugu://user:password@host:5138/database";
 
+    case "iotdb":
+      return "iotdb://user:password@host:6667/root.test";
+
     case "bigquery":
       return "bigquery://https://www.googleapis.com/bigquery/v2:443/project-id";
 

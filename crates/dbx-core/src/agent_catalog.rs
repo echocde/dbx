@@ -218,6 +218,13 @@ const AGENT_CATALOG: &[AgentCatalogEntry] = &[
         profiles: &[],
     },
     AgentCatalogEntry {
+        db_type: DatabaseType::Iotdb,
+        key: "iotdb",
+        label: "Apache IoTDB",
+        store_visible: true,
+        profiles: &[],
+    },
+    AgentCatalogEntry {
         db_type: DatabaseType::MongoDb,
         key: "mongodb",
         label: "MongoDB (Legacy)",

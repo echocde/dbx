@@ -44,6 +44,7 @@ export type DatabaseType =
   | "sundb"
   | "tdengine"
   | "xugu"
+  | "iotdb"
   | "iris"
   | "jdbc";
 

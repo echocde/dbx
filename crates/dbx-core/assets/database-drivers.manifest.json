@@ -485,6 +485,17 @@
       "defaultPort": 5138
     },
     {
+      "dbType": "iotdb",
+      "label": "Apache IoTDB",
+      "runtimeMode": "agent",
+      "mcpMode": "bridge",
+      "agentKey": "iotdb",
+      "singleConnectionPool": false,
+      "metadataConnectionScoped": false,
+      "skipTcpProbe": true,
+      "defaultPort": 6667
+    },
+    {
       "dbType": "iris",
       "label": "InterSystems IRIS",
       "runtimeMode": "agent",

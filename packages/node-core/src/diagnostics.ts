@@ -46,6 +46,7 @@ export const BRIDGE_REQUIRED_TYPES = [
   "oceanbase-oracle",
   "gbase",
   "tdengine",
+  "iotdb",
   "h2",
   "snowflake",
   "trino",

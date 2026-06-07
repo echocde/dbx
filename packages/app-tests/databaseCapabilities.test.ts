@@ -45,6 +45,13 @@ test("treats XuguDB as a schema-aware agent driver database", () => {
   assert.equal(supportsDriverManagement("xugu"), true);
 });
 
+test("treats IoTDB as a schema-aware agent driver database", () => {
+  assert.equal(TREE_SCHEMA_TYPES.has("iotdb"), true);
+  assert.equal(SCHEMA_AWARE_TYPES.has("iotdb"), true);
+  assert.equal(supportsDatabaseSearch("iotdb"), true);
+  assert.equal(supportsDriverManagement("iotdb"), true);
+});
+
 test("treats Access as a local single-database agent driver", () => {
   assert.equal(SCHEMA_AWARE_TYPES.has("access"), false);
   assert.equal(supportsDriverManagement("access"), true);

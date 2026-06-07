@@ -474,6 +474,7 @@ impl AppState {
             | DatabaseType::Sundb
             | DatabaseType::Tdengine
             | DatabaseType::Xugu
+            | DatabaseType::Iotdb
             | DatabaseType::Iris
             | DatabaseType::Access => {
                 let connect_params =

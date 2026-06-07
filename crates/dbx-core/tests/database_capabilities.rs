@@ -50,6 +50,7 @@ fn maps_agent_database_types_to_driver_keys() {
     assert_eq!(agent_key(&DatabaseType::Trino, None), Some("trino"));
     assert_eq!(agent_key(&DatabaseType::Hive, None), Some("hive"));
     assert_eq!(agent_key(&DatabaseType::Tdengine, None), Some("tdengine"));
+    assert_eq!(agent_key(&DatabaseType::Iotdb, None), Some("iotdb"));
     assert_eq!(agent_key(&DatabaseType::Yashandb, None), Some("yashandb"));
     assert_eq!(agent_key(&DatabaseType::Databricks, None), Some("databricks"));
     assert_eq!(agent_key(&DatabaseType::SapHana, None), Some("saphana"));
@@ -72,6 +73,7 @@ fn classifies_agent_database_types() {
     assert!(is_agent_type(&DatabaseType::Trino));
     assert!(is_agent_type(&DatabaseType::Hive));
     assert!(is_agent_type(&DatabaseType::Tdengine));
+    assert!(is_agent_type(&DatabaseType::Iotdb));
     assert!(is_agent_type(&DatabaseType::Yashandb));
     assert!(is_agent_type(&DatabaseType::Databricks));
     assert!(is_agent_type(&DatabaseType::SapHana));
@@ -125,6 +127,7 @@ fn skips_tcp_probe_for_local_file_plugin_and_agent_types() {
     assert!(skips_tcp_probe(&DatabaseType::Trino));
     assert!(skips_tcp_probe(&DatabaseType::Oracle));
     assert!(skips_tcp_probe(&DatabaseType::Tdengine));
+    assert!(skips_tcp_probe(&DatabaseType::Iotdb));
     assert!(skips_tcp_probe(&DatabaseType::Yashandb));
     assert!(skips_tcp_probe(&DatabaseType::Databricks));
     assert!(skips_tcp_probe(&DatabaseType::OceanbaseOracle));

@@ -135,6 +135,20 @@ test("parses XuguDB JDBC URLs", () => {
   assert.equal(parsed.urlParams, "charset=utf8");
 });
 
+test("parses Apache IoTDB JDBC URLs", () => {
+  const parsed = parseConnectionUrl("jdbc:iotdb://root:secret@iotdb.example.com:6667?sql_dialect=table");
+
+  assert.equal(parsed.dbType, "iotdb");
+  assert.equal(parsed.driverProfile, "iotdb");
+  assert.equal(parsed.driverLabel, "Apache IoTDB");
+  assert.equal(parsed.host, "iotdb.example.com");
+  assert.equal(parsed.port, 6667);
+  assert.equal(parsed.username, "root");
+  assert.equal(parsed.password, "secret");
+  assert.equal(parsed.database, undefined);
+  assert.equal(parsed.urlParams, "sql_dialect=table");
+});
+
 test("parses GBase 8s JDBC URLs", () => {
   const parsed = parseConnectionUrl(
     "jdbc:gbasedbt-sqli://gbasedbt:secret@gbase.example.com:20013/testdb:GBASEDBTSERVER=gbase01;CLIENT_LOCALE=zh_cn.utf8",

@@ -170,6 +170,17 @@ pub fn build_table_select_sql(options: TableSelectSqlOptions<'_>) -> String {
 }
 
 pub fn qualified_table_name(database_type: Option<DatabaseType>, schema: Option<&str>, table_name: &str) -> String {
+    if database_type == Some(DatabaseType::Iotdb) {
+        let table_name = quote_table_identifier(database_type, table_name);
+        let schema = schema.map(str::trim).filter(|schema| !schema.is_empty());
+        if let Some(schema) = schema {
+            if table_name == schema || table_name.starts_with(&format!("{schema}.")) {
+                return table_name;
+            }
+            return format!("{}.{}", quote_table_identifier(database_type, schema), table_name);
+        }
+        return table_name;
+    }
     if database_type.is_some_and(is_schema_aware)
         && database_type != Some(DatabaseType::Jdbc)
         && schema.is_some_and(|schema| !schema.trim().is_empty())
@@ -185,6 +196,7 @@ pub fn qualified_table_name(database_type: Option<DatabaseType>, schema: Option<
 
 pub fn quote_table_identifier(database_type: Option<DatabaseType>, name: &str) -> String {
     match database_type {
+        Some(DatabaseType::Iotdb) => name.to_string(),
         Some(DatabaseType::Jdbc) if is_simple_jdbc_identifier(name) => name.to_string(),
         Some(DatabaseType::Jdbc) => format!("`{}`", name.replace('`', "``")),
         Some(
@@ -404,6 +416,7 @@ mod tests {
         assert_eq!(quote_table_identifier(Some(DatabaseType::Informix), "users_1"), "users_1");
         assert_eq!(quote_table_identifier(Some(DatabaseType::Jdbc), "users_1"), "users_1");
         assert_eq!(quote_table_identifier(Some(DatabaseType::Jdbc), "user name"), "`user name`");
+        assert_eq!(quote_table_identifier(Some(DatabaseType::Iotdb), "root.test.device2"), "root.test.device2");
     }
 
     #[test]
@@ -412,6 +425,11 @@ mod tests {
         assert_eq!(qualified_table_name(Some(DatabaseType::Kwdb), Some("public"), "users"), "\"public\".\"users\"");
         assert_eq!(qualified_table_name(Some(DatabaseType::Mysql), Some("public"), "users"), "`users`");
         assert_eq!(qualified_table_name(Some(DatabaseType::Jdbc), Some("cbsdw_dwd"), "dwd_test_df"), "dwd_test_df");
+        assert_eq!(qualified_table_name(Some(DatabaseType::Iotdb), Some("root.test"), "device2"), "root.test.device2");
+        assert_eq!(
+            qualified_table_name(Some(DatabaseType::Iotdb), Some("root.test"), "root.test.device2"),
+            "root.test.device2"
+        );
     }
 
     #[test]
@@ -474,6 +492,17 @@ mod tests {
             }),
             "SELECT TOP 100 * FROM \"Ens\".\"AlarmResponse\""
         );
+        assert_eq!(
+            build_table_select_sql(TableSelectSqlOptions {
+                database_type: Some(DatabaseType::Iotdb),
+                schema: Some("root.test"),
+                table_name: "device2",
+                columns: &[],
+                order_columns: &[],
+                limit: 100,
+            }),
+            "SELECT * FROM root.test.device2 LIMIT 100;"
+        );
     }
 
     #[test]
@@ -525,6 +554,22 @@ mod tests {
                 include_row_id: false,
             }),
             "SELECT TOP 100 * FROM \"Ens\".\"AlarmResponse\""
+        );
+        assert_eq!(
+            build_table_data_select_sql(TableDataSelectSqlOptions {
+                database_type: Some(DatabaseType::Iotdb),
+                schema: Some("root.test".to_string()),
+                table_name: "device2".to_string(),
+                primary_keys: Vec::new(),
+                columns: Vec::new(),
+                fallback_order_columns: Vec::new(),
+                order_by: None,
+                limit: Some(100),
+                offset: None,
+                where_input: None,
+                include_row_id: false,
+            }),
+            "SELECT * FROM root.test.device2 LIMIT 100;"
         );
     }
 
