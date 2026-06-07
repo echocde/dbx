@@ -14,6 +14,7 @@ import {
   PackageSearch,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Settings,
   Terminal,
   Trash2,
@@ -71,7 +72,6 @@ import { eventToShortcut } from "@/lib/keyboardShortcuts";
 import {
   SHORTCUT_DEFINITIONS,
   findShortcutConflict,
-  formatShortcut,
   normalizeShortcutSettings,
   type ShortcutActionId,
 } from "@/lib/shortcutRegistry";
@@ -119,6 +119,7 @@ const editShowColumnCommentsInHeader = ref(settingsStore.editorSettings.showColu
 const editCompactColumnHeaderActions = ref(settingsStore.editorSettings.compactColumnHeaderActions);
 const editRedisScanPageSize = ref(settingsStore.editorSettings.redisScanPageSize);
 const editShortcuts = ref(normalizeShortcutSettings(settingsStore.editorSettings.shortcuts));
+const editingShortcutId = ref<ShortcutActionId | null>(null);
 const editSidebarActivation = ref(settingsStore.editorSettings.sidebarActivation);
 const editSidebarObjectDisplay = ref(settingsStore.editorSettings.sidebarObjectDisplay);
 const sidebarObjectDisplayHelp = ref<"grouped" | "simple" | null>(null);
@@ -496,9 +497,56 @@ function onShortcutChange(actionId: ShortcutActionId, value: any) {
 function onShortcutKeydown(actionId: ShortcutActionId, event: KeyboardEvent) {
   event.preventDefault();
   event.stopPropagation();
+  if (editingShortcutId.value !== actionId) return;
+  if (event.key === "Escape") {
+    editingShortcutId.value = null;
+    return;
+  }
   const shortcut = eventToShortcut(event);
   if (!shortcut) return;
   onShortcutChange(actionId, shortcut);
+  editingShortcutId.value = null;
+}
+
+function formatShortcutPill(shortcut: string): string {
+  const isMac = globalThis.navigator?.platform?.toLowerCase().includes("mac") ?? false;
+  return shortcut
+    .split("+")
+    .filter(Boolean)
+    .map((part) => {
+      if (part === "Mod") return isMac ? "⌘" : "Ctrl";
+      if (part === "Meta") return isMac ? "⌘" : "Meta";
+      if (part === "Shift") return isMac ? "⇧" : "Shift";
+      if (part === "Alt") return isMac ? "⌥" : "Alt";
+      if (part === "Control" || part === "Ctrl") return isMac ? "⌃" : "Ctrl";
+      if (part === "Enter") return "↵";
+      if (part === "Backspace") return "⌫";
+      if (part === "Delete") return isMac ? "⌦" : "Del";
+      if (part === "Escape") return "Esc";
+      if (part === "ArrowUp") return "↑";
+      if (part === "ArrowDown") return "↓";
+      if (part === "ArrowLeft") return "←";
+      if (part === "ArrowRight") return "→";
+      if (part === " ") return "Space";
+      return part.length === 1 ? part.toUpperCase() : part;
+    })
+    .join(isMac ? " " : " + ");
+}
+
+const shortcutPressShortcutLabel = computed(() => t("settings.shortcutPressShortcut"));
+const shortcutPressShortcutInputWidth = computed(() => `${shortcutPressShortcutLabel.value.length + 2}em`);
+
+function focusShortcutInput(actionId: ShortcutActionId) {
+  editingShortcutId.value = actionId;
+  const input = document.querySelector<HTMLInputElement>(`[data-shortcut-input="${actionId}"]`);
+  requestAnimationFrame(() => {
+    input?.focus();
+    input?.select();
+  });
+}
+
+function cancelShortcutEdit() {
+  editingShortcutId.value = null;
 }
 
 function resetShortcut(actionId: ShortcutActionId) {
@@ -1794,40 +1842,80 @@ watch(
             </section>
 
             <section v-else-if="activeSettingsTab === 'shortcuts'" class="flex flex-col gap-2 py-2">
-              <div class="overflow-hidden rounded-md border bg-background">
+              <div class="overflow-hidden rounded-md border border-border/70 bg-background">
                 <div
                   v-for="definition in SHORTCUT_DEFINITIONS"
                   :key="definition.id"
-                  class="-mt-px grid gap-2 border-t border-border px-3 py-2 sm:first:mt-0 sm:first:border-t-0 sm:grid-cols-[minmax(0,1fr)_208px] sm:items-center"
+                  class="group -mt-px grid gap-2 border-t border-border/70 px-3 py-2 transition-colors first:mt-0 first:border-t-0 hover:bg-muted/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
                   <div class="min-w-0">
                     <div class="flex min-w-0 items-center gap-2">
                       <Label class="min-w-0 truncate leading-none">{{ t(definition.labelKey) }}</Label>
-                      <Badge variant="outline" class="h-5 shrink-0 rounded-md px-1.5 text-[11px] text-muted-foreground">
+                      <Badge
+                        variant="outline"
+                        class="h-5 shrink-0 rounded-md border-border/60 px-1.5 text-[11px] font-normal text-muted-foreground"
+                      >
                         {{
                           t(`settings.shortcutScope${definition.scope[0].toUpperCase()}${definition.scope.slice(1)}`)
                         }}
                       </Badge>
                     </div>
                   </div>
-                  <div class="space-y-1">
-                    <div class="flex gap-2">
-                      <Input
-                        :model-value="formatShortcut(editShortcuts[definition.id])"
+                  <div class="min-w-0 space-y-1">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <input
+                        :data-shortcut-input="definition.id"
+                        :value="
+                          editingShortcutId === definition.id ? '' : formatShortcutPill(editShortcuts[definition.id])
+                        "
+                        :style="{
+                          width:
+                            editingShortcutId === definition.id
+                              ? shortcutPressShortcutInputWidth
+                              : `${Math.max(4, formatShortcutPill(editShortcuts[definition.id]).length + 2)}ch`,
+                        }"
                         readonly
                         :aria-invalid="shortcutConflicts.includes(definition.id)"
                         :placeholder="t('settings.shortcutPressShortcut')"
-                        class="h-9 font-mono"
+                        class="h-7 w-auto min-w-12 max-w-32 shrink-0 cursor-default rounded-full border border-transparent bg-muted px-2.5 text-center font-mono text-[13px] font-semibold text-foreground/75 shadow-inner outline-none selection:bg-transparent placeholder:text-muted-foreground aria-invalid:border-destructive/70 aria-invalid:text-destructive aria-invalid:ring-destructive/20"
+                        :class="
+                          editingShortcutId === definition.id
+                            ? 'max-w-44 cursor-text border-border/80 bg-background text-left text-foreground shadow-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/35'
+                            : ''
+                        "
                         @keydown="(event: KeyboardEvent) => onShortcutKeydown(definition.id, event)"
                       />
                       <Button
+                        v-if="editingShortcutId !== definition.id"
                         type="button"
-                        variant="outline"
+                        variant="ghost"
+                        size="icon"
+                        class="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                        :aria-label="t('settings.shortcutPressShortcut')"
+                        @click="focusShortcutInput(definition.id)"
+                      >
+                        <Pencil class="h-4 w-4" />
+                      </Button>
+                      <Button
+                        v-else
+                        type="button"
+                        variant="ghost"
                         size="sm"
-                        class="h-9 shrink-0 px-3"
+                        class="h-7 shrink-0 px-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+                        @click="cancelShortcutEdit"
+                      >
+                        {{ t("settings.cancel") }}
+                      </Button>
+                      <Button
+                        v-if="editingShortcutId !== definition.id"
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        class="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                        :aria-label="t('settings.reset')"
                         @click="resetShortcut(definition.id)"
                       >
-                        {{ t("settings.reset") }}
+                        <RotateCcw class="h-4 w-4" />
                       </Button>
                     </div>
                     <p v-if="shortcutConflicts.includes(definition.id)" class="text-xs text-destructive">
