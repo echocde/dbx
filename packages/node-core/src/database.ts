@@ -513,6 +513,14 @@ export async function executeQuery(config: ConnectionConfig, sql: string, option
       );
       return mongoDocumentsToQueryResult(result.documents.slice(0, resolveMaxRows(options)), result.total);
     }
+    const getIndexes = parseMongoGetIndexesCommand(sql);
+    if (getIndexes) {
+      const result = await withTimeout(
+        mongoAggregateDocuments(config, getIndexes.collection, '[{"$indexStats":{}}]', resolveMaxRows(options)),
+        resolveTimeoutMs(options),
+      );
+      return mongoDocumentsToQueryResult(result.documents.slice(0, resolveMaxRows(options)), result.total);
+    }
     const write = parseMongoWriteCommand(sql);
     if (write) {
       const safety = evaluateMongoWriteSafety(write, sqlSafetyFromEnv());
@@ -521,7 +529,7 @@ export async function executeQuery(config: ConnectionConfig, sql: string, option
       return { columns: [], rows: [], row_count: affected };
     }
     throw new Error(
-      "Use MongoDB shell-style commands, for example: db.projects.find({}).limit(100), db.projects.countDocuments({}), db.projects.insertOne({...}), db.projects.updateOne({...}, {$set: {...}}), or db.projects.deleteOne({...})",
+      "Use MongoDB shell-style commands, for example: db.projects.find({}).limit(100), db.projects.countDocuments({}), db.projects.getIndexes(), db.projects.insertOne({...}), db.projects.updateOne({...}, {$set: {...}}), or db.projects.deleteOne({...})",
     );
   }
   if (isDirectQueryType(config.db_type)) {
@@ -758,6 +766,10 @@ interface MongoAggregateCommand {
   pipeline: string;
 }
 
+interface MongoGetIndexesCommand {
+  collection: string;
+}
+
 export type MongoWriteCommand =
   | { kind: "insert"; collection: string; docsJson: string }
   | { kind: "update"; collection: string; filter: string; update: string; many: boolean }
@@ -810,6 +822,15 @@ export function parseMongoAggregateCommand(input: string): MongoAggregateCommand
   const pipeline = normalizeJsonArgument(args[0]);
   if (!pipeline) return null;
   return Array.isArray(JSON.parse(pipeline)) ? { collection: target.collection, pipeline } : null;
+}
+
+export function parseMongoGetIndexesCommand(input: string): MongoGetIndexesCommand | null {
+  const source = input.trim().replace(/;$/, "").trim();
+  const target = parseCollectionMethodTarget(source, "getIndexes");
+  if (!target) return null;
+  const args = parseMethodArgs(source, target.methodCallIndex);
+  if (!args || args.some((arg) => arg.trim())) return null;
+  return { collection: target.collection };
 }
 
 export function mongoAggregateWriteStage(pipelineJson: string): "$out" | "$merge" | null {

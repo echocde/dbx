@@ -6,6 +6,8 @@ use mongodb::{
 use serde::{Deserialize, Serialize};
 
 use super::with_connection_timeout;
+use crate::types::IndexInfo;
+use futures::TryStreamExt;
 use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,6 +42,39 @@ pub async fn list_databases(client: &Client) -> Result<Vec<String>, String> {
 
 pub async fn list_collections(client: &Client, database: &str) -> Result<Vec<String>, String> {
     client.database(database).list_collection_names().await.map_err(|e| e.to_string())
+}
+
+pub async fn list_indexes(client: &Client, database: &str, collection: &str) -> Result<Vec<IndexInfo>, String> {
+    let col = client.database(database).collection::<Document>(collection);
+    let mut cursor = col.list_indexes().await.map_err(|e| e.to_string())?;
+    let mut indexes = Vec::new();
+    while let Some(model) = cursor.try_next().await.map_err(|e| e.to_string())? {
+        let name = model.options.as_ref().and_then(|options| options.name.clone()).unwrap_or_else(|| {
+            model.keys.iter().map(|(field, value)| format!("{field}_{value}")).collect::<Vec<_>>().join("_")
+        });
+        let columns = model.keys.keys().cloned().collect::<Vec<_>>();
+        let index_type = if model.keys.is_empty() {
+            None
+        } else {
+            Some(model.keys.iter().map(|(field, value)| format!("{field}: {value}")).collect::<Vec<_>>().join(", "))
+        };
+        let filter = model
+            .options
+            .as_ref()
+            .and_then(|options| options.partial_filter_expression.as_ref())
+            .map(|filter| bson_to_json(&Bson::Document(filter.clone())).to_string());
+        indexes.push(IndexInfo {
+            is_unique: model.options.as_ref().and_then(|options| options.unique).unwrap_or(false),
+            is_primary: name == "_id_",
+            name,
+            columns,
+            filter,
+            index_type,
+            included_columns: None,
+            comment: None,
+        });
+    }
+    Ok(indexes)
 }
 
 pub async fn find_documents(

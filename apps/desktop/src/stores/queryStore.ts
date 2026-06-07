@@ -18,10 +18,12 @@ import {
   evaluateMongoAggregateSafety,
   mongoCountToQueryResult,
   mongoDocumentsToQueryResult,
+  mongoIndexesToQueryResult,
   mongoWriteToQueryResult,
   parseMongoAggregateCommand,
   parseMongoCountDocumentsCommand,
   parseMongoFindCommand,
+  parseMongoGetIndexesCommand,
   parseMongoWriteCommand,
   type MongoAggregateSafetyOptions,
 } from "@/lib/mongoShellCommand";
@@ -1080,6 +1082,32 @@ export const useQueryStore = defineStore("query", () => {
           current.result = markQueryResultRowsRaw(
             mongoDocumentsToQueryResult(result.documents, performance.now() - startedAt, result.total),
           );
+          touchResult(current);
+          current.queryAnalysis = undefined;
+          current.querySourceColumns = undefined;
+          current.queryEditabilityReason = undefined;
+          current.tableMeta = undefined;
+          current.resultBaseSql = options?.resultBaseSql ?? sql;
+          current.resultSortedSql = options?.resultSortedSql;
+        }
+        return;
+      }
+
+      const mongoGetIndexes = conn?.db_type === "mongodb" ? parseMongoGetIndexesCommand(sql) : null;
+      if (mongoGetIndexes) {
+        await connStore.ensureConnected(tab.connectionId);
+        console.info("[DBX][executeTabSql:mongo-indexes:start]", { traceId, collection: mongoGetIndexes.collection });
+        const indexes = await api.listIndexes(tab.connectionId, tab.database, "", mongoGetIndexes.collection);
+        console.info("[DBX][executeTabSql:mongo-indexes:done]", {
+          traceId,
+          indexCount: indexes.length,
+          elapsed: elapsed(),
+        });
+        const current = tabs.value.find((t) => t.id === id);
+        if (current?.executionId === executionId) {
+          current.results = undefined;
+          current.activeResultIndex = undefined;
+          current.result = markQueryResultRowsRaw(mongoIndexesToQueryResult(indexes, performance.now() - startedAt));
           touchResult(current);
           current.queryAnalysis = undefined;
           current.querySourceColumns = undefined;
