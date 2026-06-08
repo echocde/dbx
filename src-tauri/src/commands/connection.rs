@@ -437,11 +437,12 @@ pub async fn connect_db(state: State<'_, Arc<AppState>>, config: ConnectionConfi
 
     let pool = match db_config.db_type {
         DatabaseType::Mysql => {
-            let (pool, mode) = connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout).await?;
+            let (pool, mode) =
+                connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout, 3).await?;
             PoolKind::Mysql(pool, mode)
         }
         DatabaseType::Doris | DatabaseType::StarRocks => PoolKind::Mysql(
-            connect_bare_metadata_pool(&db_config, &host, port, connect_timeout).await?,
+            connect_bare_metadata_pool(&db_config, &host, port, connect_timeout, 3).await?,
             MysqlMode::Bare,
         ),
         DatabaseType::Postgres

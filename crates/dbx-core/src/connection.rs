@@ -97,10 +97,11 @@ pub async fn connect_mysql_metadata_pool(
     host: &str,
     port: u16,
     connect_timeout: std::time::Duration,
+    max_connections: usize,
 ) -> Result<(db::mysql::MySqlPool, MysqlMode), String> {
     let url = connection_url_for_endpoint(db_config, host, port);
     if db_config.needs_bare_mysql() {
-        return match db::mysql::connect_bare(&url, connect_timeout).await {
+        return match db::mysql::connect_bare_with_pool_limit(&url, connect_timeout, max_connections).await {
             Ok(pool) => Ok((pool, MysqlMode::Bare)),
             Err(err) => {
                 let fallback_url = mysql_metadata_fallback_url(config, db_config, host, port);
@@ -108,7 +109,9 @@ pub async fn connect_mysql_metadata_pool(
                     log::info!(
                         "MySQL metadata connection without a default database failed ({err}); retrying with configured default database."
                     );
-                    db::mysql::connect_bare(&fallback_url, connect_timeout).await.map(|pool| (pool, MysqlMode::Bare))
+                    db::mysql::connect_bare_with_pool_limit(&fallback_url, connect_timeout, max_connections)
+                        .await
+                        .map(|pool| (pool, MysqlMode::Bare))
                 } else {
                     Err(err)
                 }
@@ -116,7 +119,14 @@ pub async fn connect_mysql_metadata_pool(
         };
     }
 
-    match db::mysql::connect_with_ca_cert(&url, Some(&db_config.ca_cert_path), connect_timeout).await {
+    match db::mysql::connect_with_ca_cert_and_pool_limit(
+        &url,
+        Some(&db_config.ca_cert_path),
+        connect_timeout,
+        max_connections,
+    )
+    .await
+    {
         Ok(pool) => {
             let mode = detect_ob_oracle_mode(config, &pool).await;
             Ok((pool, mode))
@@ -127,8 +137,13 @@ pub async fn connect_mysql_metadata_pool(
                 log::info!(
                     "MySQL metadata connection without a default database failed ({err}); retrying with configured default database."
                 );
-                let pool =
-                    db::mysql::connect_with_ca_cert(&fallback_url, Some(&config.ca_cert_path), connect_timeout).await?;
+                let pool = db::mysql::connect_with_ca_cert_and_pool_limit(
+                    &fallback_url,
+                    Some(&config.ca_cert_path),
+                    connect_timeout,
+                    max_connections,
+                )
+                .await?;
                 let mode = detect_ob_oracle_mode(config, &pool).await;
                 Ok((pool, mode))
             } else {
@@ -143,21 +158,22 @@ pub async fn connect_bare_metadata_pool(
     host: &str,
     port: u16,
     connect_timeout: std::time::Duration,
+    max_connections: usize,
 ) -> Result<db::mysql::MySqlPool, String> {
     let url = connection_url_for_endpoint(db_config, host, port);
     if db_config.effective_database().is_none() {
-        return db::mysql::connect_bare(&url, connect_timeout).await;
+        return db::mysql::connect_bare_with_pool_limit(&url, connect_timeout, max_connections).await;
     }
 
     let mut unscoped_config = db_config.clone();
     unscoped_config.database = None;
     let unscoped_url = connection_url_for_endpoint(&unscoped_config, host, port);
     if unscoped_url == url {
-        return db::mysql::connect_bare(&url, connect_timeout).await;
+        return db::mysql::connect_bare_with_pool_limit(&url, connect_timeout, max_connections).await;
     }
 
-    let preferred = db::mysql::connect_bare(&url, connect_timeout);
-    let unscoped = db::mysql::connect_bare(&unscoped_url, connect_timeout);
+    let preferred = db::mysql::connect_bare_with_pool_limit(&url, connect_timeout, max_connections);
+    let unscoped = db::mysql::connect_bare_with_pool_limit(&unscoped_url, connect_timeout, max_connections);
     tokio::pin!(preferred);
     tokio::pin!(unscoped);
 
@@ -315,17 +331,26 @@ impl AppState {
         probe_connection_endpoint(&db_config, &host, port).await?;
         let url = connection_url_for_endpoint(&db_config, &host, port);
         let connect_timeout = std::time::Duration::from_secs(db_config.effective_connect_timeout_secs());
+        let mysql_pool_max_connections = if normalize_client_session_id(client_session_id).is_some() { 1 } else { 3 };
         let pool = match db_config.db_type {
             DatabaseType::Mysql => {
-                let (pool, mode) =
-                    connect_mysql_metadata_pool(&config, &db_config, &host, port, connect_timeout).await?;
+                let (pool, mode) = connect_mysql_metadata_pool(
+                    &config,
+                    &db_config,
+                    &host,
+                    port,
+                    connect_timeout,
+                    mysql_pool_max_connections,
+                )
+                .await?;
                 PoolKind::Mysql(pool, mode)
             }
             DatabaseType::Doris | DatabaseType::StarRocks | DatabaseType::Databend => {
                 let pool = if database.is_none() {
-                    connect_bare_metadata_pool(&db_config, &host, port, connect_timeout).await?
+                    connect_bare_metadata_pool(&db_config, &host, port, connect_timeout, mysql_pool_max_connections)
+                        .await?
                 } else {
-                    db::mysql::connect_bare(&url, connect_timeout).await?
+                    db::mysql::connect_bare_with_pool_limit(&url, connect_timeout, mysql_pool_max_connections).await?
                 };
                 PoolKind::Mysql(pool, MysqlMode::Bare)
             }

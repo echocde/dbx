@@ -333,15 +333,24 @@ pub async fn connect_with_ca_cert(
     ca_cert_path: Option<&str>,
     fallback_timeout: Duration,
 ) -> Result<MySqlPool, String> {
+    connect_with_ca_cert_and_pool_limit(url, ca_cert_path, fallback_timeout, 3).await
+}
+
+pub async fn connect_with_ca_cert_and_pool_limit(
+    url: &str,
+    ca_cert_path: Option<&str>,
+    fallback_timeout: Duration,
+    max_connections: usize,
+) -> Result<MySqlPool, String> {
     let timeout = super::parse_connect_timeout_with_fallback(url, fallback_timeout);
-    let pool = create_pool(url, ca_cert_path)?;
+    let pool = create_pool(url, ca_cert_path, max_connections)?;
     let result = verify_pool_connection(&pool, timeout).await;
 
     if let Err(ref e) = result {
         if mysql_error_should_retry_without_ssl(e) {
             if let Some(fallback_url) = ssl_fallback_url(url) {
                 log::info!("SSL handshake failed, retrying with ssl-mode=disabled");
-                let fallback_pool = create_pool(&fallback_url, None)?;
+                let fallback_pool = create_pool(&fallback_url, None, max_connections)?;
                 return match verify_pool_connection(&fallback_pool, timeout).await {
                     Ok(()) => Ok(fallback_pool),
                     Err(e) => Err(e),
@@ -359,13 +368,14 @@ struct MySqlTlsFiles {
     sslkey: Option<String>,
 }
 
-fn create_pool(url: &str, ca_cert_path: Option<&str>) -> Result<MySqlPool, String> {
+fn create_pool(url: &str, ca_cert_path: Option<&str>, max_connections: usize) -> Result<MySqlPool, String> {
     let tls_url = mysql_tls_url(url)?;
     let opts =
         mysql_async::Opts::from_url(&mysql_async_url(&tls_url.url)).map_err(|e| format!("Invalid MySQL URL: {e}"))?;
     let base_ssl_opts = opts.ssl_opts().cloned();
+    let max_connections = max_connections.max(1);
     let pool_opts = mysql_async::PoolOpts::new()
-        .with_constraints(mysql_async::PoolConstraints::new(1, 3).unwrap())
+        .with_constraints(mysql_async::PoolConstraints::new(1, max_connections).unwrap())
         .with_inactive_connection_ttl(Duration::from_secs(300));
     let mut builder = mysql_async::OptsBuilder::from_opts(opts)
         .stmt_cache_size(0)
@@ -747,8 +757,16 @@ fn mysql_async_url(url: &str) -> Cow<'_, str> {
 }
 
 pub async fn connect_bare(url: &str, fallback_timeout: Duration) -> Result<MySqlPool, String> {
+    connect_bare_with_pool_limit(url, fallback_timeout, 3).await
+}
+
+pub async fn connect_bare_with_pool_limit(
+    url: &str,
+    fallback_timeout: Duration,
+    max_connections: usize,
+) -> Result<MySqlPool, String> {
     let timeout = super::parse_connect_timeout_with_fallback(url, fallback_timeout);
-    let pool = create_pool(url, None)?;
+    let pool = create_pool(url, None, max_connections)?;
     verify_pool_connection(&pool, timeout).await.map(|_| pool)
 }
 
