@@ -79,6 +79,7 @@ import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
 import TemporalCellEditor from "@/components/grid/TemporalCellEditor.vue";
 import type { QueryResult, ColumnInfo, DatabaseType, ForeignKeyInfo, IndexInfo, TriggerInfo } from "@/types/database";
 import * as api from "@/lib/api";
+import { coerceDataGridCellValue, dataGridCellDisplayText, dataGridCellEditorText } from "@/lib/dataGridCellCoercion";
 import { createColumnDrafts } from "@/lib/tableStructureEditorState";
 import type { BuildSingleColumnAlterSqlOptions } from "@/lib/tableStructureEditorSql";
 import { buildTableSelectSql, quoteTableIdentifier } from "@/lib/tableSelectSql";
@@ -246,11 +247,11 @@ const props = defineProps<{
   onExecuteSql?: (sql: string) => Promise<void>;
   fullExportResult?: () => Promise<QueryResult | undefined>;
   customSave?: (changes: {
-    dirtyRows: Map<number, Map<number, string | number | boolean | null>>;
-    newRows: (string | number | boolean | null)[][];
+    dirtyRows: Map<number, Map<number, CellValue>>;
+    newRows: CellValue[][];
     deletedRows: Set<number>;
     columns: string[];
-    rows: (string | number | boolean | null)[][];
+    rows: CellValue[][];
   }) => Promise<void>;
 }>();
 
@@ -2193,7 +2194,6 @@ const {
   saveChanges,
   discardChanges,
   rowDataWithChanges,
-  coerceCellValue,
   canEditColumn,
   resetGridVerticalScroll,
   getResetScrollAfterResult,
@@ -2247,6 +2247,15 @@ function tableColumnForGridColumn(columnIndex: number): ColumnInfo | undefined {
   const columnName = props.sourceColumns?.[columnIndex] ?? props.result.columns[columnIndex];
   if (!columnName) return undefined;
   return props.tableMeta?.columns.find((column) => column.name.toLowerCase() === columnName.toLowerCase());
+}
+
+function coerceDetailCellValue(value: string, oldValue: CellValue | undefined, columnIndex: number): CellValue {
+  return coerceDataGridCellValue({
+    value,
+    oldValue,
+    databaseType: props.databaseType,
+    columnInfo: tableColumnForGridColumn(columnIndex),
+  }) as CellValue;
 }
 
 function temporalEditorKindForColumn(columnIndex: number): TemporalCellEditorKind | undefined {
@@ -2904,7 +2913,11 @@ watch(activeCellDetail, (detail) => {
     resetDetailEdit();
     return;
   }
-  detailEditValue.value = cellDetailEditorText(detail.value, detail.type);
+  detailEditValue.value = dataGridCellEditorText({
+    value: detail.value,
+    databaseType: props.databaseType,
+    columnInfo: tableColumnForGridColumn(detail.colIndex),
+  });
   syncEditorFromDetailEdit();
   isEditingDetail.value = true;
 });
@@ -2984,7 +2997,11 @@ function closeCellDetails() {
 function startDetailEdit() {
   const detail = activeCellDetail.value;
   if (!detail || !detail.isEditable) return;
-  detailEditValue.value = cellDetailEditorText(detail.value, detail.type);
+  detailEditValue.value = dataGridCellEditorText({
+    value: detail.value,
+    databaseType: props.databaseType,
+    columnInfo: tableColumnForGridColumn(detail.colIndex),
+  });
   isEditingDetail.value = true;
 }
 
@@ -2998,7 +3015,11 @@ function commitDetailEdit() {
 
   if (item.isNew && item.newIndex !== undefined) {
     const oldVal = newRows.value[item.newIndex]?.[detail.colIndex];
-    newRows.value[item.newIndex][detail.colIndex] = coerceCellValue(detailEditValue.value, oldVal);
+    newRows.value[item.newIndex][detail.colIndex] = coerceDetailCellValue(
+      detailEditValue.value,
+      oldVal,
+      detail.colIndex,
+    );
     return;
   }
 
@@ -3006,7 +3027,7 @@ function commitDetailEdit() {
   if (!canEditExistingRows.value) return;
 
   const oldVal = props.result.rows[item.sourceIndex]?.[detail.colIndex];
-  const newVal = coerceCellValue(detailEditValue.value, oldVal);
+  const newVal = coerceDetailCellValue(detailEditValue.value, oldVal, detail.colIndex);
   if (newVal !== oldVal) {
     if (!dirtyRows.value.has(item.sourceIndex)) dirtyRows.value.set(item.sourceIndex, new Map());
     dirtyRows.value.get(item.sourceIndex)!.set(detail.colIndex, newVal);
@@ -3035,7 +3056,11 @@ function syncEditorFromDetailEdit() {
 function cancelValueEditorEdit() {
   const detail = activeCellDetail.value;
   if (!detail || !detail.isEditable) return;
-  detailEditValue.value = cellDetailEditorText(detail.value, detail.type);
+  detailEditValue.value = dataGridCellEditorText({
+    value: detail.value,
+    databaseType: props.databaseType,
+    columnInfo: tableColumnForGridColumn(detail.colIndex),
+  });
   syncEditorFromDetailEdit();
   isEditingDetail.value = true;
 }
@@ -3067,7 +3092,11 @@ function restoreDetailOriginalValue() {
     dirtyRows.value = new Map(dirtyRows.value);
   }
 
-  detailEditValue.value = cellDetailEditorText(restoredValue, detail.type);
+  detailEditValue.value = dataGridCellEditorText({
+    value: restoredValue,
+    databaseType: props.databaseType,
+    columnInfo: tableColumnForGridColumn(detail.colIndex),
+  });
   syncEditorFromDetailEdit();
   isEditingDetail.value = activeCellDetailTab.value === "valueEditor";
   detailCell.value = { ...detailCell.value! };
@@ -3297,9 +3326,17 @@ function primitiveCellFormatKey(value: CellValue, columnIndex?: number): string 
 function formatCell(value: CellValue, columnIndex?: number): string {
   const formatter = columnIndex === undefined ? undefined : resolvedColumnFormatters.value[columnIndex];
   const columnName = columnIndex === undefined ? undefined : props.result.columns[columnIndex];
+  const columnInfo = columnIndex === undefined ? undefined : tableColumnForGridColumn(columnIndex);
+  const arrayDisplay = formatter
+    ? undefined
+    : dataGridCellDisplayText({ value, databaseType: props.databaseType, columnInfo });
+  if (arrayDisplay !== undefined) return arrayDisplay;
   const binaryDisplay = formatter
     ? null
-    : binaryCellDisplayText(value, columnName ? columnTypeMap.value.get(columnName) : undefined);
+    : binaryCellDisplayText(
+        value,
+        columnInfo?.data_type ?? (columnName ? columnTypeMap.value.get(columnName) : undefined),
+      );
   if (binaryDisplay) return binaryDisplay;
   const s = applyColumnFormatter(value, formatter);
   return s.length > CELL_DISPLAY_MAX_LENGTH ? s.slice(0, CELL_DISPLAY_MAX_LENGTH) : s;
