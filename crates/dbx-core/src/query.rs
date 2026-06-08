@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use duckdb::types::{TimeUnit, ValueRef};
+use duckdb::types::{TimeUnit, Value, ValueRef};
 use mysql_async::prelude::Queryable;
 use std::future::Future;
 use std::time::Duration;
@@ -109,7 +109,70 @@ fn duckdb_value_to_json(row: &duckdb::Row<'_>, idx: usize) -> serde_json::Value 
         ValueRef::Interval { months, days, nanos } => {
             serde_json::Value::String(duckdb_interval_to_string(months, days, nanos))
         }
-        _ => row.get::<_, String>(idx).map(serde_json::Value::String).unwrap_or(serde_json::Value::Null),
+        ValueRef::List(..)
+        | ValueRef::Array(..)
+        | ValueRef::Struct(..)
+        | ValueRef::Map(..)
+        | ValueRef::Enum(..)
+        | ValueRef::Union(..) => duckdb_owned_value_to_json(&value_ref.to_owned()),
+    }
+}
+
+fn duckdb_owned_value_to_json(value: &Value) -> serde_json::Value {
+    match value {
+        Value::Null => serde_json::Value::Null,
+        Value::Boolean(b) => serde_json::Value::Bool(*b),
+        Value::TinyInt(i) => serde_json::Value::Number((*i as i64).into()),
+        Value::SmallInt(i) => serde_json::Value::Number((*i as i64).into()),
+        Value::Int(i) => serde_json::Value::Number((*i as i64).into()),
+        Value::BigInt(i) => serde_json::Value::Number((*i).into()),
+        Value::HugeInt(i) => serde_json::Value::String(i.to_string()),
+        Value::UTinyInt(i) => serde_json::Value::Number((*i as u64).into()),
+        Value::USmallInt(i) => serde_json::Value::Number((*i as u64).into()),
+        Value::UInt(i) => serde_json::Value::Number((*i as u64).into()),
+        Value::UBigInt(i) => serde_json::Value::Number((*i).into()),
+        Value::Float(f) => {
+            serde_json::Number::from_f64(*f as f64).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null)
+        }
+        Value::Double(f) => {
+            serde_json::Number::from_f64(*f).map(serde_json::Value::Number).unwrap_or(serde_json::Value::Null)
+        }
+        Value::Decimal(d) => serde_json::Value::String(d.to_string()),
+        Value::Timestamp(unit, value) => {
+            duckdb_timestamp_to_string(*unit, *value).map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
+        }
+        Value::Text(text) | Value::Enum(text) => serde_json::Value::String(text.clone()),
+        Value::Blob(bytes) => {
+            let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            serde_json::Value::String(format!("\\x{hex}"))
+        }
+        Value::Date32(days) => {
+            duckdb_date32_to_string(*days).map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
+        }
+        Value::Time64(unit, value) => {
+            duckdb_time64_to_string(*unit, *value).map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
+        }
+        Value::Interval { months, days, nanos } => {
+            serde_json::Value::String(duckdb_interval_to_string(*months, *days, *nanos))
+        }
+        Value::List(values) | Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(duckdb_owned_value_to_json).collect())
+        }
+        Value::Struct(entries) => serde_json::Value::Object(
+            entries.iter().map(|(key, value)| (key.clone(), duckdb_owned_value_to_json(value))).collect(),
+        ),
+        Value::Map(entries) => serde_json::Value::Array(
+            entries
+                .iter()
+                .map(|(key, value)| {
+                    serde_json::json!({
+                        "key": duckdb_owned_value_to_json(key),
+                        "value": duckdb_owned_value_to_json(value),
+                    })
+                })
+                .collect(),
+        ),
+        Value::Union(value) => duckdb_owned_value_to_json(value),
     }
 }
 
@@ -1568,6 +1631,46 @@ mod tests {
         assert_eq!(row[2], serde_json::Value::String("hello".to_string()));
         assert!(row[3].is_number());
         assert_eq!(row[4], serde_json::json!(123456789012345_i64));
+    }
+
+    #[test]
+    fn duckdb_execute_returns_list_values_as_json_arrays() {
+        let con = duckdb::Connection::open_in_memory().expect("connect in-memory DuckDB");
+        let result = duckdb_execute(&con, "SELECT ['a','b','c','d'];").expect("execute list query");
+
+        assert_eq!(result.rows, vec![vec![serde_json::json!(["a", "b", "c", "d"])]]);
+    }
+
+    #[test]
+    fn duckdb_execute_preserves_nulls_inside_list_values() {
+        let con = duckdb::Connection::open_in_memory().expect("connect in-memory DuckDB");
+        let result = duckdb_execute(&con, "SELECT [1, NULL, 3] AS items;").expect("execute nullable list query");
+
+        assert_eq!(result.columns, vec!["items"]);
+        assert_eq!(result.rows, vec![vec![serde_json::json!([1, null, 3])]]);
+    }
+
+    #[test]
+    fn duckdb_execute_returns_nested_complex_values_as_json() {
+        let con = duckdb::Connection::open_in_memory().expect("connect in-memory DuckDB");
+        let result = duckdb_execute(
+            &con,
+            "SELECT {'name': 'Ada', 'scores': [10, 20]} AS profile, MAP(['x', 'y'], [1, 2]) AS lookup, [1, 2, 3]::INTEGER[3] AS fixed_items",
+        )
+        .expect("execute complex values query");
+
+        assert_eq!(result.columns, vec!["profile", "lookup", "fixed_items"]);
+        assert_eq!(
+            result.rows,
+            vec![vec![
+                serde_json::json!({ "name": "Ada", "scores": [10, 20] }),
+                serde_json::json!([
+                    { "key": "x", "value": 1 },
+                    { "key": "y", "value": 2 },
+                ]),
+                serde_json::json!([1, 2, 3]),
+            ]]
+        );
     }
 
     #[test]
