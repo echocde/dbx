@@ -3337,14 +3337,22 @@ const canvasViewportWidth = ref(0);
 const canvasViewportHeight = ref(0);
 const canvasScrollTop = ref(0);
 const canvasHoverCell = ref<{ rowIndex: number; visibleColIdx: number } | null>(null);
+const canvasDevicePixelRatio = ref(typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+const canvasBackingPixelRatio = computed(() =>
+  Math.min(4, Math.max(1, canvasDevicePixelRatio.value * settingsStore.editorSettings.uiScale)),
+);
 const useCanvasGridRows = computed(() => dataGridRenderMode.value === "canvas");
 const canvasContentHeight = computed(() => Math.max(1, displayRowCount.value * CANVAS_DATA_GRID_ROW_HEIGHT));
 const canvasRenderStyleKey = computed(
-  () => `${settingsStore.editorSettings.theme}:${settingsStore.editorSettings.uiScale}:${isDark.value}`,
+  () =>
+    `${settingsStore.editorSettings.theme}:${settingsStore.editorSettings.uiScale}:${canvasBackingPixelRatio.value}:${isDark.value}`,
 );
 const CANVAS_MOUSE_WHEEL_SCROLL_MULTIPLIER = 1.5;
 const CANVAS_TRACKPAD_DELTA_THRESHOLD = 40;
 let canvasResizeObserver: ResizeObserver | null = null;
+let canvasPixelRatioMediaQuery: MediaQueryList | null = null;
+let canvasPixelRatioMediaQueryCleanup: (() => void) | null = null;
+let canvasPixelRatioFrame = 0;
 let canvasDrawFrame = 0;
 let dataGridIsActive = true;
 
@@ -3376,6 +3384,39 @@ function syncCanvasViewport() {
   drawCanvasGridNow();
 }
 
+function currentCanvasDevicePixelRatio(): number {
+  return typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
+}
+
+function scheduleCanvasPixelRatioRefresh() {
+  if (!dataGridIsActive || canvasPixelRatioFrame) return;
+  canvasPixelRatioFrame = requestAnimationFrame(() => {
+    canvasPixelRatioFrame = 0;
+    const next = currentCanvasDevicePixelRatio();
+    if (Math.abs(next - canvasDevicePixelRatio.value) > 0.001) {
+      canvasDevicePixelRatio.value = next;
+      attachCanvasPixelRatioWatcher();
+    }
+    syncCanvasViewport();
+  });
+}
+
+function attachCanvasPixelRatioWatcher() {
+  canvasPixelRatioMediaQueryCleanup?.();
+  canvasPixelRatioMediaQueryCleanup = null;
+  canvasPixelRatioMediaQuery = null;
+  if (!dataGridIsActive || !useCanvasGridRows.value || typeof window === "undefined" || !window.matchMedia) return;
+
+  const ratio = currentCanvasDevicePixelRatio();
+  canvasDevicePixelRatio.value = ratio;
+  canvasPixelRatioMediaQuery = window.matchMedia(`(resolution: ${ratio}dppx)`);
+  const onChange = () => scheduleCanvasPixelRatioRefresh();
+  canvasPixelRatioMediaQuery.addEventListener("change", onChange);
+  canvasPixelRatioMediaQueryCleanup = () => {
+    canvasPixelRatioMediaQuery?.removeEventListener("change", onChange);
+  };
+}
+
 function attachCanvasResizeObserver() {
   canvasResizeObserver?.disconnect();
   canvasResizeObserver = null;
@@ -3383,6 +3424,7 @@ function attachCanvasResizeObserver() {
   if (!useCanvasGridRows.value) return;
   const scroller = canvasScrollerElement();
   if (!scroller) return;
+  attachCanvasPixelRatioWatcher();
   syncCanvasViewport();
   if (typeof ResizeObserver === "undefined") return;
   canvasResizeObserver = new ResizeObserver(syncCanvasViewport);
@@ -3723,6 +3765,7 @@ function drawCanvasGrid() {
     scroller,
     width: Math.max(1, canvasViewportWidth.value || scroller.clientWidth),
     height: Math.max(1, canvasViewportHeight.value || scroller.clientHeight),
+    pixelRatio: canvasBackingPixelRatio.value,
     isDark: isDark.value,
     styleKey: canvasRenderStyleKey.value,
     rowCount: displayRowCount.value,
@@ -3760,6 +3803,8 @@ watch(
     currentSearchMatch,
     isDark,
     canvasRenderStyleKey,
+    canvasDevicePixelRatio,
+    canvasBackingPixelRatio,
     isScrolling,
     hoveredDetailCell,
     detailCell,
@@ -3774,6 +3819,13 @@ function pauseCanvasGridWork() {
   dataGridIsActive = false;
   canvasResizeObserver?.disconnect();
   canvasResizeObserver = null;
+  canvasPixelRatioMediaQueryCleanup?.();
+  canvasPixelRatioMediaQueryCleanup = null;
+  canvasPixelRatioMediaQuery = null;
+  if (canvasPixelRatioFrame) {
+    cancelAnimationFrame(canvasPixelRatioFrame);
+    canvasPixelRatioFrame = 0;
+  }
   if (canvasDrawFrame) {
     cancelAnimationFrame(canvasDrawFrame);
     canvasDrawFrame = 0;
@@ -3787,8 +3839,20 @@ function resumeCanvasGridWork() {
 
 onMounted(resumeCanvasGridWork);
 onActivated(resumeCanvasGridWork);
+onMounted(() => {
+  if (typeof window === "undefined") return;
+  window.addEventListener("resize", scheduleCanvasPixelRatioRefresh);
+  window.visualViewport?.addEventListener("resize", scheduleCanvasPixelRatioRefresh);
+  window.addEventListener("dbx:ui-scale-applied", scheduleCanvasPixelRatioRefresh);
+});
 onDeactivated(pauseCanvasGridWork);
-onUnmounted(pauseCanvasGridWork);
+onUnmounted(() => {
+  pauseCanvasGridWork();
+  if (typeof window === "undefined") return;
+  window.removeEventListener("resize", scheduleCanvasPixelRatioRefresh);
+  window.visualViewport?.removeEventListener("resize", scheduleCanvasPixelRatioRefresh);
+  window.removeEventListener("dbx:ui-scale-applied", scheduleCanvasPixelRatioRefresh);
+});
 
 function setRowStatusFilter(value: string) {
   rowStatusFilter.value = value as RowStatusFilter;

@@ -252,6 +252,7 @@ async function applyUiScale(scale: number) {
   try {
     const { getCurrentWebview } = await import("@tauri-apps/api/webview");
     await getCurrentWebview().setZoom(scale);
+    window.dispatchEvent(new CustomEvent("dbx:ui-scale-applied", { detail: { scale } }));
   } catch (error) {
     console.warn("[DBX] Failed to apply UI scale", { scale, error });
   }
