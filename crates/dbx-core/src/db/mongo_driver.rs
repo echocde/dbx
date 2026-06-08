@@ -16,7 +16,7 @@ pub struct MongoDocumentResult {
     pub total: u64,
 }
 
-pub async fn connect(url: &str, timeout: Duration) -> Result<Client, String> {
+pub async fn connect(url: &str, timeout: Duration, idle_timeout: Duration) -> Result<Client, String> {
     let is_multi_host = is_multi_host_mongo_uri(url);
     let parse_timeout = if is_multi_host { std::cmp::max(timeout * 2, Duration::from_secs(10)) } else { timeout };
 
@@ -25,6 +25,12 @@ pub async fn connect(url: &str, timeout: Duration) -> Result<Client, String> {
         options.connect_timeout = Some(timeout);
         options.server_selection_timeout =
             if is_multi_host { Some(std::cmp::max(timeout * 2, Duration::from_secs(10))) } else { Some(timeout) };
+        // Close idle connections before the server-side timeout drops them,
+        // preventing "Broken pipe" (os error 32) or "unexpected end of file".
+        // 0 means no idle timeout (keep connections alive indefinitely).
+        if idle_timeout.as_secs() > 0 {
+            options.max_idle_time = Some(idle_timeout);
+        }
         Client::with_options(options).map_err(|e| format!("MongoDB connection failed: {e}"))
     })
     .await
