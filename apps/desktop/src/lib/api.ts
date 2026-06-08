@@ -1,5 +1,6 @@
 import { isTauriRuntime } from "./tauriRuntime";
 import type * as TauriModule from "./tauri";
+import { appendDebugLog } from "./debugLog";
 
 // ---------------------------------------------------------------------------
 // Lazy backend resolution (avoids top-level await)
@@ -21,8 +22,25 @@ async function getBackend(): Promise<Backend> {
 
 function forward<K extends keyof Backend>(name: K): Backend[K] {
   return (async (...args: unknown[]) => {
+    const startedAt = performance.now();
+    const operation = String(name);
+    appendDebugLog("debug", "[DBX][api:start]", operation);
     const b = await getBackend();
-    return (b[name] as (...a: unknown[]) => unknown)(...args);
+    try {
+      const result = await (b[name] as (...a: unknown[]) => unknown)(...args);
+      appendDebugLog("debug", "[DBX][api:success]", {
+        operation,
+        elapsedMs: Math.round(performance.now() - startedAt),
+      });
+      return result;
+    } catch (error) {
+      appendDebugLog("error", "[DBX][api:error]", {
+        operation,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        error,
+      });
+      throw error;
+    }
   }) as unknown as Backend[K];
 }
 

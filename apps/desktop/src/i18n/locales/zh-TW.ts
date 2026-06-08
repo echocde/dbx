@@ -1583,6 +1583,13 @@ export default {
     updateNotificationsEnabled: "啟用更新提醒",
     updateNotificationsEnabledDescription:
       "關閉後，DBX 不會自動檢查應用程式和驅動程式更新，也不會顯示更新紅點；仍可手動檢查更新。",
+    debugLoggingEnabled: "啟用偵錯日誌",
+    debugLoggingEnabledDescription: "開啟後在本機記錄更詳細的使用者側診斷日誌，回報問題時可暫時開啟；預設關閉。",
+    debugLogsCopy: "複製日誌",
+    debugLogsCopied: "已複製",
+    debugLogsDownload: "下載日誌",
+    debugLogsDownloaded: "已下載",
+    debugLogsClear: "清空日誌",
     dataGridDisplay: "資料表格顯示",
     showColumnCommentsInHeader: "在欄位名稱下方顯示註解",
     showColumnCommentsInHeaderDescription: "直接在資料表格欄位名稱下方顯示資料表欄位註解。",

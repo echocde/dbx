@@ -32,11 +32,13 @@ pub struct TabRuntimeCacheEntry {
 pub struct DesktopSettings {
     pub show_tray_icon: bool,
     pub icon_theme: DesktopIconTheme,
+    #[serde(default)]
+    pub debug_logging_enabled: bool,
 }
 
 impl Default for DesktopSettings {
     fn default() -> Self {
-        Self { show_tray_icon: true, icon_theme: DesktopIconTheme::Default }
+        Self { show_tray_icon: true, icon_theme: DesktopIconTheme::Default, debug_logging_enabled: false }
     }
 }
 
@@ -430,6 +432,10 @@ impl Storage {
             "icon_theme".to_string(),
             serde_json::to_value(desktop_settings.icon_theme).map_err(|e| e.to_string())?,
         );
+        settings.insert(
+            "debug_logging_enabled".to_string(),
+            serde_json::Value::Bool(desktop_settings.debug_logging_enabled),
+        );
         self.save_app_settings_json(&settings).await
     }
 
@@ -442,6 +448,10 @@ impl Storage {
                 .or_else(|| settings.get("run_in_background").and_then(|value| value.as_bool()))
                 .unwrap_or_else(|| DesktopSettings::default().show_tray_icon),
             icon_theme: DesktopIconTheme::from_settings_value(settings.get("icon_theme")),
+            debug_logging_enabled: settings
+                .get("debug_logging_enabled")
+                .and_then(|value| value.as_bool())
+                .unwrap_or_else(|| DesktopSettings::default().debug_logging_enabled),
         })
     }
 
@@ -1334,14 +1344,18 @@ mod tests {
 
         storage.save_password_hash("hash-1").await.unwrap();
         storage
-            .save_desktop_settings(&DesktopSettings { show_tray_icon: false, icon_theme: DesktopIconTheme::Black })
+            .save_desktop_settings(&DesktopSettings {
+                show_tray_icon: false,
+                icon_theme: DesktopIconTheme::Black,
+                debug_logging_enabled: true,
+            })
             .await
             .unwrap();
 
         assert_eq!(storage.load_password_hash().await.unwrap(), Some("hash-1".to_string()));
         assert_eq!(
             storage.load_desktop_settings().await.unwrap(),
-            DesktopSettings { show_tray_icon: false, icon_theme: DesktopIconTheme::Black }
+            DesktopSettings { show_tray_icon: false, icon_theme: DesktopIconTheme::Black, debug_logging_enabled: true }
         );
     }
 
@@ -1365,6 +1379,7 @@ mod tests {
         assert_eq!(settings.get("run_in_background"), None);
         assert_eq!(settings.get("show_tray_icon").and_then(|value| value.as_bool()), Some(true));
         assert_eq!(settings.get("icon_theme").and_then(|value| value.as_str()), Some("black"));
+        assert_eq!(settings.get("debug_logging_enabled").and_then(|value| value.as_bool()), Some(false));
     }
 
     #[tokio::test]
@@ -1373,7 +1388,11 @@ mod tests {
         let storage = Storage::open(&path).await.unwrap();
 
         storage
-            .save_desktop_settings(&DesktopSettings { show_tray_icon: false, icon_theme: DesktopIconTheme::Black })
+            .save_desktop_settings(&DesktopSettings {
+                show_tray_icon: false,
+                icon_theme: DesktopIconTheme::Black,
+                ..DesktopSettings::default()
+            })
             .await
             .unwrap();
         storage.save_password_hash("hash-2").await.unwrap();
@@ -1381,7 +1400,11 @@ mod tests {
         assert_eq!(storage.load_password_hash().await.unwrap(), Some("hash-2".to_string()));
         assert_eq!(
             storage.load_desktop_settings().await.unwrap(),
-            DesktopSettings { show_tray_icon: false, icon_theme: DesktopIconTheme::Black }
+            DesktopSettings {
+                show_tray_icon: false,
+                icon_theme: DesktopIconTheme::Black,
+                ..DesktopSettings::default()
+            }
         );
     }
 

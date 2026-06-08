@@ -1673,6 +1673,14 @@ export default {
     updateNotificationsEnabled: "Enable update reminders",
     updateNotificationsEnabledDescription:
       "When disabled, DBX will not automatically check app or driver updates or show update badges. Manual checks are still available.",
+    debugLoggingEnabled: "Enable debug logs",
+    debugLoggingEnabledDescription:
+      "Record more detailed local user-side diagnostic logs while troubleshooting reports. Disabled by default.",
+    debugLogsCopy: "Copy logs",
+    debugLogsCopied: "Copied",
+    debugLogsDownload: "Download logs",
+    debugLogsDownloaded: "Downloaded",
+    debugLogsClear: "Clear logs",
     dataGridDisplay: "Data grid display",
     showColumnCommentsInHeader: "Show column comments under names",
     showColumnCommentsInHeaderDescription: "Display table column comments directly below grid column names.",

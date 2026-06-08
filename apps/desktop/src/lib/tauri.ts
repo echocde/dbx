@@ -145,6 +145,7 @@ export interface DriverRuntimeSummary {
 export interface DesktopSettings {
   show_tray_icon: boolean;
   icon_theme: "default" | "black";
+  debug_logging_enabled: boolean;
 }
 
 export interface WebDavConfig {

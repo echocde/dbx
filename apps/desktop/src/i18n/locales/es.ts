@@ -1526,6 +1526,14 @@ export default {
     updateNotificationsEnabled: "Activar recordatorios de actualización",
     updateNotificationsEnabledDescription:
       "Al desactivarlo, DBX no comprobará automáticamente actualizaciones de la app ni de los controladores, ni mostrará indicadores. Las comprobaciones manuales siguen disponibles.",
+    debugLoggingEnabled: "Activar logs de depuración",
+    debugLoggingEnabledDescription:
+      "Registra logs de diagnóstico locales del lado del usuario al investigar reportes. Desactivado por defecto.",
+    debugLogsCopy: "Copiar logs",
+    debugLogsCopied: "Copiado",
+    debugLogsDownload: "Descargar logs",
+    debugLogsDownloaded: "Descargado",
+    debugLogsClear: "Borrar logs",
     dataGridDisplay: "Visualización de la tabla",
     showColumnCommentsInHeader: "Mostrar comentarios bajo los nombres",
     showColumnCommentsInHeaderDescription:

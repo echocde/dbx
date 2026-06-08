@@ -53,6 +53,7 @@ import ThemeCustomizerDialog from "./ThemeCustomizerDialog.vue";
 import { isTauriRuntime } from "@/lib/tauriRuntime";
 import { useTheme } from "@/composables/useTheme";
 import { copyToClipboard } from "@/lib/clipboard";
+import { clearDebugLogs as clearStoredDebugLogs, downloadDebugLogs, getDebugLogBundleText } from "@/lib/debugLog";
 import {
   aiListModels,
   aiTestConnection,
@@ -115,6 +116,9 @@ const editConfirmDangerousSqlExecution = ref(settingsStore.editorSettings.confir
 const editAppLayout = ref(settingsStore.editorSettings.appLayout);
 const editShowTrayIcon = ref(settingsStore.desktopSettings.show_tray_icon);
 const editIconTheme = ref<DesktopIconTheme>(settingsStore.desktopSettings.icon_theme);
+const editDebugLoggingEnabled = ref(settingsStore.desktopSettings.debug_logging_enabled);
+const debugLogCopied = ref(false);
+const debugLogDownloaded = ref(false);
 const editShowColumnCommentsInHeader = ref(settingsStore.editorSettings.showColumnCommentsInHeader);
 const editShowColumnTypesInHeader = ref(settingsStore.editorSettings.showColumnTypesInHeader);
 const editCompactColumnHeaderActions = ref(settingsStore.editorSettings.compactColumnHeaderActions);
@@ -273,6 +277,7 @@ watch(
       editAppLayout.value = settingsStore.editorSettings.appLayout;
       editShowTrayIcon.value = settingsStore.desktopSettings.show_tray_icon;
       editIconTheme.value = settingsStore.desktopSettings.icon_theme;
+      editDebugLoggingEnabled.value = settingsStore.desktopSettings.debug_logging_enabled;
       editShowColumnCommentsInHeader.value = settingsStore.editorSettings.showColumnCommentsInHeader;
       editShowColumnTypesInHeader.value = settingsStore.editorSettings.showColumnTypesInHeader;
       editCompactColumnHeaderActions.value = settingsStore.editorSettings.compactColumnHeaderActions;
@@ -321,6 +326,7 @@ function hasChanges(): boolean {
     editAppLayout.value !== settingsStore.editorSettings.appLayout ||
     editShowTrayIcon.value !== settingsStore.desktopSettings.show_tray_icon ||
     editIconTheme.value !== settingsStore.desktopSettings.icon_theme ||
+    editDebugLoggingEnabled.value !== settingsStore.desktopSettings.debug_logging_enabled ||
     editShowColumnCommentsInHeader.value !== settingsStore.editorSettings.showColumnCommentsInHeader ||
     editShowColumnTypesInHeader.value !== settingsStore.editorSettings.showColumnTypesInHeader ||
     editCompactColumnHeaderActions.value !== settingsStore.editorSettings.compactColumnHeaderActions ||
@@ -376,6 +382,7 @@ async function persistSettings() {
   await settingsStore.updateDesktopSettings({
     show_tray_icon: editShowTrayIcon.value,
     icon_theme: editIconTheme.value,
+    debug_logging_enabled: editDebugLoggingEnabled.value,
   });
   if (sidebarObjectDisplayChanged) {
     await connectionStore.refreshAllTree();
@@ -404,6 +411,7 @@ function resetDefaults() {
   editAppLayout.value = DEFAULT_EDITOR_SETTINGS.appLayout;
   editShowTrayIcon.value = DEFAULT_DESKTOP_SETTINGS.show_tray_icon;
   editIconTheme.value = DEFAULT_DESKTOP_SETTINGS.icon_theme;
+  editDebugLoggingEnabled.value = DEFAULT_DESKTOP_SETTINGS.debug_logging_enabled;
   editShowColumnCommentsInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnCommentsInHeader;
   editShowColumnTypesInHeader.value = DEFAULT_EDITOR_SETTINGS.showColumnTypesInHeader;
   editCompactColumnHeaderActions.value = DEFAULT_EDITOR_SETTINGS.compactColumnHeaderActions;
@@ -627,6 +635,29 @@ function openExternalUrl(url: string) {
   } else {
     window.open(url, "_blank", "noopener,noreferrer");
   }
+}
+
+async function copyDebugLogs() {
+  await copyToClipboard(await getDebugLogBundleText());
+  debugLogCopied.value = true;
+  window.setTimeout(() => {
+    debugLogCopied.value = false;
+  }, 1500);
+}
+
+function clearDebugLogs() {
+  clearStoredDebugLogs();
+  debugLogCopied.value = false;
+  debugLogDownloaded.value = false;
+}
+
+async function exportDebugLogs() {
+  const saved = await downloadDebugLogs();
+  if (!saved) return;
+  debugLogDownloaded.value = true;
+  window.setTimeout(() => {
+    debugLogDownloaded.value = false;
+  }, 1500);
 }
 
 // ---------- MCP Server ----------
@@ -871,6 +902,7 @@ watch(
       await settingsStore.initDesktopSettings();
       editShowTrayIcon.value = settingsStore.desktopSettings.show_tray_icon;
       editIconTheme.value = settingsStore.desktopSettings.icon_theme;
+      editDebugLoggingEnabled.value = settingsStore.desktopSettings.debug_logging_enabled;
       webdavPassword.value = "";
       await refreshWebDavPasswordStatus();
       syncAiEditState();
@@ -1557,6 +1589,29 @@ watch(
                   </p>
                 </div>
                 <Switch id="update-notifications-enabled" v-model="editUpdateNotificationsEnabled" />
+              </div>
+
+              <div v-if="!isWeb" class="flex flex-col gap-3 rounded-md border bg-muted/20 px-3 py-2">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="space-y-1">
+                    <Label for="debug-logging-enabled">{{ t("settings.debugLoggingEnabled") }}</Label>
+                    <p class="text-xs text-muted-foreground">
+                      {{ t("settings.debugLoggingEnabledDescription") }}
+                    </p>
+                  </div>
+                  <Switch id="debug-logging-enabled" v-model="editDebugLoggingEnabled" />
+                </div>
+                <div class="flex justify-end gap-2">
+                  <Button type="button" variant="outline" size="sm" @click="clearDebugLogs">
+                    {{ t("settings.debugLogsClear") }}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" @click="copyDebugLogs">
+                    {{ debugLogCopied ? t("settings.debugLogsCopied") : t("settings.debugLogsCopy") }}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" @click="exportDebugLogs">
+                    {{ debugLogDownloaded ? t("settings.debugLogsDownloaded") : t("settings.debugLogsDownload") }}
+                  </Button>
+                </div>
               </div>
 
               <Separator />

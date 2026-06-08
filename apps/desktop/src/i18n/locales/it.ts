@@ -1669,6 +1669,14 @@ export default {
     updateNotificationsEnabled: "Abilita promemoria aggiornamenti",
     updateNotificationsEnabledDescription:
       "Se disattivato, DBX non controllerà automaticamente gli aggiornamenti dell'app o dei driver e non mostrerà badge. I controlli manuali restano disponibili.",
+    debugLoggingEnabled: "Abilita log di debug",
+    debugLoggingEnabledDescription:
+      "Registra log diagnostici locali lato utente durante l'analisi delle segnalazioni. Disattivato per impostazione predefinita.",
+    debugLogsCopy: "Copia log",
+    debugLogsCopied: "Copiati",
+    debugLogsDownload: "Scarica log",
+    debugLogsDownloaded: "Scaricati",
+    debugLogsClear: "Cancella log",
     dataGridDisplay: "Visualizzazione griglia dati",
     showColumnCommentsInHeader: "Mostra i commenti delle colonne sotto i nomi",
     showColumnCommentsInHeaderDescription:

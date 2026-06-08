@@ -23,6 +23,10 @@ const DESKTOP_TRAY_ID: &str = "main-tray";
 const MACOS_TRAY_ICON: tauri::image::Image<'_> = tauri::include_image!("icons/tray-macos-template.png");
 const BLACK_APP_ICON: tauri::image::Image<'_> = tauri::include_image!("icons/icon-black.png");
 
+pub(crate) fn apply_debug_log_level(debug_logging_enabled: bool) {
+    log::set_max_level(if debug_logging_enabled { log::LevelFilter::Debug } else { log::LevelFilter::Off });
+}
+
 fn should_hide_window_on_close(target_os: &str) -> bool {
     matches!(target_os, "macos" | "windows")
 }
@@ -153,6 +157,7 @@ fn apply_desktop_tray_icon_theme(app: &tauri::AppHandle, icon_theme: DesktopIcon
 }
 
 pub(crate) fn apply_desktop_settings(app: &tauri::AppHandle, desktop_settings: &DesktopSettings) -> tauri::Result<()> {
+    apply_debug_log_level(desktop_settings.debug_logging_enabled);
     apply_desktop_icon_theme(app, desktop_settings.icon_theme)?;
     if matches!(std::env::consts::OS, "macos" | "windows") {
         if let Some(tray) = app.tray_by_id(DESKTOP_TRAY_ID) {
@@ -266,10 +271,6 @@ pub fn run() {
             let setup_start = Instant::now();
             eprintln!("[STARTUP] plugins registered in {:?}", startup_begin.elapsed());
 
-            if cfg!(debug_assertions) {
-                app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
-            }
-
             let default_data_dir =
                 app.path().app_data_dir().map_err(|e| e.to_string()).expect("Failed to resolve app data dir");
             let data_dir = data_dir::resolve_data_dir(default_data_dir);
@@ -286,6 +287,8 @@ pub fn run() {
                 s
             });
             let desktop_settings = tauri::async_runtime::block_on(storage.load_desktop_settings()).unwrap_or_default();
+            app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Debug).build())?;
+            apply_debug_log_level(desktop_settings.debug_logging_enabled);
             eprintln!("[STARTUP] storage ready in {:?}", t.elapsed());
 
             let state = if data_dir::uses_custom_data_dir() {
@@ -355,6 +358,7 @@ pub fn run() {
             commands::app_settings::save_desktop_settings,
             commands::app_settings::load_pinned_tree_node_ids,
             commands::app_settings::save_pinned_tree_node_ids,
+            commands::app_settings::load_native_debug_logs,
             commands::cloud_sync::webdav_sync_test,
             commands::cloud_sync::webdav_password_status,
             commands::cloud_sync::save_webdav_saved_password,

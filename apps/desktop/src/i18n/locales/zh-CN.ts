@@ -1642,6 +1642,13 @@ export default {
     updateNotificationsEnabled: "启用更新提醒",
     updateNotificationsEnabledDescription:
       "关闭后，DBX 不会自动检查应用和驱动更新，也不会显示更新红点；仍可手动检查更新。",
+    debugLoggingEnabled: "启用调试日志",
+    debugLoggingEnabledDescription: "开启后在本机记录更详细的用户侧诊断日志，反馈问题时可临时开启；默认关闭。",
+    debugLogsCopy: "复制日志",
+    debugLogsCopied: "已复制",
+    debugLogsDownload: "下载日志",
+    debugLogsDownloaded: "已下载",
+    debugLogsClear: "清空日志",
     dataGridDisplay: "数据表格显示",
     showColumnCommentsInHeader: "在字段名下方显示注释",
     showColumnCommentsInHeaderDescription: "把表字段注释直接显示在结果表头字段名下方。",

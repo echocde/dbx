@@ -13,6 +13,7 @@ import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebarTableNameDispl
 import type { SidebarActivation } from "@/lib/treeNodeClick";
 import type { SqlSnippet } from "@/types/database";
 import { DEFAULT_SQL_SNIPPETS } from "@/lib/sqlCompletion";
+import { setDebugLoggingEnabled } from "@/lib/debugLog";
 
 export type AiProvider =
   | "claude"
@@ -39,6 +40,7 @@ export interface AiConfig {
 export interface DesktopSettings {
   show_tray_icon: boolean;
   icon_theme: DesktopIconTheme;
+  debug_logging_enabled: boolean;
 }
 
 export type DesktopIconTheme = "default" | "black";
@@ -46,6 +48,7 @@ export type DesktopIconTheme = "default" | "black";
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   show_tray_icon: true,
   icon_theme: "default",
+  debug_logging_enabled: false,
 };
 
 function normalizeDesktopSettings(settings: Partial<DesktopSettings> | null | undefined): DesktopSettings {
@@ -53,6 +56,7 @@ function normalizeDesktopSettings(settings: Partial<DesktopSettings> | null | un
   return {
     show_tray_icon: settings?.show_tray_icon ?? DEFAULT_DESKTOP_SETTINGS.show_tray_icon,
     icon_theme: iconTheme,
+    debug_logging_enabled: settings?.debug_logging_enabled ?? DEFAULT_DESKTOP_SETTINGS.debug_logging_enabled,
   };
 }
 
@@ -567,6 +571,7 @@ export const useSettingsStore = defineStore("settings", () => {
   async function initDesktopSettings() {
     if (isDesktopSettingsLoaded.value) return;
     desktopSettings.value = normalizeDesktopSettings(await api.loadDesktopSettings().catch(() => null));
+    setDebugLoggingEnabled(desktopSettings.value.debug_logging_enabled);
     isDesktopSettingsLoaded.value = true;
   }
 
@@ -577,10 +582,12 @@ export const useSettingsStore = defineStore("settings", () => {
       ...partial,
     };
     desktopSettings.value = normalizeDesktopSettings(next);
+    setDebugLoggingEnabled(desktopSettings.value.debug_logging_enabled);
     try {
       await api.saveDesktopSettings(desktopSettings.value);
     } catch (error) {
       desktopSettings.value = previous;
+      setDebugLoggingEnabled(previous.debug_logging_enabled);
       throw error;
     }
   }
