@@ -47,6 +47,7 @@ import {
   ListFilter,
   Package,
   Clipboard,
+  UsersRound,
 } from "@lucide/vue";
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
@@ -132,6 +133,7 @@ import {
   treeSelectionRangeIds,
 } from "@/lib/sidebarTreeSelection";
 import { selectedConnectionDeleteTargets } from "@/lib/sidebarConnectionSelection";
+import { supportsDatabaseUserAdmin } from "@/lib/databaseUserAdmin";
 import { sidebarTreeContextKey } from "@/lib/sidebarTreeContext";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ProcedureExecutionDialog from "@/components/objects/ProcedureExecutionDialog.vue";
@@ -242,6 +244,8 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Zap, colorClass: "text-orange-400" };
     case "object-browser":
       return { icon: TableProperties, colorClass: "text-primary" };
+    case "user-admin":
+      return { icon: UsersRound, colorClass: "text-primary" };
     case "saved-sql-root":
       return { icon: FolderOpen, colorClass: "text-blue-500" };
     case "saved-sql-folder":
@@ -318,6 +322,7 @@ function isGroupLabel(node: TreeNode): boolean {
 
 function displayLabel(node: TreeNode): string {
   if (node.type === "object-browser") return t(node.label, { count: node.objectCount ?? 0 });
+  if (node.type === "user-admin") return t(node.label);
   if (node.label === "tree.defaultDatabase") return t(node.label);
   return isGroupLabel(node) ? t(node.label) : node.label;
 }
@@ -394,6 +399,8 @@ async function toggle() {
     } else if (node.type === "etcd-root" && node.connectionId) {
       const tabTitle = `${connectionStore.getConfig(node.connectionId)?.name || "etcd"}:keys`;
       queryStore.createTab(node.connectionId, "", tabTitle, "etcd");
+    } else if (node.type === "user-admin" && node.connectionId) {
+      queryStore.openUserAdmin(node.connectionId);
     } else if (node.type === "mongo-db" && node.connectionId && node.database) {
       await connectionStore.loadMongoCollections(node.connectionId, node.database);
     } else if (node.type === "mongo-collection" && node.connectionId && node.database) {
@@ -744,6 +751,18 @@ async function openObjectBrowser() {
     ) {
       window.dispatchEvent(new Event("dbx-open-driver-store"));
     }
+  }
+}
+
+async function openUserAdmin() {
+  const node = props.node;
+  if (!node.connectionId) return;
+  try {
+    await connectionStore.ensureConnected(node.connectionId);
+    connectionStore.activeConnectionId = node.connectionId;
+    queryStore.openUserAdmin(node.connectionId);
+  } catch (e: any) {
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -2913,6 +2932,9 @@ function treeItemMenuItems(): ContextMenuItem[] {
       items.push({ label: t("contextMenu.closeConnection"), action: disconnectConnection, icon: Unplug });
     }
     items.push({ label: t("contextMenu.newQuery"), action: newQuery, icon: TerminalSquare });
+    if (supportsDatabaseUserAdmin(currentDatabaseType())) {
+      items.push({ label: t("contextMenu.userAdmin"), action: openUserAdmin, icon: UsersRound });
+    }
     if (canCopyFinalProxyPort.value) {
       items.push({ label: t("contextMenu.copyFinalProxyPort"), action: copyFinalProxyPort, icon: Network });
     }
@@ -3061,6 +3083,11 @@ function treeItemMenuItems(): ContextMenuItem[] {
   // 5. Redis DB / Mongo DB
   if (node.type === "etcd-root") {
     items.push({ label: t("contextMenu.openConnection"), action: toggle, icon: Database });
+    return items;
+  }
+
+  if (node.type === "user-admin") {
+    items.push({ label: t("contextMenu.openUserAdmin"), action: openUserAdmin, icon: UsersRound });
     return items;
   }
 

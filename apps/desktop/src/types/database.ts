@@ -301,6 +301,7 @@ export type TreeNodeType =
   | "group-packages"
   | "group-partitions"
   | "object-browser"
+  | "user-admin"
   | "saved-sql-root"
   | "saved-sql-folder"
   | "saved-sql-file"
@@ -389,7 +390,7 @@ export interface QueryTab {
   executionId?: string;
   isExplaining?: boolean;
   explainExecutionId?: string;
-  mode: "data" | "query" | "redis" | "mongo" | "etcd" | "objects" | "structure";
+  mode: "data" | "query" | "redis" | "mongo" | "etcd" | "objects" | "structure" | "users";
   structureTableName?: string;
   objectBrowser?: {
     schema?: string;

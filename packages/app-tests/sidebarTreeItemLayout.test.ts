@@ -28,6 +28,7 @@ test("canTreeNodeExpand only returns true for expandable sidebar node types", ()
   assert.equal(canTreeNodeExpand("index"), false);
   assert.equal(canTreeNodeExpand("redis-db"), false);
   assert.equal(canTreeNodeExpand("mongo-collection"), false);
+  assert.equal(canTreeNodeExpand("user-admin"), false);
 });
 
 test("canTreeNodeShowExpander hides empty saved SQL containers", () => {

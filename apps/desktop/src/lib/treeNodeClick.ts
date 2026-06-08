@@ -14,7 +14,7 @@ export type SidebarSelectionCopyAction = "copy-name" | "none";
 export type SidebarActivation = "single" | "double";
 
 const dataNodeTypes = new Set<TreeNodeType>(["table", "view"]);
-const toggleLeafNodeTypes = new Set<TreeNodeType>(["redis-db", "mongo-collection"]);
+const toggleLeafNodeTypes = new Set<TreeNodeType>(["redis-db", "mongo-collection", "user-admin"]);
 const objectBrowserNodeTypes = new Set<TreeNodeType>(["database", "schema", "object-browser"]);
 const sourceNodeTypes = new Set<TreeNodeType>(["procedure", "function", "package", "package-body"]);
 const tableChildGroupNodeTypes = new Set<TreeNodeType>([

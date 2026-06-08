@@ -68,6 +68,10 @@ export function tabDisplayTitle(tab: QueryTab, t: Translate): string {
     if (compact) return schema || tab.title;
     return schema ? `${schema}@${database}` : `${tab.title}@${database}`;
   }
+  if (tab.mode === "users") {
+    if (compact) return t("tabs.users");
+    return `${t("tabs.users")}@${connectionDisplayName(tab.connectionId)}`;
+  }
   return tab.title;
 }
 
@@ -109,5 +113,6 @@ export function tabModeLabel(tab: QueryTab, t: Translate): string {
   if (tab.mode === "redis") return t("tabs.redis");
   if (tab.mode === "etcd") return t("tabs.etcd");
   if (tab.mode === "objects") return t("tabs.objects");
+  if (tab.mode === "users") return t("tabs.users");
   return tab.mode;
 }

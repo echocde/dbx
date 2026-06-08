@@ -357,6 +357,31 @@ export const useQueryStore = defineStore("query", () => {
     return id;
   }
 
+  function openUserAdmin(connectionId: string) {
+    const existing = tabs.value.find((tab) => tab.mode === "users" && tab.connectionId === connectionId);
+    if (existing) {
+      activeTabId.value = existing.id;
+      return existing.id;
+    }
+
+    const conn = useConnectionStore().getConfig(connectionId);
+    const id = uuid();
+    const tab: QueryTab = {
+      id,
+      title: t("userAdmin.title"),
+      connectionId,
+      database: conn?.database || "",
+      sql: "",
+      isExecuting: false,
+      isCancelling: false,
+      isExplaining: false,
+      mode: "users",
+    };
+    tabs.value.push(tab);
+    activeTabId.value = id;
+    return id;
+  }
+
   function openTableStructure(connectionId: string, database: string, schema?: string, tableName?: string) {
     const resolvedTableName = tableName || "";
     if (resolvedTableName) {
@@ -1704,6 +1729,7 @@ export const useQueryStore = defineStore("query", () => {
     updateSql,
     renameTab,
     openObjectBrowser,
+    openUserAdmin,
     openTableStructure,
     linkSavedSql,
     openSavedSql,

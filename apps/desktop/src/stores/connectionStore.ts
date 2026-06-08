@@ -68,6 +68,7 @@ import { decodeSchemaTreeCache, encodeSchemaTreeCache } from "@/lib/schemaTreeCa
 import { sortSidebarTreeChildrenForParent } from "@/lib/sidebarNodeOrdering";
 import { prunePinnedTreeNodeIdsForConnection } from "@/lib/pinnedTreeNodeIds";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
+import { supportsDatabaseUserAdmin } from "@/lib/databaseUserAdmin";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
@@ -423,11 +424,36 @@ export const useConnectionStore = defineStore("connection", () => {
     };
   }
 
-  function withSavedSqlRoot(connectionId: string, children: TreeNode[], existingConnectionNode?: TreeNode): TreeNode[] {
+  function buildUserAdminNode(connectionId: string, existingConnectionNode?: TreeNode): TreeNode | undefined {
+    const config = getConfig(connectionId);
+    if (!supportsDatabaseUserAdmin(effectiveDatabaseTypeForConnection(config))) return undefined;
+    const existing = existingConnectionNode?.children?.find((child) => child.type === "user-admin");
+    return {
+      id: `${connectionId}:__user_admin`,
+      label: "tree.userAdmin",
+      type: "user-admin",
+      connectionId,
+      database: "",
+      isExpanded: existing?.isExpanded ?? false,
+    };
+  }
+
+  function withConnectionUtilityNodes(
+    connectionId: string,
+    children: TreeNode[],
+    existingConnectionNode?: TreeNode,
+  ): TreeNode[] {
     const existingRoot = existingConnectionNode?.children?.find((child) => child.type === "saved-sql-root");
-    const nonSavedChildren = children.filter((child) => child.type !== "saved-sql-root");
+    const nonUtilityChildren = children.filter(
+      (child) => child.type !== "saved-sql-root" && child.type !== "user-admin",
+    );
+    const userAdminNode = buildUserAdminNode(connectionId, existingConnectionNode);
     const savedSqlRoot = buildSavedSqlRootNode(connectionId, existingRoot);
-    return savedSqlRoot ? [savedSqlRoot, ...nonSavedChildren] : nonSavedChildren;
+    return [savedSqlRoot, ...nonUtilityChildren, userAdminNode].filter(Boolean) as TreeNode[];
+  }
+
+  function withSavedSqlRoot(connectionId: string, children: TreeNode[], existingConnectionNode?: TreeNode): TreeNode[] {
+    return withConnectionUtilityNodes(connectionId, children, existingConnectionNode);
   }
 
   function refreshSavedSqlTree(connectionId?: string) {
@@ -436,7 +462,7 @@ export const useConnectionStore = defineStore("connection", () => {
         if (node.type === "connection" && node.connectionId && (!connectionId || node.connectionId === connectionId)) {
           node.children = withSavedSqlRoot(
             node.connectionId,
-            (node.children || []).filter((child) => child.type !== "saved-sql-root"),
+            (node.children || []).filter((child) => child.type !== "saved-sql-root" && child.type !== "user-admin"),
             node,
           );
         }
@@ -490,6 +516,14 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function useCachedChildren(node: TreeNode, options?: LoadTreeOptions): boolean {
     if (options?.force || !loadedTreeNodeChildrenIds.value.has(node.id)) return false;
+    if (node.type === "connection" && node.connectionId) {
+      const normalizedChildren = sortSidebarTreeChildrenForParent(
+        node,
+        withSavedSqlRoot(node.connectionId, node.children || [], node),
+        getConfig(node.connectionId)?.db_type,
+      );
+      setChildren(node, normalizedChildren);
+    }
     node.isExpanded = true;
     return true;
   }
