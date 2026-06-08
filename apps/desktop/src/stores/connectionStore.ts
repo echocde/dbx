@@ -1593,6 +1593,7 @@ export const useConnectionStore = defineStore("connection", () => {
       node.type === "group-views" ||
       node.type === "group-procedures" ||
       node.type === "group-functions" ||
+      node.type === "group-sequences" ||
       node.type === "group-packages"
     ) {
       await loadObjectGroupChildren(node, options);
