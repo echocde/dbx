@@ -37,7 +37,7 @@ export function useSqlExecution(deps: {
   activeConnection: ComputedRef<ConnectionConfig | undefined>;
   executableSql: ComputedRef<string>;
   resolveExecutableSql?: () => Promise<string>;
-  activeOutputView: Ref<"result" | "explain" | "chart">;
+  activeOutputView: Ref<"result" | "summary" | "explain" | "chart">;
 }) {
   const { t } = useI18n();
   const queryStore = useQueryStore();
@@ -78,6 +78,9 @@ export function useSqlExecution(deps: {
     const connName = connectionStore.getConfig(tab.connectionId)?.name || "";
     const start = Date.now();
     await queryStore.executeCurrentSql(sql);
+    if (tab.result && !tab.result.columns.length && !tab.results?.some((result) => result.columns.length > 0)) {
+      deps.activeOutputView.value = "summary";
+    }
     const elapsed = Date.now() - start;
     const success = !tab.result?.columns.includes("Error");
     historyStore.add({
