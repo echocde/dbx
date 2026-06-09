@@ -24,6 +24,10 @@ export type ActiveTabSidebarTarget =
       connectionId: string;
       database: string;
       schema?: string;
+    }
+  | {
+      type: "saved-sql-file";
+      savedSqlId: string;
     };
 
 export function activeTabSidebarTarget(tab: QueryTab | undefined | null): ActiveTabSidebarTarget | null {
@@ -54,6 +58,10 @@ export function activeTabSidebarTarget(tab: QueryTab | undefined | null): Active
 
   if (tab.mode === "etcd") {
     return { type: "etcd-root", connectionId: tab.connectionId };
+  }
+
+  if (tab.savedSqlId) {
+    return { type: "saved-sql-file", savedSqlId: tab.savedSqlId };
   }
 
   if (tab.mode === "query") {
@@ -98,6 +106,10 @@ export function matchesTarget(node: TreeNode, target: ActiveTabSidebarTarget): b
 
   if (target.type === "etcd-root") {
     return node.type === "etcd-root" && node.connectionId === target.connectionId;
+  }
+
+  if (target.type === "saved-sql-file") {
+    return node.type === "saved-sql-file" && node.savedSqlId === target.savedSqlId;
   }
 
   return (

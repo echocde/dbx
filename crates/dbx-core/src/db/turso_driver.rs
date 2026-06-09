@@ -674,6 +674,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn turso_value_float_parsed() {
         let v = TursoValue { value_type: "float".to_string(), value: Some(serde_json::json!("3.14")) };
         assert_eq!(turso_value_to_json(v), serde_json::json!(3.14));

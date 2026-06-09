@@ -243,6 +243,7 @@ const collapsedItems = computed(() => [
 
     <template v-if="toolbarCollapsed">
       <LightDropdown
+        model-value=""
         :items="collapsedItems"
         :aria-label="t('common.more')"
         :trigger-icon="Ellipsis"

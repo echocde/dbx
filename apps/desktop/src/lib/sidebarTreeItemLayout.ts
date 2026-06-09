@@ -13,9 +13,12 @@ const leafTypes: Set<TreeNodeType> = new Set([
   "redis-db",
   "mongo-collection",
   "user-admin",
+  "saved-sql-file",
 ]);
 
 const fullWidthLabelTypes: Set<TreeNodeType> = new Set(["table", "view", "mongo-collection"]);
+
+const emptyContainerTypes: Set<TreeNodeType> = new Set(["saved-sql-root", "saved-sql-folder"]);
 
 export function treeItemPaddingLeft(depth: number): string {
   return `${depth * 16 + 8}px`;
@@ -29,13 +32,8 @@ export function canTreeNodeExpand(type: TreeNodeType): boolean {
   return !leafTypes.has(type);
 }
 
-export function canTreeNodeShowExpander({
-  type,
-  childCount: _childCount,
-}: {
-  type: TreeNodeType;
-  childCount?: number;
-}): boolean {
+export function canTreeNodeShowExpander({ type, childCount }: { type: TreeNodeType; childCount?: number }): boolean {
   if (!canTreeNodeExpand(type)) return false;
+  if (childCount === 0 && emptyContainerTypes.has(type)) return false;
   return true;
 }

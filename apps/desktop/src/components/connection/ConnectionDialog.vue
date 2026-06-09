@@ -2556,7 +2556,7 @@ function openExternalUrl(url: string) {
                       </p>
                     </div>
                   </div>
-                  <template v-if="form.db_type === 'h2'">
+                  <template v-if="form.db_type === 'h2' || form.db_type === 'access'">
                     <div class="grid grid-cols-4 items-center gap-4">
                       <Label class="text-right">{{ t("connection.user") }}</Label>
                       <Input v-model="form.username" class="col-span-3" placeholder="sa" />

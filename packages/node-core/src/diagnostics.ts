@@ -31,6 +31,7 @@ export const BRIDGE_REQUIRED_TYPES = [
   "sqlserver",
   "oracle",
   "elasticsearch",
+  "etcd",
   "dameng",
   "kingbase",
   "highgo",

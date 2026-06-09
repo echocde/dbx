@@ -1,6 +1,8 @@
 import type { ConnectionConfig, DatabaseType } from "@/types/database";
 import { uuid } from "@/lib/utils";
 
+declare var process: { env: Record<string, string | undefined> } | undefined;
+
 type PartialConnection = Omit<ConnectionConfig, "id">;
 
 export type DataGripImportPayload = {

@@ -31,9 +31,12 @@ export function sortSidebarTreeChildrenForParent(
   }
 
   if (parent.type === "connection") {
+    const savedSqlNodes = normalized.filter((child) => child.type === "saved-sql-root");
     const userAdminNodes = normalized.filter((child) => child.type === "user-admin");
-    const regularChildren = normalized.filter((child) => child.type !== "user-admin");
-    const withConnectionUtilityOrder = (children: TreeNode[]) => [...children, ...userAdminNodes];
+    const regularChildren = normalized.filter(
+      (child) => child.type !== "user-admin" && child.type !== "saved-sql-root",
+    );
+    const withConnectionUtilityOrder = (children: TreeNode[]) => [...savedSqlNodes, ...children, ...userAdminNodes];
 
     if (databaseType === "mongodb" || databaseType === "elasticsearch") {
       return withConnectionUtilityOrder(sortByLabel(regularChildren));
