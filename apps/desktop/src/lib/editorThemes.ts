@@ -375,6 +375,7 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
   return {
     ".cm-tooltip.cm-tooltip-autocomplete": {
       background: "var(--popover)",
+      backgroundClip: "padding-box",
       border: colorMixValue(
         "1px solid var(--border)",
         "1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 18%)",
@@ -387,10 +388,15 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
       minWidth: "min(280px, calc(100vw - 24px))",
       overflow: "hidden",
       padding: "4px 0",
+      zIndex: "9999",
+    },
+    ".cm-tooltip.cm-tooltip-autocomplete *": {
+      boxSizing: "border-box",
     },
     ".cm-tooltip.cm-tooltip-autocomplete > ul": {
       maxHeight: "min(280px, calc(100vh - 32px))",
       minWidth: "min(280px, calc(100vw - 24px))",
+      overflowX: "hidden",
       padding: "0 4px 0 !important",
       scrollbarColor: colorMixValue(
         "var(--muted-foreground) transparent",
@@ -408,8 +414,11 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
       height: "28px",
       letterSpacing: "0",
       lineHeight: "28px",
+      maxWidth: "100%",
+      overflow: "hidden",
       padding: "0 10px !important",
       transition: "background-color 90ms ease, color 90ms ease",
+      whiteSpace: "nowrap",
     },
     ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
       background: `${colorMixValue("var(--accent)", "color-mix(in oklch, var(--primary) 14%, var(--popover))")} !important`,
@@ -492,10 +501,15 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
     },
     ".cm-completionLabel": {
       color: "inherit",
+      flex: "0 1 auto",
       fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, var(--font-mono, monospace))`,
       fontSize: `clamp(12px, var(${EDITOR_FONT_SIZE_CSS_VAR}, 13px), 14px)`,
       fontWeight: "520",
       letterSpacing: "0",
+      minWidth: "0",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
     },
     ".cm-completionMatchedText": {
       color: oklchValue("rgb(29 132 245)", "oklch(0.62 0.19 255)"),
@@ -510,8 +524,13 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
       fontSize: `clamp(11px, calc(var(${EDITOR_FONT_SIZE_CSS_VAR}, 13px) - 1px), 13px)`,
       fontWeight: "500",
       fontStyle: "normal",
+      flex: "1 1 auto",
       marginLeft: "10px",
+      minWidth: "0",
       opacity: "1",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
     },
   };
 }
