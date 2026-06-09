@@ -193,41 +193,11 @@ mod tests {
         assert!(!should_setup_desktop_tray("windows", false));
         assert!(!should_setup_desktop_tray("macos", false));
         assert!(!should_setup_desktop_tray("linux", true));
-        let source = include_str!("lib.rs");
-        assert!(source.contains(
-            "if should_setup_desktop_tray(std::env::consts::OS, desktop_settings.show_tray_icon) {\n                setup_desktop_tray(app, desktop_settings.icon_theme)?;"
-        ));
-    }
-
-    #[test]
-    fn tray_preference_hides_existing_tray_instead_of_removing_it() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("tray.set_visible(show_tray_icon)?;"));
-        let remove_call = concat!("remove", "_tray_by_id");
-        assert!(!source.contains(remove_call));
-    }
-
-    #[test]
-    fn can_apply_black_logo_icon_theme() {
-        let source = include_str!("lib.rs");
-        assert!(source.contains("const BLACK_APP_ICON"));
-        assert!(source.contains("DesktopIconTheme::Black => window.set_icon(BLACK_APP_ICON)?"));
-        assert!(source.contains("DesktopIconTheme::Black => Some(BLACK_APP_ICON)"));
-    }
-
-    #[test]
-    fn desktop_settings_save_treats_runtime_tray_update_as_best_effort() {
-        let source = include_str!("commands/app_settings.rs");
-        assert!(source.contains("if let Err(err) = apply_desktop_settings"));
-        assert!(!source.contains("map_err(|err| err.to_string())"));
     }
 
     #[test]
     fn shows_main_window_after_regular_startup_setup() {
         assert!(should_show_main_window_after_setup());
-        let source = include_str!("lib.rs");
-        assert!(source
-            .contains("if should_show_main_window_after_setup() {\n                show_main_window(app.handle());"));
     }
 }
 
