@@ -340,7 +340,7 @@ function visibleLabel(node: TreeNode): string {
 }
 
 function isTooltipDisabled(): boolean {
-  return !isLabelTruncated();
+  return isRenamingGroup.value || !isLabelTruncated();
 }
 
 async function toggle() {
@@ -3348,123 +3348,125 @@ function treeItemMenuItems(): ContextMenuItem[] {
 <template>
   <CustomContextMenu :items="treeItemMenuItems()" v-slot="{ onContextMenu }">
     <div @contextmenu="onTreeItemContextMenu($event, onContextMenu)">
-      <div
-        ref="rowRef"
-        class="group flex items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
-        style="contain: layout style"
-        :class="[
-          rowWidthClass,
-          {
-            'ring-1 ring-primary/50 bg-primary/5': showDropInside,
-            'opacity-50': isDragging,
-            'tree-item-connection-tint': connectionColor,
-            'rounded-none': connectionColor && !isSelected && !isMultiSelected,
-            'rounded-sm': !connectionColor && !isSelected && !isMultiSelected,
-            'tree-item-active rounded-none': connectionColor && (isSelected || isMultiSelected),
-            'tree-item-active rounded-md': !connectionColor && (isSelected || isMultiSelected),
-            'tree-item-highlight': highlighted,
-          },
-        ]"
-        :tabindex="isSelected || isMultiSelected ? 0 : -1"
-        :style="rowStyle"
-        @click="onClick"
-        @dblclick="onDoubleClick"
-        @keydown="onKeydown"
-        @mousedown="onRowMouseDown"
-        @mousemove="isDropTarget ? updateTarget($event, node.id, node.type) : undefined"
-        @mouseleave="clearTarget(node.id)"
-      >
+      <LightTooltip :text="displayLabel(node)" :disabled="isTooltipDisabled" side="right" :side-offset="8" :delay="0">
         <div
-          v-if="showDropBefore"
-          class="absolute right-2 top-0 h-0.5 bg-primary rounded-full pointer-events-none"
-          :style="{ left: paddingLeft }"
-        />
-        <div
-          v-if="showDropAfter"
-          class="absolute right-2 bottom-0 h-0.5 bg-primary rounded-full pointer-events-none"
-          :style="{ left: paddingLeft }"
-        />
-        <template v-if="canExpand">
-          <button
-            type="button"
-            class="-m-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-            @click.stop="toggle"
+          ref="rowRef"
+          class="group flex items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
+          style="contain: layout style"
+          :class="[
+            rowWidthClass,
+            {
+              'ring-1 ring-primary/50 bg-primary/5': showDropInside,
+              'opacity-50': isDragging,
+              'tree-item-connection-tint': connectionColor,
+              'rounded-none': connectionColor && !isSelected && !isMultiSelected,
+              'rounded-sm': !connectionColor && !isSelected && !isMultiSelected,
+              'tree-item-active rounded-none': connectionColor && (isSelected || isMultiSelected),
+              'tree-item-active rounded-md': !connectionColor && (isSelected || isMultiSelected),
+              'tree-item-highlight': highlighted,
+            },
+          ]"
+          :tabindex="isSelected || isMultiSelected ? 0 : -1"
+          :style="rowStyle"
+          @click="onClick"
+          @dblclick="onDoubleClick"
+          @keydown="onKeydown"
+          @mousedown="onRowMouseDown"
+          @mousemove="isDropTarget ? updateTarget($event, node.id, node.type) : undefined"
+          @mouseleave="clearTarget(node.id)"
+        >
+          <div
+            v-if="showDropBefore"
+            class="absolute right-2 top-0 h-0.5 bg-primary rounded-full pointer-events-none"
+            :style="{ left: paddingLeft }"
+          />
+          <div
+            v-if="showDropAfter"
+            class="absolute right-2 bottom-0 h-0.5 bg-primary rounded-full pointer-events-none"
+            :style="{ left: paddingLeft }"
+          />
+          <template v-if="canExpand">
+            <button
+              type="button"
+              class="-m-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              @click.stop="toggle"
+            >
+              <Loader2 v-if="node.isLoading" class="w-3.5 h-3.5 animate-spin" />
+              <ChevronDown v-else-if="node.isExpanded" class="w-3.5 h-3.5" />
+              <ChevronRight v-else class="w-3.5 h-3.5" />
+            </button>
+          </template>
+          <span v-else class="w-3.5 h-3.5 shrink-0" />
+          <DatabaseIcon
+            v-if="node.type === 'connection'"
+            :db-type="connectionIconType(node.connectionId)"
+            class="w-3.5 h-3.5 shrink-0"
+          />
+          <component
+            v-else
+            :is="getIconInfo(node)?.icon || Database"
+            class="w-3.5 h-3.5 shrink-0 transition-colors"
+            :class="nodeIconClass"
+          />
+          <input
+            v-if="isRenamingGroup"
+            ref="renameInputRef"
+            v-model="renameInput"
+            class="min-w-0 flex-1 truncate bg-transparent border border-primary/50 rounded px-1 outline-none"
+            @blur="finishRenameGroup"
+            @keydown.enter.prevent="finishRenameGroup"
+            @keydown.escape.prevent="isRenamingGroup = false"
+            @click.stop
+          />
+          <span v-else ref="labelRef" :class="labelWidthClass">{{ visibleLabel(node) }}</span>
+          <span
+            v-if="
+              (node.type === 'group-tables' ||
+                node.type === 'group-views' ||
+                node.type === 'group-procedures' ||
+                node.type === 'group-functions' ||
+                node.type === 'group-sequences' ||
+                node.type === 'group-packages' ||
+                node.type === 'group-partitions') &&
+              node.objectCount != null
+            "
+            class="text-muted-foreground text-[10px] shrink-0"
+            >{{ node.objectCount }}</span
           >
-            <Loader2 v-if="node.isLoading" class="w-3.5 h-3.5 animate-spin" />
-            <ChevronDown v-else-if="node.isExpanded" class="w-3.5 h-3.5" />
-            <ChevronRight v-else class="w-3.5 h-3.5" />
+          <Badge v-if="isNodeDefaultDatabase" variant="secondary" class="h-4 px-1.5 text-[10px]">
+            {{ t("editor.defaultDatabase") }}
+          </Badge>
+          <span v-if="columnComment" class="truncate text-muted-foreground/60 text-[10px] max-w-[40%]">{{
+            columnComment
+          }}</span>
+          <span
+            v-if="tableComment && !settingsStore.editorSettings.sidebarHideTableComments"
+            class="truncate text-muted-foreground/60 text-[10px] max-w-[25%] group-hover:hidden"
+            :title="tableComment"
+            >{{ tableComment }}</span
+          >
+          <span
+            v-if="
+              node.type === 'connection' && node.connectionId && connectionStore.connectedIds.has(node.connectionId)
+            "
+            class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"
+          />
+          <ConnectionErrorIndicator
+            v-if="node.type === 'connection'"
+            :connection-id="node.connectionId"
+            trigger-class="h-4 w-4"
+          />
+          <button
+            v-if="canPin"
+            class="rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/15 hover:text-foreground focus:opacity-100"
+            :class="isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100'"
+            :title="isPinned ? t('contextMenu.unpin') : t('contextMenu.pin')"
+            @click.stop="togglePin"
+          >
+            <Pin class="w-3 h-3" :class="{ 'fill-current': isPinned }" />
           </button>
-        </template>
-        <span v-else class="w-3.5 h-3.5 shrink-0" />
-        <DatabaseIcon
-          v-if="node.type === 'connection'"
-          :db-type="connectionIconType(node.connectionId)"
-          class="w-3.5 h-3.5 shrink-0"
-        />
-        <component
-          v-else
-          :is="getIconInfo(node)?.icon || Database"
-          class="w-3.5 h-3.5 shrink-0 transition-colors"
-          :class="nodeIconClass"
-        />
-        <input
-          v-if="isRenamingGroup"
-          ref="renameInputRef"
-          v-model="renameInput"
-          class="min-w-0 flex-1 truncate bg-transparent border border-primary/50 rounded px-1 outline-none"
-          @blur="finishRenameGroup"
-          @keydown.enter.prevent="finishRenameGroup"
-          @keydown.escape.prevent="isRenamingGroup = false"
-          @click.stop
-        />
-        <LightTooltip v-else :text="displayLabel(node)" :disabled="isTooltipDisabled" side="right" :side-offset="8">
-          <span ref="labelRef" :class="labelWidthClass">{{ visibleLabel(node) }}</span>
-        </LightTooltip>
-        <span
-          v-if="
-            (node.type === 'group-tables' ||
-              node.type === 'group-views' ||
-              node.type === 'group-procedures' ||
-              node.type === 'group-functions' ||
-              node.type === 'group-sequences' ||
-              node.type === 'group-packages' ||
-              node.type === 'group-partitions') &&
-            node.objectCount != null
-          "
-          class="text-muted-foreground text-[10px] shrink-0"
-          >{{ node.objectCount }}</span
-        >
-        <Badge v-if="isNodeDefaultDatabase" variant="secondary" class="h-4 px-1.5 text-[10px]">
-          {{ t("editor.defaultDatabase") }}
-        </Badge>
-        <span v-if="columnComment" class="truncate text-muted-foreground/60 text-[10px] max-w-[40%]">{{
-          columnComment
-        }}</span>
-        <span
-          v-if="tableComment && !settingsStore.editorSettings.sidebarHideTableComments"
-          class="truncate text-muted-foreground/60 text-[10px] max-w-[25%] group-hover:hidden"
-          :title="tableComment"
-          >{{ tableComment }}</span
-        >
-        <span
-          v-if="node.type === 'connection' && node.connectionId && connectionStore.connectedIds.has(node.connectionId)"
-          class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"
-        />
-        <ConnectionErrorIndicator
-          v-if="node.type === 'connection'"
-          :connection-id="node.connectionId"
-          trigger-class="h-4 w-4"
-        />
-        <button
-          v-if="canPin"
-          class="rounded p-0.5 text-muted-foreground hover:bg-muted-foreground/15 hover:text-foreground focus:opacity-100"
-          :class="isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover:opacity-100'"
-          :title="isPinned ? t('contextMenu.unpin') : t('contextMenu.pin')"
-          @click.stop="togglePin"
-        >
-          <Pin class="w-3 h-3" :class="{ 'fill-current': isPinned }" />
-        </button>
-      </div>
+        </div>
+      </LightTooltip>
     </div>
   </CustomContextMenu>
   <VisibleDatabasesDialog

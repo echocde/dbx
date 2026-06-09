@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import TruncatedTextTooltip from "@/components/ui/TruncatedTextTooltip.vue";
 import DatabaseIcon from "@/components/icons/DatabaseIcon.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
@@ -254,7 +255,7 @@ function connectionById(connectionId: string): ConnectionConfig | undefined {
           <template #option-label="{ option, label }">
             <div class="flex min-w-0 items-center gap-2">
               <DatabaseIcon :db-type="connectionIconType(connectionById(option))" class="h-3.5 w-3.5 shrink-0" />
-              <span class="truncate">{{ label }}</span>
+              <TruncatedTextTooltip :text="label" class="min-w-0 flex-1" side="left" :side-offset="8" />
             </div>
           </template>
         </SearchableSelect>
@@ -278,7 +279,11 @@ function connectionById(connectionId: string): ConnectionConfig | undefined {
               if (open && activeConnection) loadDatabaseOptions(activeConnection.id).catch(() => {});
             }
           "
-        />
+        >
+          <template #option-label="{ label }">
+            <TruncatedTextTooltip :text="label" class="min-w-0 flex-1" side="left" :side-offset="8" />
+          </template>
+        </SearchableSelect>
         <Button
           v-if="activeDatabaseValue"
           variant="ghost"
