@@ -64,7 +64,6 @@ export function treeNodeRowDoubleClickAction(
   if (activation === "double") {
     if (dataNodeTypes.has(type)) return "open-data";
     if (sourceNodeTypes.has(type)) return "open-source";
-    if (type === "saved-sql-file") return "open-saved-sql";
     if (toggleLeafNodeTypes.has(type)) return "toggle";
     if (canOpenObjectBrowser && objectBrowserNodeTypes.has(type) && canExpand) return "open-object-browser-and-expand";
     if (canOpenObjectBrowser && objectBrowserNodeTypes.has(type)) return "open-object-browser";

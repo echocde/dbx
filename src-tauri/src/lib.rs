@@ -276,6 +276,7 @@ pub fn run() {
                 ))
             };
             app.manage(state.clone());
+            app.manage(commands::saved_sql::SavedSqlStorageState { data_dir: data_dir.clone() });
             app.manage(commands::external_sql::ExternalSqlOpenState::default());
             app.manage(commands::external_db::ExternalDbOpenState::default());
             app.manage(commands::deep_link::DeepLinkOpenState::default());
@@ -469,6 +470,9 @@ pub fn run() {
             commands::saved_sql::delete_saved_sql_folder,
             commands::saved_sql::save_saved_sql_file,
             commands::saved_sql::delete_saved_sql_file,
+            commands::saved_sql::saved_sql_storage_dir,
+            commands::saved_sql::open_saved_sql_storage_dir,
+            commands::saved_sql::sync_saved_sql_directory,
             commands::mongo_cmd::mongo_list_databases,
             commands::mongo_cmd::mongo_list_collections,
             commands::mongo_cmd::mongo_find_documents,

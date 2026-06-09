@@ -305,7 +305,7 @@ export const useQueryStore = defineStore("query", () => {
     const id = uuid();
     const tab: QueryTab = {
       id,
-      title: title || `Query ${tabs.value.length + 1}`,
+      title: title || `query_${tabs.value.length + 1}`,
       customTitle: mode === "query" && !!title ? true : undefined,
       connectionId,
       database,

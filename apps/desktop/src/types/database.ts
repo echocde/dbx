@@ -460,6 +460,7 @@ export interface SavedSqlFolder {
   id: string;
   connectionId: string;
   name: string;
+  orderIndex?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -472,6 +473,7 @@ export interface SavedSqlFile {
   database: string;
   schema?: string;
   sql: string;
+  orderIndex?: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -33,6 +33,7 @@ import type {
   UpgradeAllAgentDriversResult,
   AgentUpdateBlocker,
   DesktopSettings,
+  SavedSqlSyncRequest,
   DriverInstallProgress,
   JavaRuntimeConfig,
   UpdateInfo,
@@ -372,6 +373,18 @@ export async function saveSavedSqlFile(file: SavedSqlFile): Promise<SavedSqlFile
 
 export async function deleteSavedSqlFile(id: string): Promise<void> {
   return del(`/api/saved-sql/${encodeURIComponent(id)}`);
+}
+
+export async function savedSqlStorageDir(): Promise<string> {
+  return "";
+}
+
+export async function openSavedSqlStorageDir(_dir?: string | null): Promise<void> {
+  throw new Error("SQL storage directory is only available in the desktop app.");
+}
+
+export async function syncSavedSqlDirectory(_request: SavedSqlSyncRequest): Promise<void> {
+  throw new Error("SQL directory sync is only available in the desktop app.");
 }
 
 // ---------------------------------------------------------------------------
@@ -882,7 +895,7 @@ export async function loadAiConfig(): Promise<AiConfig | null> {
 }
 
 export async function loadDesktopSettings(): Promise<DesktopSettings> {
-  return { show_tray_icon: true, icon_theme: "default", debug_logging_enabled: false };
+  return { show_tray_icon: true, icon_theme: "default", debug_logging_enabled: false, saved_sql_sync_dir: null };
 }
 
 export async function saveDesktopSettings(_settings: DesktopSettings): Promise<void> {

@@ -40,7 +40,6 @@ import {
   Scissors,
   CopyPlus,
   Plus,
-  FileText,
   ScrollText,
   Braces,
   Code2,
@@ -52,7 +51,6 @@ import {
 import CustomContextMenu, { type ContextMenuItem } from "@/components/ui/CustomContextMenu.vue";
 import { useConnectionStore } from "@/stores/connectionStore";
 import { useQueryStore } from "@/stores/queryStore";
-import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useToast } from "@/composables/useToast";
 import { useDatabaseOptions } from "@/composables/useDatabaseOptions";
@@ -164,7 +162,6 @@ function isLabelTruncated(): boolean {
 }
 const connectionStore = useConnectionStore();
 const queryStore = useQueryStore();
-const savedSqlStore = useSavedSqlStore();
 const settingsStore = useSettingsStore();
 const { toast } = useToast();
 const { highlight } = useSqlHighlighter();
@@ -246,12 +243,6 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: TableProperties, colorClass: "text-primary" };
     case "user-admin":
       return { icon: UsersRound, colorClass: "text-primary" };
-    case "saved-sql-root":
-      return { icon: FolderOpen, colorClass: "text-blue-500" };
-    case "saved-sql-folder":
-      return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-blue-400" };
-    case "saved-sql-file":
-      return { icon: FileText, colorClass: "text-blue-300" };
     case "index":
       return { icon: Key, colorClass: "text-amber-400" };
     case "fkey":
@@ -307,8 +298,6 @@ const groupTypes: Set<TreeNodeType> = new Set([
   "group-sequences",
   "group-packages",
   "group-partitions",
-  "saved-sql-root",
-  "saved-sql-folder",
 ]);
 const pinnableTypes: Set<TreeNodeType> = new Set([
   "connection-group",
@@ -352,12 +341,6 @@ async function toggle() {
   if (node.type === "connection-group") {
     node.isExpanded = !node.isExpanded;
     connectionStore.toggleConnectionGroupCollapsed(node.id);
-    emit("node-toggled", node, wasExpanded);
-    return;
-  }
-
-  if (node.type === "saved-sql-root" || node.type === "saved-sql-folder") {
-    node.isExpanded = !node.isExpanded;
     emit("node-toggled", node, wasExpanded);
     return;
   }
@@ -484,8 +467,6 @@ function runRowClickAction() {
     node.type === "package-body"
   ) {
     void viewObjectSource();
-  } else if (node.type === "saved-sql-file") {
-    openSavedSqlFile();
   } else if (action === "toggle") {
     toggle();
   }
@@ -650,9 +631,7 @@ function canRefreshTreeNodeShortcut(): boolean {
   if (type === "connection" || type === "database" || type === "schema" || type === "table" || type === "view") {
     return true;
   }
-  return (
-    isGroupLabel(props.node) && type !== "saved-sql-root" && type !== "saved-sql-folder" && type !== "group-partitions"
-  );
+  return isGroupLabel(props.node) && type !== "group-partitions";
 }
 
 function requestRenameSelectedNode(): boolean {
@@ -666,14 +645,6 @@ function requestRenameSelectedNode(): boolean {
     startRenameGroup();
     return true;
   }
-  if (props.node.type === "saved-sql-folder") {
-    openRenameSavedSqlFolder();
-    return true;
-  }
-  if (props.node.type === "saved-sql-file") {
-    openRenameSavedSqlFile();
-    return true;
-  }
   return false;
 }
 
@@ -685,14 +656,6 @@ function requestDeleteSelectedNode(): boolean {
   }
   if (props.node.type === "connection-group") {
     deleteConnectionGroup();
-    return true;
-  }
-  if (props.node.type === "saved-sql-file") {
-    deleteSavedSqlFile();
-    return true;
-  }
-  if (props.node.type === "saved-sql-folder") {
-    deleteSavedSqlFolder();
     return true;
   }
   if (canDropDatabase.value) {
@@ -722,8 +685,6 @@ function onDoubleClick() {
     openData();
   } else if (action === "open-source") {
     void viewObjectSource();
-  } else if (action === "open-saved-sql") {
-    openSavedSqlFile();
   } else if (action === "toggle") {
     toggle();
   }
@@ -771,15 +732,6 @@ async function openUserAdmin() {
   } catch (e: any) {
     toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
-}
-
-function openSavedSqlFile() {
-  const id = props.node.savedSqlId;
-  if (!id) return;
-  const file = savedSqlStore.getFile(id);
-  if (!file) return;
-  queryStore.openSavedSql(file);
-  connectionStore.activeConnectionId = file.connectionId;
 }
 
 async function openData() {
@@ -2518,9 +2470,6 @@ const hasTypeMenu = computed(() => {
     t === "function" ||
     t === "package" ||
     t === "package-body" ||
-    t === "saved-sql-root" ||
-    t === "saved-sql-folder" ||
-    t === "saved-sql-file" ||
     isGroupLabel(props.node)
   );
 });
@@ -2687,70 +2636,6 @@ const currentGroupId = computed(() => {
   }
   return null;
 });
-
-// --- Saved SQL Library ---
-const showSavedSqlNameDialog = ref(false);
-const savedSqlNameMode = ref<"folder-create" | "folder-rename" | "file-rename" | null>(null);
-const savedSqlNameInput = ref("");
-const showDeleteSavedSqlFileConfirm = ref(false);
-const showDeleteSavedSqlFolderConfirm = ref(false);
-
-function openCreateSavedSqlFolder() {
-  savedSqlNameMode.value = "folder-create";
-  savedSqlNameInput.value = t("savedSql.newFolderDefault");
-  showSavedSqlNameDialog.value = true;
-}
-
-function openRenameSavedSqlFolder() {
-  savedSqlNameMode.value = "folder-rename";
-  savedSqlNameInput.value = props.node.label;
-  showSavedSqlNameDialog.value = true;
-}
-
-function openRenameSavedSqlFile() {
-  savedSqlNameMode.value = "file-rename";
-  savedSqlNameInput.value = props.node.label.replace(/\.sql$/i, "");
-  showSavedSqlNameDialog.value = true;
-}
-
-async function confirmSavedSqlName() {
-  const name = savedSqlNameInput.value.trim();
-  if (!name || !props.node.connectionId || !savedSqlNameMode.value) return;
-
-  if (savedSqlNameMode.value === "folder-create") {
-    await savedSqlStore.createFolder(props.node.connectionId, name);
-  } else if (savedSqlNameMode.value === "folder-rename" && props.node.savedSqlFolderId) {
-    await savedSqlStore.renameFolder(props.node.savedSqlFolderId, name);
-  } else if (savedSqlNameMode.value === "file-rename" && props.node.savedSqlId) {
-    await savedSqlStore.renameFile(props.node.savedSqlId, name.endsWith(".sql") ? name : `${name}.sql`);
-  }
-
-  connectionStore.refreshSavedSqlTree(props.node.connectionId);
-  showSavedSqlNameDialog.value = false;
-  savedSqlNameMode.value = null;
-}
-
-function deleteSavedSqlFile() {
-  showDeleteSavedSqlFileConfirm.value = true;
-}
-
-async function confirmDeleteSavedSqlFile() {
-  if (!props.node.savedSqlId) return;
-  await savedSqlStore.deleteFile(props.node.savedSqlId);
-  connectionStore.refreshSavedSqlTree(props.node.connectionId);
-  showDeleteSavedSqlFileConfirm.value = false;
-}
-
-function deleteSavedSqlFolder() {
-  showDeleteSavedSqlFolderConfirm.value = true;
-}
-
-async function confirmDeleteSavedSqlFolder() {
-  if (!props.node.savedSqlFolderId) return;
-  await savedSqlStore.deleteFolder(props.node.savedSqlFolderId);
-  connectionStore.refreshSavedSqlTree(props.node.connectionId);
-  showDeleteSavedSqlFolderConfirm.value = false;
-}
 
 // --- Drag and Drop ---
 import { useDragSort } from "@/composables/useDragSort";
@@ -3272,27 +3157,8 @@ function treeItemMenuItems(): ContextMenuItem[] {
     return items;
   }
 
-  // 9. Group Labels (saved-sql-root, saved-sql-folder, group-columns, etc.)
+  // 9. Group Labels (group-columns, group-tables, etc.)
   if (isGroupLabel(node)) {
-    if (node.type === "saved-sql-root") {
-      items.push({ label: t("savedSql.newFolder"), action: openCreateSavedSqlFolder, icon: FolderPlus });
-    }
-    if (node.type === "saved-sql-folder") {
-      items.push({
-        label: t("savedSql.renameFolder"),
-        action: openRenameSavedSqlFolder,
-        icon: Pencil,
-        shortcut: shortcutRename,
-      });
-      items.push({
-        label: t("savedSql.deleteFolder"),
-        action: deleteSavedSqlFolder,
-        icon: Trash2,
-        shortcut: shortcutDelete,
-        variant: "destructive" as const,
-      });
-      items.push({ label: "", separator: true });
-    }
     const hasGroupCreateAction =
       (node.type === "group-tables" && canCreateTable.value) ||
       (node.type === "group-views" && !!node.connectionId && !!node.database);
@@ -3305,7 +3171,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
     if (hasGroupCreateAction) {
       items.push({ label: "", separator: true });
     }
-    if (node.type !== "saved-sql-root" && node.type !== "saved-sql-folder" && node.type !== "group-partitions") {
+    if (node.type !== "group-partitions") {
       items.push({
         label: t("contextMenu.refreshChildren"),
         action: refresh,
@@ -3316,27 +3182,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
     return items;
   }
 
-  // 10. Saved SQL File
-  if (node.type === "saved-sql-file") {
-    items.push({ label: t("savedSql.open"), action: openSavedSqlFile, icon: FileText });
-    items.push({
-      label: t("savedSql.renameFile"),
-      action: openRenameSavedSqlFile,
-      icon: Pencil,
-      shortcut: shortcutRename,
-    });
-    items.push({ label: "", separator: true });
-    items.push({
-      label: t("savedSql.deleteFile"),
-      action: deleteSavedSqlFile,
-      icon: Trash2,
-      shortcut: shortcutDelete,
-      variant: "destructive" as const,
-    });
-    return items;
-  }
-
-  // 11. Universal Copy Name (for all types except connection)
+  // 10. Universal Copy Name (for all types except connection)
   if (hasTypeMenu.value) {
     items.push({ label: "", separator: true });
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
@@ -3352,7 +3198,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
       <LightTooltip :text="displayLabel(node)" :disabled="isTooltipDisabled" side="right" :side-offset="8" :delay="0">
         <div
           ref="rowRef"
-          class="group flex items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent transition-colors relative outline-none"
+          class="group flex items-center gap-1.5 py-1 px-2 cursor-pointer hover:bg-accent relative outline-none"
           style="contain: layout style"
           :class="[
             rowWidthClass,
@@ -3360,8 +3206,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
               'ring-1 ring-primary/50 bg-primary/5': showDropInside,
               'opacity-50': isDragging,
               'tree-item-connection-tint': connectionColor,
-              'rounded-none': connectionColor && !isSelected && !isMultiSelected,
-              'rounded-sm': !connectionColor && !isSelected && !isMultiSelected,
+              rounded: !isSelected && !isMultiSelected,
               'tree-item-active rounded-none': connectionColor && (isSelected || isMultiSelected),
               'tree-item-active rounded-md': !connectionColor && (isSelected || isMultiSelected),
               'tree-item-highlight': highlighted,
@@ -3406,7 +3251,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
           <component
             v-else
             :is="getIconInfo(node)?.icon || Database"
-            class="w-3.5 h-3.5 shrink-0 transition-colors"
+            class="w-3.5 h-3.5 shrink-0"
             :class="nodeIconClass"
           />
           <input
@@ -3533,29 +3378,6 @@ function treeItemMenuItems(): ContextMenuItem[] {
     </DialogContent>
   </Dialog>
 
-  <Dialog v-model:open="showSavedSqlNameDialog">
-    <DialogContent class="sm:max-w-[380px]">
-      <DialogHeader>
-        <DialogTitle>
-          {{
-            savedSqlNameMode === "folder-create"
-              ? t("savedSql.newFolder")
-              : savedSqlNameMode === "folder-rename"
-                ? t("savedSql.renameFolder")
-                : t("savedSql.renameFile")
-          }}
-        </DialogTitle>
-      </DialogHeader>
-      <Input v-model="savedSqlNameInput" @keydown.enter.prevent="confirmSavedSqlName" />
-      <DialogFooter>
-        <Button variant="outline" @click="showSavedSqlNameDialog = false">{{ t("dangerDialog.cancel") }}</Button>
-        <Button :disabled="!savedSqlNameInput.trim()" @click="confirmSavedSqlName">{{
-          t("dangerDialog.confirm")
-        }}</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-
   <Dialog v-model:open="showRenameObjectDialog">
     <DialogContent class="sm:max-w-[420px]">
       <DialogHeader>
@@ -3641,38 +3463,6 @@ function treeItemMenuItems(): ContextMenuItem[] {
           <Clipboard class="h-4 w-4" />
           {{ t("contextMenu.copyStructure") }}
         </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-
-  <Dialog v-model:open="showDeleteSavedSqlFileConfirm">
-    <DialogContent class="sm:max-w-[400px]">
-      <DialogHeader>
-        <DialogTitle>{{ t("savedSql.deleteFile") }}</DialogTitle>
-      </DialogHeader>
-      <p class="text-sm text-muted-foreground">
-        {{ t("savedSql.deleteFileConfirm", { name: node.label }) }}
-      </p>
-      <DialogFooter>
-        <Button variant="outline" @click="showDeleteSavedSqlFileConfirm = false">{{ t("dangerDialog.cancel") }}</Button>
-        <Button variant="destructive" @click="confirmDeleteSavedSqlFile">{{ t("savedSql.deleteFile") }}</Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-
-  <Dialog v-model:open="showDeleteSavedSqlFolderConfirm">
-    <DialogContent class="sm:max-w-[400px]">
-      <DialogHeader>
-        <DialogTitle>{{ t("savedSql.deleteFolder") }}</DialogTitle>
-      </DialogHeader>
-      <p class="text-sm text-muted-foreground">
-        {{ t("savedSql.deleteFolderConfirm", { name: node.label }) }}
-      </p>
-      <DialogFooter>
-        <Button variant="outline" @click="showDeleteSavedSqlFolderConfirm = false">{{
-          t("dangerDialog.cancel")
-        }}</Button>
-        <Button variant="destructive" @click="confirmDeleteSavedSqlFolder">{{ t("savedSql.deleteFolder") }}</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

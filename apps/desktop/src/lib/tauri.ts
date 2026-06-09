@@ -146,6 +146,18 @@ export interface DesktopSettings {
   show_tray_icon: boolean;
   icon_theme: "default" | "black";
   debug_logging_enabled: boolean;
+  saved_sql_sync_dir?: string | null;
+}
+
+export interface SavedSqlSyncEntry {
+  folderName?: string;
+  fileName: string;
+  sql: string;
+}
+
+export interface SavedSqlSyncRequest {
+  targetDir: string;
+  entries: SavedSqlSyncEntry[];
 }
 
 export interface WebDavConfig {
@@ -1019,6 +1031,18 @@ export async function saveSavedSqlFile(file: SavedSqlFile): Promise<SavedSqlFile
 
 export async function deleteSavedSqlFile(id: string): Promise<void> {
   return invoke("delete_saved_sql_file", { id });
+}
+
+export async function savedSqlStorageDir(): Promise<string> {
+  return invoke("saved_sql_storage_dir");
+}
+
+export async function openSavedSqlStorageDir(dir?: string | null): Promise<void> {
+  return invoke("open_saved_sql_storage_dir", { dir });
+}
+
+export async function syncSavedSqlDirectory(request: SavedSqlSyncRequest): Promise<void> {
+  return invoke("sync_saved_sql_directory", { request });
 }
 
 export async function saveSidebarLayout(layout: import("@/types/database").SidebarLayout): Promise<void> {

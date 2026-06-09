@@ -67,7 +67,6 @@ import {
 import { decodeSchemaTreeCache, encodeSchemaTreeCache } from "@/lib/schemaTreeCache";
 import { sortSidebarTreeChildrenForParent } from "@/lib/sidebarNodeOrdering";
 import { prunePinnedTreeNodeIdsForConnection } from "@/lib/pinnedTreeNodeIds";
-import { useSavedSqlStore } from "@/stores/savedSqlStore";
 import { supportsDatabaseUserAdmin } from "@/lib/databaseUserAdmin";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -382,56 +381,6 @@ export const useConnectionStore = defineStore("connection", () => {
     if (treeSelectionAnchorId.value === nodeId) treeSelectionAnchorId.value = null;
   }
 
-  function buildSavedSqlRootNode(connectionId: string, existingRoot?: TreeNode): TreeNode | undefined {
-    const savedSqlStore = useSavedSqlStore();
-    const folders = savedSqlStore.listFolders(connectionId);
-    const files = savedSqlStore.listFiles(connectionId);
-
-    if (folders.length === 0 && files.length === 0) return undefined;
-
-    const existingById = new Map<string, TreeNode>();
-    const collectExisting = (node?: TreeNode) => {
-      if (!node) return;
-      existingById.set(node.id, node);
-      node.children?.forEach(collectExisting);
-    };
-    collectExisting(existingRoot);
-
-    const fileNode = (file: ReturnType<typeof savedSqlStore.listFiles>[number]): TreeNode => ({
-      id: `${connectionId}:__saved_sql:file:${file.id}`,
-      label: file.name,
-      type: "saved-sql-file",
-      connectionId,
-      database: file.database,
-      schema: file.schema,
-      savedSqlId: file.id,
-    });
-
-    const folderNodes = folders.map((folder) => {
-      const id = `${connectionId}:__saved_sql:folder:${folder.id}`;
-      const existing = existingById.get(id);
-      return {
-        id,
-        label: folder.name,
-        type: "saved-sql-folder" as const,
-        connectionId,
-        savedSqlFolderId: folder.id,
-        isExpanded: existing?.isExpanded ?? true,
-        children: savedSqlStore.listFiles(connectionId, folder.id).map(fileNode),
-      };
-    });
-
-    const rootId = `${connectionId}:__saved_sql`;
-    return {
-      id: rootId,
-      label: "tree.savedSql",
-      type: "saved-sql-root",
-      connectionId,
-      isExpanded: existingRoot?.isExpanded ?? true,
-      children: [...folderNodes, ...files.map(fileNode)],
-    };
-  }
-
   function buildUserAdminNode(connectionId: string, existingConnectionNode?: TreeNode): TreeNode | undefined {
     const config = getConfig(connectionId);
     if (!supportsDatabaseUserAdmin(effectiveDatabaseTypeForConnection(config))) return undefined;
@@ -451,33 +400,13 @@ export const useConnectionStore = defineStore("connection", () => {
     children: TreeNode[],
     existingConnectionNode?: TreeNode,
   ): TreeNode[] {
-    const existingRoot = existingConnectionNode?.children?.find((child) => child.type === "saved-sql-root");
-    const nonUtilityChildren = children.filter(
-      (child) => child.type !== "saved-sql-root" && child.type !== "user-admin",
-    );
+    const nonUtilityChildren = children.filter((child) => child.type !== "user-admin");
     const userAdminNode = buildUserAdminNode(connectionId, existingConnectionNode);
-    const savedSqlRoot = buildSavedSqlRootNode(connectionId, existingRoot);
-    return [savedSqlRoot, ...nonUtilityChildren, userAdminNode].filter(Boolean) as TreeNode[];
+    return [...nonUtilityChildren, userAdminNode].filter(Boolean) as TreeNode[];
   }
 
   function withSavedSqlRoot(connectionId: string, children: TreeNode[], existingConnectionNode?: TreeNode): TreeNode[] {
     return withConnectionUtilityNodes(connectionId, children, existingConnectionNode);
-  }
-
-  function refreshSavedSqlTree(connectionId?: string) {
-    const refresh = (nodes: TreeNode[]) => {
-      for (const node of nodes) {
-        if (node.type === "connection" && node.connectionId && (!connectionId || node.connectionId === connectionId)) {
-          node.children = withSavedSqlRoot(
-            node.connectionId,
-            (node.children || []).filter((child) => child.type !== "saved-sql-root" && child.type !== "user-admin"),
-            node,
-          );
-        }
-        if (node.children) refresh(node.children);
-      }
-    };
-    refresh(treeNodes.value);
   }
 
   function schemaCacheKey(...parts: string[]): string {
@@ -597,10 +526,6 @@ export const useConnectionStore = defineStore("connection", () => {
       const parent = findParentNode(treeNodes.value, id);
       if (parent?.children) {
         parent.children = orderPinnedFirst(parent.children, (child) => !!child.pinned);
-        const sqlRootIdx = parent.children.findIndex((c) => c.type === "saved-sql-root");
-        if (sqlRootIdx > 0) {
-          parent.children.unshift(...parent.children.splice(sqlRootIdx, 1));
-        }
       }
     }
   }
@@ -2650,7 +2575,6 @@ export const useConnectionStore = defineStore("connection", () => {
     treeNodes,
     removeTreeNode,
     refreshAllTree,
-    refreshSavedSqlTree,
     refreshTreeNode,
     refreshDatabaseTreeNode,
     refreshObjectListTreeNode,

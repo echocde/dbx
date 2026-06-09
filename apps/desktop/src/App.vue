@@ -70,6 +70,7 @@ import type { AiAction } from "@/lib/ai";
 
 const AiAssistant = defineAsyncComponent(() => import("@/components/editor/AiAssistant.vue"));
 const QueryHistory = defineAsyncComponent(() => import("@/components/editor/QueryHistory.vue"));
+const SqlLibraryPanel = defineAsyncComponent(() => import("@/components/layout/SqlLibraryPanel.vue"));
 const DriverStorePage = defineAsyncComponent(() => import("@/components/config/DriverStoreDialog.vue"));
 const UpdateDialog = defineAsyncComponent(() => import("@/components/layout/UpdateDialog.vue"));
 const LoginPage = defineAsyncComponent(() => import("@/components/auth/LoginPage.vue"));
@@ -116,10 +117,19 @@ const showDriverStore = ref(false);
 const agentDriverUpdateCount = ref(0);
 const showHistory = ref(false);
 const showAiPanel = ref(safeLocalStorageGet("dbx-ai-panel-open") === "true");
+const showSqlLibraryPanel = ref(safeLocalStorageGet("dbx-sql-library-open") === "true");
 const sidebarOpen = ref(safeLocalStorageGet("dbx-sidebar-open") !== "false");
 const aiPanelReady = ref(false);
-const { sidebarWidth, aiPanelWidth, historyWidth, startSidebarResize, startAiPanelResize, startHistoryResize } =
-  usePanelResize();
+const {
+  sidebarWidth,
+  aiPanelWidth,
+  historyWidth,
+  sqlLibraryWidth,
+  startSidebarResize,
+  startAiPanelResize,
+  startHistoryResize,
+  startSqlLibraryResize,
+} = usePanelResize();
 const aiAssistantRef = ref<AiAssistantHandle | null>(null);
 const appSidebarRef = ref<InstanceType<typeof AppSidebar> | null>(null);
 const contentAreaRef = ref<InstanceType<typeof ContentArea> | null>(null);
@@ -245,8 +255,7 @@ const connectionStats = computed(() => ({
 }));
 const recentConnections = computed(() => connectionStore.connections.slice(0, 5));
 const saveSqlFolders = computed(() => {
-  const tab = activeTab.value;
-  return tab ? savedSqlStore.listFolders(tab.connectionId) : [];
+  return savedSqlStore.allFolders;
 });
 
 async function applyUiScale(scale: number) {
@@ -325,6 +334,11 @@ function toggleAiPanel() {
   safeLocalStorageSet("dbx-ai-panel-open", String(showAiPanel.value));
 }
 
+function toggleSqlLibrary() {
+  showSqlLibraryPanel.value = !showSqlLibraryPanel.value;
+  safeLocalStorageSet("dbx-sql-library-open", String(showSqlLibraryPanel.value));
+}
+
 function fixWithAi(errorMessage: string) {
   if (!showAiPanel.value) {
     showAiPanel.value = true;
@@ -371,8 +385,9 @@ function formatActiveSql() {
 }
 
 function defaultSavedSqlName(title: string) {
-  const trimmed = title.trim() || "Query";
-  return trimmed.endsWith(".sql") ? trimmed : `${trimmed}.sql`;
+  const trimmed = title.trim() || "query";
+  const normalized = trimmed.replace(/\s+/g, "_");
+  return normalized.endsWith(".sql") ? normalized : `${normalized}.sql`;
 }
 
 async function openSaveSqlDialog() {
@@ -394,7 +409,6 @@ async function openSaveSqlDialog() {
       sql: tab.sql,
     });
     queryStore.linkSavedSql(tab.id, updated.id, updated.name);
-    connectionStore.refreshSavedSqlTree(tab.connectionId);
     toast(t("savedSql.saved"), 2000);
     return;
   }
@@ -445,7 +459,6 @@ async function confirmSaveSqlToLibrary() {
       sql: tab.sql,
     });
     queryStore.linkSavedSql(tab.id, saved.id, saved.name);
-    connectionStore.refreshSavedSqlTree(tab.connectionId);
     showSaveSqlDialog.value = false;
     toast(t("savedSql.saved"), 2000);
   } catch (e: any) {
@@ -868,9 +881,10 @@ function onLoginSuccess() {
 function initApp() {
   const t0 = performance.now();
   console.log("[STARTUP] initApp begin");
-  settingsStore.initDesktopSettings().catch(() => {});
-  savedSqlStore
-    .initFromStorage()
+  settingsStore
+    .initDesktopSettings()
+    .catch(() => {})
+    .then(() => savedSqlStore.initFromStorage())
     .then(() => {
       console.log(`[STARTUP]   savedSqlStore.initFromStorage: ${(performance.now() - t0).toFixed(0)}ms`);
       return connectionStore.initFromDisk();
@@ -1010,6 +1024,7 @@ onUnmounted(() => {
           :theme-mode="themeMode"
           :show-ai-panel="showAiPanel"
           :show-history="showHistory"
+          :show-sql-library="showSqlLibraryPanel"
           :show-driver-store="showDriverStore"
           :checking-updates="checkingUpdates"
           :has-update-available="toolbarHasUpdateAvailable"
@@ -1021,6 +1036,7 @@ onUnmounted(() => {
           @set-theme-mode="setThemeMode"
           @toggle-ai="toggleAiPanel"
           @toggle-history="showHistory = !showHistory"
+          @toggle-sql-library="toggleSqlLibrary"
           @open-github="openGitHub"
           @open-settings="showSettingsDialog = true"
           @open-driver-store="showDriverStore = !showDriverStore"
@@ -1234,6 +1250,21 @@ onUnmounted(() => {
               @analyze-ai="analyzeHistoryWithAi"
               @close="showHistory = false"
             />
+          </div>
+
+          <div
+            v-if="showSqlLibraryPanel"
+            :class="
+              isClassicLayout
+                ? 'h-full shrink-0 relative z-30 isolate bg-background'
+                : 'h-full shrink-0 relative z-30 isolate rounded-md border border-border/80 bg-background'
+            "
+            :style="{ width: sqlLibraryWidth + 'px' }"
+          >
+            <div class="panel-resize-handle panel-resize-handle--left" @mousedown="startSqlLibraryResize" />
+            <div class="h-full min-h-0 overflow-hidden">
+              <SqlLibraryPanel @close="showSqlLibraryPanel = false" />
+            </div>
           </div>
         </div>
 

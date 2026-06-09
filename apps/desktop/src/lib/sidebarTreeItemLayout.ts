@@ -13,7 +13,6 @@ const leafTypes: Set<TreeNodeType> = new Set([
   "redis-db",
   "mongo-collection",
   "user-admin",
-  "saved-sql-file",
 ]);
 
 const fullWidthLabelTypes: Set<TreeNodeType> = new Set(["table", "view", "mongo-collection"]);
@@ -30,10 +29,13 @@ export function canTreeNodeExpand(type: TreeNodeType): boolean {
   return !leafTypes.has(type);
 }
 
-export function canTreeNodeShowExpander({ type, childCount }: { type: TreeNodeType; childCount?: number }): boolean {
+export function canTreeNodeShowExpander({
+  type,
+  childCount: _childCount,
+}: {
+  type: TreeNodeType;
+  childCount?: number;
+}): boolean {
   if (!canTreeNodeExpand(type)) return false;
-  if (type === "saved-sql-root" || type === "saved-sql-folder") {
-    return (childCount ?? 0) > 0;
-  }
   return true;
 }

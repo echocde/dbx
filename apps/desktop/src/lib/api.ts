@@ -91,6 +91,9 @@ export const saveSavedSqlFolder = forward("saveSavedSqlFolder");
 export const deleteSavedSqlFolder = forward("deleteSavedSqlFolder");
 export const saveSavedSqlFile = forward("saveSavedSqlFile");
 export const deleteSavedSqlFile = forward("deleteSavedSqlFile");
+export const savedSqlStorageDir = forward("savedSqlStorageDir");
+export const openSavedSqlStorageDir = forward("openSavedSqlStorageDir");
+export const syncSavedSqlDirectory = forward("syncSavedSqlDirectory");
 
 // Schema
 export const listDatabases = forward("listDatabases");

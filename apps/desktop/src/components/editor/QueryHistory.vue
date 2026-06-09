@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useSqlHighlighter } from "@/composables/useSqlHighlighter";
-import { Clock, Copy, Database, RotateCcw, Search, Sparkles, Trash2, X } from "@lucide/vue";
+import { Copy, Database, RotateCcw, Search, Sparkles, Trash2, X } from "@lucide/vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -206,7 +206,6 @@ onMounted(() => store.load());
 <template>
   <div class="h-full flex flex-col overflow-hidden border-l">
     <div class="h-9 flex items-center gap-1 px-2 border-b shrink-0 bg-muted/20">
-      <Clock class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
       <span class="text-xs font-medium">{{ t("history.title") }}</span>
       <span class="flex-1" />
       <Button v-if="store.entries.length > 0" variant="ghost" size="icon" class="h-5 w-5" @click="confirmClearHistory">
@@ -218,18 +217,7 @@ onMounted(() => store.load());
     </div>
 
     <div class="border-b shrink-0">
-      <div class="flex items-center gap-1 px-2 py-1">
-        <Search class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-        <input
-          v-model="searchText"
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck="false"
-          class="flex-1 h-5 text-xs bg-transparent outline-none placeholder:text-muted-foreground"
-          :placeholder="t('history.search')"
-        />
-      </div>
-      <div class="flex gap-1 overflow-x-auto px-2 pb-2">
+      <div class="flex gap-1 overflow-x-auto px-2 pt-2">
         <button
           v-for="filter in filters"
           :key="filter"
@@ -240,6 +228,17 @@ onMounted(() => store.load());
         >
           {{ filterLabel(filter) }}
         </button>
+      </div>
+      <div class="relative flex items-center px-2 py-1">
+        <Search class="absolute left-3 w-3 h-3 text-muted-foreground pointer-events-none" />
+        <input
+          v-model="searchText"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          class="flex-1 h-5 text-xs bg-transparent border rounded pl-5 pr-1 outline-none placeholder:text-muted-foreground"
+          :placeholder="t('history.search')"
+        />
       </div>
     </div>
 

@@ -13,6 +13,7 @@ import {
   Bot,
   ArrowLeftRight,
   FileCode,
+  FileStack,
   GitCompareArrows,
   TableProperties,
   Settings,
@@ -34,6 +35,7 @@ const props = defineProps<{
   themeMode: AppThemeMode;
   showAiPanel: boolean;
   showHistory: boolean;
+  showSqlLibrary: boolean;
   showDriverStore: boolean;
   checkingUpdates: boolean;
   hasUpdateAvailable: boolean;
@@ -48,6 +50,7 @@ const emit = defineEmits<{
   "set-theme-mode": [mode: AppThemeMode];
   "toggle-ai": [];
   "toggle-history": [];
+  "toggle-sql-library": [];
   "open-github": [];
   "open-settings": [];
   "open-driver-store": [];
@@ -195,6 +198,21 @@ function onToolbarDblClick(e: MouseEvent) {
     </Tooltip>
 
     <ExportProgressPopover />
+
+    <Tooltip>
+      <TooltipTrigger as-child>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-8 w-8"
+          :class="{ 'bg-accent': showSqlLibrary }"
+          @click="emit('toggle-sql-library')"
+        >
+          <FileStack class="h-4 w-4" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{{ t("sqlLibrary.title") }}</TooltipContent>
+    </Tooltip>
 
     <Tooltip>
       <TooltipTrigger as-child>

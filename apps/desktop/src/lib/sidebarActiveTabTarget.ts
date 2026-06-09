@@ -20,10 +20,6 @@ export type ActiveTabSidebarTarget =
       connectionId: string;
     }
   | {
-      type: "saved-sql-file";
-      savedSqlId: string;
-    }
-  | {
       type: "query-context";
       connectionId: string;
       database: string;
@@ -32,10 +28,6 @@ export type ActiveTabSidebarTarget =
 
 export function activeTabSidebarTarget(tab: QueryTab | undefined | null): ActiveTabSidebarTarget | null {
   if (!tab) return null;
-
-  if (tab.savedSqlId) {
-    return { type: "saved-sql-file", savedSqlId: tab.savedSqlId };
-  }
 
   if (tab.mode === "data") {
     const tableName = tab.tableMeta?.tableName || tab.title;
@@ -83,10 +75,6 @@ function schemaMatches(node: TreeNode, schema: string | undefined): boolean {
 }
 
 export function matchesTarget(node: TreeNode, target: ActiveTabSidebarTarget): boolean {
-  if (target.type === "saved-sql-file") {
-    return node.type === "saved-sql-file" && node.savedSqlId === target.savedSqlId;
-  }
-
   if (target.type === "mongo-collection") {
     return (
       node.type === "mongo-collection" &&
