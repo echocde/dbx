@@ -772,6 +772,7 @@ export default {
     close: "关闭",
     cancel: "取消",
     save: "保存",
+    more: "更多",
   },
   explain: {
     title: "执行计划",

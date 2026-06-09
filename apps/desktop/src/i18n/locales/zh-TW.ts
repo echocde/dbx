@@ -720,6 +720,7 @@ export default {
     loading: "載入中……",
     stopping: "正在停止……",
     close: "關閉",
+    more: "更多",
   },
   explain: {
     title: "執行計畫",

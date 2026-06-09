@@ -784,6 +784,7 @@ export default {
     close: "Close",
     cancel: "Cancel",
     save: "Save",
+    more: "More",
   },
   explain: {
     title: "Explain Plan",

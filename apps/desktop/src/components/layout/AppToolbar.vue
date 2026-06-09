@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   DatabaseZap,
@@ -19,6 +19,7 @@ import {
   Settings,
   CloudDownload,
   Package,
+  Ellipsis,
 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -88,11 +89,74 @@ function onToolbarDblClick(e: MouseEvent) {
   if (target.closest("button, [role='button'], a")) return;
   toggleMaximize();
 }
+
+const toolbarEl = ref<HTMLElement>();
+const toolbarCollapsed = ref(false);
+const COLLAPSE_THRESHOLD = 1000;
+
+function checkToolbarWidth() {
+  const el = toolbarEl.value;
+  if (!el) return;
+  toolbarCollapsed.value = el.clientWidth < COLLAPSE_THRESHOLD;
+}
+
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(checkToolbarWidth);
+  if (toolbarEl.value) resizeObserver.observe(toolbarEl.value);
+});
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+});
+
+const collapsedItems = computed(() => [
+  {
+    value: "transfer",
+    label: t("transfer.dataTransfer"),
+    icon: ArrowLeftRight,
+    action: () => emit("open-transfer"),
+    disabled: !props.hasConnections,
+  },
+  {
+    value: "sql-file",
+    label: t("sqlFile.title"),
+    icon: FileCode,
+    action: () => emit("open-sql-file"),
+    disabled: !props.hasSqlFileConnections,
+  },
+  {
+    value: "schema-diff",
+    label: t("diff.title"),
+    icon: GitCompareArrows,
+    action: () => emit("open-schema-diff"),
+    disabled: !props.hasConnections,
+  },
+  {
+    value: "data-compare",
+    label: t("dataCompare.title"),
+    icon: TableProperties,
+    action: () => emit("open-data-compare"),
+    disabled: !props.hasConnections,
+  },
+  {
+    value: "driver-store",
+    label:
+      props.agentDriverUpdateCount > 0
+        ? `${t("toolbar.driverManager")} (${props.agentDriverUpdateCount})`
+        : t("toolbar.driverManager"),
+    icon: Package,
+    action: () => emit("open-driver-store"),
+    disabled: false,
+  },
+]);
 </script>
 
 <template>
   <div
-    class="h-10 flex items-center gap-1 px-2 border-b bg-muted/30 shrink-0"
+    ref="toolbarEl"
+    class="h-10 flex items-center gap-1 px-2 border-b bg-muted/30 shrink-0 overflow-hidden"
     :class="{ 'pl-17.5': shouldReserveMacTrafficLightInset(isMac, isFullscreen, isDesktop) }"
     data-tauri-drag-region
     @dblclick="onToolbarDblClick"
@@ -113,67 +177,89 @@ function onToolbarDblClick(e: MouseEvent) {
       {{ t("toolbar.newQuery") }}
     </Button>
 
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 px-2 text-xs gap-1"
-      @click="emit('open-transfer')"
-      :disabled="!hasConnections"
-    >
-      <ArrowLeftRight class="h-3.5 w-3.5" />
-      {{ t("transfer.dataTransfer") }}
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 px-2 text-xs gap-1"
-      @click="emit('open-sql-file')"
-      :disabled="!hasSqlFileConnections"
-    >
-      <FileCode class="h-3.5 w-3.5" />
-      {{ t("sqlFile.title") }}
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 px-2 text-xs gap-1"
-      @click="emit('open-schema-diff')"
-      :disabled="!hasConnections"
-    >
-      <GitCompareArrows class="h-3.5 w-3.5" />
-      {{ t("diff.title") }}
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 px-2 text-xs gap-1"
-      @click="emit('open-data-compare')"
-      :disabled="!hasConnections"
-    >
-      <TableProperties class="h-3.5 w-3.5" />
-      {{ t("dataCompare.title") }}
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="sm"
-      class="h-8 px-2 text-xs gap-1"
-      :class="{ 'bg-accent': showDriverStore }"
-      @click="emit('open-driver-store')"
-    >
-      <Package class="h-3.5 w-3.5" />
-      {{ t("toolbar.driverManager") }}
-      <span
-        v-if="agentDriverUpdateCount > 0"
-        class="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white"
-        :aria-label="t('toolbar.updatableDriverCount')"
+    <template v-if="!toolbarCollapsed">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 px-2 text-xs gap-1"
+        @click="emit('open-transfer')"
+        :disabled="!hasConnections"
       >
-        {{ agentDriverUpdateCount > 99 ? "99+" : agentDriverUpdateCount }}
-      </span>
-    </Button>
+        <ArrowLeftRight class="h-3.5 w-3.5" />
+        {{ t("transfer.dataTransfer") }}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 px-2 text-xs gap-1"
+        @click="emit('open-sql-file')"
+        :disabled="!hasSqlFileConnections"
+      >
+        <FileCode class="h-3.5 w-3.5" />
+        {{ t("sqlFile.title") }}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 px-2 text-xs gap-1"
+        @click="emit('open-schema-diff')"
+        :disabled="!hasConnections"
+      >
+        <GitCompareArrows class="h-3.5 w-3.5" />
+        {{ t("diff.title") }}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 px-2 text-xs gap-1"
+        @click="emit('open-data-compare')"
+        :disabled="!hasConnections"
+      >
+        <TableProperties class="h-3.5 w-3.5" />
+        {{ t("dataCompare.title") }}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        class="h-8 px-2 text-xs gap-1"
+        :class="{ 'bg-accent': showDriverStore }"
+        @click="emit('open-driver-store')"
+      >
+        <Package class="h-3.5 w-3.5" />
+        {{ t("toolbar.driverManager") }}
+        <span
+          v-if="agentDriverUpdateCount > 0"
+          class="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white"
+          :aria-label="t('toolbar.updatableDriverCount')"
+        >
+          {{ agentDriverUpdateCount > 99 ? "99+" : agentDriverUpdateCount }}
+        </span>
+      </Button>
+    </template>
+
+    <template v-if="toolbarCollapsed">
+      <LightDropdown
+        :items="collapsedItems"
+        :aria-label="t('common.more')"
+        :trigger-icon="Ellipsis"
+        trigger-class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+        trigger-icon-class="h-4 w-4"
+        :show-trigger-label="false"
+        :show-chevron="false"
+        check-position="none"
+        align="start"
+        @update:model-value="
+          (value) => {
+            const item = collapsedItems.find((i) => i.value === value);
+            item?.action();
+          }
+        "
+      />
+    </template>
 
     <div class="flex-1" data-tauri-drag-region />
 

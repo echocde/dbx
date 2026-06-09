@@ -766,6 +766,7 @@ export default {
     loading: "Caricamento...",
     stopping: "Interruzione...",
     close: "Chiudi",
+    more: "Altro",
   },
   explain: {
     title: "Piano di Spiegazione",

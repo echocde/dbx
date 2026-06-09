@@ -763,6 +763,7 @@ export default {
     loading: "Carregando...",
     stopping: "Parando...",
     close: "Fechar",
+    more: "Mais",
   },
   explain: {
     title: "Plano de Execução",

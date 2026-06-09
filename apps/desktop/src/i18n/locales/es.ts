@@ -687,6 +687,7 @@ export default {
     loading: "Cargando...",
     stopping: "Deteniendo...",
     close: "Cerrar",
+    more: "Más",
   },
   explain: {
     title: "Plan de ejecución",
