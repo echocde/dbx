@@ -42,8 +42,9 @@
   </p>
   <p>
     <a href="https://hellogithub.com/repository/t8y2/dbx" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=7f74ffda697241bf996e17e1b0900a21&claim_uid=p0UjnC1TLtyvWSx" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
-  </p>
-  <p>
+	<a href="https://www.producthunt.com/products/dbx/launches/dbx?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-dbx" target="_blank" rel="noopener noreferrer"><img alt="DBX - Lightweight open-source database manager built with Rust | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1136811&amp;theme=light&amp;t=1780979717555"></a>
+	  </p>
+	  <p>
     <a href="README.md">English</a> | 简体中文
   </p>
 
@@ -244,6 +245,8 @@ Web 版本：
 pnpm dev:web       # 前端
 pnpm dev:backend   # 后端
 ```
+
+[dbx-agents](https://github.com/t8y2/dbx-agents) 存放了驱动开发的工程。
 
 ### 构建
 
