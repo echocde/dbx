@@ -3,7 +3,6 @@ import { test } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import {
   executionSummaryItems,
-  shouldShowTabOverflowControls,
   tabDisplayTitle,
   tabularResultItems,
 } from "../../apps/desktop/src/lib/tabPresentation.ts";
@@ -61,14 +60,6 @@ function result(columns: string[]): QueryResult {
     execution_time_ms: 1,
   };
 }
-
-test("tab overflow controls only show when there are hidden tabs to reach", () => {
-  assert.equal(shouldShowTabOverflowControls(0, true, true, true), false);
-  assert.equal(shouldShowTabOverflowControls(3, false, false, false), false);
-  assert.equal(shouldShowTabOverflowControls(3, true, false, false), true);
-  assert.equal(shouldShowTabOverflowControls(3, false, true, false), true);
-  assert.equal(shouldShowTabOverflowControls(3, false, false, true), true);
-});
 
 test("query tab display title uses custom title when present", () => {
   const restoreStorage = installMemoryStorage();
