@@ -2755,7 +2755,7 @@ const rowDetail = computed(() => {
     rowId: item.id,
     row: item.data,
     columns: props.result.columns,
-    columnIndexes: displayableColumnIndexes.value,
+    columnIndexes: visibleColumnIndexes.value,
     typeByColumn: columnTypeMap.value,
     commentByColumn: columnCommentMap.value,
     displayValue: (value, index) => formatCellCached(value, index),
