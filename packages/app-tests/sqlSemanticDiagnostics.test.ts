@@ -93,3 +93,24 @@ test("defers diagnostics while the cursor is in table completion context", () =>
   assert.equal(shouldRunSqlSemanticDiagnostics("select u.", "select u.".length), false);
   assert.equal(shouldRunSqlSemanticDiagnostics("select * from users where missing = 1", 42), true);
 });
+
+test("skips diagnostics for MongoDB connections", () => {
+  assert.equal(
+    shouldRunSqlSemanticDiagnostics("db.my_collection.find({})", 0, { databaseType: "mongodb" }),
+    false,
+  );
+});
+
+test("skips diagnostics for Elasticsearch connections", () => {
+  assert.equal(
+    shouldRunSqlSemanticDiagnostics("db.my_collection.find({})", 0, { databaseType: "elasticsearch" }),
+    false,
+  );
+});
+
+test("still runs diagnostics for SQL connections", () => {
+  assert.equal(
+    shouldRunSqlSemanticDiagnostics("SELECT * FROM users WHERE id = 1", 42, { databaseType: "mysql" }),
+    true,
+  );
+});

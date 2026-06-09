@@ -104,7 +104,7 @@ export function shouldRunSqlSemanticDiagnostics(
   cursor: number,
   options: { databaseType?: DatabaseType } = {},
 ): boolean {
-  if (options.databaseType === "elasticsearch") return false;
+  if (options.databaseType === "mongodb" || options.databaseType === "elasticsearch") return false;
   const context = getSqlCompletionContext(sql, cursor);
   if (context.suggestTables || context.exclusiveTableSuggestions || context.exclusiveColumnSuggestions) return false;
   if (context.qualifier) return false;
