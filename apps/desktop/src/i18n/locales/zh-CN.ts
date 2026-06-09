@@ -302,6 +302,7 @@ export default {
     colorRed: "红色",
     colorBlue: "蓝色",
     colorPurple: "紫色",
+    colorCustom: "自定义颜色",
   },
   editor: {
     pressToExecute: "按 {mod}+Enter 执行查询",

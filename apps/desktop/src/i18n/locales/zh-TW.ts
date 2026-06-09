@@ -291,6 +291,7 @@ export default {
     colorRed: "紅色",
     colorBlue: "藍色",
     colorPurple: "紫色",
+    colorCustom: "自訂顏色",
   },
   editor: {
     pressToExecute: "按 {mod}+Enter 執行查詢",

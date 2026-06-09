@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type {
   ConnectionConfig,
   DatabaseType,
@@ -49,6 +50,7 @@ import {
   KeyRound,
   Link2,
   List,
+  Pipette,
   Plus,
   Search,
   ShieldCheck,
@@ -286,6 +288,28 @@ const colorOptions = [
   { value: "#3b82f6", class: "bg-blue-500", labelKey: "connection.colorBlue" },
   { value: "#a855f7", class: "bg-purple-500", labelKey: "connection.colorPurple" },
 ];
+
+const isPresetColor = (color: string | undefined) => colorOptions.some((c) => c.value === (color || ""));
+const customColorInput = ref("");
+const customColorOpen = ref(false);
+
+function applyCustomColor(value: string) {
+  form.value.color = value;
+  customColorInput.value = value;
+}
+
+function handlePresetClick(color: string) {
+  form.value.color = color;
+  customColorInput.value = "";
+}
+
+function handleCustomColorPicked(value: string) {
+  applyCustomColor(value);
+}
+
+function handleCustomColorInput(value: string) {
+  applyCustomColor(value);
+}
 
 const driverProfiles: Record<
   string,
@@ -551,6 +575,7 @@ watch(
         etcd_endpoints: config.etcd_endpoints || "",
       };
       h2ConnectionMode.value = h2ConnectionModeForConfig(config);
+      customColorInput.value = config.color || "";
       selectedTransportLayerId.value = form.value.transport_layers?.[0]?.id || null;
       selectedType.value = profile;
       if (profile === "oceanbase") {
@@ -2151,8 +2176,45 @@ function openExternalUrl(url: string) {
                         form.color === color.value ? 'ring-2 ring-ring ring-offset-2' : 'border-border',
                       ]"
                       :title="t(color.labelKey)"
-                      @click="form.color = color.value"
+                      @click="handlePresetClick(color.value)"
                     />
+                    <Popover v-model:open="customColorOpen">
+                      <PopoverTrigger as-child>
+                        <button
+                          type="button"
+                          class="h-6 w-6 rounded-full border flex items-center justify-center hover:scale-105 transition"
+                          :class="[
+                            !isPresetColor(form.color) && form.color
+                              ? 'border-border ring-2 ring-ring ring-offset-2'
+                              : 'border-dashed border-border',
+                          ]"
+                          :style="!isPresetColor(form.color) && form.color ? { backgroundColor: form.color } : {}"
+                          :title="t('connection.colorCustom')"
+                        >
+                          <Pipette
+                            class="h-3.5 w-3.5"
+                            :class="!isPresetColor(form.color) && form.color ? 'text-white' : 'text-muted-foreground'"
+                          />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent class="w-auto p-2">
+                        <div class="flex items-center gap-2">
+                          <input
+                            type="color"
+                            :value="form.color"
+                            @input="handleCustomColorPicked(($event.target as HTMLInputElement).value)"
+                            class="h-6 w-6 cursor-pointer rounded border-0 p-0"
+                          />
+                          <Input
+                            type="text"
+                            :value="customColorInput || form.color"
+                            @input="handleCustomColorInput(($event.target as HTMLInputElement).value)"
+                            class="w-28 h-7 text-xs font-mono"
+                            :placeholder="'#ff0000 或 rgba(…)'"
+                          />
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                 </div>
 

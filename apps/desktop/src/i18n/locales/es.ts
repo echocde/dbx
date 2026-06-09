@@ -288,6 +288,7 @@ export default {
     colorRed: "Rojo",
     colorBlue: "Azul",
     colorPurple: "Morado",
+    colorCustom: "Color personalizado",
   },
   editor: {
     pressToExecute: "Presiona {mod}+Enter para ejecutar",

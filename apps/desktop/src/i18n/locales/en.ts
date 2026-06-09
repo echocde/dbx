@@ -306,6 +306,7 @@ export default {
     colorRed: "Red",
     colorBlue: "Blue",
     colorPurple: "Purple",
+    colorCustom: "Custom color",
   },
   editor: {
     pressToExecute: "Press {mod}+Enter to execute",

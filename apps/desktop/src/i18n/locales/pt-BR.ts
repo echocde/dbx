@@ -299,6 +299,7 @@ export default {
     colorRed: "Vermelho",
     colorBlue: "Azul",
     colorPurple: "Roxo",
+    colorCustom: "Cor personalizada",
   },
   editor: {
     pressToExecute: "Pressione {mod}+Enter para executar",
