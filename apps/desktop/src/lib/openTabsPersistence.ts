@@ -99,6 +99,7 @@ export function restoreOpenTabsState(
         mode,
         isExecuting: false,
         isCancelling: false,
+        queryExecutionStartedAt: undefined,
         isExplaining: false,
         resultEvicted: mode === "data" ? undefined : tab.resultEvicted,
         resultCacheKey: mode === "data" ? undefined : tab.resultCacheKey,

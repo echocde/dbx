@@ -640,6 +640,7 @@ export const useQueryStore = defineStore("query", () => {
     const tab = tabs.value.find((t) => t.id === id);
     if (!tab) return;
     tab.isExecuting = isExecuting;
+    tab.queryExecutionStartedAt = isExecuting ? Date.now() : undefined;
     if (!isExecuting) {
       tab.isCancelling = false;
       tab.executionId = undefined;
@@ -674,6 +675,7 @@ export const useQueryStore = defineStore("query", () => {
     tab.resultSessionId = undefined;
     tab.isExecuting = false;
     tab.isCancelling = false;
+    tab.queryExecutionStartedAt = undefined;
     tab.executionId = undefined;
   }
 
@@ -956,6 +958,7 @@ export const useQueryStore = defineStore("query", () => {
     const elapsed = () => `${Math.round(performance.now() - startedAt)}ms`;
     tab.isExecuting = true;
     tab.isCancelling = false;
+    tab.queryExecutionStartedAt = Date.now();
     tab.executionId = executionId;
     tab.lastExecutedSql = sql;
     if (!options?.preserveTotalRowCountDuringExecution) {
@@ -1345,6 +1348,7 @@ export const useQueryStore = defineStore("query", () => {
       if (current?.executionId === executionId) {
         current.isExecuting = false;
         current.isCancelling = false;
+        current.queryExecutionStartedAt = undefined;
         current.executionId = undefined;
         console.info("[DBX][executeTabSql:finish]", { traceId, elapsed: elapsed() });
       } else {
@@ -1512,6 +1516,7 @@ export const useQueryStore = defineStore("query", () => {
       stuck.forEach((tab) => {
         tab.isExecuting = false;
         tab.isCancelling = false;
+        tab.queryExecutionStartedAt = undefined;
         tab.executionId = undefined;
         tab.result = toErrorResult(new Error(t("editor.connectionMayBeLost")));
       });

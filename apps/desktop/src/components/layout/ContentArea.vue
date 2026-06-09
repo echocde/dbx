@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, defineAsyncComponent, watch, nextTick, onMounted } from "vue";
+import { computed, ref, defineAsyncComponent, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   Check,
@@ -220,6 +220,35 @@ const hasTabularResult = computed(() => {
   return tabularResults.value.length > 0;
 });
 const resultsPaneOpen = ref(false);
+const queryRunningElapsed = ref(0);
+let queryRunningElapsedTimer: ReturnType<typeof setInterval> | undefined;
+
+function stopQueryRunningElapsedTimer() {
+  clearInterval(queryRunningElapsedTimer);
+  queryRunningElapsedTimer = undefined;
+}
+
+function updateQueryRunningElapsed() {
+  const startedAt = props.activeTab.queryExecutionStartedAt;
+  queryRunningElapsed.value = props.activeTab.isExecuting && startedAt ? Math.max(0, Date.now() - startedAt) : 0;
+}
+
+function startQueryRunningElapsedTimer() {
+  stopQueryRunningElapsedTimer();
+  updateQueryRunningElapsed();
+  if (!props.activeTab.isExecuting || !props.activeTab.queryExecutionStartedAt) return;
+  queryRunningElapsedTimer = setInterval(updateQueryRunningElapsed, 100);
+}
+
+const queryRunningElapsedSeconds = computed(() => (queryRunningElapsed.value / 1000).toFixed(1));
+
+watch(
+  () => [props.activeTab.id, props.activeTab.isExecuting, props.activeTab.queryExecutionStartedAt] as const,
+  startQueryRunningElapsedTimer,
+  { immediate: true },
+);
+
+onUnmounted(stopQueryRunningElapsedTimer);
 
 watch(
   hasQueryOutput,
@@ -749,6 +778,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
                 <div class="flex items-center">
                   <Loader2 class="h-5 w-5 animate-spin mr-2" />
                   {{ t(queryExecutionLabelKey(activeTab)) }}
+                  <span class="ml-1 tabular-nums text-muted-foreground/80">· {{ queryRunningElapsedSeconds }}s</span>
                 </div>
               </div>
               <div
@@ -1009,6 +1039,7 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
           <div class="flex items-center">
             <Loader2 class="h-5 w-5 animate-spin mr-2" />
             {{ t(queryExecutionLabelKey(activeTab)) }}
+            <span class="ml-1 tabular-nums text-muted-foreground/80">· {{ queryRunningElapsedSeconds }}s</span>
           </div>
           <Button
             variant="destructive"

@@ -395,6 +395,7 @@ export interface QueryTab {
   lastExplainedSql?: string;
   isExecuting: boolean;
   isCancelling?: boolean;
+  queryExecutionStartedAt?: number;
   executionId?: string;
   isExplaining?: boolean;
   explainExecutionId?: string;
