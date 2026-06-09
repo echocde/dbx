@@ -792,15 +792,27 @@ async function formatCurrentSql() {
   const currentView = view.value;
   if (!currentView) return;
 
-  const selection = currentView.state.selection.main;
+  const originalState = currentView.state;
+  const selection = originalState.selection.main;
   const formatsSelection = !selection.empty;
   const from = formatsSelection ? selection.from : 0;
-  const to = formatsSelection ? selection.to : currentView.state.doc.length;
-  const source = currentView.state.sliceDoc(from, to);
+  const to = formatsSelection ? selection.to : originalState.doc.length;
+  const source = originalState.sliceDoc(from, to);
   if (!source.trim()) return;
 
   try {
-    const formatted = await formatSqlText(source, props.formatDialect ?? props.dialect ?? "generic");
+    const formatted = await formatSqlText(
+      source,
+      props.formatDialect ?? props.dialect ?? "generic",
+      settingsStore.editorSettings.sqlFormatter,
+    );
+    if (
+      view.value !== currentView ||
+      currentView.state !== originalState ||
+      currentView.state.sliceDoc(from, to) !== source
+    ) {
+      return;
+    }
     if (formatted === source) return;
     currentView.dispatch({
       changes: { from, to, insert: formatted },

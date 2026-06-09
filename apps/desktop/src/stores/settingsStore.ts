@@ -10,6 +10,11 @@ import {
 import { normalizeShortcutSettings, type ShortcutSettings } from "@/lib/shortcutRegistry";
 import { normalizeResultPageSize } from "@/lib/paginationPageSize";
 import { normalizeSidebarHiddenTablePrefixes } from "@/lib/sidebarTableNameDisplay";
+import {
+  DEFAULT_SQL_FORMATTER_SETTINGS,
+  normalizeSqlFormatterSettings,
+  type SqlFormatterSettings,
+} from "@/lib/sqlFormatterConfig";
 import type { SidebarActivation } from "@/lib/treeNodeClick";
 import type { SqlSnippet } from "@/types/database";
 import { DEFAULT_SQL_SNIPPETS } from "@/lib/sqlCompletion";
@@ -258,6 +263,7 @@ export interface EditorSettings {
   cellDetailDrawerWidth: number;
   cellDetailPanelLayout: CellDetailPanelLayout;
   shortcuts: ShortcutSettings;
+  sqlFormatter: SqlFormatterSettings;
   sidebarActivation: SidebarActivation;
   sidebarObjectDisplay: "grouped" | "simple";
   autoSelectActiveSidebarNode: boolean;
@@ -324,6 +330,7 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   cellDetailDrawerWidth: 320,
   cellDetailPanelLayout: "bottom",
   shortcuts: normalizeShortcutSettings(),
+  sqlFormatter: { ...DEFAULT_SQL_FORMATTER_SETTINGS },
   sidebarActivation: "single",
   sidebarObjectDisplay: "grouped",
   autoSelectActiveSidebarNode: false,
@@ -489,6 +496,7 @@ export function normalizeEditorSettings(settings: Partial<EditorSettings>, exist
     ),
     cellDetailPanelLayout: normalizeCellDetailPanelLayout(settings.cellDetailPanelLayout),
     shortcuts: normalizeShortcutSettings(settings.shortcuts),
+    sqlFormatter: normalizeSqlFormatterSettings(settings.sqlFormatter),
     sidebarActivation:
       settings.sidebarActivation === "single" || settings.sidebarActivation === "double"
         ? settings.sidebarActivation
@@ -540,10 +548,7 @@ function loadEditorSettings(): EditorSettings {
     if (oldSize) {
       const parsed = parseInt(oldSize, 10);
       if (!isNaN(parsed)) {
-        const migrated: EditorSettings = {
-          ...DEFAULT_EDITOR_SETTINGS,
-          fontSize: parsed,
-        };
+        const migrated = normalizeEditorSettings({ fontSize: parsed });
         saveEditorSettings(migrated);
         localStorage.removeItem(OLD_FONT_SIZE_KEY);
         return migrated;
@@ -553,7 +558,7 @@ function loadEditorSettings(): EditorSettings {
     /* ignore */
   }
 
-  return { ...DEFAULT_EDITOR_SETTINGS };
+  return normalizeEditorSettings({});
 }
 
 function saveEditorSettings(settings: EditorSettings) {
@@ -673,6 +678,8 @@ export const useSettingsStore = defineStore("settings", () => {
     if (partial.cellDetailPanelLayout !== undefined)
       editorSettings.value.cellDetailPanelLayout = normalizeCellDetailPanelLayout(partial.cellDetailPanelLayout);
     if (partial.shortcuts !== undefined) editorSettings.value.shortcuts = normalizeShortcutSettings(partial.shortcuts);
+    if (partial.sqlFormatter !== undefined)
+      editorSettings.value.sqlFormatter = normalizeSqlFormatterSettings(partial.sqlFormatter);
     if (partial.sidebarActivation !== undefined) editorSettings.value.sidebarActivation = partial.sidebarActivation;
     if (partial.sidebarObjectDisplay !== undefined)
       editorSettings.value.sidebarObjectDisplay = partial.sidebarObjectDisplay;
