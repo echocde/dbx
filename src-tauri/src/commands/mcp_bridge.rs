@@ -211,6 +211,15 @@ async fn resolve_connection(
     Ok(config)
 }
 
+fn check_visible_database(config: &crate::models::connection::ConnectionConfig, database: &str) -> Result<(), String> {
+    if let Some(ref visible) = config.visible_databases {
+        if !visible.is_empty() && !visible.iter().any(|v| v == database) {
+            return Err(format!("Database '{}' is not in the visible databases list for this connection", database));
+        }
+    }
+    Ok(())
+}
+
 async fn resolve_mongo_pool_key(
     state: &Arc<AppState>,
     connection_name: &str,
@@ -311,6 +320,10 @@ async fn handle_list_tables_data(state: &Arc<AppState>, body: &str, stream: &mut
     };
     let database = req.database.unwrap_or_else(|| config.database.clone().unwrap_or_default());
     let schema = req.schema.unwrap_or_default();
+    if let Err(e) = check_visible_database(&config, &database) {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
     match dbx_core::schema::list_tables_core(state, &config.id, &database, &schema, None, None).await {
         Ok(tables) => respond_json(stream, &tables).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
@@ -334,6 +347,10 @@ async fn handle_describe_table_data(state: &Arc<AppState>, body: &str, stream: &
     };
     let database = req.database.unwrap_or_else(|| config.database.clone().unwrap_or_default());
     let schema = req.schema.unwrap_or_default();
+    if let Err(e) = check_visible_database(&config, &database) {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
     match dbx_core::schema::get_columns_core(state, &config.id, &database, &schema, &req.table).await {
         Ok(columns) => respond_json(stream, &columns).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
@@ -505,6 +522,10 @@ async fn handle_execute_query_data(state: &Arc<AppState>, body: &str, stream: &m
         }
     };
     let database = req.database.unwrap_or_else(|| config.database.clone().unwrap_or_default());
+    if let Err(e) = check_visible_database(&config, &database) {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
     match dbx_core::query::execute_sql_statement(state, &config.id, &database, &req.sql, req.schema.as_deref(), None)
         .await
     {
