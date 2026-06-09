@@ -176,7 +176,7 @@ function tabColorStyle(tab: QueryTab) {
   const isClassic = settingsStore.editorSettings.appLayout === "classic";
   if (!color) {
     if (isClassic) {
-      return isActive ? { boxShadow: "0 1px 0 0 var(--color-background)" } : undefined;
+      return isActive ? { boxShadow: "inset 0 -2px 0 var(--ring)" } : undefined;
     }
     return isActive
       ? {

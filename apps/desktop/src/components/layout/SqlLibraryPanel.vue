@@ -798,7 +798,7 @@ function showDropInside(targetId: string) {
 
     <div class="min-h-0 flex-1 overflow-y-auto p-1">
       <div v-if="showNewFolderInput" class="flex items-center gap-1 px-2 py-1.5">
-        <FolderOpen class="h-4 w-4 text-blue-400 shrink-0" />
+        <FolderOpen class="h-4 w-4 text-amber-500 shrink-0" />
         <input
           ref="newFolderInputRef"
           v-model="newFolderName"
@@ -842,7 +842,7 @@ function showDropInside(targetId: string) {
                 />
                 <component
                   :is="isFolderExpanded(folder.id) ? FolderOpen : FolderClosed"
-                  class="h-4 w-4 text-blue-400 shrink-0"
+                  class="h-4 w-4 text-amber-500 shrink-0"
                 />
                 <template v-if="renamingTarget?.type === 'folder' && renamingTarget.id === folder.id">
                   <input
