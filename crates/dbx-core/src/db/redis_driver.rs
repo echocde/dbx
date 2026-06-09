@@ -980,6 +980,27 @@ fn redis_value_matches_query(value: &serde_json::Value, query: &str) -> bool {
 fn redis_search_value_text(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(arr) => {
+            // Hash type: [{field: "f1", value: "v1"}, ...] — extract field names and values
+            if let Some(first) = arr.first() {
+                if first.get("field").is_some() && first.get("value").is_some() {
+                    let parts: Vec<String> = arr
+                        .iter()
+                        .flat_map(|item| {
+                            let f = item.get("field").and_then(|v| v.as_str()).unwrap_or("");
+                            let v = item.get("value").and_then(|v| v.as_str()).unwrap_or("");
+                            vec![f.to_string(), v.to_string()]
+                        })
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    return parts.join(" ");
+                }
+            }
+            if arr.is_empty() {
+                return String::new();
+            }
+            serde_json::to_string(&arr).unwrap_or_default()
+        }
         other => serde_json::to_string(other).unwrap_or_else(|_| other.to_string()),
     }
 }
@@ -1583,6 +1604,40 @@ mod tests {
         assert!(redis_value_matches_query(&serde_json::json!({"field": "Ada Lovelace"}), "lovelace"));
         assert!(!redis_value_matches_query(&serde_json::json!("Hello Redis"), ""));
         assert!(!redis_value_matches_query(&serde_json::json!("Hello Redis"), "mysql"));
+    }
+
+    #[test]
+    fn matches_hash_field_name_in_value_search() {
+        let hash_value = serde_json::json!([
+            {"field": "name", "value": "Alice"},
+            {"field": "email", "value": "alice@example.com"},
+        ]);
+        assert!(redis_value_matches_query(&hash_value, "name"));
+        assert!(redis_value_matches_query(&hash_value, "email"));
+    }
+
+    #[test]
+    fn matches_hash_field_value_in_value_search() {
+        let hash_value = serde_json::json!([
+            {"field": "name", "value": "Alice"},
+            {"field": "email", "value": "alice@example.com"},
+        ]);
+        assert!(redis_value_matches_query(&hash_value, "alice"));
+        assert!(redis_value_matches_query(&hash_value, "example"));
+    }
+
+    #[test]
+    fn empty_hash_does_not_match() {
+        let empty_hash = serde_json::json!([]);
+        assert!(!redis_value_matches_query(&empty_hash, "anything"));
+    }
+
+    #[test]
+    fn non_hash_array_unaffected() {
+        let set_value = serde_json::json!(["member1", "member2", "hello"]);
+        assert!(redis_value_matches_query(&set_value, "member1"));
+        assert!(redis_value_matches_query(&set_value, "hello"));
+        assert!(!redis_value_matches_query(&set_value, "nonexistent"));
     }
 
     #[test]
