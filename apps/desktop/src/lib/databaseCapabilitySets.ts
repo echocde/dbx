@@ -271,6 +271,7 @@ export const AGENT_DRIVER_TYPES = new Set<DatabaseType>([
   "xugu",
   "iotdb",
   "iris",
+  "etcd",
 ]);
 
 export const TRANSFER_SQL_TYPES = new Set<DatabaseType>([
