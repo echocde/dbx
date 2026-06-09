@@ -112,6 +112,7 @@ const emit = defineEmits<{
   editorSelectionChange: [value: string];
   editorCursorChange: [pos: number];
   editorViewportChange: [tabId: string, viewport: { scrollTop: number; scrollLeft: number }];
+  editorSelectionStateChange: [tabId: string, selection: { anchor: number; head: number }];
   formatError: [];
   reload: [sql?: string, searchText?: string, whereInput?: string, orderBy?: string, limit?: number, offset?: number];
   paginate: [offset: number, limit: number, whereInput?: string, orderBy?: string];
@@ -447,10 +448,12 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
               :format-request-id="formatSqlRequest?.tabId === activeTab.id ? formatSqlRequest.id : undefined"
               :execution-error="activeQueryError"
               :initial-viewport="activeTab.editorViewport"
+              :initial-selection="activeTab.editorSelection"
               @update:model-value="emit('editorUpdate', activeTab.id, $event)"
               @selection-change="emit('editorSelectionChange', $event)"
               @cursor-change="emit('editorCursorChange', $event)"
               @viewport-change="emit('editorViewportChange', activeTab.id, $event)"
+              @selection-state-change="emit('editorSelectionStateChange', activeTab.id, $event)"
               @format-error="emit('formatError')"
               @execute="emit('execute')"
               @save="emit('saveSql')"

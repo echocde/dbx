@@ -529,6 +529,12 @@ export const useQueryStore = defineStore("query", () => {
     tab.editorViewport = viewport;
   }
 
+  function updateEditorSelection(id: string, selection: { anchor: number; head: number }) {
+    const tab = tabs.value.find((t) => t.id === id);
+    if (!tab) return;
+    tab.editorSelection = selection;
+  }
+
   function renameTab(id: string, title: string) {
     const trimmed = title.trim();
     if (!trimmed) return false;
@@ -1753,6 +1759,7 @@ export const useQueryStore = defineStore("query", () => {
     releaseDatabaseTabs,
     updateSql,
     updateEditorViewport,
+    updateEditorSelection,
     renameTab,
     openObjectBrowser,
     openUserAdmin,

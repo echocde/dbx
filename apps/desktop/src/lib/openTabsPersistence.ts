@@ -101,6 +101,7 @@ export function restoreOpenTabsState(
         isCancelling: false,
         queryExecutionStartedAt: undefined,
         editorViewport: undefined,
+        editorSelection: undefined,
         isExplaining: false,
         resultEvicted: mode === "data" ? undefined : tab.resultEvicted,
         resultCacheKey: mode === "data" ? undefined : tab.resultCacheKey,

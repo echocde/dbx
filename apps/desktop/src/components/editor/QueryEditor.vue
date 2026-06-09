@@ -105,6 +105,7 @@ const props = defineProps<{
   readOnly?: boolean;
   forceWordWrap?: boolean;
   initialViewport?: { scrollTop: number; scrollLeft: number };
+  initialSelection?: { anchor: number; head: number };
 }>();
 
 const emit = defineEmits<{
@@ -118,6 +119,7 @@ const emit = defineEmits<{
   clickColumn: [columns: Array<{ name: string; table: string; schema?: string }>, error?: string | undefined];
   closeColumnPanel: [];
   viewportChange: [viewport: { scrollTop: number; scrollLeft: number }];
+  selectionStateChange: [selection: { anchor: number; head: number }];
 }>();
 
 const editorRef = ref<HTMLDivElement>();
@@ -125,6 +127,7 @@ const view = shallowRef<EditorViewType | null>(null);
 let viewportEmitFrame: number | null = null;
 let viewportRestoreFrame: number | null = null;
 let latestViewport: { scrollTop: number; scrollLeft: number } | undefined = props.initialViewport;
+let latestSelection: { anchor: number; head: number } | undefined = props.initialSelection;
 const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
 const { isDark } = useTheme();
@@ -1728,6 +1731,7 @@ onMounted(async () => {
 
   const state = EditorState.create({
     doc: props.modelValue,
+    selection: normalizedEditorSelection(props.initialSelection, props.modelValue.length),
     extensions: [
       cmSearch({
         top: true,
@@ -1798,6 +1802,8 @@ onMounted(async () => {
           syncContextMenuState(update.view);
           emit("selectionChange", selectedSqlFromView(update.view));
           emit("cursorChange", update.state.selection.main.head);
+          latestSelection = readEditorSelection(update.view);
+          if (editorIsActive) emitEditorSelection(latestSelection);
         }
       }),
       fontThemeComp.of(
@@ -1815,6 +1821,11 @@ onMounted(async () => {
         },
         drop(event, currentView) {
           return insertDroppedTableReference(currentView, event);
+        },
+        blur(_event, currentView) {
+          latestSelection = readEditorSelection(currentView);
+          if (editorIsActive) emitEditorSelection(latestSelection);
+          return false;
         },
         wheel(event) {
           if (!event.metaKey && !event.ctrlKey) return false;
@@ -2095,6 +2106,7 @@ watch(
 
 function pauseQueryEditorBackgroundWork() {
   flushEditorViewport();
+  flushEditorSelection();
   editorIsActive = false;
   semanticDiagnosticRunId++;
   if (semanticDiagnosticTimer) clearTimeout(semanticDiagnosticTimer);
@@ -2107,6 +2119,8 @@ function resumeQueryEditorBackgroundWork() {
   editorIsActive = true;
   registerTableReferenceDropListener();
   scheduleSemanticDiagnostics();
+  restoreEditorSelection();
+  restoreEditorFocus();
   restoreEditorViewport();
 }
 
@@ -2136,12 +2150,55 @@ function readEditorViewport(currentView: EditorViewType) {
   };
 }
 
+function normalizedEditorSelection(selection: { anchor: number; head: number } | undefined, docLength: number) {
+  if (!selection) return undefined;
+  return {
+    anchor: Math.min(Math.max(0, selection.anchor), docLength),
+    head: Math.min(Math.max(0, selection.head), docLength),
+  };
+}
+
+function readEditorSelection(currentView: EditorViewType) {
+  const selection = currentView.state.selection.main;
+  return {
+    anchor: selection.anchor,
+    head: selection.head,
+  };
+}
+
+function emitEditorSelection(selection: { anchor: number; head: number }) {
+  emit("selectionStateChange", selection);
+}
+
+function flushEditorSelection() {
+  if (view.value) latestSelection = readEditorSelection(view.value);
+  if (latestSelection) emitEditorSelection(latestSelection);
+}
+
+function restoreEditorSelection() {
+  const selection = normalizedEditorSelection(props.initialSelection ?? latestSelection, props.modelValue.length);
+  if (!view.value || !selection) return;
+  view.value.dispatch({ selection });
+}
+
+function restoreEditorFocus() {
+  const focusEditorAcrossFrames = () => {
+    if (!view.value || view.value.hasFocus) return;
+    view.value.focus();
+  };
+  focusEditorAcrossFrames();
+  nextTick(() => {
+    focusEditorAcrossFrames();
+    requestAnimationFrame(focusEditorAcrossFrames);
+  });
+}
+
 function emitEditorViewport(viewport: { scrollTop: number; scrollLeft: number }) {
   emit("viewportChange", viewport);
 }
 
 function scheduleEditorViewportEmit() {
-  if (!view.value) return;
+  if (!view.value || !editorIsActive) return;
   latestViewport = readEditorViewport(view.value);
   if (viewportEmitFrame !== null) return;
   viewportEmitFrame = requestAnimationFrame(() => {
@@ -2198,7 +2255,7 @@ function openReplace(): boolean {
 }
 
 function scrollCursorIntoView() {
-  if (!view.value || !editorViewModule) return;
+  if (!view.value || !editorViewModule || !editorIsActive) return;
   const pos = view.value.state.selection.main.head;
   view.value.dispatch({
     effects: editorViewModule.EditorView.scrollIntoView(pos, { y: "nearest" }),

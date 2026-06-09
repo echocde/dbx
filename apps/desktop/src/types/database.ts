@@ -400,6 +400,10 @@ export interface QueryTab {
     scrollTop: number;
     scrollLeft: number;
   };
+  editorSelection?: {
+    anchor: number;
+    head: number;
+  };
   executionId?: string;
   isExplaining?: boolean;
   explainExecutionId?: string;
