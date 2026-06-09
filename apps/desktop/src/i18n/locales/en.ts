@@ -1440,6 +1440,9 @@ export default {
     jsonView: "JSON view",
     rawContent: "Raw content",
     wordWrap: "Word wrap",
+    formatJson: "Format",
+    compressJson: "Compress",
+    jsonFormatError: "Invalid JSON format",
   },
   mongo: {
     documents: "{count} documents",

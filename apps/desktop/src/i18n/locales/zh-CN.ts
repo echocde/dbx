@@ -1411,6 +1411,9 @@ export default {
     jsonView: "JSON 视图",
     rawContent: "原始内容",
     wordWrap: "自动换行",
+    formatJson: "格式化",
+    compressJson: "压缩",
+    jsonFormatError: "JSON 格式不合法",
   },
   mongo: {
     documents: "{count} 个文档",

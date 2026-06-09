@@ -15,6 +15,8 @@ import {
   Loader2,
   Pencil,
   WrapText,
+  IndentIncrease,
+  IndentDecrease,
 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -286,6 +288,64 @@ async function saveString() {
 function handleStringInput() {
   if (!isBinaryStringValue.value) {
     isEditing.value = true;
+  }
+}
+
+function formatJsonText(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return null;
+  }
+}
+
+function compressJsonText(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw);
+    return JSON.stringify(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function handleFormatStringJson() {
+  const result = formatJsonText(editValue.value);
+  if (result != null) {
+    editValue.value = result;
+    isEditing.value = true;
+  } else {
+    toast(t("redis.jsonFormatError"), 3000);
+  }
+}
+
+function handleCompressStringJson() {
+  const result = compressJsonText(editValue.value);
+  if (result != null) {
+    editValue.value = result;
+    isEditing.value = true;
+  } else {
+    toast(t("redis.jsonFormatError"), 3000);
+  }
+}
+
+function handleFormatMemberJson() {
+  const result = formatJsonText(memberEditValue.value);
+  if (result != null) {
+    memberEditValue.value = result;
+    isEditingMember.value = true;
+  } else {
+    toast(t("redis.jsonFormatError"), 3000);
+  }
+}
+
+function handleCompressMemberJson() {
+  const result = compressJsonText(memberEditValue.value);
+  if (result != null) {
+    memberEditValue.value = result;
+    isEditingMember.value = true;
+  } else {
+    toast(t("redis.jsonFormatError"), 3000);
   }
 }
 
@@ -849,6 +909,26 @@ onBeforeUnmount(() => {
             </Button>
           </div>
           <span class="flex-1" />
+          <Button
+            v-if="stringValueView === 'raw'"
+            variant="ghost"
+            size="sm"
+            class="h-6 rounded-[5px] px-2 text-xs"
+            :title="t('redis.formatJson')"
+            @click="handleFormatStringJson"
+          >
+            <IndentIncrease class="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            v-if="stringValueView === 'raw'"
+            variant="ghost"
+            size="sm"
+            class="h-6 rounded-[5px] px-2 text-xs"
+            :title="t('redis.compressJson')"
+            @click="handleCompressStringJson"
+          >
+            <IndentDecrease class="h-3.5 w-3.5" />
+          </Button>
           <label class="flex items-center gap-1.5 text-muted-foreground">
             <WrapText class="h-3.5 w-3.5" />
             {{ t("redis.wordWrap") }}
@@ -1313,12 +1393,34 @@ onBeforeUnmount(() => {
             <Badge variant="outline" class="shrink-0 text-xs">{{ selectedMemberDetail.format.toUpperCase() }}</Badge>
           </SheetTitle>
         </SheetHeader>
-        <textarea
-          v-if="isEditingMember"
-          v-model="memberEditValue"
-          class="dbx-editor-font-family min-h-0 flex-1 resize-none bg-background p-5 text-[13px] leading-6 outline-none"
-          spellcheck="false"
-        />
+        <template v-if="isEditingMember">
+          <div v-if="selectedMemberJsonDetail" class="flex h-9 items-center gap-2 border-b px-5 text-xs shrink-0">
+            <span class="flex-1" />
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 rounded-[5px] px-2 text-xs"
+              :title="t('redis.formatJson')"
+              @click="handleFormatMemberJson"
+            >
+              <IndentIncrease class="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-6 rounded-[5px] px-2 text-xs"
+              :title="t('redis.compressJson')"
+              @click="handleCompressMemberJson"
+            >
+              <IndentDecrease class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <textarea
+            v-model="memberEditValue"
+            class="dbx-editor-font-family min-h-0 flex-1 resize-none bg-background p-5 text-[13px] leading-6 outline-none"
+            spellcheck="false"
+          />
+        </template>
         <template v-else-if="selectedMemberJsonDetail">
           <div class="flex h-9 items-center gap-2 border-b px-5 text-xs">
             <div class="flex overflow-hidden rounded-md border bg-muted/20 p-0.5">
@@ -1344,6 +1446,26 @@ onBeforeUnmount(() => {
               </Button>
             </div>
             <span class="flex-1" />
+            <Button
+              v-if="memberValueView === 'raw'"
+              variant="ghost"
+              size="sm"
+              class="h-6 rounded-[5px] px-2 text-xs"
+              :title="t('redis.formatJson')"
+              @click="handleFormatMemberJson"
+            >
+              <IndentIncrease class="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              v-if="memberValueView === 'raw'"
+              variant="ghost"
+              size="sm"
+              class="h-6 rounded-[5px] px-2 text-xs"
+              :title="t('redis.compressJson')"
+              @click="handleCompressMemberJson"
+            >
+              <IndentDecrease class="h-3.5 w-3.5" />
+            </Button>
             <label class="flex items-center gap-1.5 text-muted-foreground">
               <WrapText class="h-3.5 w-3.5" />
               {{ t("redis.wordWrap") }}
