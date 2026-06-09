@@ -30,6 +30,7 @@ import {
   getSqlCompletionContext,
   getSqlCompletionResultValidFor,
   isSqlLikeCompletionStatement,
+  recordCompletionSelection,
   shouldAutoOpenSqlCompletion,
   extractCteDefinitions,
 } from "@/lib/sqlCompletion";
@@ -887,25 +888,46 @@ function buildCompletionResult(items: QueryCompletionItem[], from: number, valid
   return {
     from,
     filter: false,
-    options: items.map((item) =>
-      (item.type === "snippet" || item.type === "function") && item.apply
-        ? codeMirrorSnippetCompletion(item.apply, {
-            label: item.label,
-            type: item.type,
-            detail: item.detail,
-            info: item.info,
-            boost: item.boost,
-          })
-        : {
-            label: item.label,
-            type: item.type,
-            detail: item.detail,
-            info: item.info,
-            apply: item.apply,
-            boost: item.boost,
-          },
-    ),
+    options: items.map((item) => completionOptionForItem(item)),
     validFor,
+  };
+}
+
+function completionOptionForItem(item: QueryCompletionItem) {
+  const record = () => {
+    recordCompletionSelection(item.label, item.type);
+  };
+  if ((item.type === "snippet" || item.type === "function") && item.apply) {
+    const completion = codeMirrorSnippetCompletion(item.apply, {
+      label: item.label,
+      type: item.type,
+      detail: item.detail,
+      info: item.info,
+      boost: item.boost,
+    });
+    const originalApply = completion.apply;
+    return {
+      ...completion,
+      apply(view: EditorViewType, completionItem: unknown, from: number, to: number) {
+        record();
+        if (typeof originalApply === "function") {
+          originalApply(view, completionItem as never, from, to);
+        } else {
+          view.dispatch({ changes: { from, to, insert: String(originalApply ?? item.label) } });
+        }
+      },
+    };
+  }
+  return {
+    label: item.label,
+    type: item.type,
+    detail: item.detail,
+    info: item.info,
+    boost: item.boost,
+    apply(view: EditorViewType, _completionItem: unknown, from: number, to: number) {
+      record();
+      view.dispatch({ changes: { from, to, insert: item.apply ?? item.label } });
+    },
   };
 }
 
@@ -1000,6 +1022,16 @@ async function provideSqlCompletions(
       );
     }
 
+    const localResult = buildLocalSqlCompletionResult(completionContext, fullDoc, position);
+    if (localResult) {
+      scheduleCompletionMetadataRefresh(completionContext);
+      if (!explicit) return localResult;
+    }
+    if (!explicit) {
+      scheduleCompletionMetadataRefresh(completionContext);
+      return null;
+    }
+
     // Cancel any pending debounced completion
     if (completionDebounceTimer) {
       clearTimeout(completionDebounceTimer);
@@ -1027,6 +1059,208 @@ async function provideSqlCompletions(
   } catch {
     return null;
   }
+}
+
+function buildLocalSqlCompletionResult(
+  completionContext: ReturnType<typeof getSqlCompletionContext>,
+  fullDoc: string,
+  position: number,
+) {
+  if (!props.connectionId || props.database == null) return null;
+  const shouldLoadTables =
+    completionContext.suggestTables ||
+    (!!completionContext.qualifier && !isReferencedTableQualifier(completionContext));
+  const tableLookupSchema =
+    completionContext.qualifier && completionContext.suggestTables ? completionContext.qualifier : props.schema;
+  const tableLookupFilter =
+    completionContext.qualifier && completionContext.suggestTables
+      ? completionContext.prefix
+      : completionContext.qualifier || completionContext.prefix;
+  const tables = shouldLoadTables
+    ? connectionStore.lookupLocalCompletionTables(
+        props.connectionId,
+        props.database,
+        tableLookupFilter,
+        MAX_COMPLETION_TABLES,
+        tableLookupSchema,
+      )
+    : cachedTables;
+
+  const shouldLoadObjects =
+    completionContext.suggestRoutines ||
+    completionContext.exclusiveRoutineSuggestions ||
+    (!!completionContext.qualifier && !completionContext.exclusiveColumnSuggestions);
+  const completionObjects = shouldLoadObjects
+    ? connectionStore.lookupLocalCompletionObjects(
+        props.connectionId,
+        props.database,
+        completionContext.qualifier || completionContext.prefix,
+        MAX_COMPLETION_TABLES,
+        completionContext.qualifier && !completionContext.exclusiveColumnSuggestions
+          ? completionContext.qualifier
+          : props.schema,
+      )
+    : cachedCompletionObjects;
+
+  const schemaNames =
+    completionContext.suggestTables && !completionContext.qualifier && !completionContext.insertTable
+      ? connectionStore.lookupLocalCompletionSchemas(
+          props.connectionId,
+          props.database,
+          completionContext.prefix,
+          MAX_COMPLETION_TABLES,
+        )
+      : [];
+
+  const columnsByTable = new Map<string, SqlCompletionColumn[]>();
+  if (completionContext.insertTable) {
+    const insertSchema = completionContext.insertSchema ?? props.schema;
+    const insertColumns = connectionStore.lookupLocalCompletionColumns(
+      props.connectionId,
+      props.database,
+      completionContext.insertTable,
+      insertSchema,
+    );
+    if (insertColumns.length > 0) {
+      columnsByTable.set(
+        insertSchema ? `${insertSchema}.${completionContext.insertTable}` : completionContext.insertTable,
+        insertColumns,
+      );
+    }
+  }
+
+  const cteDefs = extractCteDefinitions(fullDoc);
+  for (const refTable of completionContext.referencedTables) {
+    const cteDef = cteDefs.find((c) => c.name.toLowerCase() === refTable.name.toLowerCase());
+    if (cteDef) {
+      columnsByTable.set(
+        refTable.name,
+        cteDef.columns.map((name) => ({ name, table: refTable.name, dataType: undefined })),
+      );
+      continue;
+    }
+    const cacheKey = refTable.schema ? `${refTable.schema}.${refTable.name}` : refTable.name;
+    const cached = cachedColumnsByTable.get(cacheKey);
+    if (cached) {
+      columnsByTable.set(cacheKey, cached);
+      continue;
+    }
+    const localColumns = connectionStore.lookupLocalCompletionColumns(
+      props.connectionId,
+      props.database,
+      refTable.name,
+      refTable.schema ?? props.schema,
+    );
+    if (localColumns.length > 0) {
+      columnsByTable.set(cacheKey, localColumns);
+    }
+  }
+
+  if (
+    tables.length === 0 &&
+    completionObjects.length === 0 &&
+    schemaNames.length === 0 &&
+    columnsByTable.size === 0 &&
+    (completionContext.exclusiveTableSuggestions ||
+      completionContext.exclusiveColumnSuggestions ||
+      completionContext.exclusiveRoutineSuggestions)
+  ) {
+    return null;
+  }
+
+  const items = buildSqlCompletionItemsFromContext(completionContext, {
+    tables,
+    objects: completionObjects,
+    columnsByTable,
+    foreignKeysByTable: cachedForeignKeysByTable,
+    schemas: schemaNames,
+    translations: completionTranslations.value,
+    snippets: settingsStore.editorSettings.snippets,
+    dialect: props.dialect,
+    databaseType: props.databaseType,
+  });
+
+  return buildCompletionResult(
+    items,
+    position - completionContext.prefix.length,
+    getSqlCompletionResultValidFor(fullDoc, position),
+  );
+}
+
+function scheduleCompletionMetadataRefresh(completionContext: ReturnType<typeof getSqlCompletionContext>) {
+  if (!props.connectionId || props.database == null) return;
+  const connectionId = props.connectionId;
+  const database = props.database;
+  const schema =
+    completionContext.qualifier && completionContext.suggestTables ? completionContext.qualifier : props.schema;
+  if (
+    completionContext.suggestTables ||
+    (!!completionContext.qualifier && !isReferencedTableQualifier(completionContext))
+  ) {
+    void connectionStore
+      .refreshCompletionTables(
+        connectionId,
+        database,
+        completionContext.qualifier && !schema ? completionContext.qualifier : completionContext.prefix,
+        MAX_COMPLETION_TABLES,
+        schema,
+      )
+      .then((tables) => {
+        cachedTables = mergeCompletionTables(cachedTables, tables);
+      })
+      .catch(() => {});
+  }
+  if (
+    completionContext.suggestRoutines ||
+    completionContext.exclusiveRoutineSuggestions ||
+    (!!completionContext.qualifier && !completionContext.exclusiveColumnSuggestions)
+  ) {
+    void connectionStore
+      .refreshCompletionObjects(connectionId, database, completionContext.prefix, MAX_COMPLETION_TABLES, props.schema)
+      .then((objects) => {
+        cachedCompletionObjects = mergeCompletionObjects(cachedCompletionObjects, objects);
+      })
+      .catch(() => {});
+  }
+  if (completionContext.suggestTables && !completionContext.qualifier && !completionContext.insertTable) {
+    void connectionStore.refreshCompletionSchemas(connectionId, database).catch(() => {});
+  }
+  if (completionContext.insertTable) {
+    const insertTable = completionContext.insertTable;
+    void connectionStore
+      .refreshCompletionColumns(connectionId, database, insertTable, completionContext.insertSchema ?? props.schema)
+      .then((columns) => {
+        const insertSchema = completionContext.insertSchema ?? props.schema;
+        cachedColumnsByTable.set(insertSchema ? `${insertSchema}.${insertTable}` : insertTable, columns);
+      })
+      .catch(() => {});
+  }
+  for (const refTable of completionContext.referencedTables) {
+    if (refTable.columns && refTable.columns.length > 0) continue;
+    const cacheKey = refTable.schema ? `${refTable.schema}.${refTable.name}` : refTable.name;
+    if (cachedColumnsByTable.has(cacheKey)) continue;
+    void connectionStore
+      .refreshCompletionColumns(connectionId, database, refTable.name, refTable.schema ?? props.schema)
+      .then((columns) => {
+        if (columns.length > 0) cachedColumnsByTable.set(cacheKey, columns);
+      })
+      .catch(() => {});
+  }
+}
+
+function mergeCompletionTables(
+  existing: Array<{ name: string; schema?: string; type?: "table" | "view" }>,
+  incoming: Array<{ name: string; schema?: string; type?: "table" | "view" }>,
+) {
+  const merged = [...existing];
+  const seen = new Set(existing.map((table) => `${table.schema ?? ""}.${table.name}`.toLowerCase()));
+  for (const table of incoming) {
+    const key = `${table.schema ?? ""}.${table.name}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(table);
+  }
+  return merged;
 }
 
 async function performAsyncCompletionWithResult(

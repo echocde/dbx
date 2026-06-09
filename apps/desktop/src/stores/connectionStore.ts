@@ -125,6 +125,10 @@ export const useConnectionStore = defineStore("connection", () => {
   const completionColumnsCache = ref<Record<string, ColumnInfo[]>>({});
   const elasticsearchCompletionIndicesCache = ref<Record<string, string[]>>({});
   const schemaListCache = ref<Record<string, string[]>>({});
+  const completionTableIndex = new Map<string, { touched: number; tables: SqlCompletionTable[] }>();
+  const completionObjectIndex = new Map<string, { touched: number; objects: SqlCompletionObject[] }>();
+  const completionColumnIndex = new Map<string, { touched: number; columns: SqlCompletionColumn[] }>();
+  const completionInFlight = new Map<string, Promise<unknown>>();
   const transferSource = ref<{ connectionId: string; database: string } | null>(null);
   const schemaDiffSource = ref<{ connectionId: string; database: string; schema?: string } | null>(null);
   const dataCompareSource = ref<{
@@ -632,6 +636,18 @@ export const useConnectionStore = defineStore("connection", () => {
     }
     for (const key of Object.keys(elasticsearchCompletionIndicesCache.value)) {
       if (key === exactCacheKey || key.startsWith(cachePrefix)) delete elasticsearchCompletionIndicesCache.value[key];
+    }
+    for (const key of [...completionTableIndex.keys()]) {
+      if (key.startsWith(cachePrefix)) completionTableIndex.delete(key);
+    }
+    for (const key of [...completionObjectIndex.keys()]) {
+      if (key.startsWith(cachePrefix)) completionObjectIndex.delete(key);
+    }
+    for (const key of [...completionColumnIndex.keys()]) {
+      if (key.startsWith(cachePrefix)) completionColumnIndex.delete(key);
+    }
+    for (const key of [...completionInFlight.keys()]) {
+      if (key.startsWith(cachePrefix)) completionInFlight.delete(key);
     }
   }
 
@@ -1678,14 +1694,185 @@ export const useConnectionStore = defineStore("connection", () => {
     }
   }
 
+  function completionScopeKey(connectionId: string, database: string, schema?: string): string {
+    return `${connectionId}:${database}:${schema ?? ""}`;
+  }
+
+  function completionColumnsKey(connectionId: string, database: string, table: string, schema?: string): string {
+    return `${completionScopeKey(connectionId, database, schema)}:${table.toLowerCase()}`;
+  }
+
+  function touchCompletionIndex<T>(
+    index: Map<string, { touched: number } & T>,
+    key: string,
+    value: T,
+    max = COMPLETION_CACHE_MAX,
+  ) {
+    index.set(key, { ...value, touched: Date.now() });
+    if (index.size <= max) return;
+    const oldest = [...index.entries()].sort(([, a], [, b]) => a.touched - b.touched).slice(0, index.size - max);
+    for (const [oldKey] of oldest) index.delete(oldKey);
+  }
+
+  function withCompletionInFlight<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const existing = completionInFlight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+    const promise = load().finally(() => {
+      if (completionInFlight.get(key) === promise) completionInFlight.delete(key);
+    });
+    completionInFlight.set(key, promise);
+    return promise;
+  }
+
+  function tableMatchScore(table: SqlCompletionTable, filter: string, preferredSchema?: string): number {
+    const text = table.name.toLowerCase();
+    const schema = table.schema?.toLowerCase();
+    const normalized = filter.trim().toLowerCase();
+    let score = schema && preferredSchema && schema === preferredSchema.toLowerCase() ? 10_000 : 0;
+    if (!normalized) return score;
+    if (text === normalized) return score + 9_000 - text.length;
+    if (text.startsWith(normalized)) return score + 7_000 - text.length;
+    if (text.includes(normalized)) return score + 4_000 - text.length;
+    let index = 0;
+    for (const ch of normalized) {
+      index = text.indexOf(ch, index);
+      if (index < 0) return -1;
+      index++;
+    }
+    return score + 1_000 - text.length;
+  }
+
+  function objectMatchScore(object: SqlCompletionObject, filter: string, preferredSchema?: string): number {
+    const tableLike: SqlCompletionTable = { name: object.name, schema: object.schema };
+    return tableMatchScore(tableLike, filter, preferredSchema);
+  }
+
+  function indexCompletionTables(
+    connectionId: string,
+    database: string,
+    schema: string | undefined,
+    tables: SqlCompletionTable[],
+  ) {
+    const groups = new Map<string, SqlCompletionTable[]>();
+    for (const table of tables) {
+      const tableSchema = table.schema ?? schema;
+      const key = completionScopeKey(connectionId, database, tableSchema);
+      const list = groups.get(key) ?? [];
+      list.push({ ...table, schema: tableSchema });
+      groups.set(key, list);
+    }
+    for (const [key, group] of groups) {
+      const previous = completionTableIndex.get(key)?.tables ?? [];
+      touchCompletionIndex(completionTableIndex, key, {
+        tables: dedupeCompletionTables([...previous, ...group]),
+      });
+    }
+  }
+
+  function indexCompletionObjects(
+    connectionId: string,
+    database: string,
+    schema: string | undefined,
+    objects: SqlCompletionObject[],
+  ) {
+    const groups = new Map<string, SqlCompletionObject[]>();
+    for (const object of objects) {
+      const objectSchema = object.schema ?? schema;
+      const key = completionScopeKey(connectionId, database, objectSchema);
+      const list = groups.get(key) ?? [];
+      list.push({ ...object, schema: objectSchema });
+      groups.set(key, list);
+    }
+    for (const [key, group] of groups) {
+      const previous = completionObjectIndex.get(key)?.objects ?? [];
+      touchCompletionIndex(completionObjectIndex, key, {
+        objects: dedupeCompletionObjects([...previous, ...group]),
+      });
+    }
+  }
+
+  function indexCompletionColumns(
+    connectionId: string,
+    database: string,
+    table: string,
+    schema: string | undefined,
+    columns: SqlCompletionColumn[],
+  ) {
+    touchCompletionIndex(completionColumnIndex, completionColumnsKey(connectionId, database, table, schema), {
+      columns,
+    });
+  }
+
+  function lookupLocalCompletionTables(
+    connectionId: string,
+    database: string,
+    filter = "",
+    limit?: number,
+    schema?: string,
+  ): SqlCompletionTable[] {
+    const allScopes = [...completionTableIndex.entries()]
+      .filter(([key]) => key.startsWith(`${connectionId}:${database}:`))
+      .map(([, entry]) => entry);
+    const preferred = schema ? completionTableIndex.get(completionScopeKey(connectionId, database, schema)) : undefined;
+    const scopes = preferred ? [preferred, ...allScopes.filter((entry) => entry !== preferred)] : allScopes;
+    const ranked = scopes
+      .flatMap((entry) => entry?.tables ?? [])
+      .map((table) => ({ table, score: tableMatchScore(table, filter, schema) }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.table.name.localeCompare(b.table.name));
+    return dedupeCompletionTables(ranked.map((entry) => entry.table)).slice(0, limit ?? 200);
+  }
+
+  function lookupLocalCompletionObjects(
+    connectionId: string,
+    database: string,
+    filter = "",
+    limit?: number,
+    schema?: string,
+  ): SqlCompletionObject[] {
+    const allScopes = [...completionObjectIndex.entries()]
+      .filter(([key]) => key.startsWith(`${connectionId}:${database}:`))
+      .map(([, entry]) => entry);
+    const preferred = schema
+      ? completionObjectIndex.get(completionScopeKey(connectionId, database, schema))
+      : undefined;
+    const scopes = preferred ? [preferred, ...allScopes.filter((entry) => entry !== preferred)] : allScopes;
+    const ranked = scopes
+      .flatMap((entry) => entry?.objects ?? [])
+      .map((object) => ({ object, score: objectMatchScore(object, filter, schema) }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.object.name.localeCompare(b.object.name));
+    return dedupeCompletionObjects(ranked.map((entry) => entry.object)).slice(0, limit ?? 200);
+  }
+
+  function lookupLocalCompletionSchemas(connectionId: string, database: string, filter = "", limit = 50): string[] {
+    const schemas = schemaListCache.value[`${connectionId}:${database}`] ?? [];
+    const normalized = filter.trim().toLowerCase();
+    return schemas
+      .filter((schema) => fuzzyTextMatch(schema, normalized))
+      .sort((a, b) => tableMatchScore({ name: b }, normalized) - tableMatchScore({ name: a }, normalized))
+      .slice(0, limit);
+  }
+
+  function lookupLocalCompletionColumns(
+    connectionId: string,
+    database: string,
+    table: string,
+    schema?: string,
+  ): SqlCompletionColumn[] {
+    return completionColumnIndex.get(completionColumnsKey(connectionId, database, table, schema))?.columns ?? [];
+  }
+
   async function listCompletionSchemas(connectionId: string, database: string): Promise<string[]> {
     const cacheKey = `${connectionId}:${database}`;
     if (schemaListCache.value[cacheKey]) {
       return schemaListCache.value[cacheKey];
     }
-    const schemas = await api.listSchemas(connectionId, database);
-    schemaListCache.value[cacheKey] = schemas;
-    return schemas;
+    return withCompletionInFlight(`${cacheKey}:schemas`, async () => {
+      const schemas = await api.listSchemas(connectionId, database);
+      schemaListCache.value[cacheKey] = schemas;
+      return schemas;
+    });
   }
 
   async function listElasticsearchCompletionIndices(connectionId: string, database: string): Promise<string[]> {
@@ -1714,46 +1901,21 @@ export const useConnectionStore = defineStore("connection", () => {
       return completionTablesCache.value[cacheKey];
     }
 
-    await ensureConnected(connectionId);
+    return withCompletionInFlight(`${cacheKey}:tables`, async () => {
+      await ensureConnected(connectionId);
 
-    if (isSchemaAwareDatabase(connectionId)) {
-      const schemas = schema ? [schema] : await listCompletionSchemas(connectionId, database);
-      if (normalizedFilter || limit) {
-        const batchSize = 5;
-        const results: SqlCompletionTable[] = [];
-        for (let i = 0; i < schemas.length && results.length < (limit ?? Infinity); i += batchSize) {
-          const batch = schemas.slice(i, i + batchSize);
-          const batchResults = await Promise.all(
-            batch.map(async (s) => {
-              try {
-                const tables = await api.listTables(connectionId, database, s, normalizedFilter, limit);
-                return tables.map((table) => ({
-                  name: table.name,
-                  schema: s,
-                  type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
-                })) as SqlCompletionTable[];
-              } catch {
-                return [] as SqlCompletionTable[];
-              }
-            }),
-          );
-          for (const group of batchResults) {
-            results.push(...group);
-          }
-        }
-        if (results.length === 0 && relaxedFilter) {
-          for (let i = 0; i < schemas.length && results.length < (limit ?? Infinity); i += batchSize) {
+      if (isSchemaAwareDatabase(connectionId)) {
+        const schemas = schema ? [schema] : await listCompletionSchemas(connectionId, database);
+        if (normalizedFilter || limit) {
+          const batchSize = 5;
+          const results: SqlCompletionTable[] = [];
+          const maxResults = limit ?? Infinity;
+          for (let i = 0; i < schemas.length && results.length < maxResults; i += batchSize) {
             const batch = schemas.slice(i, i + batchSize);
             const batchResults = await Promise.all(
               batch.map(async (s) => {
                 try {
-                  const tables = await api.listTables(
-                    connectionId,
-                    database,
-                    s,
-                    relaxedFilter,
-                    expandedCompletionLimit(limit),
-                  );
+                  const tables = await api.listTables(connectionId, database, s, normalizedFilter, limit);
                   return tables.map((table) => ({
                     name: table.name,
                     schema: s,
@@ -1766,46 +1928,80 @@ export const useConnectionStore = defineStore("connection", () => {
             );
             for (const group of batchResults) {
               results.push(...group);
+              indexCompletionTables(connectionId, database, undefined, group);
             }
           }
+          if (results.length === 0 && relaxedFilter) {
+            for (let i = 0; i < schemas.length && results.length < maxResults; i += batchSize) {
+              const batch = schemas.slice(i, i + batchSize);
+              const batchResults = await Promise.all(
+                batch.map(async (s) => {
+                  try {
+                    const tables = await api.listTables(
+                      connectionId,
+                      database,
+                      s,
+                      relaxedFilter,
+                      expandedCompletionLimit(limit),
+                    );
+                    return tables.map((table) => ({
+                      name: table.name,
+                      schema: s,
+                      type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
+                    })) as SqlCompletionTable[];
+                  } catch {
+                    return [] as SqlCompletionTable[];
+                  }
+                }),
+              );
+              for (const group of batchResults) {
+                results.push(...group);
+                indexCompletionTables(connectionId, database, undefined, group);
+              }
+            }
+          }
+          const limitedTables = limit ? dedupeCompletionTables(results).slice(0, limit) : results;
+          completionTablesCache.value[cacheKey] = limitedTables;
+          indexCompletionTables(connectionId, database, schema, limitedTables);
+          evictOldestCacheEntries(completionTablesCache.value, COMPLETION_CACHE_MAX);
+          return completionTablesCache.value[cacheKey];
         }
-        const limitedTables = limit
-          ? dedupeCompletionTables(results).slice(0, expandedCompletionLimit(limit))
-          : results;
-        completionTablesCache.value[cacheKey] = limitedTables;
+
+        const tableGroups = await Promise.all(
+          schemas.map(async (schema) => {
+            try {
+              const tables = await api.listTables(connectionId, database, schema);
+              return tables.map((table) => ({
+                name: table.name,
+                schema,
+                type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
+              }));
+            } catch {
+              return [];
+            }
+          }),
+        );
+        completionTablesCache.value[cacheKey] = tableGroups.flat();
+        indexCompletionTables(connectionId, database, schema, completionTablesCache.value[cacheKey]);
         evictOldestCacheEntries(completionTablesCache.value, COMPLETION_CACHE_MAX);
         return completionTablesCache.value[cacheKey];
       }
 
-      const tableGroups = await Promise.all(
-        schemas.map(async (schema) => {
-          try {
-            const tables = await api.listTables(connectionId, database, schema);
-            return tables.map((table) => ({
-              name: table.name,
-              schema,
-              type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
-            }));
-          } catch {
-            return [];
-          }
-        }),
-      );
-      completionTablesCache.value[cacheKey] = tableGroups.flat();
+      let tables = await api.listTables(connectionId, database, database, normalizedFilter, limit);
+      if (tables.length === 0 && relaxedFilter) {
+        tables = await api.listTables(connectionId, database, database, relaxedFilter, expandedCompletionLimit(limit));
+      }
+      completionTablesCache.value[cacheKey] = tables.map((table) => ({
+        name: table.name,
+        type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
+      }));
+      completionTablesCache.value[cacheKey] = limit
+        ? completionTablesCache.value[cacheKey].slice(0, limit)
+        : completionTablesCache.value[cacheKey];
+      indexCompletionTables(connectionId, database, schema, completionTablesCache.value[cacheKey]);
       evictOldestCacheEntries(completionTablesCache.value, COMPLETION_CACHE_MAX);
       return completionTablesCache.value[cacheKey];
-    }
-
-    let tables = await api.listTables(connectionId, database, database, normalizedFilter, limit);
-    if (tables.length === 0 && relaxedFilter) {
-      tables = await api.listTables(connectionId, database, database, relaxedFilter, expandedCompletionLimit(limit));
-    }
-    completionTablesCache.value[cacheKey] = tables.map((table) => ({
-      name: table.name,
-      type: table.table_type === "VIEW" ? ("view" as const) : ("table" as const),
-    }));
-    evictOldestCacheEntries(completionTablesCache.value, COMPLETION_CACHE_MAX);
-    return completionTablesCache.value[cacheKey];
+    });
   }
 
   function relaxedCompletionTableFilter(filter: string): string | undefined {
@@ -1840,21 +2036,24 @@ export const useConnectionStore = defineStore("connection", () => {
     const normalizedFilter = filter.trim().toLowerCase();
     const cacheKey = `${connectionId}:${database}:${schema ?? ""}`;
     if (!completionObjectsCache.value[cacheKey]) {
-      await ensureConnected(connectionId);
-      const objects = isSchemaAwareDatabase(connectionId)
-        ? await listSchemaAwareCompletionObjects(connectionId, database, schema)
-        : await api.listCompletionObjects(connectionId, database, schema || database);
-      completionObjectsCache.value[cacheKey] = dedupeCompletionObjects(
-        objects.map(toSqlCompletionObject).filter((object): object is SqlCompletionObject => object != null),
-      );
-      evictOldestCacheEntries(completionObjectsCache.value, COMPLETION_CACHE_MAX);
+      await withCompletionInFlight(`${cacheKey}:objects`, async () => {
+        await ensureConnected(connectionId);
+        const objects = isSchemaAwareDatabase(connectionId)
+          ? await listSchemaAwareCompletionObjects(connectionId, database, schema)
+          : await api.listCompletionObjects(connectionId, database, schema || database);
+        completionObjectsCache.value[cacheKey] = dedupeCompletionObjects(
+          objects.map(toSqlCompletionObject).filter((object): object is SqlCompletionObject => object != null),
+        );
+        indexCompletionObjects(connectionId, database, schema, completionObjectsCache.value[cacheKey]);
+        evictOldestCacheEntries(completionObjectsCache.value, COMPLETION_CACHE_MAX);
+      });
     }
 
     const objects = completionObjectsCache.value[cacheKey];
     const filtered = normalizedFilter
       ? objects.filter((object) => fuzzyCompletionObjectMatch(object, normalizedFilter))
       : objects;
-    return typeof limit === "number" ? filtered.slice(0, expandedCompletionLimit(limit)) : filtered;
+    return typeof limit === "number" ? filtered.slice(0, limit) : filtered;
   }
 
   async function listSchemaAwareCompletionObjects(
@@ -1944,13 +2143,15 @@ export const useConnectionStore = defineStore("connection", () => {
     }
     const cacheKey = `${connectionId}:${database}:${schema || ""}:${table}`;
     if (!completionColumnsCache.value[cacheKey]) {
-      await ensureConnected(connectionId);
-      const querySchema = metadataQuerySchema(connectionId, database, schema);
-      completionColumnsCache.value[cacheKey] = await api.getColumns(connectionId, database, querySchema, table);
-      evictOldestCacheEntries(completionColumnsCache.value, COMPLETION_CACHE_MAX);
+      await withCompletionInFlight(`${cacheKey}:columns`, async () => {
+        await ensureConnected(connectionId);
+        const querySchema = metadataQuerySchema(connectionId, database, schema);
+        completionColumnsCache.value[cacheKey] = await api.getColumns(connectionId, database, querySchema, table);
+        evictOldestCacheEntries(completionColumnsCache.value, COMPLETION_CACHE_MAX);
+      });
     }
 
-    return completionColumnsCache.value[cacheKey].map((column) => ({
+    const columns = completionColumnsCache.value[cacheKey].map((column) => ({
       name: column.name,
       table,
       schema,
@@ -1958,6 +2159,41 @@ export const useConnectionStore = defineStore("connection", () => {
       isNullable: column.is_nullable,
       comment: column.comment,
     }));
+    indexCompletionColumns(connectionId, database, table, schema, columns);
+    return columns;
+  }
+
+  function refreshCompletionTables(
+    connectionId: string,
+    database: string,
+    filter = "",
+    limit?: number,
+    schema?: string,
+  ): Promise<SqlCompletionTable[]> {
+    return listCompletionTables(connectionId, database, filter, limit, schema);
+  }
+
+  function refreshCompletionObjects(
+    connectionId: string,
+    database: string,
+    filter = "",
+    limit?: number,
+    schema?: string,
+  ): Promise<SqlCompletionObject[]> {
+    return listCompletionObjects(connectionId, database, filter, limit, schema);
+  }
+
+  function refreshCompletionSchemas(connectionId: string, database: string): Promise<string[]> {
+    return listCompletionSchemas(connectionId, database);
+  }
+
+  function refreshCompletionColumns(
+    connectionId: string,
+    database: string,
+    table: string,
+    schema?: string,
+  ): Promise<SqlCompletionColumn[]> {
+    return listCompletionColumns(connectionId, database, table, schema);
   }
 
   function findNode(nodes: TreeNode[], id: string): TreeNode | null {
@@ -2349,6 +2585,14 @@ export const useConnectionStore = defineStore("connection", () => {
     listCompletionObjects,
     listCompletionColumns,
     listCompletionSchemas,
+    lookupLocalCompletionTables,
+    lookupLocalCompletionObjects,
+    lookupLocalCompletionColumns,
+    lookupLocalCompletionSchemas,
+    refreshCompletionTables,
+    refreshCompletionObjects,
+    refreshCompletionColumns,
+    refreshCompletionSchemas,
     listElasticsearchCompletionIndices,
     exportConnectionsToFile,
     readImportFile,
