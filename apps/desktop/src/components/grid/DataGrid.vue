@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ref } from "vue";
+import { ref, shallowRef } from "vue";
 const globalDdlOpen = ref(false);
 </script>
 
@@ -111,6 +111,8 @@ import {
 } from "@/lib/dataGridTranspose";
 import { matchesRowStatusFilter, type RowStatus, type RowStatusFilter } from "@/lib/gridRowStatus";
 import { displayCellValue, type CellValue } from "@/lib/cellValue";
+import { getApplicablePreviewActions } from "@/lib/resultPreviewRegistry";
+import "@/lib/previewHandlers/geometryMapPreview";
 import {
   BINARY_CELL_DOWNLOAD_MODES,
   binaryCellDisplayText,
@@ -454,6 +456,8 @@ const sideGeometryPreviewOpen = ref(false);
 const dialogGeometryPreviewOpen = ref(false);
 const sideGeometryCanvas = ref<HTMLCanvasElement | null>(null);
 const dialogGeometryCanvas = ref<HTMLCanvasElement | null>(null);
+const previewDialogOpen = ref(false);
+const previewDialogConfig = shallowRef<{ component: any; props: Record<string, any> } | null>(null);
 const transposeRowIndex = ref<number | null>(null);
 const showTranspose = ref(false);
 const preserveTransposeOnNextResult = ref(false);
@@ -1529,6 +1533,12 @@ const visibleColumnTypes = computed(() =>
   }),
 );
 const visibleColumnCount = computed(() => visibleColumnIndexes.value.length);
+
+/** Preview actions from the result preview registry for the current result. */
+const previewActions = computed(() => {
+  if (!props.result) return [];
+  return getApplicablePreviewActions(props.result);
+});
 const displayableColumnCount = computed(() => displayableColumnIndexes.value.length);
 const hiddenColumnCount = computed(() => displayableColumnCount.value - visibleColumnCount.value);
 const allNullColumnIndexesForResult = computed(() =>
@@ -2669,6 +2679,18 @@ function exportSelectedRowsMarkdown() {
 
 function exportSelectedRowsSql() {
   return exportSql(affectedRowIds());
+}
+
+function executePreviewAction(action: { execute: (ctx: any) => any }) {
+  const config = action.execute({
+    result: props.result,
+    selectedRowIds: affectedRowIds(),
+    displayRowRefs: displayRowRefs.value,
+  });
+  if (config) {
+    previewDialogConfig.value = config;
+    previewDialogOpen.value = true;
+  }
 }
 
 function isRowActive(index: number): boolean {
@@ -5820,6 +5842,24 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
   // 8. Export submenu
   items.push(exportSubmenu());
 
+  // 9. Preview actions from registry (e.g. geometry map preview)
+  if (!contextHeaderColumn.value && contextCell.value) {
+    const colType = props.result.column_types?.[contextCell.value.col];
+    if (colType && isGeometryColumnType(colType)) {
+      const actions = previewActions.value;
+      if (actions.length > 0) {
+        items.push({ label: "", separator: true });
+        for (const action of actions) {
+          items.push({
+            label: t("grid.layerPreview"),
+            action: () => executePreviewAction(action),
+            icon: action.icon,
+          });
+        }
+      }
+    }
+  }
+
   return items;
 });
 </script>
@@ -8636,6 +8676,12 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
       @confirm="confirmDeleteRow"
     />
     <ImagePreviewDialog v-model:open="imagePreviewOpen" :src="imagePreviewSrc" :title="imagePreviewTitle" />
+    <component
+      v-if="previewDialogOpen && previewDialogConfig"
+      :is="previewDialogConfig.component"
+      v-model:open="previewDialogOpen"
+      v-bind="previewDialogConfig.props"
+    />
     <ExportProgressDialog v-model:open="exportProgressDialog" v-bind="exportProgressState" disable-cancel />
   </div>
 </template>

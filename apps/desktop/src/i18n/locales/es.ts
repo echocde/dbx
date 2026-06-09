@@ -552,6 +552,7 @@ export default {
     imagePreview: "Vista previa de imagen",
     imageLoadFailed: "No se pudo cargar la imagen",
     geometryPreview: "Vista previa de geometría",
+    layerPreview: "Vista previa de capa",
     zoomIn: "Acercar",
     zoomOut: "Alejar",
     fitImage: "Ajustar a ventana",

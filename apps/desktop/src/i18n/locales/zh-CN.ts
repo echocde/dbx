@@ -608,6 +608,7 @@ export default {
     imagePreview: "图片预览",
     imageLoadFailed: "图片加载失败",
     geometryPreview: "图形预览",
+    layerPreview: "图层预览",
     zoomIn: "放大",
     zoomOut: "缩小",
     fitImage: "适应窗口",

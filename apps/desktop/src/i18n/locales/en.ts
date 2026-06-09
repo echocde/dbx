@@ -613,6 +613,7 @@ export default {
     imagePreview: "Image Preview",
     imageLoadFailed: "Image failed to load",
     geometryPreview: "Geometry Preview",
+    layerPreview: "Layer Preview",
     zoomIn: "Zoom In",
     zoomOut: "Zoom Out",
     fitImage: "Fit to Window",

@@ -590,6 +590,7 @@ export default {
     imagePreview: "Visualização de Imagem",
     imageLoadFailed: "Falha ao carregar a imagem",
     geometryPreview: "Visualização de Geometria",
+    layerPreview: "Visualização de Camada",
     zoomIn: "Aproximar",
     zoomOut: "Afastar",
     fitImage: "Ajustar à Janela",
