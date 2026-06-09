@@ -104,6 +104,7 @@ const props = defineProps<{
   executionError?: string;
   readOnly?: boolean;
   forceWordWrap?: boolean;
+  initialViewport?: { scrollTop: number; scrollLeft: number };
 }>();
 
 const emit = defineEmits<{
@@ -116,10 +117,12 @@ const emit = defineEmits<{
   clickTable: [tableName: string];
   clickColumn: [columns: Array<{ name: string; table: string; schema?: string }>, error?: string | undefined];
   closeColumnPanel: [];
+  viewportChange: [viewport: { scrollTop: number; scrollLeft: number }];
 }>();
 
 const editorRef = ref<HTMLDivElement>();
 const view = shallowRef<EditorViewType | null>(null);
+let viewportEmitFrame: number | null = null;
 const connectionStore = useConnectionStore();
 const settingsStore = useSettingsStore();
 const { isDark } = useTheme();
@@ -1955,6 +1958,8 @@ onMounted(async () => {
   });
 
   view.value = new EditorView({ state, parent: editorRef.value });
+  view.value.scrollDOM.addEventListener("scroll", scheduleEditorViewportEmit, { passive: true });
+  restoreEditorViewport();
   syncContextMenuState(view.value);
   syncEditorFontCssVars(liveFontSize.value, initialSettings.fontFamily);
   registerTableReferenceDropListener();
@@ -2087,6 +2092,7 @@ watch(
 );
 
 function pauseQueryEditorBackgroundWork() {
+  if (view.value) emitEditorViewport(view.value);
   editorIsActive = false;
   semanticDiagnosticRunId++;
   if (semanticDiagnosticTimer) clearTimeout(semanticDiagnosticTimer);
@@ -2099,6 +2105,7 @@ function resumeQueryEditorBackgroundWork() {
   editorIsActive = true;
   registerTableReferenceDropListener();
   scheduleSemanticDiagnostics();
+  restoreEditorViewport();
 }
 
 onActivated(resumeQueryEditorBackgroundWork);
@@ -2107,9 +2114,41 @@ onDeactivated(pauseQueryEditorBackgroundWork);
 
 onBeforeUnmount(() => {
   pauseQueryEditorBackgroundWork();
+  if (viewportEmitFrame !== null) {
+    cancelAnimationFrame(viewportEmitFrame);
+    viewportEmitFrame = null;
+  }
+  view.value?.scrollDOM.removeEventListener("scroll", scheduleEditorViewportEmit);
   zoomCommitScheduler.dispose();
   view.value?.destroy();
 });
+
+function emitEditorViewport(currentView: EditorViewType) {
+  emit("viewportChange", {
+    scrollTop: currentView.scrollDOM.scrollTop,
+    scrollLeft: currentView.scrollDOM.scrollLeft,
+  });
+}
+
+function scheduleEditorViewportEmit() {
+  if (viewportEmitFrame !== null) return;
+  viewportEmitFrame = requestAnimationFrame(() => {
+    viewportEmitFrame = null;
+    if (view.value) emitEditorViewport(view.value);
+  });
+}
+
+function restoreEditorViewport() {
+  const viewport = props.initialViewport;
+  if (!view.value || !viewport) return;
+  requestAnimationFrame(() => {
+    if (!view.value) return;
+    view.value.scrollDOM.scrollTo({
+      top: viewport.scrollTop,
+      left: viewport.scrollLeft,
+    });
+  });
+}
 
 function openSearch(): boolean {
   return searchPanelRef.value?.openSearch() ?? false;

@@ -1124,6 +1124,10 @@ onUnmounted(() => {
                     @editor-update="(tabId: string, v: string) => queryStore.updateSql(tabId, v)"
                     @editor-selection-change="(v: string) => (selectedSql = v)"
                     @editor-cursor-change="(p: number) => (cursorPos = p)"
+                    @editor-viewport-change="
+                      (tabId: string, viewport: { scrollTop: number; scrollLeft: number }) =>
+                        queryStore.updateEditorViewport(tabId, viewport)
+                    "
                     @format-error="toast(t('toolbar.formatSqlFailed'))"
                     @save-sql="void openSaveSqlDialog()"
                     @reload="

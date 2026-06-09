@@ -396,6 +396,10 @@ export interface QueryTab {
   isExecuting: boolean;
   isCancelling?: boolean;
   queryExecutionStartedAt?: number;
+  editorViewport?: {
+    scrollTop: number;
+    scrollLeft: number;
+  };
   executionId?: string;
   isExplaining?: boolean;
   explainExecutionId?: string;
