@@ -839,7 +839,7 @@ mod tests {
 
         assert_eq!(
             statements,
-            vec!["INSERT INTO `flags` (`enabled`, `mask`, `label`) VALUES (b'1', b'1010', '1010'), (0, 3, 'off');"]
+            vec!["INSERT INTO `flags` (`enabled`, `mask`, `label`) VALUES (b'1', b'1010', '1010'), (b'0', 3, 'off');"]
         );
     }
 

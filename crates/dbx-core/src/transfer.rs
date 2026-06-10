@@ -478,24 +478,25 @@ pub fn escape_value_typed(val: &serde_json::Value, db_type: &DatabaseType, colum
                 }
             }
         },
-        serde_json::Value::Number(n) => {
-            if column_type.is_some_and(is_mysql_bit_type) {
-                format!("b'{}'", n.to_string())
-            } else {
-                n.to_string()
+        serde_json::Value::Number(n) => match db_type {
+            DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks => {
+                if column_type.is_some_and(is_mysql_bit_type) {
+                    format!("b'{}'", n.to_string())
+                } else {
+                    n.to_string()
+                }
             }
-        }
+            _ => n.to_string(),
+        },
         serde_json::Value::String(s) => {
-            if column_type.is_some_and(is_mysql_bit_type) {
-                format!(
-                    "b'{}'",
-                    format_literal_string(s, db_type, column_type).replace('\\', "\\\\").replace('\'', "''")
-                )
-            } else {
-                format!(
-                    "'{}'",
-                    format_literal_string(s, db_type, column_type).replace('\\', "\\\\").replace('\'', "''")
-                )
+            let escaped = format_literal_string(s, db_type, column_type).replace('\\', "\\\\").replace('\'', "''");
+            match db_type {
+                DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks
+                    if column_type.is_some_and(is_mysql_bit_type) =>
+                {
+                    format!("b'{escaped}'")
+                }
+                _ => format!("'{escaped}'"),
             }
         }
         serde_json::Value::Array(arr) => match db_type {
