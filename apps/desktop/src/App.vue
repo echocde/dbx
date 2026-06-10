@@ -493,6 +493,7 @@ function getDbTypeFromPath(path: string): "sqlite" | "duckdb" | null {
 
 async function openDbFilePath(path: string) {
   if (!isTauriRuntime()) return;
+  await connectionStore.initFromDisk();
   try {
     const name = path.split("/").pop()?.split("\\").pop() || path;
     const dbType = getDbTypeFromPath(path);
@@ -550,6 +551,7 @@ async function openPendingDbFiles() {
 }
 
 async function openConnectionDeepLink(url: string) {
+  await connectionStore.initFromDisk();
   try {
     const draft = parseConnectionDeepLink(url);
     if (!draft) return;
