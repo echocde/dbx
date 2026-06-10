@@ -262,6 +262,46 @@ test("keeps explicit alias column suggestions scoped to the alias table", () => 
   );
 });
 
+test("does not show table names after an explicit alias qualifier", () => {
+  const sql = "select * from billing_owner b where b.";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: [
+      { name: "base_gateway_expand", schema: "BU", type: "table" },
+      { name: "billing_owner", schema: "BU", type: "table" },
+    ],
+    columnsByTable: new Map(),
+  });
+
+  assert.deepEqual(items, []);
+});
+
+test("suggests columns after an explicit alias qualifier without leaking tables", () => {
+  const sql = "select * from billing_owner b where b.";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: [
+      { name: "base_gateway_expand", schema: "BU", type: "table" },
+      { name: "billing_owner", schema: "BU", type: "table" },
+    ],
+    columnsByTable: new Map([
+      [
+        "BU.billing_owner",
+        [
+          { name: "owner_id", table: "billing_owner", schema: "BU", dataType: "number" },
+          { name: "owner_name", table: "billing_owner", schema: "BU", dataType: "varchar" },
+        ],
+      ],
+    ]),
+  });
+
+  assert.deepEqual(
+    items.map((item) => [item.label, item.type, item.detail]),
+    [
+      ["owner_id", "column", "BU.billing_owner  [number]"],
+      ["owner_name", "column", "BU.billing_owner  [varchar]"],
+    ],
+  );
+});
+
 test("shows column comments in WHERE field completions", () => {
   const sql = "select * from public.orders where st";
   const items = buildSqlCompletionItems(sql, sql.length, {
