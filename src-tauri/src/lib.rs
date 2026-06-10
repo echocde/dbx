@@ -61,14 +61,14 @@ fn open_connection_deep_links(app: &tauri::AppHandle, links: Vec<String>) {
 #[cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 fn setup_desktop_tray<R: tauri::Runtime, M: Manager<R>>(
     manager: &M,
-    icon_theme: DesktopIconTheme,
+    _icon_theme: DesktopIconTheme,
 ) -> tauri::Result<()> {
     let menu = MenuBuilder::new(manager).text("show", "Show DBX").separator().text("quit", "Quit DBX").build()?;
     let mut tray =
         TrayIconBuilder::<R>::with_id(DESKTOP_TRAY_ID).tooltip("DBX").menu(&menu).show_menu_on_left_click(false);
     #[cfg(target_os = "macos")]
     {
-        match icon_theme {
+        match _icon_theme {
             DesktopIconTheme::Default => {
                 tray = tray.icon(MACOS_TRAY_ICON).icon_as_template(true);
             }
@@ -79,7 +79,7 @@ fn setup_desktop_tray<R: tauri::Runtime, M: Manager<R>>(
     }
     #[cfg(target_os = "windows")]
     {
-        let icon = match icon_theme {
+        let icon = match _icon_theme {
             DesktopIconTheme::Default => manager.app_handle().default_window_icon().cloned(),
             DesktopIconTheme::Black => Some(BLACK_APP_ICON),
         };
