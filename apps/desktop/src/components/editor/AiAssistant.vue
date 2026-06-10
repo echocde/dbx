@@ -719,7 +719,7 @@ const messageRenderer = computed(() => {
                   <span>{{ t("ai.reasoningProcess") }}</span>
                 </button>
                 <div
-                  class="overflow-hidden transition-all duration-200 ease-in-out"
+                  class="overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out"
                   :style="{
                     maxHeight: expandedReasoning.has(i) || msg.isThinking ? '20000px' : '0px',
                     opacity: expandedReasoning.has(i) || msg.isThinking ? '1' : '0',

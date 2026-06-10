@@ -6685,7 +6685,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 {{ t("grid.tableInfoNoResults") }}
               </div>
               <table v-else class="w-full text-xs">
-                <thead class="sticky top-0 bg-muted/80 backdrop-blur text-muted-foreground">
+                <thead class="sticky top-0 bg-muted text-muted-foreground">
                   <tr class="border-b">
                     <th class="text-left font-medium px-3 py-2">{{ t("grid.columnName") }}</th>
                     <th class="text-left font-medium px-3 py-2">{{ t("grid.columnType") }}</th>
@@ -7218,7 +7218,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
         <div class="min-h-0 flex-1 overflow-auto rounded border">
           <table class="w-full min-w-[640px] text-xs">
-            <thead class="sticky top-0 z-10 bg-muted/80 text-muted-foreground backdrop-blur">
+            <thead class="sticky top-0 z-10 bg-muted text-muted-foreground">
               <tr class="border-b">
                 <th class="w-16 px-3 py-2 text-left font-medium">{{ t("grid.fieldIndex") }}</th>
                 <th class="w-56 px-3 py-2 text-left font-medium">{{ t("grid.columnName") }}</th>
@@ -7319,7 +7319,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
 
         <div class="min-h-0 flex-1 overflow-auto rounded border">
           <table class="w-full min-w-[500px] text-xs">
-            <thead class="sticky top-0 z-10 bg-muted/80 text-muted-foreground backdrop-blur">
+            <thead class="sticky top-0 z-10 bg-muted text-muted-foreground">
               <tr class="border-b">
                 <th class="w-24 px-3 py-2 text-left font-medium">{{ t("grid.rowNumber") }}</th>
                 <th class="px-3 py-2 text-left font-medium">{{ t("grid.cellValue") }}</th>

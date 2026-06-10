@@ -94,6 +94,7 @@ export interface ConnectionConfig {
   redis_sentinel_password?: string;
   redis_sentinel_tls?: boolean;
   redis_cluster_nodes?: string;
+  redis_key_separator?: string;
   etcd_endpoints?: string;
   one_time?: boolean;
   read_only?: boolean;
