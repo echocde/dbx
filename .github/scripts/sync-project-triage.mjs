@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
 const DEFAULT_PROJECT_OWNER = "t8y2";
 const DEFAULT_PROJECT_NUMBER = 1;
 const DEFAULT_REPO = "t8y2/dbx";
-const execFileAsync = promisify(execFile);
 
 function parseArgs(argv) {
   const args = {};
@@ -66,32 +62,24 @@ function gqlNullableString(value) {
 
 async function graphql(query, token) {
   const t = token || repoTokens[0];
-  const args = [
-    "api",
-    "graphql",
-    "-f",
-    `query=${query}`,
-  ];
+  const resp = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers: {
+      Authorization: `bearer ${t}`,
+      "Content-Type": "application/json",
+      "User-Agent": "dbx-project-triage/1.0",
+    },
+    body: JSON.stringify({ query }),
+  });
 
-  try {
-    const { stdout } = await execFileAsync("gh", args, {
-      env: {
-        ...process.env,
-        GH_TOKEN: t,
-        GITHUB_TOKEN: t,
-      },
-      maxBuffer: 10 * 1024 * 1024,
-    });
-
-    const payload = JSON.parse(stdout);
-    if (payload.errors) {
-      throw new Error(`GraphQL request failed: ${JSON.stringify(payload.errors)}`);
-    }
-    return payload.data;
-  } catch (error) {
-    const details = error.stderr?.trim() || error.stdout?.trim() || error.message;
-    throw new Error(`GraphQL request failed: ${details}`);
+  const payload = await resp.json();
+  if (payload.errors) {
+    throw new Error(`GraphQL request failed: ${JSON.stringify(payload.errors)}`);
   }
+  if (!resp.ok) {
+    throw new Error(`GraphQL request failed: HTTP ${resp.status} ${resp.statusText}`);
+  }
+  return payload.data;
 }
 
 function triageName(issue) {
