@@ -530,7 +530,9 @@ mod tests {
         decrypt_sensitive_payload, encrypt_sensitive_payload, normalized_remote_path, parent_collection_paths,
         scrub_connection_secrets, ConnectionSecretSnapshot, SensitiveSyncPayload,
     };
-    use crate::models::connection::{ConnectionConfig, DatabaseType, TransportLayerConfig};
+    use crate::models::connection::{
+        default_redis_key_separator, ConnectionConfig, DatabaseType, TransportLayerConfig,
+    };
 
     #[test]
     fn normalizes_empty_remote_path_to_default() {
@@ -591,6 +593,7 @@ mod tests {
             redis_sentinel_password: "sentinel".to_string(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            redis_key_separator: default_redis_key_separator(),
             etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,

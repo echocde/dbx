@@ -220,6 +220,7 @@
     redisSentinelPassword: "Password Sentinel",
     redisSentinelTls: "TLS Sentinel",
     redisSentinelTlsHint: "Usa TLS quando ti connetti ai nodi Sentinel",
+    redisKeySeparator: "Separatore namespace chiavi",
     searchDatabasePlaceholder: "Cerca tipi di database",
     iconView: "Vista icone",
     listView: "Vista elenco",

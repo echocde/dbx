@@ -222,6 +222,7 @@
     redisSentinelPassword: "Sentinel Password",
     redisSentinelTls: "Sentinel TLS",
     redisSentinelTlsHint: "Use TLS when connecting to Sentinel nodes",
+    redisKeySeparator: "Key Namespace Separator",
     etcdEndpoints: "Endpoints",
     etcdEndpointsHint: "One endpoint per line. Leave blank to use the host and port above.",
     etcdCaCertPlaceholder: "/path/to/ca.crt",

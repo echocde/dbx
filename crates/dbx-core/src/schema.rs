@@ -1,6 +1,6 @@
 use crate::connection::{connection_url_for_endpoint, database_connection_config, AppState, MysqlMode, PoolKind};
 use crate::db;
-use crate::models::connection::{ConnectionConfig, DatabaseType};
+use crate::models::connection::{default_redis_key_separator, ConnectionConfig, DatabaseType};
 use crate::query::{agent_execute_query_params, QueryExecutionOptions};
 use std::collections::HashSet;
 use std::future::Future;
@@ -614,7 +614,7 @@ mod tests {
         duckdb_query_tables_in_database, filter_objects_by_types, filter_yashandb_recyclebin_objects,
         filter_yashandb_recyclebin_tables, is_agent_postgres_metadata_fallback_config,
     };
-    use crate::models::connection::{ConnectionConfig, DatabaseType};
+    use crate::models::connection::{default_redis_key_separator, ConnectionConfig, DatabaseType};
 
     fn test_column(name: &str, comment: Option<&str>, is_primary_key: bool) -> super::db::ColumnInfo {
         super::db::ColumnInfo {
@@ -665,6 +665,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            redis_key_separator: default_redis_key_separator(),
             etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,

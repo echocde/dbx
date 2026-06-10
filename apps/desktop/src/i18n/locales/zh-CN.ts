@@ -223,6 +223,7 @@
     redisSentinelPassword: "哨兵密码",
     redisSentinelTls: "哨兵 TLS",
     redisSentinelTlsHint: "连接 Sentinel 节点时使用 TLS",
+    redisKeySeparator: "键名命名空间分隔符",
     etcdEndpoints: "Endpoints",
     etcdEndpointsHint: "每行一个 endpoint。留空时使用上面的 host 和端口。",
     etcdCaCertPlaceholder: "/path/to/ca.crt",

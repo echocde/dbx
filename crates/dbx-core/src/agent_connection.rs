@@ -1,6 +1,6 @@
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 
-use crate::models::connection::{ConnectionConfig, DatabaseType};
+use crate::models::connection::{default_redis_key_separator, ConnectionConfig, DatabaseType};
 use crate::path_utils::expand_tilde;
 
 pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, database: &str) -> serde_json::Value {
@@ -428,6 +428,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            redis_key_separator: default_redis_key_separator(),
             etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,

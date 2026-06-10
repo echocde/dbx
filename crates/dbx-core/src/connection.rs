@@ -19,7 +19,8 @@ use crate::db::proxy_tunnel::ProxyTunnelManager;
 use crate::db::ssh_tunnel::TunnelManager;
 use crate::external;
 use crate::models::connection::{
-    parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host, ConnectionConfig, DatabaseType,
+    default_redis_key_separator, parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host, ConnectionConfig,
+    DatabaseType,
 };
 use crate::path_utils::expand_tilde;
 use crate::plugins::{PluginDriverSession, PluginRegistry, PluginRuntimeEnv};
@@ -1205,8 +1206,8 @@ mod tests {
     use crate::agent_manager::{AgentState, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY};
     use crate::db;
     use crate::models::connection::{
-        default_connect_timeout_secs, ConnectionConfig, DatabaseType, ProxyTunnelConfig, ProxyType,
-        TransportLayerConfig,
+        default_connect_timeout_secs, default_redis_key_separator, ConnectionConfig, DatabaseType, ProxyTunnelConfig,
+        ProxyType, TransportLayerConfig,
     };
     use crate::query;
     use crate::schema;
@@ -1246,6 +1247,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            redis_key_separator: default_redis_key_separator(),
             etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,

@@ -25,6 +25,7 @@ export interface ConnectionConfig {
   redis_sentinel_username?: string;
   redis_sentinel_password?: string;
   redis_sentinel_tls?: boolean;
+  redis_key_separator?: string;
   read_only?: boolean;
 }
 

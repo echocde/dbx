@@ -215,6 +215,7 @@
     redisSentinelPassword: "Contraseña Sentinel",
     redisSentinelTls: "TLS Sentinel",
     redisSentinelTlsHint: "Usar TLS al conectar con nodos Sentinel",
+    redisKeySeparator: "Separador de espacio de nombres de clave",
     searchDatabasePlaceholder: "Buscar tipos de bases de datos",
     iconView: "Vista de íconos",
     listView: "Vista de lista",

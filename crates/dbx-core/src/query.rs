@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::connection::{AppState, PoolKind};
 use crate::db;
-use crate::models::connection::DatabaseType;
+use crate::models::connection::{default_redis_key_separator, DatabaseType};
 use crate::sql::{split_sql_batches, split_sql_statements, starts_with_duckdb_result_sql_keyword};
 
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1848,6 +1848,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
+            redis_key_separator: default_redis_key_separator(),
             etcd_endpoints: String::new(),
             external_config: None,
             jdbc_driver_class: None,

@@ -119,6 +119,7 @@ const defaultForm = (): ConnectionForm => ({
   redis_sentinel_password: "",
   redis_sentinel_tls: false,
   redis_cluster_nodes: "",
+  redis_key_separator: ":",
   etcd_endpoints: "",
   read_only: false,
   visible_databases: undefined,
@@ -545,6 +546,7 @@ watch(
         redis_sentinel_password: config.redis_sentinel_password || "",
         redis_sentinel_tls: config.redis_sentinel_tls || false,
         redis_cluster_nodes: config.redis_cluster_nodes || "",
+        redis_key_separator: config.redis_key_separator || ":",
         etcd_endpoints: config.etcd_endpoints || "",
         read_only: config.read_only || false,
         visible_databases: config.visible_databases,
@@ -1057,6 +1059,7 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
     config.redis_sentinel_password = undefined;
     config.redis_sentinel_tls = undefined;
     config.redis_cluster_nodes = undefined;
+    config.redis_key_separator = undefined;
   } else if (config.redis_connection_mode === "sentinel") {
     config.redis_sentinel_master = config.redis_sentinel_master?.trim() || "";
     config.redis_sentinel_nodes = normalizeRedisSentinelNodes(config.redis_sentinel_nodes || "");
@@ -1087,6 +1090,9 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
     config.redis_sentinel_password = undefined;
     config.redis_sentinel_tls = undefined;
     config.redis_cluster_nodes = undefined;
+  }
+  if (config.db_type === "redis") {
+    config.redis_key_separator = config.redis_key_separator?.trim() || ":";
   }
   if (config.db_type === "etcd") {
     config.etcd_endpoints = normalizeEndpointLines(config.etcd_endpoints || "");
@@ -2375,6 +2381,10 @@ function openExternalUrl(url: string) {
                   <div class="grid grid-cols-4 items-center gap-4">
                     <Label class="text-right">{{ t("connection.password") }}</Label>
                     <Input v-model="form.password" type="password" class="col-span-3" :placeholder="t('connection.databasePlaceholder')" />
+                  </div>
+                  <div class="grid grid-cols-4 items-center gap-4">
+                    <Label class="text-right text-xs">{{ t("connection.redisKeySeparator") }}</Label>
+                    <Input v-model="form.redis_key_separator" class="col-span-3 h-8 text-xs" placeholder=":" />
                   </div>
                 </template>
 

@@ -220,6 +220,7 @@
     redisSentinelPassword: "Sentinel 密碼",
     redisSentinelTls: "Sentinel TLS",
     redisSentinelTlsHint: "連線 Sentinel 節點時使用 TLS",
+    redisKeySeparator: "鍵名命名空間分隔符",
     searchDatabasePlaceholder: "搜尋資料庫類型",
     iconView: "圖示檢視",
     listView: "清單檢視",

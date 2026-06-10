@@ -104,6 +104,7 @@ const effectivePattern = computed(() => (searchMode.value === "key" ? redisKeySe
 const isSearchMode = computed(() => (searchMode.value === "key" ? effectivePattern.value !== "*" : valueQuery.value !== ""));
 const searchPlaceholder = computed(() => (searchMode.value === "key" ? (fuzzyKeySearch.value ? t("redis.fuzzyPattern") : t("redis.pattern")) : t("redis.valueSearchPlaceholder")));
 const loadingEmptyText = computed(() => (searchMode.value === "value" && valueQuery.value ? t("redis.searchingValues") : t("redis.loadingKeys")));
+const redisKeySeparator = computed(() => connectionStore.getConfig(props.connectionId)?.redis_key_separator || ":");
 const lastTotalKeys = ref(0);
 const fetchAllProgressText = computed(() => {
   if (!isFetchingAll.value) return "";
@@ -151,7 +152,7 @@ function countLeaves(node: RedisKeyTreeNode): number {
 }
 
 function rebuildTree(expandAll = false) {
-  const nextTree = buildRedisKeyTree(flatKeys.value, props.db);
+  const nextTree = buildRedisKeyTree(flatKeys.value, props.db, redisKeySeparator.value);
   treeKeys.value = nextTree;
 
   const nextExpanded = new Set<string>();
@@ -172,7 +173,7 @@ function rebuildTree(expandAll = false) {
 
 function mergeTree(newKeys: RedisKeyInfo[]) {
   if (newKeys.length === 0) return;
-  treeKeys.value = mergeKeysIntoRedisKeyTree(treeKeys.value, newKeys, props.db);
+  treeKeys.value = mergeKeysIntoRedisKeyTree(treeKeys.value, newKeys, props.db, redisKeySeparator.value);
 
   const availableExpanded = collectExpandedGroupIds(treeKeys.value);
   const nextExpanded = new Set<string>();
