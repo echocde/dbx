@@ -33,11 +33,24 @@ interface BuildMetadataParams {
   lastModified?: Date;
 }
 
-export function buildMetadata({ title, description, path, lang, ogType = "website", images }: BuildMetadataParams): Metadata {
+export function buildMetadata({
+  title,
+  description,
+  path,
+  lang,
+  ogType = "website",
+  images,
+  lastModified,
+}: BuildMetadataParams): Metadata {
   const canonical = `${SITE_URL}${path}`;
   const locale = LOCALE_MAP[lang] ?? "en_US";
+  const ogImages = images?.map((url) => ({
+    url,
+    width: url === DEFAULT_OG_IMAGE ? 512 : 1200,
+    height: url === DEFAULT_OG_IMAGE ? 512 : 630,
+  })) ?? [{ url: DEFAULT_OG_IMAGE, width: 512, height: 512 }];
 
-  return {
+  const base: Metadata = {
     title,
     description,
     alternates: {
@@ -55,7 +68,7 @@ export function buildMetadata({ title, description, path, lang, ogType = "websit
       siteName: SITE_NAME,
       type: ogType,
       locale,
-      images: images?.map((url) => ({ url })) ?? [{ url: DEFAULT_OG_IMAGE }],
+      images: ogImages,
     },
     twitter: {
       card: "summary_large_image",
@@ -63,5 +76,14 @@ export function buildMetadata({ title, description, path, lang, ogType = "websit
       description,
       images: images ?? [DEFAULT_OG_IMAGE],
     },
+    other: {
+      "og:image:alt": title,
+    },
   };
+
+  if (lastModified) {
+    base.other = { ...base.other, "article:modified_time": lastModified.toISOString() };
+  }
+
+  return base;
 }

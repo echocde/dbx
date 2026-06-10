@@ -24,29 +24,80 @@ export const metadata: Metadata = {
   },
 };
 
+const WEBSITE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: SITE_NAME,
+  url: SITE_URL,
+  description: DEFAULT_DESCRIPTION,
+  potentialAction: {
+    "@type": "SearchAction",
+    target: {
+      "@type": "EntryPoint",
+      urlTemplate: `${SITE_URL}/search?q={search_term_string}`,
+    },
+    "query-input": "required name=search_term_string",
+  },
+} as const;
+
+const SOFTWARE_APP_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: SITE_NAME,
+  url: SITE_URL,
+  description: DEFAULT_DESCRIPTION,
+  applicationCategory: "Database Management",
+  operatingSystem: ["Windows", "macOS", "Linux", "Docker"],
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  author: {
+    "@type": "Organization",
+    name: SITE_NAME,
+    url: SITE_URL,
+  },
+  releaseNotes: `${SITE_URL}/en/changelog`,
+  screenshot: `${SITE_URL}/screenshot-dark.png`,
+  featureList: [
+    "Multiple database support (MySQL, PostgreSQL, SQLite, Redis, MongoDB, DuckDB, ClickHouse, SQL Server, Oracle)",
+    "AI-powered SQL generation and explanation",
+    "MCP Server integration for AI coding agents",
+    "Schema browser and diff tools",
+    "Data grid with inline editing",
+    "SSH tunnel support",
+    "Docker self-hosting",
+  ],
+} as const;
+
+const ORG_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: SITE_NAME,
+  url: SITE_URL,
+  description: DEFAULT_DESCRIPTION,
+  sameAs: [
+    "https://github.com/t8y2/dbx",
+    "https://www.npmjs.com/package/@dbx-app/mcp-server",
+  ],
+} as const;
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html suppressHydrationWarning>
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "WebSite",
-              name: SITE_NAME,
-              url: SITE_URL,
-              description: DEFAULT_DESCRIPTION,
-              potentialAction: {
-                "@type": "SearchAction",
-                target: {
-                  "@type": "EntryPoint",
-                  urlTemplate: `${SITE_URL}/search?q={search_term_string}`,
-                },
-                "query-input": "required name=search_term_string",
-              },
-            }),
-          }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_SCHEMA) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(SOFTWARE_APP_SCHEMA) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ORG_SCHEMA) }}
         />
       </head>
       <body className="flex min-h-screen flex-col">{children}</body>
