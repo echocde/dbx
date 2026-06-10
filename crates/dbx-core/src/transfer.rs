@@ -11,6 +11,7 @@ use crate::object_source_sql::{build_executable_object_source_statements, Editab
 use crate::query::{agent_execute_query_params, QueryExecutionOptions};
 #[cfg(feature = "duckdb-bundled")]
 use crate::sql::starts_with_executable_sql_keyword;
+use crate::sql_dialect::{qualified_transfer_table, quote_transfer_identifier};
 
 static CANCELLED: std::sync::LazyLock<RwLock<HashSet<String>>> =
     std::sync::LazyLock::new(|| RwLock::new(HashSet::new()));
@@ -69,24 +70,11 @@ pub enum TransferStatus {
 }
 
 pub fn quote_identifier(name: &str, db_type: &DatabaseType) -> String {
-    match db_type {
-        DatabaseType::Mysql
-        | DatabaseType::ClickHouse
-        | DatabaseType::Doris
-        | DatabaseType::StarRocks
-        | DatabaseType::Hive => format!("`{}`", name.replace('`', "``")),
-        DatabaseType::SqlServer => format!("[{}]", name.replace(']', "]]")),
-        _ => format!("\"{}\"", name.replace('"', "\"\"")),
-    }
+    quote_transfer_identifier(name, db_type)
 }
 
 pub fn qualified_table(table: &str, schema: &str, db_type: &DatabaseType) -> String {
-    let qt = quote_identifier(table, db_type);
-    if schema.is_empty() || matches!(db_type, DatabaseType::Mysql | DatabaseType::MongoDb) {
-        qt
-    } else {
-        format!("{}.{}", quote_identifier(schema, db_type), qt)
-    }
+    qualified_transfer_table(table, schema, db_type)
 }
 
 fn quote_string_literal(value: &str) -> String {
