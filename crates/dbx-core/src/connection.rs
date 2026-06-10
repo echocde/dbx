@@ -30,6 +30,20 @@ use crate::storage::Storage;
 pub const JDBC_PLUGIN_NOT_INSTALLED: &str =
     "JDBC plugin is not installed. Install the optional JDBC plugin to use this connection.";
 
+#[cfg(feature = "duckdb-bundled")]
+mod duckdb_types {
+    use std::sync::Arc;
+    pub type DuckDbHandle = Arc<std::sync::Mutex<duckdb::Connection>>;
+    pub type ExternalTabularHandle = Arc<crate::external::ExternalPool>;
+}
+#[cfg(not(feature = "duckdb-bundled"))]
+mod duckdb_types {
+    pub type DuckDbHandle = ();
+    pub type ExternalTabularHandle = ();
+}
+
+use duckdb_types::{DuckDbHandle, ExternalTabularHandle};
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MysqlMode {
     Normal,
@@ -44,14 +58,14 @@ pub enum PoolKind {
     Rqlite(db::rqlite_driver::RqliteClient),
     Turso(db::turso_driver::TursoClient),
     Redis(db::redis_driver::RedisConnection),
-    DuckDb(Arc<std::sync::Mutex<duckdb::Connection>>),
+    DuckDb(DuckDbHandle),
     MongoDb(mongodb::Client),
     ClickHouse(db::clickhouse_driver::ChClient),
     SqlServer(Arc<tokio::sync::Mutex<db::sqlserver::SqlServerClient>>),
     Elasticsearch(db::elasticsearch_driver::EsClient),
     InfluxDb(db::influxdb_driver::InfluxdbClient),
     Agent(Arc<tokio::sync::Mutex<db::agent_driver::AgentDriverClient>>),
-    ExternalTabular(Arc<external::ExternalPool>),
+    ExternalTabular(ExternalTabularHandle),
     ExternalDriver { driver_id: String, config: Arc<ConnectionConfig>, session: Arc<PluginDriverSession> },
 }
 
@@ -405,6 +419,7 @@ impl AppState {
                 };
                 PoolKind::Redis(con)
             }
+            #[cfg(feature = "duckdb-bundled")]
             DatabaseType::DuckDb => {
                 let con = db::duckdb_driver::connect_path(&expand_tilde(&db_config.host))?;
                 {
@@ -414,6 +429,10 @@ impl AppState {
                     }
                 }
                 PoolKind::DuckDb(con)
+            }
+            #[cfg(not(feature = "duckdb-bundled"))]
+            DatabaseType::DuckDb => {
+                return Err("DuckDB support is not compiled in this build. Rebuild with default features.".to_string());
             }
             DatabaseType::MongoDb => {
                 let native_err = match db::mongo_driver::connect(&url, connect_timeout, idle_timeout).await {
@@ -747,6 +766,7 @@ impl AppState {
         keys
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     pub async fn duckdb_existing_pool_is_usable_for_config(&self, config: &ConnectionConfig) -> Result<bool, String> {
         if config.db_type != DatabaseType::DuckDb {
             return Ok(false);
@@ -968,9 +988,12 @@ pub async fn close_pool_kind(pool: PoolKind) {
         PoolKind::Rqlite(_) => {}
         PoolKind::Turso(_) => {}
         PoolKind::Redis(_) => {}
+        #[cfg(feature = "duckdb-bundled")]
         PoolKind::DuckDb(con) => {
             crate::db::duckdb_driver::close_connection(con);
         }
+        #[cfg(not(feature = "duckdb-bundled"))]
+        PoolKind::DuckDb(_) => {}
         PoolKind::MongoDb(_) => {}
         PoolKind::ClickHouse(_) => {}
         PoolKind::SqlServer(_) => {}
@@ -1085,21 +1108,29 @@ fn native_postgres_url_config(config: &ConnectionConfig) -> Option<ConnectionCon
 }
 
 fn duckdb_paths_match(left: &str, right: &str) -> bool {
-    let left = expand_tilde(left);
-    let right = expand_tilde(right);
+    #[cfg(feature = "duckdb-bundled")]
+    {
+        let left = expand_tilde(left);
+        let right = expand_tilde(right);
 
-    if db::duckdb_driver::is_memory_database_path(&left) || db::duckdb_driver::is_memory_database_path(&right) {
-        return left.trim().eq_ignore_ascii_case(right.trim());
+        if db::duckdb_driver::is_memory_database_path(&left) || db::duckdb_driver::is_memory_database_path(&right) {
+            return left.trim().eq_ignore_ascii_case(right.trim());
+        }
+
+        if let (Ok(left_path), Ok(right_path)) = (std::fs::canonicalize(&left), std::fs::canonicalize(&right)) {
+            return left_path == right_path;
+        }
+
+        if cfg!(windows) {
+            left.eq_ignore_ascii_case(&right)
+        } else {
+            left == right
+        }
     }
-
-    if let (Ok(left_path), Ok(right_path)) = (std::fs::canonicalize(&left), std::fs::canonicalize(&right)) {
-        return left_path == right_path;
-    }
-
-    if cfg!(windows) {
-        left.eq_ignore_ascii_case(&right)
-    } else {
-        left == right
+    #[cfg(not(feature = "duckdb-bundled"))]
+    {
+        let _ = (left, right);
+        false
     }
 }
 
@@ -1926,6 +1957,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     #[tokio::test]
     async fn duckdb_existing_pool_can_be_used_for_connection_test() {
         let (state, dir) = test_app_state().await;

@@ -241,6 +241,15 @@ pnpm install
 pnpm dev:tauri
 ```
 
+> [!TIP]
+> DuckDB compilation takes a while. If you're not working on DuckDB features,
+> skip it to speed up local builds:
+>
+> ```bash
+> cargo check --no-default-features
+> cargo test  --no-default-features
+> ```
+
 Web version:
 
 ```bash

@@ -1672,6 +1672,7 @@ pub async fn execute_on_pool_with_max_rows(
             );
             client.execute_query(params).await
         }
+        #[cfg(feature = "duckdb-bundled")]
         PoolKind::DuckDb(con) => {
             let con = con.clone();
             let sql = sql.to_string();
@@ -1741,6 +1742,7 @@ pub async fn execute_on_pool_with_max_rows(
             .await
             .map_err(|e| e.to_string())?
         }
+        #[cfg(feature = "duckdb-bundled")]
         PoolKind::ExternalTabular(ext_pool) => {
             let con = ext_pool.cache.clone();
             let sql = sql.to_string();
@@ -1781,6 +1783,7 @@ pub async fn get_columns_for_transfer(
 ) -> Result<Vec<db::ColumnInfo>, String> {
     let connections = state.connections.read().await;
 
+    #[cfg(feature = "duckdb-bundled")]
     if let Some(PoolKind::DuckDb(con)) = connections.get(pool_key) {
         let con = con.clone();
         drop(connections);
@@ -1794,6 +1797,7 @@ pub async fn get_columns_for_transfer(
         .map_err(|e| e.to_string())?;
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     if let Some(PoolKind::ExternalTabular(ext_pool)) = connections.get(pool_key) {
         let con = ext_pool.cache.clone();
         drop(connections);
@@ -3127,6 +3131,7 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    #[cfg(feature = "duckdb-bundled")]
     fn duckdb_test_config(id: &str) -> crate::models::connection::ConnectionConfig {
         crate::models::connection::ConnectionConfig {
             id: id.to_string(),
@@ -3731,6 +3736,7 @@ mod tests {
         assert!(statements[0].contains("ON DUPLICATE KEY UPDATE"));
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     #[tokio::test]
     async fn duckdb_transfer_columns_use_requested_schema() {
         let dir = std::env::temp_dir().join(format!("dbx-transfer-test-{}", uuid::Uuid::new_v4()));

@@ -135,6 +135,7 @@ enum StructureDialect {
     Mysql,
     Postgres,
     Sqlite,
+    #[cfg(feature = "duckdb-bundled")]
     DuckDb,
     SqlServer,
     Oracle,
@@ -256,6 +257,7 @@ fn capabilities_for(database_type: Option<DatabaseType>) -> TableStructureCapabi
             index_filter: true,
             ..base
         },
+        #[cfg(feature = "duckdb-bundled")]
         Some(DatabaseType::DuckDb) => TableStructureCapabilities {
             dialect: StructureDialect::DuckDb,
             add_column: true,
@@ -1750,6 +1752,7 @@ fn dialect_label(dialect: StructureDialect) -> String {
         StructureDialect::Mysql => "mysql",
         StructureDialect::Postgres => "postgres",
         StructureDialect::Sqlite => "sqlite",
+        #[cfg(feature = "duckdb-bundled")]
         StructureDialect::DuckDb => "duckdb",
         StructureDialect::SqlServer => "sqlserver",
         StructureDialect::Oracle => "oracle",
@@ -1765,6 +1768,7 @@ fn database_type_for_dialect(dialect: StructureDialect) -> Option<DatabaseType> 
         StructureDialect::Mysql => Some(DatabaseType::Mysql),
         StructureDialect::Postgres => Some(DatabaseType::Postgres),
         StructureDialect::Sqlite => Some(DatabaseType::Sqlite),
+        #[cfg(feature = "duckdb-bundled")]
         StructureDialect::DuckDb => Some(DatabaseType::DuckDb),
         StructureDialect::SqlServer => Some(DatabaseType::SqlServer),
         StructureDialect::Oracle => Some(DatabaseType::Oracle),
