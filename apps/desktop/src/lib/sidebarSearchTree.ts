@@ -5,6 +5,14 @@ const preserveMatchedSubtreeTypes = new Set(["database", "schema", "table", "vie
 
 const normalizedLabelCache = new WeakMap<TreeNode, { label: string; normalized: string }>();
 
+function bestMatch(matchLabel: SidebarLabelMatcher, label: string, comment?: string | null) {
+  const lm = matchLabel(label);
+  if (!comment) return lm;
+  const cm = matchLabel(comment.toLowerCase());
+  if (lm && cm) return lm.score >= cm.score ? lm : cm;
+  return lm ?? cm;
+}
+
 function normalizedLabel(node: TreeNode): string {
   const cached = normalizedLabelCache.get(node);
   if (cached?.label === node.label) return cached.normalized;
@@ -30,7 +38,7 @@ function filterSidebarTreeWithMatcher(nodes: TreeNode[], matchLabel: SidebarLabe
 
     const label = normalizedLabel(node);
     const canSelfMatch = !searchableNodeTypes || searchableNodeTypes.has(node.type);
-    const selfMatch = canSelfMatch ? matchLabel(label) : null;
+    const selfMatch = canSelfMatch ? bestMatch(matchLabel, label, node.comment) : null;
     const preservesSubtree = !!selfMatch && preserveMatchedSubtreeTypes.has(node.type);
     const filteredChildren = preservesSubtree ? node.children : node.children ? filterSidebarTreeWithMatcher(node.children, matchLabel, collapsedIds, searchableNodeTypes) : undefined;
 
