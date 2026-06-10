@@ -24,6 +24,7 @@ import {
   DEFAULT_DESKTOP_SETTINGS,
   type AiProvider,
   type AiApiStyle,
+  type AiAuthMethod,
   type EditorTheme,
   type DesktopIconTheme,
   type DisconnectTabHandlingMode,
@@ -915,6 +916,7 @@ const selectedAiProviderPreset = computed(() => AI_PROVIDER_PRESETS[aiEditProvid
 
 const aiEditProvider = ref<AiProvider>(settingsStore.aiConfig.provider);
 const aiEditApiKey = ref(settingsStore.aiConfig.apiKey);
+const aiEditAuthMethod = ref<AiAuthMethod>(settingsStore.aiConfig.authMethod || AI_PROVIDER_PRESETS[settingsStore.aiConfig.provider].authMethod);
 const aiEditEndpoint = ref(settingsStore.aiConfig.endpoint);
 const aiEditModel = ref(settingsStore.aiConfig.model);
 const aiEditApiStyle = ref<AiApiStyle>(settingsStore.aiConfig.apiStyle || "completions");
@@ -934,6 +936,13 @@ const aiTesting = ref(false);
 const aiTestResult = ref<"" | "success" | "error">("");
 const aiTestError = ref("");
 const aiRequiresApiKey = computed(() => AI_PROVIDER_PRESETS[aiEditProvider.value].requiresApiKey);
+const aiSupportsAuthMethod = computed(() => aiEditProvider.value === "claude");
+const aiCredentialLabel = computed(() => (aiSupportsAuthMethod.value && aiEditAuthMethod.value === "bearer" ? "Auth Token" : "API Key"));
+const aiCredentialPlaceholder = computed(() => {
+  if (!aiRequiresApiKey.value) return "Optional";
+  if (aiSupportsAuthMethod.value && aiEditAuthMethod.value === "bearer") return "ANTHROPIC_AUTH_TOKEN";
+  return "";
+});
 const aiSupportsApiStyle = computed(() => aiEditProvider.value === "openai" || aiEditProvider.value === "openai-compatible" || aiEditProvider.value === "custom");
 const aiModelListSupported = computed(() => aiEditProvider.value !== "gemini");
 const aiCanListModels = computed(() => aiModelListSupported.value && !!aiEditEndpoint.value.trim() && (!aiRequiresApiKey.value || !!aiEditApiKey.value.trim()));
@@ -957,6 +966,7 @@ function aiModelConfigSignature() {
     provider: aiEditProvider.value,
     endpoint: aiEditEndpoint.value.trim(),
     apiKey: aiEditApiKey.value.trim(),
+    authMethod: aiEditAuthMethod.value,
     proxyEnabled: aiEditProxyEnabled.value,
     proxyUrl: aiEditProxyUrl.value.trim(),
   });
@@ -966,6 +976,7 @@ function currentAiEditConfig() {
   return {
     provider: aiEditProvider.value,
     apiKey: aiEditApiKey.value,
+    authMethod: aiEditAuthMethod.value,
     endpoint: aiEditEndpoint.value,
     model: aiEditModel.value,
     apiStyle: aiEditApiStyle.value,
@@ -1038,6 +1049,7 @@ function aiSelectModel(modelId: string) {
 function syncAiEditState() {
   aiEditProvider.value = settingsStore.aiConfig.provider;
   aiEditApiKey.value = settingsStore.aiConfig.apiKey;
+  aiEditAuthMethod.value = settingsStore.aiConfig.authMethod || AI_PROVIDER_PRESETS[settingsStore.aiConfig.provider].authMethod;
   aiEditEndpoint.value = settingsStore.aiConfig.endpoint;
   aiEditModel.value = settingsStore.aiConfig.model;
   aiEditApiStyle.value = settingsStore.aiConfig.apiStyle || "completions";
@@ -1054,6 +1066,7 @@ function aiSelectProvider(provider: AiProvider) {
   aiEditEndpoint.value = AI_PROVIDER_PRESETS[provider].endpoint;
   aiEditModel.value = AI_PROVIDER_PRESETS[provider].model;
   aiEditApiStyle.value = AI_PROVIDER_PRESETS[provider].apiStyle;
+  aiEditAuthMethod.value = AI_PROVIDER_PRESETS[provider].authMethod;
   if (!AI_PROVIDER_PRESETS[provider].requiresApiKey) aiEditApiKey.value = "";
   clearAiModelOptions();
 }
@@ -1062,6 +1075,7 @@ function aiHasChanges(): boolean {
   return (
     aiEditProvider.value !== settingsStore.aiConfig.provider ||
     aiEditApiKey.value !== settingsStore.aiConfig.apiKey ||
+    aiEditAuthMethod.value !== (settingsStore.aiConfig.authMethod || AI_PROVIDER_PRESETS[settingsStore.aiConfig.provider].authMethod) ||
     aiEditEndpoint.value !== settingsStore.aiConfig.endpoint ||
     aiEditModel.value !== settingsStore.aiConfig.model ||
     aiEditApiStyle.value !== (settingsStore.aiConfig.apiStyle || "completions") ||
@@ -1929,9 +1943,22 @@ watch(
                   </Select>
                 </div>
 
+                <div v-if="aiSupportsAuthMethod" class="grid grid-cols-3 items-center gap-3">
+                  <Label class="text-right text-xs">Authentication</Label>
+                  <Select v-model="aiEditAuthMethod">
+                    <SelectTrigger class="col-span-2 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="api-key">API Key</SelectItem>
+                      <SelectItem value="bearer">Auth Token</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div class="grid grid-cols-3 items-center gap-3">
-                  <Label class="text-right text-xs">API Key</Label>
-                  <Input v-model="aiEditApiKey" type="password" autocomplete="off" class="col-span-2 h-8 text-xs" :placeholder="aiRequiresApiKey ? '' : 'Optional'" />
+                  <Label class="text-right text-xs">{{ aiCredentialLabel }}</Label>
+                  <Input v-model="aiEditApiKey" type="password" autocomplete="off" class="col-span-2 h-8 text-xs" :placeholder="aiCredentialPlaceholder" />
                 </div>
 
                 <div class="grid grid-cols-3 items-center gap-3">

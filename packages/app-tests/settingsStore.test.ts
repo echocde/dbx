@@ -239,6 +239,8 @@ test("AI provider presets include common hosted and local providers", () => {
   assert.equal(AI_PROVIDER_PRESETS.qwen.endpoint, "https://dashscope.aliyuncs.com/compatible-mode/v1");
   assert.equal(AI_PROVIDER_PRESETS.ollama.endpoint, "http://localhost:11434/v1");
   assert.equal(AI_PROVIDER_PRESETS.ollama.requiresApiKey, false);
+  assert.equal(AI_PROVIDER_PRESETS.claude.authMethod, "api-key");
+  assert.equal(AI_PROVIDER_PRESETS.openai.authMethod, "bearer");
   assert.equal(AI_PROVIDER_PRESETS.openai.iconSlug, "openai");
   assert.equal(AI_PROVIDER_PRESETS.deepseek.iconSlug, "deepseek");
 });
@@ -254,11 +256,16 @@ test("normalizes legacy AI config and fills provider defaults", () => {
   assert.equal(legacy.apiStyle, "completions");
   assert.equal(legacy.provider, "openai");
   assert.equal(legacy.apiKey, "key");
+  assert.equal(legacy.authMethod, "bearer");
 
   const ollama = normalizeAiConfig({ provider: "ollama" } as any);
   assert.equal(ollama.endpoint, "http://localhost:11434/v1");
   assert.equal(ollama.model, "llama3.1");
   assert.equal(ollama.apiKey, "");
+  assert.equal(ollama.authMethod, "bearer");
+
+  const claudeToken = normalizeAiConfig({ provider: "claude", apiKey: "token", authMethod: "bearer" } as any);
+  assert.equal(claudeToken.authMethod, "bearer");
 });
 
 test("infers legacy AI provider from saved endpoint and model", () => {

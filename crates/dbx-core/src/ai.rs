@@ -60,12 +60,22 @@ pub enum AiApiStyle {
     Responses,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum AiAuthMethod {
+    #[default]
+    ApiKey,
+    Bearer,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiConfig {
     pub provider: AiProvider,
     #[serde(default)]
     pub api_key: String,
+    #[serde(default)]
+    pub auth_method: AiAuthMethod,
     #[serde(default)]
     pub endpoint: String,
     #[serde(default)]
@@ -393,7 +403,17 @@ fn maybe_bearer_headers(config: &AiConfig) -> Result<HeaderMap, String> {
 fn claude_headers(config: &AiConfig) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert("x-api-key", HeaderValue::from_str(&config.api_key).map_err(|e| e.to_string())?);
+    match config.auth_method {
+        AiAuthMethod::Bearer => {
+            headers.insert(
+                AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {}", config.api_key)).map_err(|e| e.to_string())?,
+            );
+        }
+        AiAuthMethod::ApiKey => {
+            headers.insert("x-api-key", HeaderValue::from_str(&config.api_key).map_err(|e| e.to_string())?);
+        }
+    }
     headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
     Ok(headers)
 }
@@ -1130,9 +1150,10 @@ pub fn load_config(path: &Path) -> Result<Option<AiConfig>, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_ai_http_client, gemini_text, openai_response_text, openai_stream_text, parse_model_list_response,
-        resolve_endpoint, resolve_model_list_endpoint, responses_max_output_tokens, responses_text,
-        supports_temperature, validate_config, AiApiStyle, AiConfig, AiModelInfo, AiProvider,
+        build_ai_http_client, claude_headers, gemini_text, openai_response_text, openai_stream_text,
+        parse_model_list_response, resolve_endpoint, resolve_model_list_endpoint, responses_max_output_tokens,
+        responses_text, supports_temperature, validate_config, AiApiStyle, AiAuthMethod, AiConfig, AiModelInfo,
+        AiProvider, AUTHORIZATION,
     };
 
     #[test]
@@ -1149,6 +1170,7 @@ mod tests {
         assert!(!config.proxy_enabled);
         assert_eq!(config.proxy_url, "");
         assert!(config.enable_thinking);
+        assert_eq!(config.auth_method, AiAuthMethod::ApiKey);
     }
 
     #[test]
@@ -1156,6 +1178,7 @@ mod tests {
         let config = AiConfig {
             provider: AiProvider::Openai,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::Bearer,
             endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
             model: "gpt-4o".to_string(),
             api_style: AiApiStyle::Completions,
@@ -1174,6 +1197,7 @@ mod tests {
         let config = AiConfig {
             provider: AiProvider::Openai,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::Bearer,
             endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
             model: "gpt-4o".to_string(),
             api_style: AiApiStyle::Completions,
@@ -1190,6 +1214,7 @@ mod tests {
         let config = AiConfig {
             provider: AiProvider::OpenaiCompatible,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::Bearer,
             endpoint: "http://127.0.0.1:3456/v1".to_string(),
             model: "gpt-4o".to_string(),
             api_style: AiApiStyle::Completions,
@@ -1206,6 +1231,7 @@ mod tests {
         let gemini = AiConfig {
             provider: AiProvider::Gemini,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::ApiKey,
             endpoint: "https://generativelanguage.googleapis.com".to_string(),
             model: "gemini-1.5-pro".to_string(),
             api_style: AiApiStyle::Completions,
@@ -1222,6 +1248,7 @@ mod tests {
         let ollama = AiConfig {
             provider: AiProvider::Ollama,
             api_key: String::new(),
+            auth_method: AiAuthMethod::Bearer,
             endpoint: "http://localhost:11434/v1".to_string(),
             model: "llama3.1".to_string(),
             api_style: AiApiStyle::Completions,
@@ -1239,6 +1266,7 @@ mod tests {
         let openai = AiConfig {
             provider: AiProvider::Openai,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::Bearer,
             endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
             model: String::new(),
             api_style: AiApiStyle::Completions,
@@ -1251,6 +1279,7 @@ mod tests {
         let claude = AiConfig {
             provider: AiProvider::Claude,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::ApiKey,
             endpoint: "https://api.anthropic.com/v1/messages".to_string(),
             model: String::new(),
             api_style: AiApiStyle::Completions,
@@ -1259,6 +1288,30 @@ mod tests {
             enable_thinking: true,
         };
         assert_eq!(resolve_model_list_endpoint(&claude).unwrap(), "https://api.anthropic.com/v1/models");
+    }
+
+    #[test]
+    fn claude_headers_support_api_key_and_bearer_auth() {
+        let mut config = AiConfig {
+            provider: AiProvider::Claude,
+            api_key: "secret".to_string(),
+            auth_method: AiAuthMethod::ApiKey,
+            endpoint: "https://api.anthropic.com/v1/messages".to_string(),
+            model: "claude-sonnet-4-20250514".to_string(),
+            api_style: AiApiStyle::Completions,
+            proxy_enabled: false,
+            proxy_url: String::new(),
+            enable_thinking: true,
+        };
+
+        let api_key_headers = claude_headers(&config).unwrap();
+        assert_eq!(api_key_headers.get("x-api-key").unwrap(), "secret");
+        assert!(api_key_headers.get(AUTHORIZATION).is_none());
+
+        config.auth_method = AiAuthMethod::Bearer;
+        let bearer_headers = claude_headers(&config).unwrap();
+        assert_eq!(bearer_headers.get(AUTHORIZATION).unwrap(), "Bearer secret");
+        assert!(bearer_headers.get("x-api-key").is_none());
     }
 
     #[test]
@@ -1297,6 +1350,7 @@ mod tests {
         let mut config = AiConfig {
             provider: AiProvider::Openai,
             api_key: "key".to_string(),
+            auth_method: AiAuthMethod::Bearer,
             endpoint: "https://api.openai.com/v1/chat/completions".to_string(),
             model: "gpt-5.5".to_string(),
             api_style: AiApiStyle::Completions,

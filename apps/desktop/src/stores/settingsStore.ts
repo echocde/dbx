@@ -13,10 +13,12 @@ import { setDebugLoggingEnabled } from "@/lib/debugLog";
 
 export type AiProvider = "claude" | "openai" | "gemini" | "deepseek" | "qwen" | "ollama" | "openai-compatible" | "custom";
 export type AiApiStyle = "completions" | "responses";
+export type AiAuthMethod = "api-key" | "bearer";
 
 export interface AiConfig {
   provider: AiProvider;
   apiKey: string;
+  authMethod: AiAuthMethod;
   endpoint: string;
   model: string;
   apiStyle: AiApiStyle;
@@ -65,6 +67,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "https://api.anthropic.com/v1/messages",
     model: "claude-sonnet-4-20250514",
     apiStyle: "completions",
+    authMethod: "api-key",
     requiresApiKey: true,
   },
   openai: {
@@ -74,6 +77,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "https://api.openai.com/v1/chat/completions",
     model: "gpt-4o-mini",
     apiStyle: "completions",
+    authMethod: "bearer",
     requiresApiKey: true,
   },
   gemini: {
@@ -83,6 +87,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "https://generativelanguage.googleapis.com",
     model: "gemini-1.5-pro",
     apiStyle: "completions",
+    authMethod: "api-key",
     requiresApiKey: true,
   },
   deepseek: {
@@ -92,6 +97,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "https://api.deepseek.com/v1",
     model: "deepseek-v4-flash",
     apiStyle: "completions",
+    authMethod: "bearer",
     requiresApiKey: true,
   },
   qwen: {
@@ -101,6 +107,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen-plus",
     apiStyle: "completions",
+    authMethod: "bearer",
     requiresApiKey: true,
   },
   ollama: {
@@ -110,6 +117,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "http://localhost:11434/v1",
     model: "llama3.1",
     apiStyle: "completions",
+    authMethod: "bearer",
     requiresApiKey: false,
   },
   "openai-compatible": {
@@ -119,6 +127,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "",
     model: "",
     apiStyle: "completions",
+    authMethod: "bearer",
     requiresApiKey: true,
   },
   custom: {
@@ -127,6 +136,7 @@ export const AI_PROVIDER_PRESETS: Record<AiProvider, AiProviderPreset> = {
     endpoint: "",
     model: "",
     apiStyle: "completions",
+    authMethod: "bearer",
     requiresApiKey: true,
   },
 };
@@ -146,6 +156,7 @@ export function normalizeAiConfig(config: Partial<AiConfig> | null | undefined):
     ...config,
     provider,
     apiStyle: config?.apiStyle ?? defaultConfigs[provider].apiStyle,
+    authMethod: config?.authMethod ?? defaultConfigs[provider].authMethod,
     proxyEnabled: !!config?.proxyEnabled,
     proxyUrl: config?.proxyUrl ?? "",
     enableThinking: config?.enableThinking ?? true,
