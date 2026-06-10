@@ -169,6 +169,13 @@ const AGENT_CATALOG: &[AgentCatalogEntry] = &[
         profiles: &[],
     },
     AgentCatalogEntry {
+        db_type: DatabaseType::InfluxDb,
+        key: "influxdb",
+        label: "InfluxDB",
+        store_visible: true,
+        profiles: &[],
+    },
+    AgentCatalogEntry {
         db_type: DatabaseType::Neo4j,
         key: "neo4j",
         label: "Neo4j",
