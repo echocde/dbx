@@ -2184,6 +2184,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     #[test]
     fn builds_duckdb_create_table_statements() {
         let mut name = column("name");

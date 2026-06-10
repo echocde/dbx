@@ -17,10 +17,8 @@ use crate::db;
 use crate::db::agent_driver::AgentMethod;
 use crate::db::proxy_tunnel::ProxyTunnelManager;
 use crate::db::ssh_tunnel::TunnelManager;
-use crate::external;
 use crate::models::connection::{
-    default_redis_key_separator, parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host, ConnectionConfig,
-    DatabaseType,
+    parse_jdbc_host_port, parse_mongo_first_host, rewrite_jdbc_url_host, ConnectionConfig, DatabaseType,
 };
 use crate::path_utils::expand_tilde;
 use crate::plugins::{PluginDriverSession, PluginRegistry, PluginRuntimeEnv};
@@ -1107,30 +1105,23 @@ fn native_postgres_url_config(config: &ConnectionConfig) -> Option<ConnectionCon
     }
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn duckdb_paths_match(left: &str, right: &str) -> bool {
-    #[cfg(feature = "duckdb-bundled")]
-    {
-        let left = expand_tilde(left);
-        let right = expand_tilde(right);
+    let left = expand_tilde(left);
+    let right = expand_tilde(right);
 
-        if db::duckdb_driver::is_memory_database_path(&left) || db::duckdb_driver::is_memory_database_path(&right) {
-            return left.trim().eq_ignore_ascii_case(right.trim());
-        }
-
-        if let (Ok(left_path), Ok(right_path)) = (std::fs::canonicalize(&left), std::fs::canonicalize(&right)) {
-            return left_path == right_path;
-        }
-
-        if cfg!(windows) {
-            left.eq_ignore_ascii_case(&right)
-        } else {
-            left == right
-        }
+    if db::duckdb_driver::is_memory_database_path(&left) || db::duckdb_driver::is_memory_database_path(&right) {
+        return left.trim().eq_ignore_ascii_case(right.trim());
     }
-    #[cfg(not(feature = "duckdb-bundled"))]
-    {
-        let _ = (left, right);
-        false
+
+    if let (Ok(left_path), Ok(right_path)) = (std::fs::canonicalize(&left), std::fs::canonicalize(&right)) {
+        return left_path == right_path;
+    }
+
+    if cfg!(windows) {
+        left.eq_ignore_ascii_case(&right)
+    } else {
+        left == right
     }
 }
 
@@ -2004,6 +1995,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     #[tokio::test]
     async fn duckdb_client_session_reuses_base_pool_to_avoid_file_locks() {
         let (state, dir) = test_app_state().await;

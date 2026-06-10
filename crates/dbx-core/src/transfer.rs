@@ -6,9 +6,10 @@ use tokio::sync::RwLock;
 use crate::connection::{AppState, PoolKind};
 use crate::db;
 use crate::db::mongo_driver::MongoDocumentResult;
-use crate::models::connection::{default_redis_key_separator, DatabaseType};
+use crate::models::connection::DatabaseType;
 use crate::object_source_sql::{build_executable_object_source_statements, EditableObjectSourceSqlInput};
 use crate::query::{agent_execute_query_params, QueryExecutionOptions};
+#[cfg(feature = "duckdb-bundled")]
 use crate::sql::starts_with_executable_sql_keyword;
 
 static CANCELLED: std::sync::LazyLock<RwLock<HashSet<String>>> =
@@ -3126,9 +3127,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "duckdb-bundled")]
     use crate::connection::{AppState, PoolKind};
+    #[cfg(feature = "duckdb-bundled")]
+    use crate::models::connection::default_redis_key_separator;
+    #[cfg(feature = "duckdb-bundled")]
     use crate::storage::Storage;
     use serde_json::json;
+    #[cfg(feature = "duckdb-bundled")]
     use std::sync::Arc;
 
     #[cfg(feature = "duckdb-bundled")]

@@ -1,3 +1,4 @@
+#[cfg(feature = "duckdb-bundled")]
 use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 #[cfg(feature = "duckdb-bundled")]
 use duckdb::types::{TimeUnit, Value, ValueRef};
@@ -9,8 +10,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::connection::{AppState, PoolKind};
 use crate::db;
-use crate::models::connection::{default_redis_key_separator, DatabaseType};
-use crate::sql::{split_sql_batches, split_sql_statements, starts_with_duckdb_result_sql_keyword};
+use crate::models::connection::DatabaseType;
+#[cfg(feature = "duckdb-bundled")]
+use crate::sql::starts_with_duckdb_result_sql_keyword;
+use crate::sql::{split_sql_batches, split_sql_statements};
 
 pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ROWS: usize = 10000;
@@ -304,6 +307,7 @@ fn duckdb_time_unit_to_nanos(unit: TimeUnit, value: i64) -> Option<i64> {
     }
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn format_naive_datetime(value: NaiveDateTime) -> String {
     if value.and_utc().timestamp_subsec_nanos() == 0 {
         value.format("%Y-%m-%d %H:%M:%S").to_string()
@@ -312,6 +316,7 @@ fn format_naive_datetime(value: NaiveDateTime) -> String {
     }
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn format_temporal_without_empty_fraction(value: String) -> String {
     if !value.contains('.') {
         return value;
@@ -616,7 +621,7 @@ pub async fn do_execute(
     options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
     let query_timeout = resolve_query_timeout(options.timeout_secs);
-    let (duckdb_attached_names, conn_name_if_readonly) = {
+    let (_duckdb_attached_names, conn_name_if_readonly) = {
         let configs = state.configs.read().await;
         let config = crate::connection::config_for_pool_key(pool_key, &configs);
         let attached = config
@@ -644,7 +649,7 @@ pub async fn do_execute(
             }
             let sql = sql.to_string();
             let database = database.map(str::to_string);
-            let attached_names = duckdb_attached_names;
+            let attached_names = _duckdb_attached_names;
             let max_rows = options.max_rows;
             drop(connections);
             wait_for_query_opt(cancel_token, query_timeout, async move {
@@ -1615,7 +1620,7 @@ async fn exec_tx_none_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::connection::{ConnectionConfig, DatabaseType};
+    use crate::models::connection::{default_redis_key_separator, ConnectionConfig, DatabaseType};
 
     #[tokio::test]
     async fn wait_for_query_returns_cancelled_when_token_is_cancelled() {
