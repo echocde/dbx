@@ -7,6 +7,21 @@ use serde::Deserialize;
 use crate::error::AppError;
 use crate::state::WebState;
 
+/// Check if a connection is read-only and return an error if so.
+async fn ensure_writable(
+    app: &dbx_core::connection::AppState,
+    connection_id: &str,
+    action: &str,
+) -> Result<(), AppError> {
+    if let Some(name) = dbx_core::query::connection_readonly_name(app, connection_id).await {
+        return Err(AppError(format!(
+            "Read-only mode: connection '{}' has read-only protection enabled. {} blocked.",
+            name, action
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RedisConnectionRequest {
@@ -162,6 +177,7 @@ pub async fn set_string(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisSetStringRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "SET").await?;
     dbx_core::redis_ops::redis_set_string_in_db_core(
         &state.app,
         &req.connection_id,
@@ -179,6 +195,7 @@ pub async fn delete_key(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisKeyRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "Delete key").await?;
     dbx_core::redis_ops::redis_delete_key_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw)
         .await
         .map_err(AppError)?;
@@ -189,6 +206,7 @@ pub async fn hash_set(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisHashRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "HSET").await?;
     let value = req.value.as_deref().unwrap_or("");
     dbx_core::redis_ops::redis_hash_set_in_db_core(
         &state.app,
@@ -207,6 +225,7 @@ pub async fn hash_del(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisHashRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "HDEL").await?;
     dbx_core::redis_ops::redis_hash_del_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, &req.field)
         .await
         .map_err(AppError)?;
@@ -217,6 +236,7 @@ pub async fn list_push(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisListRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "LPUSH").await?;
     let value = req.value.as_deref().unwrap_or("");
     dbx_core::redis_ops::redis_list_push_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, value)
         .await
@@ -228,6 +248,7 @@ pub async fn list_set(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisListRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "LSET").await?;
     let index = req.index.unwrap_or(0);
     let value = req.value.as_deref().unwrap_or("");
     dbx_core::redis_ops::redis_list_set_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, index, value)
@@ -240,6 +261,7 @@ pub async fn list_remove(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisListRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "LREM").await?;
     let index = req.index.unwrap_or(0);
     dbx_core::redis_ops::redis_list_remove_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, index)
         .await
@@ -251,6 +273,7 @@ pub async fn set_add(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisSetRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "SADD").await?;
     dbx_core::redis_ops::redis_set_add_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, &req.member)
         .await
         .map_err(AppError)?;
@@ -261,6 +284,7 @@ pub async fn set_remove(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisSetRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "SREM").await?;
     dbx_core::redis_ops::redis_set_remove_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, &req.member)
         .await
         .map_err(AppError)?;
@@ -271,6 +295,7 @@ pub async fn delete_keys(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisKeysRequest>,
 ) -> Result<Json<u64>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "Delete keys").await?;
     let result =
         dbx_core::redis_ops::redis_delete_keys_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raws)
             .await
@@ -282,6 +307,7 @@ pub async fn flush_db(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisDbRequest>,
 ) -> Result<Json<()>, AppError> {
+    ensure_writable(&state.app, &req.connection_id, "FLUSHDB").await?;
     dbx_core::redis_ops::redis_flush_db_core(&state.app, &req.connection_id, req.db).await.map_err(AppError)?;
     Ok(Json(()))
 }
@@ -290,6 +316,18 @@ pub async fn execute_command(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisCommandRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    // In read-only mode, only allow safe read commands
+    if let Some(name) = dbx_core::query::connection_readonly_name(&state.app, &req.connection_id).await {
+        let cmd_name = req.command.split_whitespace().next().unwrap_or("");
+        if dbx_core::db::redis_driver::classify_command(cmd_name)
+            != dbx_core::db::redis_driver::RedisCommandSafety::Allowed
+        {
+            return Err(AppError(format!(
+                "Read-only mode: connection '{}' has read-only protection enabled. Command '{}' blocked.",
+                name, cmd_name
+            )));
+        }
+    }
     let result = dbx_core::redis_ops::redis_execute_command_core(&state.app, &req.connection_id, req.db, &req.command)
         .await
         .map_err(AppError)?;

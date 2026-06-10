@@ -255,6 +255,8 @@ export default {
     connectTimeout: "Tiempo de espera de conexión (segundos)",
     queryTimeout: "Tiempo de espera de consulta (segundos)",
     idleTimeout: "Tiempo de espera inactivo (segundos)",
+    readOnly: "Solo lectura",
+    readOnlyHint: "Bloquear todas las operaciones de escritura (INSERT, UPDATE, DELETE, etc.)",
     proxy: "Proxy",
     proxyEnable: "Conectar la base de datos mediante proxy",
     proxyType: "Tipo de proxy",

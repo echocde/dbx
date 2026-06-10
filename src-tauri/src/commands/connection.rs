@@ -629,3 +629,19 @@ pub async fn refresh_connections(state: State<'_, Arc<AppState>>) -> Result<(), 
     state.refresh_connections().await;
     Ok(())
 }
+
+/// Check whether a connection has read-only protection enabled.
+/// Returns an error if the connection is read-only, preventing write operations.
+pub async fn ensure_connection_writable(
+    state: &Arc<AppState>,
+    connection_id: &str,
+    action: &str,
+) -> Result<(), String> {
+    if let Some(name) = dbx_core::query::connection_readonly_name(state, connection_id).await {
+        return Err(format!(
+            "Read-only mode: connection '{}' has read-only protection enabled. {} blocked.",
+            name, action
+        ));
+    }
+    Ok(())
+}

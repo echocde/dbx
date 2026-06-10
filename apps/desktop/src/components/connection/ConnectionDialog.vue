@@ -142,6 +142,7 @@ const defaultForm = (): ConnectionForm => ({
   redis_sentinel_tls: false,
   redis_cluster_nodes: "",
   etcd_endpoints: "",
+  read_only: false,
 });
 
 function defaultSshTunnel(): SshTunnelConfig {
@@ -573,6 +574,7 @@ watch(
         redis_sentinel_tls: config.redis_sentinel_tls || false,
         redis_cluster_nodes: config.redis_cluster_nodes || "",
         etcd_endpoints: config.etcd_endpoints || "",
+        read_only: config.read_only || false,
       };
       h2ConnectionMode.value = h2ConnectionModeForConfig(config);
       customColorInput.value = config.color || "";
@@ -1069,6 +1071,7 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
   const idleTimeout = Number(config.idle_timeout_secs);
   config.idle_timeout_secs = Number.isFinite(idleTimeout) && idleTimeout >= 0 ? idleTimeout : 60;
   if (!config.one_time) config.one_time = undefined;
+  if (!config.read_only) config.read_only = undefined;
   if (config.db_type === "mongodb" && !mongoUseUrl.value) {
     config.connection_string = undefined;
   } else if (config.db_type === "mongodb") {
@@ -3129,6 +3132,13 @@ function openExternalUrl(url: string) {
                     step="1"
                     class="col-span-3"
                   />
+                </div>
+                <div class="grid grid-cols-4 items-center gap-4">
+                  <Label class="text-right text-xs">{{ t("connection.readOnly") }}</Label>
+                  <label class="col-span-3 flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="form.read_only" class="mr-0" />
+                    <span class="text-xs text-muted-foreground">{{ t("connection.readOnlyHint") }}</span>
+                  </label>
                 </div>
               </div>
             </TabsContent>

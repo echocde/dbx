@@ -94,6 +94,7 @@ export interface ConnectionConfig {
   redis_cluster_nodes?: string;
   etcd_endpoints?: string;
   one_time?: boolean;
+  read_only?: boolean;
 }
 
 export type TransportLayerConfig = ({ type: "ssh" } & SshTunnelConfig) | ({ type: "proxy" } & ProxyTunnelConfig);

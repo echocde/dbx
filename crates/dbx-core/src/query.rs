@@ -15,6 +15,47 @@ pub const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_ROWS: usize = 10000;
 pub const QUERY_CANCELED: &str = "Query canceled";
 
+/// Check read-only protection for a connection, blocking write SQL statements.
+/// Only clones the connection name when read-only mode is active, avoiding
+/// unnecessary allocations otherwise.
+/// Uses config_for_pool_key to correctly resolve configs when pool_key includes
+/// a database suffix (e.g., "prod:app" → config stored under "prod").
+pub async fn check_read_only_for_connection(state: &AppState, pool_key: &str, sql: &str) -> Result<(), String> {
+    let conn_name = {
+        let configs = state.configs.read().await;
+        crate::connection::config_for_pool_key(pool_key, &configs).filter(|c| c.read_only).map(|c| c.name.clone())
+    };
+    if let Some(name) = conn_name {
+        crate::query_execution_sql::check_read_only(sql, &name)?;
+    }
+    Ok(())
+}
+
+/// Check read-only protection for a connection across multiple SQL statements.
+pub async fn check_read_only_for_connection_multi(
+    state: &AppState,
+    pool_key: &str,
+    statements: &[impl AsRef<str>],
+) -> Result<(), String> {
+    let conn_name = {
+        let configs = state.configs.read().await;
+        crate::connection::config_for_pool_key(pool_key, &configs).filter(|c| c.read_only).map(|c| c.name.clone())
+    };
+    if let Some(name) = conn_name {
+        for sql in statements {
+            crate::query_execution_sql::check_read_only(sql.as_ref(), &name)?;
+        }
+    }
+    Ok(())
+}
+
+/// Check whether a connection has read-only mode enabled, returning the connection name if so.
+/// This uses connection_id directly (not pool_key), so it is safe to call at command entry points
+/// before any pool key is constructed.
+pub async fn connection_readonly_name(state: &AppState, connection_id: &str) -> Option<String> {
+    state.configs.read().await.get(connection_id).filter(|c| c.read_only).map(|c| c.name.clone())
+}
+
 async fn connection_is_mongodb(state: &AppState, connection_id: &str) -> bool {
     let configs = state.configs.read().await;
     configs.get(connection_id).is_some_and(|config| config.db_type == DatabaseType::MongoDb)
@@ -561,13 +602,18 @@ pub async fn do_execute(
     options: QueryExecutionOptions,
 ) -> Result<db::QueryResult, String> {
     let query_timeout = resolve_query_timeout(options.timeout_secs);
-    let duckdb_attached_names = state
-        .configs
-        .read()
-        .await
-        .get(pool_key)
-        .map(|config| config.attached_databases.iter().map(|database| database.name.clone()).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let (duckdb_attached_names, conn_name_if_readonly) = {
+        let configs = state.configs.read().await;
+        let config = crate::connection::config_for_pool_key(pool_key, &configs);
+        let attached = config
+            .map(|c| c.attached_databases.iter().map(|db| db.name.clone()).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let conn_name = config.filter(|c| c.read_only).map(|c| c.name.clone());
+        (attached, conn_name)
+    };
+    if let Some(name) = conn_name_if_readonly {
+        crate::query_execution_sql::check_read_only(sql, &name)?;
+    }
     let pool_db_type = connection_database_type_for_pool_key(state, pool_key).await;
     let connections = state.connections.read().await;
     let pool = connections.get(pool_key).ok_or("Connection not found")?;
@@ -955,6 +1001,8 @@ pub async fn execute_multi_core_with_options(
     }
 
     if let Some((pool, mode)) = mysql_pool {
+        // Read-only check for MySQL batch path
+        check_read_only_for_connection_multi(state, &pool_key, &statements).await?;
         let mysql_dialect = connection_mysql_query_dialect(state, connection_id).await;
         return execute_multi_mysql(&pool, mode, mysql_dialect, &statements, cancel_token, options).await;
     }
@@ -1045,6 +1093,9 @@ async fn execute_multi_sqlserver(
     options: QueryExecutionOptions,
 ) -> Result<Vec<db::QueryResult>, String> {
     let batches = split_sql_batches(sql);
+
+    // Read-only check for SQL Server batch path
+    check_read_only_for_connection_multi(state, pool_key, &batches).await?;
     let mut all_results = Vec::new();
     let max_rows = options.max_rows;
 
@@ -1193,6 +1244,9 @@ pub async fn execute_statements_in_transaction(
     } else {
         state.get_or_create_pool(connection_id, Some(database)).await?
     };
+
+    // Read-only check: intercept all transaction paths before dispatching
+    check_read_only_for_connection_multi(state, &pool_key, statements).await?;
 
     let start = std::time::Instant::now();
 
@@ -1749,6 +1803,7 @@ mod tests {
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
+            read_only: false,
         };
 
         let params = external_driver_query_params(

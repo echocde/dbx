@@ -6,6 +6,8 @@ use tokio::net::TcpListener;
 
 use super::connection::AppState;
 
+use super::connection::ensure_connection_writable;
+
 const BIND_ADDR: &str = "127.0.0.1:0";
 
 #[derive(Deserialize)]
@@ -225,7 +227,7 @@ async fn resolve_mongo_pool_key(
     connection_name: &str,
     database: Option<String>,
     stream: &mut tokio::net::TcpStream,
-) -> Option<(String, String)> {
+) -> Option<(String, String, String)> {
     let config = match resolve_connection(state, connection_name).await {
         Ok(c) => c,
         Err(e) => {
@@ -233,6 +235,7 @@ async fn resolve_mongo_pool_key(
             return None;
         }
     };
+    let connection_id = config.id.clone();
     let database = database.unwrap_or_else(|| config.database.clone().unwrap_or_default());
     let pool_key = match state.get_or_create_pool(&config.id, Some(&database)).await {
         Ok(key) => key,
@@ -241,7 +244,7 @@ async fn resolve_mongo_pool_key(
             return None;
         }
     };
-    Some((pool_key, database))
+    Some((pool_key, database, connection_id))
 }
 
 async fn handle_open_table(app: &AppHandle, state: &Arc<AppState>, body: &str, stream: &mut tokio::net::TcpStream) {
@@ -365,7 +368,8 @@ async fn handle_mongo_list_collections_data(state: &Arc<AppState>, body: &str, s
             return;
         }
     };
-    let Some((pool_key, database)) = resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
+    let Some((pool_key, database, _connection_id)) =
+        resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
     else {
         return;
     };
@@ -383,7 +387,8 @@ async fn handle_mongo_find_documents_data(state: &Arc<AppState>, body: &str, str
             return;
         }
     };
-    let Some((pool_key, database)) = resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
+    let Some((pool_key, database, _connection_id)) =
+        resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
     else {
         return;
     };
@@ -412,7 +417,8 @@ async fn handle_mongo_aggregate_documents_data(state: &Arc<AppState>, body: &str
             return;
         }
     };
-    let Some((pool_key, database)) = resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
+    let Some((pool_key, database, _connection_id)) =
+        resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
     else {
         return;
     };
@@ -439,10 +445,15 @@ async fn handle_mongo_insert_documents_data(state: &Arc<AppState>, body: &str, s
             return;
         }
     };
-    let Some((pool_key, database)) = resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
+    let Some((pool_key, database, connection_id)) =
+        resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
     else {
         return;
     };
+    if let Err(e) = ensure_connection_writable(state, &connection_id, "Insert").await {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
     match dbx_core::mongo_ops::mongo_insert_documents_core(state, &pool_key, &database, &req.collection, &req.docs_json)
         .await
     {
@@ -459,10 +470,15 @@ async fn handle_mongo_update_documents_data(state: &Arc<AppState>, body: &str, s
             return;
         }
     };
-    let Some((pool_key, database)) = resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
+    let Some((pool_key, database, connection_id)) =
+        resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
     else {
         return;
     };
+    if let Err(e) = ensure_connection_writable(state, &connection_id, "Update").await {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
     match dbx_core::mongo_ops::mongo_update_documents_core(
         state,
         &pool_key,
@@ -487,10 +503,15 @@ async fn handle_mongo_delete_documents_data(state: &Arc<AppState>, body: &str, s
             return;
         }
     };
-    let Some((pool_key, database)) = resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
+    let Some((pool_key, database, connection_id)) =
+        resolve_mongo_pool_key(state, &req.connection_name, req.database, stream).await
     else {
         return;
     };
+    if let Err(e) = ensure_connection_writable(state, &connection_id, "Delete").await {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
     match dbx_core::mongo_ops::mongo_delete_documents_core(
         state,
         &pool_key,
@@ -523,6 +544,11 @@ async fn handle_execute_query_data(state: &Arc<AppState>, body: &str, stream: &m
     };
     let database = req.database.unwrap_or_else(|| config.database.clone().unwrap_or_default());
     if let Err(e) = check_visible_database(&config, &database) {
+        respond_error(stream, "403 Forbidden", &e).await;
+        return;
+    }
+    // Read-only check: reject if the connection has read-only protection and the SQL is a write
+    if let Err(e) = dbx_core::query::check_read_only_for_connection(state, &config.id, &req.sql).await {
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }

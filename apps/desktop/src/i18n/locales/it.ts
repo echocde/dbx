@@ -266,6 +266,8 @@ export default {
     connectTimeout: "Timeout Connessione (secondi)",
     queryTimeout: "Timeout Query (secondi)",
     idleTimeout: "Timeout Inattività (secondi)",
+    readOnly: "Sola lettura",
+    readOnlyHint: "Blocca tutte le operazioni di scrittura (INSERT, UPDATE, DELETE, ecc.)",
     proxy: "Proxy",
     proxyEnable: "Connetti database tramite proxy",
     proxyType: "Tipo Proxy",

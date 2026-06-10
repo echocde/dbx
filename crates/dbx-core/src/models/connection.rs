@@ -71,6 +71,8 @@ pub struct ConnectionConfig {
     pub jdbc_driver_paths: Vec<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub one_time: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -341,6 +343,8 @@ struct ConnectionConfigData {
     pub jdbc_driver_paths: Vec<String>,
     #[serde(default)]
     pub one_time: bool,
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 impl From<ConnectionConfigData> for ConnectionConfig {
@@ -383,6 +387,7 @@ impl From<ConnectionConfigData> for ConnectionConfig {
             jdbc_driver_class: data.jdbc_driver_class,
             jdbc_driver_paths: data.jdbc_driver_paths,
             one_time: data.one_time,
+            read_only: data.read_only,
         }
     }
 }
@@ -1349,6 +1354,7 @@ mod tests {
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
+            read_only: false,
         }
     }
 

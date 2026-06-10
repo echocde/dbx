@@ -259,6 +259,8 @@ export default {
     connectTimeout: "連線逾時（秒）",
     queryTimeout: "查詢逾時（秒）",
     idleTimeout: "閒置逾時（秒）",
+    readOnly: "唯讀模式",
+    readOnlyHint: "阻止所有寫入操作（INSERT、UPDATE、DELETE 等）",
     proxy: "代理伺服器",
     proxyEnable: "藉由代理伺服器連線資料庫",
     proxyType: "代理伺服器類型",

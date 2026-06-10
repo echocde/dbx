@@ -1624,6 +1624,8 @@ pub async fn execute_on_pool_with_max_rows(
     sql: &str,
     max_rows: Option<usize>,
 ) -> Result<db::QueryResult, String> {
+    // Read-only check: block transfer operations in readonly mode
+    crate::query::check_read_only_for_connection(state, pool_key, sql).await?;
     let connections = state.connections.read().await;
     let pool = connections.get(pool_key).ok_or("Connection not found")?;
 
@@ -3155,6 +3157,7 @@ mod tests {
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
+            read_only: false,
         }
     }
 

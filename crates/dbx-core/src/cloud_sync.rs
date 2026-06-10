@@ -596,6 +596,7 @@ mod tests {
             jdbc_driver_class: None,
             jdbc_driver_paths: Vec::new(),
             one_time: false,
+            read_only: false,
         };
         scrub_connection_secrets(&mut config);
         assert!(config.password.is_empty());
