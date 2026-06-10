@@ -8,6 +8,8 @@ import { LandingNav } from "@/components/landing/LandingNav";
 import { InstallTabs } from "@/components/landing/InstallTabs";
 import { LandingLatestUpdates } from "@/components/landing/LandingLatestUpdates";
 import { RevealSection } from "@/components/landing/RevealSection";
+import { ContributorsWallContent } from "@/components/landing/ContributorsWall";
+import { fetchContributors } from "@/lib/contributors";
 import { getAppVersion } from "@/lib/appVersion";
 import { fetchChangelog } from "@/lib/changelog";
 import { fetchLatestReleaseInfo } from "@/lib/latestRelease";
@@ -325,6 +327,8 @@ const i18nText = {
     testimonialsTitle: "What DBX is good at",
     testimonialsDesc: "A closer look at the everyday database workflows DBX is built to make smoother.",
     capabilitiesTitle: "Built for real database work",
+    contributorsTitle: "Built by the community",
+    contributorsDesc: "DBX is fully open-source. Every feature, fix, and driver starts with a contributor.",
     footerTitle: "Ready to try DBX?",
     footerDesc: "Use the desktop app for local work, or deploy the Docker version for browser-based access.",
     release: "Latest release",
@@ -345,6 +349,8 @@ const i18nText = {
     testimonialsTitle: "DBX 适合什么样的工作",
     testimonialsDesc: "从连接管理、数据浏览到 AI 辅助，DBX 围绕高频数据库工作流打磨体验。",
     capabilitiesTitle: "面向真实数据库工作的能力",
+    contributorsTitle: "社区共建",
+    contributorsDesc: "DBX 因每一位贡献者而生长",
     footerTitle: "准备试试 DBX？",
     footerDesc: "本地工作使用桌面版，需要浏览器访问时部署 Docker 版。",
     release: "最新版本",
@@ -389,6 +395,7 @@ export default async function LandingPage({ params }: { params: Promise<{ lang: 
   const metricItems = metrics(starLabel)[l];
   const appVersion = getAppVersion();
   const [initialChangelog, initialLatestRelease] = await Promise.all([fetchChangelog(l), fetchLatestReleaseInfo()]);
+  const contributors = await fetchContributors();
   const initialDownloadVersion = initialLatestRelease?.version ?? appVersion;
   const testimonialItems = testimonials[l];
 
@@ -504,6 +511,11 @@ export default async function LandingPage({ params }: { params: Promise<{ lang: 
             </div>
           ))}
         </div>
+      </RevealSection>
+
+      {/* Contributors */}
+      <RevealSection className="max-w-[1180px] mx-auto px-7 pt-[70px] pb-1 max-[760px]:px-[18px]">
+        <ContributorsWallContent contributors={contributors} title={t.contributorsTitle} desc={t.contributorsDesc} />
       </RevealSection>
 
       {/* Updates */}
