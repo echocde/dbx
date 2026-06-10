@@ -32,6 +32,8 @@ export default {
     stopExplain: "Stop explain",
     formatSql: "Format SQL",
     formatSqlFailed: "Failed to format SQL",
+    previewSql: "Preview SQL",
+    hidePreviewSql: "Hide SQL Preview",
     saveSql: "Save to SQL Library",
     openSql: "Open SQL file",
     theme: "Theme",

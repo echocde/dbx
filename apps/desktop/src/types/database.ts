@@ -442,6 +442,7 @@ export interface QueryTab {
   queryEditabilityReason?: "not-select" | "cte" | "set-operation" | "aggregation" | "external-source" | "complex-source" | "computed-columns" | "no-table" | "no-primary-key" | "primary-key-not-returned" | "aliased-columns" | "metadata-unavailable";
   resultEvicted?: boolean;
   whereInput?: string;
+  previewSql?: string;
 }
 
 export interface SavedSqlFolder {

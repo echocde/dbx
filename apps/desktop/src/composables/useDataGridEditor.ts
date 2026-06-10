@@ -432,6 +432,7 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
       rowChanges?.delete(col);
       if (rowChanges?.size === 0) dirtyRows.value.delete(item.sourceIndex);
     }
+    dirtyRows.value = new Map(dirtyRows.value);
     editingCell.value = null;
   }
 
@@ -887,6 +888,36 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     });
   }
 
+  // --- SQL Preview for pending changes ---
+  const previewStatements = ref<string[]>([]);
+  const isPreviewLoading = ref(false);
+
+  async function previewChanges(): Promise<string[]> {
+    isPreviewLoading.value = true;
+    previewStatements.value = [];
+    try {
+      if (customSave?.value) {
+        // customSave doesn't expose SQL — return empty
+        return [];
+      }
+      const stmtOptions = saveStatementOptions();
+      if (!stmtOptions) return [];
+      const prepared = await api.prepareDataGridSave(stmtOptions);
+      if (prepared?.validationError) {
+        saveError.value = prepared.validationError;
+        return [];
+      }
+      const stmts = prepared?.statements ?? [];
+      previewStatements.value = stmts;
+      return stmts;
+    } catch (e: any) {
+      saveError.value = normalizeDataGridSaveError(databaseType.value, e);
+      return [];
+    } finally {
+      isPreviewLoading.value = false;
+    }
+  }
+
   return {
     editingCell,
     editValue,
@@ -934,6 +965,9 @@ export function useDataGridEditor(options: UseDataGridEditorOptions) {
     clearResetScrollAfterResult,
     cleanupFrames,
     recordScrollPosition,
+    previewStatements,
+    isPreviewLoading,
+    previewChanges,
     syncHeaderScroll: (headerRef: Ref<HTMLDivElement | undefined>) => (e: Event) => {
       if (headerRef.value) {
         headerRef.value.scrollLeft = (e.target as HTMLElement).scrollLeft;

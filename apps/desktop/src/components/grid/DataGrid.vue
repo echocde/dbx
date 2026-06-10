@@ -4,7 +4,7 @@ const globalDdlOpen = ref(false);
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, onActivated, onDeactivated, useSlots, watch, type Component } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, onActivated, onDeactivated, useSlots, watch, ref, defineAsyncComponent, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   ArrowUp,
@@ -117,6 +117,8 @@ import { useCellDetailEditor, type UseCellDetailEditorReturn } from "@/composabl
 import { useTheme } from "@/composables/useTheme";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { nextDataGridSortState, type DataGridSortDirection } from "@/lib/dataGridSort";
+
+const SqlPreviewPanel = defineAsyncComponent(() => import("@/components/editor/SqlPreviewPanel.vue"));
 
 const { t } = useI18n();
 const slots = useSlots();
@@ -1995,7 +1997,58 @@ const {
   clearResetScrollAfterResult,
   cleanupFrames,
   recordScrollPosition,
+  previewStatements,
+  isPreviewLoading,
+  previewChanges,
 } = editor;
+
+const showSqlPreview = ref(false);
+const previewSqlText = ref("");
+
+let previewRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function refreshPreviewSql() {
+  if (!showSqlPreview.value) return;
+  const stmts = await previewChanges();
+  if (showSqlPreview.value) {
+    previewSqlText.value = stmts.join("\n");
+  }
+}
+
+function schedulePreviewRefresh() {
+  if (!showSqlPreview.value) return;
+  if (pendingChangeCount.value === 0) {
+    // All changes were discarded — close the preview
+    previewSqlText.value = "";
+    return;
+  }
+  if (previewRefreshTimer) clearTimeout(previewRefreshTimer);
+  previewRefreshTimer = setTimeout(() => {
+    previewRefreshTimer = null;
+    void refreshPreviewSql();
+  }, 500);
+}
+
+async function openSqlPreview() {
+  const stmts = await previewChanges();
+  previewSqlText.value = stmts.join("\n");
+  if (stmts.length > 0) {
+    showSqlPreview.value = true;
+  }
+}
+
+function closeSqlPreview() {
+  showSqlPreview.value = false;
+  if (previewRefreshTimer) {
+    clearTimeout(previewRefreshTimer);
+    previewRefreshTimer = null;
+  }
+}
+
+// Watch for edits — auto-refresh preview when panel is open
+watch([pendingChangeCount, dirtyRows, newRows, deletedRows], () => {
+  schedulePreviewRefresh();
+});
 
 const saveActionMode = computed(() =>
   dataGridSaveActionMode({
@@ -5844,6 +5897,18 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
               </Tooltip>
               <Button v-if="editable && (tableMeta || customSave)" variant="ghost" size="sm" class="h-5 text-xs px-1.5 shrink-0" @click="addRow"> <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }} </Button>
               <template v-if="saveToolbarState.showActions">
+                <Tooltip v-if="pendingChangeCount > 0">
+                  <TooltipTrigger as-child>
+                    <Button variant="ghost" size="sm" class="h-5 text-xs px-1.5 shrink-0 text-sky-600 hover:bg-sky-500/10 hover:text-sky-700" :disabled="isPreviewLoading" @click="openSqlPreview">
+                      <Loader2 v-if="isPreviewLoading" class="w-3 h-3 mr-1 animate-spin" />
+                      <Eye v-else class="w-3 h-3 mr-1" />
+                      {{ t("toolbar.previewSql") }}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" class="max-w-sm">
+                    {{ t("toolbar.previewSql") }}
+                  </TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger as-child>
                     <Button variant="default" size="sm" class="h-5 text-xs px-1.5 shrink-0" :disabled="saveToolbarState.actionsDisabled" @click="onToolbarCommit">
@@ -7298,6 +7363,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- SQL Preview panel for pending data changes -->
+    <div v-if="showSqlPreview" class="h-52 shrink-0 border-t">
+      <SqlPreviewPanel :sql="previewSqlText" :loading="isPreviewLoading" @close="closeSqlPreview" />
+    </div>
 
     <DangerConfirmDialog
       v-model:open="showDeleteRowConfirm"
