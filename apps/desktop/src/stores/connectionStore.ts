@@ -102,6 +102,7 @@ export const useConnectionStore = defineStore("connection", () => {
   const completionTablesCache = ref<Record<string, SqlCompletionTable[]>>({});
   const completionObjectsCache = ref<Record<string, SqlCompletionObject[]>>({});
   const completionColumnsCache = ref<Record<string, ColumnInfo[]>>({});
+  const completionDatabasesCache = ref<Record<string, string[]>>({});
   const elasticsearchCompletionIndicesCache = ref<Record<string, string[]>>({});
   const schemaListCache = ref<Record<string, string[]>>({});
   const completionTableIndex = new Map<string, { touched: number; tables: SqlCompletionTable[] }>();
@@ -1611,8 +1612,48 @@ export const useConnectionStore = defineStore("connection", () => {
       .slice(0, limit);
   }
 
+  function lookupLocalCompletionDatabases(connectionId: string, filter = "", limit = 50): string[] {
+    const databases = completionDatabasesCache.value[connectionId] ?? databaseNamesFromTree(connectionId);
+    const normalized = filter.trim().toLowerCase();
+    return databases
+      .filter((database) => fuzzyTextMatch(database, normalized))
+      .sort((a, b) => tableMatchScore({ name: b }, normalized) - tableMatchScore({ name: a }, normalized))
+      .slice(0, limit);
+  }
+
   function lookupLocalCompletionColumns(connectionId: string, database: string, table: string, schema?: string): SqlCompletionColumn[] {
     return completionColumnIndex.get(completionColumnsKey(connectionId, database, table, schema))?.columns ?? [];
+  }
+
+  function databaseNamesFromTree(connectionId: string): string[] {
+    const node = findNode(treeNodes.value, connectionId);
+    if (!node?.children) return [];
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const child of node.children) {
+      if (child.type !== "database" || !child.database) continue;
+      const key = child.database.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(child.database);
+    }
+    return names;
+  }
+
+  async function listCompletionDatabases(connectionId: string): Promise<string[]> {
+    if (completionDatabasesCache.value[connectionId]) {
+      return completionDatabasesCache.value[connectionId];
+    }
+    return withCompletionInFlight(`${connectionId}:completion-databases`, async () => {
+      await ensureConnected(connectionId);
+      const config = getConfig(connectionId);
+      const databases = await api.listDatabases(connectionId);
+      completionDatabasesCache.value[connectionId] = filterDatabaseNamesForConnection(
+        databases.map((database) => database.name),
+        config,
+      );
+      return completionDatabasesCache.value[connectionId];
+    });
   }
 
   async function listCompletionSchemas(connectionId: string, database: string): Promise<string[]> {
@@ -1880,6 +1921,10 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function refreshCompletionSchemas(connectionId: string, database: string): Promise<string[]> {
     return listCompletionSchemas(connectionId, database);
+  }
+
+  function refreshCompletionDatabases(connectionId: string): Promise<string[]> {
+    return listCompletionDatabases(connectionId);
   }
 
   function refreshCompletionColumns(connectionId: string, database: string, table: string, schema?: string): Promise<SqlCompletionColumn[]> {
@@ -2378,14 +2423,17 @@ export const useConnectionStore = defineStore("connection", () => {
     listCompletionObjects,
     listCompletionColumns,
     listCompletionSchemas,
+    listCompletionDatabases,
     lookupLocalCompletionTables,
     lookupLocalCompletionObjects,
     lookupLocalCompletionColumns,
     lookupLocalCompletionSchemas,
+    lookupLocalCompletionDatabases,
     refreshCompletionTables,
     refreshCompletionObjects,
     refreshCompletionColumns,
     refreshCompletionSchemas,
+    refreshCompletionDatabases,
     listElasticsearchCompletionIndices,
     exportConnectionsToFile,
     readImportFile,
