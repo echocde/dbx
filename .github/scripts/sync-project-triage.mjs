@@ -26,7 +26,10 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
+// PROJECT_TOKEN is a PAT with project scope; GH_TOKEN / GITHUB_TOKEN (auto-generated) handles repo access
+const projectToken = process.env.PROJECT_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN || "";
+const repoTokens = [process.env.GH_TOKEN, process.env.GITHUB_TOKEN, process.env.PROJECT_TOKEN].filter(Boolean);
+const repoToken = repoTokens[0] || "";
 const projectOwner = args["project-owner"] || process.env.PROJECT_OWNER || DEFAULT_PROJECT_OWNER;
 const projectNumber = Number(args["project-number"] || process.env.PROJECT_NUMBER || DEFAULT_PROJECT_NUMBER);
 const repo = args.repo || process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
@@ -34,8 +37,11 @@ const [repoOwner, repoName] = repo.split("/");
 const issueNumber = args["issue-number"] ? Number(args["issue-number"]) : null;
 const mode = args.backfill === "true" ? "backfill" : "issue";
 
-if (!token) {
-  throw new Error("GH_TOKEN or GITHUB_TOKEN is required");
+if (!projectToken) {
+  throw new Error("PROJECT_TOKEN, GH_TOKEN, or GITHUB_TOKEN is required");
+}
+if (!repoToken) {
+  throw new Error("GH_TOKEN or GITHUB_TOKEN is required for repository access");
 }
 
 if (!repoOwner || !repoName) {
@@ -58,7 +64,8 @@ function gqlNullableString(value) {
   return value == null ? "null" : JSON.stringify(value);
 }
 
-async function graphql(query) {
+async function graphql(query, token) {
+  const t = token || repoTokens[0];
   const args = [
     "api",
     "graphql",
@@ -70,8 +77,8 @@ async function graphql(query) {
     const { stdout } = await execFileAsync("gh", args, {
       env: {
         ...process.env,
-        GH_TOKEN: token,
-        GITHUB_TOKEN: token,
+        GH_TOKEN: t,
+        GITHUB_TOKEN: t,
       },
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -123,7 +130,7 @@ async function getProjectConfig() {
     }
   `;
 
-  const data = await graphql(query);
+  const data = await graphql(query, projectToken);
   const project = data.user?.projectV2;
   if (!project) {
     throw new Error(`Project ${projectOwner}#${projectNumber} not found`);
@@ -192,7 +199,7 @@ async function fetchIssue(number) {
     }
   `;
 
-  const data = await graphql(query);
+  const data = await graphql(query, repoToken);
   const issue = data.repository?.issue;
   if (!issue) {
     throw new Error(`Issue #${number} not found in ${repo}`);
@@ -211,7 +218,7 @@ async function addItemToProject(projectId, contentId) {
     }
   `;
 
-  const data = await graphql(mutation);
+  const data = await graphql(mutation, projectToken);
 
   return data.addProjectV2ItemById.item.id;
 }
@@ -234,7 +241,7 @@ async function updateTriage({ projectId, itemId, fieldId, optionId }) {
     }
   `;
 
-  await graphql(mutation);
+  await graphql(mutation, projectToken);
 }
 
 async function syncIssue(projectConfig, number) {
@@ -293,7 +300,7 @@ async function fetchOpenIssueNumbers() {
         }
       }
     `;
-    const data = await graphql(query);
+    const data = await graphql(query, repoToken);
     const issues = data.repository?.issues;
     if (!issues) break;
     numbers.push(...issues.nodes.map((issue) => issue.number));

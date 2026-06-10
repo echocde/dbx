@@ -18,7 +18,7 @@ jobs:
   sync-project-triage:
     runs-on: ubuntu-latest
     env:
-      GH_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
+      PROJECT_TOKEN: ${{ secrets.PROJECT_AUTOMATION_TOKEN }}
       PROJECT_OWNER: t8y2
       PROJECT_NUMBER: "1"
     steps:
@@ -31,7 +31,7 @@ jobs:
 
       - name: Validate project token
         run: |
-          if [ -z "$GH_TOKEN" ]; then
+          if [ -z "$PROJECT_TOKEN" ]; then
             echo "Missing PROJECT_AUTOMATION_TOKEN secret"
             exit 1
           fi
