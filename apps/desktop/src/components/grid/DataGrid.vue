@@ -6232,11 +6232,17 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             </Transition>
             <div v-if="isErrorResult" class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-destructive">
               <TriangleAlert class="h-8 w-8 text-destructive/50" aria-hidden="true" />
-              <div class="space-y-1">
+              <div class="space-y-1 select-text" @mousedown.stop @click.stop>
                 <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
-                <div class="text-xs max-w-lg break-all text-destructive/80">{{ errorMessage }}</div>
+                <div class="text-xs max-w-lg break-all cursor-text text-destructive/80 select-text">{{ errorMessage }}</div>
               </div>
-              <slot name="error-actions" :error-message="errorMessage" />
+              <div class="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="outline" size="sm" class="h-7 gap-1.5 px-2 text-xs" @click.stop="copyText(errorMessage)">
+                  <Copy class="h-3.5 w-3.5" />
+                  {{ t("grid.copy") }}
+                </Button>
+                <slot name="error-actions" :error-message="errorMessage" />
+              </div>
             </div>
             <div v-else-if="isTransposeMode" class="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div class="h-8 flex items-center gap-2 px-3 border-y shrink-0 bg-muted/20">

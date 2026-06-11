@@ -304,9 +304,33 @@ struct SearchHits {
     hits: Vec<SearchHit>,
 }
 
-#[derive(Deserialize)]
-struct HitsTotal {
-    value: u64,
+enum HitsTotal {
+    Count(u64),
+    Value { value: u64 },
+}
+
+impl HitsTotal {
+    fn value(&self) -> u64 {
+        match self {
+            Self::Count(value) | Self::Value { value } => *value,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for HitsTotal {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if let Some(count) = value.as_u64() {
+            return Ok(Self::Count(count));
+        }
+        if let Some(count) = value.get("value").and_then(serde_json::Value::as_u64) {
+            return Ok(Self::Value { value: count });
+        }
+        Err(serde::de::Error::custom("expected hits.total as a number or an object with value"))
+    }
 }
 
 #[derive(Deserialize)]
@@ -351,7 +375,7 @@ pub async fn find_documents(
         })
         .collect();
 
-    Ok(MongoDocumentResult { documents, total: result.hits.total.value })
+    Ok(MongoDocumentResult { documents, total: result.hits.total.value() })
 }
 
 fn build_find_documents_body(
@@ -1355,7 +1379,7 @@ fn parse_aggregations(aggs: &serde_json::Map<String, serde_json::Value>) -> (Vec
 mod tests {
     use super::{
         build_find_documents_body, elasticsearch_accept_invalid_certs, elasticsearch_base_url_fallbacks,
-        redact_elasticsearch_url, EsClient,
+        redact_elasticsearch_url, EsClient, SearchResponse,
     };
     use serde_json::json;
     use std::time::Duration;
@@ -1489,5 +1513,31 @@ mod tests {
                 }
             })
         );
+    }
+
+    #[test]
+    fn parses_search_total_from_elasticsearch_6_number_shape() {
+        let response: SearchResponse = serde_json::from_value(json!({
+            "hits": {
+                "total": 5,
+                "hits": []
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(response.hits.total.value(), 5);
+    }
+
+    #[test]
+    fn parses_search_total_from_elasticsearch_7_object_shape() {
+        let response: SearchResponse = serde_json::from_value(json!({
+            "hits": {
+                "total": { "value": 5, "relation": "eq" },
+                "hits": []
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(response.hits.total.value(), 5);
     }
 }
