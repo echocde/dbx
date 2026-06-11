@@ -2,7 +2,7 @@
 import { ref, watch, shallowRef, computed, onMounted } from "vue";
 import type { EditorView as EditorViewType } from "@codemirror/view";
 import { useI18n } from "vue-i18n";
-import { AlertTriangle, CheckCircle2, CircleHelp, Cloud, Copy, Download, ExternalLink, Loader2, PackageSearch, Pencil, RefreshCw, RotateCcw, Settings, Terminal, Trash2, Upload, X } from "@lucide/vue";
+import { AlertTriangle, CheckCircle2, CircleHelp, Cloud, Copy, Download, ExternalLink, Loader2, Moon, PackageSearch, Pencil, RefreshCw, RotateCcw, Settings, Sun, SunMoon, Terminal, Trash2, Upload, X } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -56,7 +56,7 @@ import { LOCALE_OPTIONS } from "@/lib/localeOptions";
 const { t } = useI18n();
 const settingsStore = useSettingsStore();
 const connectionStore = useConnectionStore();
-const { isDark } = useTheme();
+const { isDark, themeMode, setThemeMode } = useTheme();
 
 const props = defineProps<{
   open: boolean;
@@ -1431,6 +1431,29 @@ watch(
                     </SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div class="space-y-2">
+                <Label>{{ t("settings.theme") }}</Label>
+                <div class="flex gap-2">
+                  <Button
+                    v-for="option in [
+                      { value: 'light', label: t('toolbar.themeLight'), icon: Sun },
+                      { value: 'dark', label: t('toolbar.themeDark'), icon: Moon },
+                      { value: 'system', label: t('toolbar.themeSystem'), icon: SunMoon },
+                    ]"
+                    :key="option.value"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="h-auto gap-1.5 px-3 py-1.5"
+                    :class="themeMode === option.value ? 'border-blue-300 ring-2 ring-blue-300/50' : ''"
+                    @click="setThemeMode(option.value as 'light' | 'dark' | 'system')"
+                  >
+                    <component :is="option.icon" class="h-3.5 w-3.5" />
+                    {{ option.label }}
+                  </Button>
+                </div>
               </div>
 
               <Separator />

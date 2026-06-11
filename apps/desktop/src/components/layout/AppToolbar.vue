@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
-import { DatabaseZap, FilePlus2, Loader2, Languages, Moon, Sun, SunMoon, History, Bot, ArrowLeftRight, FileCode, FileStack, GitCompareArrows, TableProperties, Settings, CloudDownload, Package, Ellipsis } from "@lucide/vue";
+import { DatabaseZap, FilePlus2, Loader2, Moon, Sun, SunMoon, History, Bot, ArrowLeftRight, FileCode, BookMarked, GitCompareArrows, TableProperties, Settings, CloudDownload, Package } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import LightDropdown from "@/components/ui/LightDropdown.vue";
 import WindowControls from "@/components/layout/WindowControls.vue";
 import ExportProgressPopover from "@/components/export/ExportProgressPopover.vue";
 import { shouldReserveMacTrafficLightInset, useWindowControls } from "@/composables/useWindowControls";
-import { currentLocale, setLocale, type Locale } from "@/i18n";
 import type { AppThemeMode } from "@/lib/appTheme";
-import { LOCALE_OPTIONS } from "@/lib/localeOptions";
 
 const props = defineProps<{
   isDark: boolean;
@@ -51,13 +49,6 @@ const themeItems = computed(() => [
   { value: "dark", label: t("toolbar.themeDark"), icon: Moon },
   { value: "system", label: t("toolbar.themeSystem"), icon: SunMoon },
 ]);
-const localeItems = computed(() =>
-  LOCALE_OPTIONS.map((option) => ({
-    value: option.value,
-    label: option.label,
-    leadingText: option.flag,
-  })),
-);
 const themeTriggerIcon = computed(() => {
   if (props.themeMode === "system") return SunMoon;
   return props.isDark ? Moon : Sun;
@@ -91,14 +82,7 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
 });
 
-const collapsedItems = computed(() => [
-  {
-    value: "transfer",
-    label: t("transfer.dataTransfer"),
-    icon: ArrowLeftRight,
-    action: () => emit("open-transfer"),
-    disabled: !props.hasConnections,
-  },
+const moreItems = computed(() => [
   {
     value: "sql-file",
     label: t("sqlFile.title"),
@@ -120,6 +104,17 @@ const collapsedItems = computed(() => [
     action: () => emit("open-data-compare"),
     disabled: !props.hasConnections,
   },
+]);
+
+const collapsedItems = computed(() => [
+  {
+    value: "transfer",
+    label: t("transfer.dataTransfer"),
+    icon: ArrowLeftRight,
+    action: () => emit("open-transfer"),
+    disabled: !props.hasConnections,
+  },
+  ...moreItems.value,
   {
     value: "driver-store",
     label: props.agentDriverUpdateCount > 0 ? `${t("toolbar.driverManager")} (${props.agentDriverUpdateCount})` : t("toolbar.driverManager"),
@@ -148,21 +143,6 @@ const collapsedItems = computed(() => [
         {{ t("transfer.dataTransfer") }}
       </Button>
 
-      <Button variant="ghost" size="sm" class="h-8 px-2 text-xs gap-1" @click="emit('open-sql-file')" :disabled="!hasSqlFileConnections">
-        <FileCode class="h-3.5 w-3.5" />
-        {{ t("sqlFile.title") }}
-      </Button>
-
-      <Button variant="ghost" size="sm" class="h-8 px-2 text-xs gap-1" @click="emit('open-schema-diff')" :disabled="!hasConnections">
-        <GitCompareArrows class="h-3.5 w-3.5" />
-        {{ t("diff.title") }}
-      </Button>
-
-      <Button variant="ghost" size="sm" class="h-8 px-2 text-xs gap-1" @click="emit('open-data-compare')" :disabled="!hasConnections">
-        <TableProperties class="h-3.5 w-3.5" />
-        {{ t("dataCompare.title") }}
-      </Button>
-
       <Button variant="ghost" size="sm" class="h-8 px-2 text-xs gap-1" :class="{ 'bg-accent': showDriverStore }" @click="emit('open-driver-store')">
         <Package class="h-3.5 w-3.5" />
         {{ t("toolbar.driverManager") }}
@@ -170,6 +150,24 @@ const collapsedItems = computed(() => [
           {{ agentDriverUpdateCount > 99 ? "99+" : agentDriverUpdateCount }}
         </span>
       </Button>
+
+      <LightDropdown
+        model-value=""
+        :items="moreItems"
+        :aria-label="t('common.more')"
+        :trigger-label="t('common.more')"
+        trigger-class="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 transition-colors"
+        :show-trigger-label="true"
+        :show-chevron="true"
+        check-position="none"
+        align="start"
+        @update:model-value="
+          (value) => {
+            const item = moreItems.find((i) => i.value === value);
+            item?.action();
+          }
+        "
+      />
     </template>
 
     <template v-if="toolbarCollapsed">
@@ -177,11 +175,10 @@ const collapsedItems = computed(() => [
         model-value=""
         :items="collapsedItems"
         :aria-label="t('common.more')"
-        :trigger-icon="Ellipsis"
-        trigger-class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-        trigger-icon-class="h-4 w-4"
-        :show-trigger-label="false"
-        :show-chevron="false"
+        :trigger-label="t('common.more')"
+        trigger-class="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-xs font-medium hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 transition-colors"
+        :show-trigger-label="true"
+        :show-chevron="true"
         check-position="none"
         align="start"
         @update:model-value="
@@ -211,7 +208,7 @@ const collapsedItems = computed(() => [
     <Tooltip>
       <TooltipTrigger as-child>
         <Button variant="ghost" size="icon" class="h-8 w-8" :class="{ 'bg-accent': showSqlLibrary }" @click="emit('toggle-sql-library')">
-          <FileStack class="h-4 w-4" />
+          <BookMarked class="h-4 w-4" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{{ t("sqlLibrary.title") }}</TooltipContent>
@@ -255,27 +252,6 @@ const collapsedItems = computed(() => [
         </span>
       </TooltipTrigger>
       <TooltipContent>{{ t("toolbar.theme") }}</TooltipContent>
-    </Tooltip>
-
-    <Tooltip>
-      <TooltipTrigger as-child>
-        <span class="inline-flex">
-          <LightDropdown
-            :model-value="currentLocale()"
-            :items="localeItems"
-            :aria-label="t('common.language')"
-            :trigger-icon="Languages"
-            trigger-class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
-            trigger-icon-class="h-4 w-4"
-            :show-trigger-label="false"
-            :show-chevron="false"
-            check-position="none"
-            align="end"
-            @update:model-value="(value) => setLocale(value as Locale)"
-          />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{{ t("common.language") }}</TooltipContent>
     </Tooltip>
 
     <Tooltip>
