@@ -45,7 +45,6 @@ import {
   WrapText,
   Info,
   Rows3,
-  TriangleAlert,
   RefreshCcw,
   RotateCcw,
   Pencil,
@@ -72,6 +71,7 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/compon
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import ErrorBanner from "@/components/ui/ErrorBanner.vue";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
 import ImagePreviewDialog from "@/components/grid/ImagePreviewDialog.vue";
@@ -181,7 +181,7 @@ const props = defineProps<{
   cacheKey?: string;
   onExecuteSql?: (sql: string) => Promise<void>;
   fullExportResult?: () => Promise<QueryResult | undefined>;
-  customSave?: (changes: { dirtyRows: Map<number, Map<number, CellValue>>; newRows: CellValue[][]; deletedRows: Set<number>; columns: string[]; rows: CellValue[][] }) => Promise<void>;
+  customSaveHandler?: import("@/composables/useDataGridEditor").CustomSaveHandler;
 }>();
 
 const dataGridTraceId = uuid().slice(0, 8);
@@ -1902,7 +1902,7 @@ const canShowWhereSearch = computed(() => !!props.onExecuteSql && !isResultsCont
 const canUseWhereSearch = computed(() => !!props.tableMeta && !!props.onExecuteSql && !isResultsContext.value);
 type DataGridTableMeta = NonNullable<typeof props.tableMeta>;
 const hiveTableTransactional = ref<boolean | undefined>(undefined);
-const canEditExistingRows = computed(() => !!props.customSave || canEditExistingTableRows(props.databaseType, hiveTableTransactional.value, props.tableMeta?.primaryKeys ?? []));
+const canEditExistingRows = computed(() => !!props.customSaveHandler || canEditExistingTableRows(props.databaseType, hiveTableTransactional.value, props.tableMeta?.primaryKeys ?? []));
 watch(
   () => [props.databaseType, props.connectionId, props.database, props.tableMeta?.schema, props.tableMeta?.tableName],
   async () => {
@@ -2118,7 +2118,7 @@ const editor = useDataGridEditor({
   sourceColumns: computed(() => props.sourceColumns),
   canEditExistingRows,
   onExecuteSql: computed(() => props.onExecuteSql),
-  customSave: computed(() => props.customSave),
+  customSaveHandler: computed(() => props.customSaveHandler),
   sql: computed(() => props.sql),
   searchText,
   whereFilterInput,
@@ -2234,7 +2234,7 @@ const saveActionMode = computed(() =>
 const saveToolbarState = computed(() =>
   dataGridSaveToolbarState({
     editable: props.editable,
-    hasSaveTarget: !!props.tableMeta || !!props.customSave,
+    hasSaveTarget: !!props.tableMeta || !!props.customSaveHandler,
     hasPendingChanges: hasPendingChanges.value,
     isSaving: isSaving.value,
   }),
@@ -2242,13 +2242,13 @@ const saveToolbarState = computed(() =>
 const hasSearchBarSlot = computed(() => !!slots["search-bar"]);
 const showDataGridTopbar = computed(
   () =>
-    (useTransaction.value && !!props.editable && (!!props.tableMeta || !!props.customSave)) ||
+    (useTransaction.value && !!props.editable && (!!props.tableMeta || !!props.customSaveHandler)) ||
     hasLocalColumnFilters.value ||
     canShowWhereSearch.value ||
     hasSearchBarSlot.value ||
     showQueryEditReadyBadge.value ||
     props.context !== "results" ||
-    (!!props.editable && (!!props.tableMeta || !!props.customSave)) ||
+    (!!props.editable && (!!props.tableMeta || !!props.customSaveHandler)) ||
     transactionActive.value ||
     saveToolbarState.value.showActions,
 );
@@ -2615,11 +2615,6 @@ const {
   handleDataCellMousedown,
   isRowSelected,
 } = selection;
-
-const selectionSummary = computed(() => {
-  if (hasRowSelection.value) return t("grid.selectedRows", { count: selectedRowCount.value });
-  return t("grid.selectedCells", { count: selectedCellCount.value });
-});
 
 const multiRowCount = computed(() => {
   if (hasRowSelection.value) return selectedRowCount.value;
@@ -5858,7 +5853,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
           "
         >
           <div class="data-grid-topbar flex items-stretch relative">
-            <div v-if="useTransaction && editable && (tableMeta || customSave)" class="flex items-center px-2 py-0.5 border-r shrink-0">
+            <div v-if="useTransaction && editable && (tableMeta || customSaveHandler)" class="flex items-center px-2 py-0.5 border-r shrink-0">
               <Select :model-value="rowStatusFilter" @update:model-value="(value: any) => setRowStatusFilter(String(value))">
                 <SelectTrigger class="h-5 max-w-28 border-0 bg-transparent px-0 py-0 text-xs font-medium text-foreground/70 shadow-none focus-visible:ring-0 data-[state=open]:text-foreground [&_svg]:size-3">
                   <SelectValue :placeholder="t('grid.filterRows')" />
@@ -5883,7 +5878,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
             </template>
             <template v-if="canShowWhereSearch">
               <div ref="searchSplitContainerRef" class="flex flex-1 min-w-0">
-                <div class="flex flex-1 items-center gap-1 px-2 py-0.5 min-w-0 relative" :class="{ 'border-l': useTransaction && editable && (tableMeta || customSave) }" :style="whereSearchPaneStyle">
+                <div class="flex flex-1 items-center gap-1 px-2 py-0.5 min-w-0 relative" :class="{ 'border-l': useTransaction && editable && (tableMeta || customSaveHandler) }" :style="whereSearchPaneStyle">
                   <Popover v-model:open="filterBuilderOpen">
                     <PopoverTrigger as-child>
                       <button
@@ -6147,7 +6142,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                   {{ t("grid.renderModeHint") }}
                 </TooltipContent>
               </Tooltip>
-              <Button v-if="editable && (tableMeta || customSave)" variant="ghost" size="sm" class="h-5 text-xs px-1.5 shrink-0" @click="addRow"> <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }} </Button>
+              <Button v-if="editable && (tableMeta || customSaveHandler)" variant="ghost" size="sm" class="h-5 text-xs px-1.5 shrink-0" @click="addRow"> <Plus class="w-3 h-3 mr-1" /> {{ t("grid.addRow") }} </Button>
               <template v-if="saveToolbarState.showActions">
                 <Tooltip v-if="pendingChangeCount > 0">
                   <TooltipTrigger as-child>
@@ -6230,20 +6225,11 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                 </button>
               </div>
             </Transition>
-            <div v-if="isErrorResult" class="flex-1 flex flex-col items-center justify-center gap-2 px-6 text-center text-destructive">
-              <TriangleAlert class="h-8 w-8 text-destructive/50" aria-hidden="true" />
-              <div class="space-y-1 select-text" @mousedown.stop @click.stop>
-                <div class="text-sm font-medium">{{ t("grid.queryError") }}</div>
-                <div class="text-xs max-w-lg break-all cursor-text text-destructive/80 select-text">{{ errorMessage }}</div>
-              </div>
-              <div class="flex flex-wrap items-center justify-center gap-2">
-                <Button variant="outline" size="sm" class="h-7 gap-1.5 px-2 text-xs" @click.stop="copyText(errorMessage)">
-                  <Copy class="h-3.5 w-3.5" />
-                  {{ t("grid.copy") }}
-                </Button>
+            <ErrorBanner v-if="isErrorResult" variant="centered" :message="errorMessage">
+              <template #actions>
                 <slot name="error-actions" :error-message="errorMessage" />
-              </div>
-            </div>
+              </template>
+            </ErrorBanner>
             <div v-else-if="isTransposeMode" class="flex-1 flex flex-col min-h-0 overflow-hidden">
               <div class="h-8 flex items-center gap-2 px-3 border-y shrink-0 bg-muted/20">
                 <Rows3 class="w-3.5 h-3.5 text-muted-foreground" />
@@ -7270,11 +7256,8 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
         <span v-if="showTruncationWarning" class="shrink-0 text-amber-500 text-xs">(truncated)</span>
         <span v-if="!hasData" class="shrink-0">{{ t("grid.rowsAffected", { count: result.affected_rows }) }}</span>
         <span class="shrink-0">{{ result.execution_time_ms }}ms</span>
-        <span v-if="selectedRowCount > 0 || hasCellSelection" class="min-w-0 truncate text-foreground">
-          {{ selectionSummary }}
-        </span>
 
-        <template v-if="editable && (tableMeta || customSave)">
+        <template v-if="editable && (tableMeta || customSaveHandler)">
           <span v-if="hasPendingChanges" class="shrink-0 text-foreground">
             {{ t("grid.pendingChanges", { count: pendingChangeCount }) }}
           </span>

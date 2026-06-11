@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import DangerConfirmDialog from "@/components/editor/DangerConfirmDialog.vue";
+import ErrorBanner from "@/components/ui/ErrorBanner.vue";
 import DataGrid from "@/components/grid/DataGrid.vue";
 import * as api from "@/lib/api";
 import { clampSearchSplitWidth } from "@/lib/dataGridSearchSplit";
@@ -18,6 +19,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import JsonEditNode from "./JsonEditNode.vue";
 import type { EditNode } from "@/types/editor";
 import type { DatabaseType, QueryResult } from "@/types/database";
+import type { CustomSaveHandler } from "@/composables/useDataGridEditor";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 
@@ -255,6 +257,110 @@ async function gridSave(changes: { dirtyRows: Map<number, Map<number, string | n
 
   await load();
 }
+
+function formatMongoValue(val: unknown): string {
+  if (val === null || val === undefined) return "null";
+  if (typeof val === "number" || typeof val === "boolean") return String(val);
+  if (typeof val === "string") return JSON.stringify(val);
+  return JSON.stringify(val);
+}
+
+function mongoIdPreview(val: unknown): string {
+  if (val === null || val === undefined) return "null";
+  if (typeof val === "string" && /^[a-fA-F0-9]{24}$/.test(val)) return `ObjectId("${val}")`;
+  return formatMongoValue(val);
+}
+
+function buildUpdateDoc(changes: Map<number, string | number | boolean | null>, columns: string[]): Record<string, unknown> {
+  const setFields: Record<string, unknown> = {};
+  const unsetFields: Record<string, unknown> = {};
+  for (const [colIdx, newVal] of changes) {
+    const col = columns[colIdx];
+    if (!col || col === "_id") continue;
+    if (newVal === null) {
+      unsetFields[col] = "";
+    } else if (typeof newVal === "string") {
+      try {
+        setFields[col] = JSON.parse(newVal);
+      } catch {
+        setFields[col] = newVal;
+      }
+    } else {
+      setFields[col] = newVal;
+    }
+  }
+  const doc: Record<string, unknown> = {};
+  if (Object.keys(setFields).length > 0) doc.$set = setFields;
+  if (Object.keys(unsetFields).length > 0) doc.$unset = unsetFields;
+  return doc;
+}
+
+function buildNewDoc(newRow: (string | number | boolean | null)[], columns: string[]): Record<string, unknown> {
+  const doc: Record<string, unknown> = {};
+  for (let ci = 0; ci < columns.length; ci++) {
+    const col = columns[ci];
+    if (!col || col === "_id") continue;
+    const val = newRow[ci];
+    if (val === null) continue;
+    if (typeof val === "string") {
+      try {
+        doc[col] = JSON.parse(val);
+      } catch {
+        doc[col] = val;
+      }
+    } else {
+      doc[col] = val;
+    }
+  }
+  return doc;
+}
+
+async function previewDocumentChanges(changes: { dirtyRows: Map<number, Map<number, string | number | boolean | null>>; deletedRows: Set<number>; newRows: (string | number | boolean | null)[][]; columns: string[]; rows: (string | number | boolean | null)[][] }): Promise<string[]> {
+  const { dirtyRows, deletedRows, newRows, columns, rows } = changes;
+  const idColIdx = columns.indexOf("_id");
+  const stmts: string[] = [];
+  const coll = props.collection;
+  const isEs = documentStoreProvider.value.kind === "elasticsearch";
+
+  for (const [rowIdx, dirtyCols] of dirtyRows) {
+    const row = rows[rowIdx];
+    const id = row?.[idColIdx];
+    if (id == null) continue;
+    const updateDoc = buildUpdateDoc(dirtyCols, columns);
+    if (isEs) {
+      stmts.push(`POST /${coll}/_update/${JSON.stringify(String(id))}\n${JSON.stringify({ doc: updateDoc.$set ?? updateDoc }, null, 2)}`);
+    } else {
+      stmts.push(`db.${coll}.updateOne({_id: ${mongoIdPreview(id)}}, ${JSON.stringify(updateDoc)})`);
+    }
+  }
+
+  for (const rowIdx of deletedRows) {
+    const row = rows[rowIdx];
+    const id = row?.[idColIdx];
+    if (id == null) continue;
+    if (isEs) {
+      stmts.push(`DELETE /${coll}/_doc/${JSON.stringify(String(id))}`);
+    } else {
+      stmts.push(`db.${coll}.deleteOne({_id: ${mongoIdPreview(id)}})`);
+    }
+  }
+
+  for (const newRow of newRows) {
+    const doc = buildNewDoc(newRow, columns);
+    if (isEs) {
+      stmts.push(`POST /${coll}/_doc\n${JSON.stringify(doc, null, 2)}`);
+    } else {
+      stmts.push(`db.${coll}.insertOne(${JSON.stringify(doc)})`);
+    }
+  }
+
+  return stmts;
+}
+
+const customSaveHandler = computed<CustomSaveHandler>(() => ({
+  save: gridSave,
+  preview: previewDocumentChanges,
+}));
 
 async function load() {
   loading.value = true;
@@ -688,7 +794,7 @@ function resetTableSearchSplitWidth() {
       :result="gridResult"
       context="results"
       editable
-      :custom-save="gridSave"
+      :custom-save-handler="customSaveHandler"
       :loading="loading"
       :sql="documentStoreLabels.queryPreview"
       :page-offset="page * pageSize"
@@ -932,9 +1038,7 @@ function resetTableSearchSplitWidth() {
             {{ t("mongo.selectDocument") }}
           </div>
 
-          <div v-if="error" class="px-3 py-1.5 border-t bg-destructive/10 text-destructive text-xs shrink-0">
-            {{ error }}
-          </div>
+          <ErrorBanner v-if="error" :message="error" />
           <DangerConfirmDialog v-model:open="showDeleteConfirm" :message="t('dangerDialog.deleteMessage')" :details="deleteDetails" :confirm-label="t('dangerDialog.deleteConfirm')" @confirm="confirmDelete" />
         </div>
       </Pane>
