@@ -264,7 +264,16 @@ pnpm dev:web       # frontend
 pnpm dev:backend   # backend
 ```
 
-[dbx-agents](https://github.com/t8y2/dbx-agents) contains driver development projects.
+[dbx-agents](https://github.com/t8y2/dbx-agents) is a separate repository containing JDBC agent driver development projects. For local development, clone it alongside `dbx/` under the same workspace directory and open the parent folder in your IDE:
+
+```bash
+mkdir dbx-workspace && cd dbx-workspace
+git clone https://github.com/t8y2/dbx.git
+git clone https://github.com/t8y2/dbx-agents.git
+# Open dbx-workspace/ in your IDE to work on both projects together
+```
+
+This keeps the two repositories independent (separate git histories) while making it easy to navigate between them during development.
 
 ### Build
 
