@@ -549,7 +549,7 @@ watch(
         redis_sentinel_password: config.redis_sentinel_password || "",
         redis_sentinel_tls: config.redis_sentinel_tls || false,
         redis_cluster_nodes: config.redis_cluster_nodes || "",
-        redis_key_separator: config.redis_key_separator || ":",
+        redis_key_separator: config.redis_key_separator ?? ":",
         etcd_endpoints: config.etcd_endpoints || "",
         read_only: config.read_only || false,
         visible_databases: config.visible_databases,
@@ -1095,7 +1095,7 @@ function connectionConfigForSubmit(id: string): ConnectionConfig {
     config.redis_cluster_nodes = undefined;
   }
   if (config.db_type === "redis") {
-    config.redis_key_separator = config.redis_key_separator?.trim() || ":";
+    config.redis_key_separator = config.redis_key_separator?.trim() ?? ":";
   }
   if (config.db_type === "etcd") {
     config.etcd_endpoints = normalizeEndpointLines(config.etcd_endpoints || "");
