@@ -2438,20 +2438,31 @@ watch(
 );
 
 interface SearchMatch {
-  displayRow: number;
+  kind: "cell" | "column";
+  displayRow: number; // -1 for column matches
   col: number;
 }
 
 const searchMatches = computed<SearchMatch[]>(() => {
   const q = deferredClientSearchText.value;
   if (!q) return [];
+  const lowered = q.toLowerCase();
   const items = displayItems.value;
   const matches: SearchMatch[] = [];
+
+  // Column name matches (navigate first)
+  for (let c = 0; c < props.result.columns.length; c++) {
+    if (props.result.columns[c].toLowerCase().includes(lowered)) {
+      matches.push({ kind: "column", displayRow: -1, col: c });
+    }
+  }
+
+  // Cell value matches
   for (let r = 0; r < items.length; r++) {
     const data = items[r].data;
     for (let c = 0; c < data.length; c++) {
-      if (data[c] !== null && formatCellCached(data[c], c).toLowerCase().includes(q)) {
-        matches.push({ displayRow: r, col: c });
+      if (data[c] !== null && formatCellCached(data[c], c).toLowerCase().includes(lowered)) {
+        matches.push({ kind: "cell", displayRow: r, col: c });
       }
     }
   }
@@ -2461,7 +2472,7 @@ const searchMatches = computed<SearchMatch[]>(() => {
 const searchMatchSet = computed(() => {
   const set = new Set<string>();
   for (const m of searchMatches.value) {
-    set.add(`${m.displayRow}:${m.col}`);
+    set.add(`${m.kind}:${m.displayRow}:${m.col}`);
   }
   return set;
 });
@@ -2479,14 +2490,14 @@ watch(searchMatches, (matches) => {
 
 function cellIsSearchMatch(displayRow: number, col: number): boolean {
   if (isScrolling.value) return false;
-  return searchMatchSet.value.has(`${displayRow}:${col}`);
+  return searchMatchSet.value.has(`cell:${displayRow}:${col}`);
 }
 
 function cellIsCurrentMatch(displayRow: number, col: number): boolean {
   if (isScrolling.value) return false;
   const m = currentSearchMatch.value;
   if (!m) return false;
-  return m.displayRow === displayRow && m.col === col;
+  return m.kind === "cell" && m.displayRow === displayRow && m.col === col;
 }
 
 function navigateMatch(delta: number) {
@@ -2502,6 +2513,16 @@ function scrollToCurrentMatch() {
   const match = searchMatches.value[idx];
   const visibleColIdx = visibleColumnIndexes.value.indexOf(match.col);
   if (visibleColIdx >= 0) scrollGridColumnIntoView(visibleColIdx);
+  if (match.kind === "column") {
+    // Scroll to top so the column header is visible
+    const scrollEl = gridRef.value;
+    if (scrollEl) scrollEl.scrollTop = 0;
+    if (useCanvasGridRows.value) {
+      const scroller = canvasScrollerElement();
+      if (scroller) scroller.scrollTop = 0;
+    }
+    return;
+  }
   const scrollEl = gridRef.value;
   if (!scrollEl) return;
   if (useCanvasGridRows.value) {
@@ -6347,6 +6368,7 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
                       class="shrink-0 px-2 py-1.5 border-r border-border whitespace-nowrap hover:bg-accent/60 select-none relative overflow-hidden"
                       :class="{
                         'bg-primary/15 ring-1 ring-inset ring-primary/40': highlightedColumnIndex === col.actualColIdx || columnIsSelected(col.visibleColIdx),
+                        'bg-amber-500/20 ring-1 ring-inset ring-amber-500/40': currentSearchMatch?.kind === 'column' && currentSearchMatch.col === col.actualColIdx,
                       }"
                       :style="renderedColumnStyle(col.visibleColIdx)"
                       :data-grid-column-index="col.actualColIdx"
