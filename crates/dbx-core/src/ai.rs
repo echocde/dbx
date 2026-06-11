@@ -99,6 +99,10 @@ fn default_enable_thinking() -> bool {
 pub struct AiMessage {
     pub role: String,
     pub content: String,
+    /// Tool call ID for tool results (role="tool"). Used to associate
+    /// a tool result with its originating tool call in multi-turn loops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,7 +317,7 @@ pub fn supports_temperature(config: &AiConfig) -> bool {
     !(is_openai_api_config(config) && is_openai_reasoning_model(&config.model))
 }
 
-fn add_temperature_if_supported(body: &mut serde_json::Value, request: &AiCompletionRequest) {
+pub fn add_temperature_if_supported(body: &mut serde_json::Value, request: &AiCompletionRequest) {
     if supports_temperature(&request.config) {
         body["temperature"] = json!(request.temperature.unwrap_or(0.2));
     }
@@ -388,7 +392,7 @@ fn validate_model_list_config(config: &AiConfig) -> Result<(), String> {
     resolve_model_list_endpoint(config).map(|_| ())
 }
 
-fn maybe_bearer_headers(config: &AiConfig) -> Result<HeaderMap, String> {
+pub fn maybe_bearer_headers(config: &AiConfig) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     if !config.api_key.trim().is_empty() {
@@ -400,7 +404,7 @@ fn maybe_bearer_headers(config: &AiConfig) -> Result<HeaderMap, String> {
     Ok(headers)
 }
 
-fn claude_headers(config: &AiConfig) -> Result<HeaderMap, String> {
+pub fn claude_headers(config: &AiConfig) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     match config.auth_method {
@@ -680,7 +684,7 @@ pub async fn test_connection_core(config: &AiConfig) -> Result<String, String> {
     let request = AiCompletionRequest {
         config: config.clone(),
         system_prompt: String::new(),
-        messages: vec![AiMessage { role: "user".into(), content: "hi".into() }],
+        messages: vec![AiMessage { role: "user".into(), content: "hi".into(), tool_call_id: None }],
         max_tokens: Some(16),
         temperature: Some(0.0),
     };

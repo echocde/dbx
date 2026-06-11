@@ -171,6 +171,7 @@ export const buildDataCompareSyncPlan = forward("buildDataCompareSyncPlan");
 // AI
 export const aiComplete = forward("aiComplete");
 export const aiStream = forward("aiStream");
+export const aiAgentStream = forward("aiAgentStream");
 export const aiCancelStream = forward("aiCancelStream");
 export const aiTestConnection = forward("aiTestConnection");
 export const aiListModels = forward("aiListModels");
@@ -349,4 +350,5 @@ export type {
   TableExportProgress,
   TableExportStatus,
   TableExportRequest,
+  AgentEvent,
 } from "./tauri";
