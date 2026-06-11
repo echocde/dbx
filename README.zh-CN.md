@@ -241,6 +241,20 @@ pnpm install
 pnpm dev:tauri
 ```
 
+> [!TIP]
+> DuckDB 从源码编译较慢。如果不涉及 DuckDB 功能，可以跳过以加速本地构建：
+>
+> ```bash
+> # 快速检查（跳过 DuckDB）
+> cargo check --no-default-features
+> cargo test  --no-default-features
+>
+> # Tauri 开发模式跳过 DuckDB
+> pnpm tauri dev -- --no-default-features
+> ```
+>
+> `--no-default-features` 仅影响本地开发，发布构建（`pnpm tauri build`）始终包含 DuckDB。
+
 Web 版本：
 
 ```bash

@@ -246,9 +246,16 @@ pnpm dev:tauri
 > skip it to speed up local builds:
 >
 > ```bash
+> # Fast checks (skip DuckDB)
 > cargo check --no-default-features
 > cargo test  --no-default-features
+>
+> # Tauri dev without DuckDB
+> pnpm tauri dev -- --no-default-features
 > ```
+>
+> The `--no-default-features` flag only affects local development.
+> Release builds (`pnpm tauri build`) always include DuckDB.
 
 Web version:
 
