@@ -271,7 +271,22 @@ function visibleLabel(node: TreeNode): string {
   return displayLabel(node);
 }
 
+function cleanTooltipValue(value: string | null | undefined): string {
+  return String(value ?? "").trim();
+}
+
+const tableInfoTooltip = computed(() => {
+  const node = props.node;
+  if (node.type !== "table" && node.type !== "view") return null;
+  const rows = [
+    { label: t("structureEditor.tableName"), value: visibleLabel(node) },
+    { label: t("structureEditor.comment"), value: cleanTooltipValue(node.comment), multiline: true },
+  ].filter((row) => row.value);
+  return { rows };
+});
+
 function isTooltipDisabled(): boolean {
+  if (tableInfoTooltip.value?.rows.length) return isRenamingGroup.value;
   return isRenamingGroup.value || !isLabelTruncated();
 }
 
@@ -3068,6 +3083,19 @@ function treeItemMenuItems(): ContextMenuItem[] {
             <Pin class="w-3 h-3" :class="{ 'fill-current': isPinned }" />
           </button>
         </div>
+        <template v-if="tableInfoTooltip" #content>
+          <div class="w-max min-w-40 max-w-[min(28rem,calc(100vw-24px))] rounded-md border border-border bg-popover p-2 text-popover-foreground shadow-lg">
+            <div class="space-y-1">
+              <div v-for="row in tableInfoTooltip.rows" :key="row.label" class="grid grid-cols-[max-content_minmax(0,1fr)] gap-2 text-[11px] leading-4">
+                <span class="text-muted-foreground">{{ row.label }}</span>
+                <span v-if="row.multiline" class="max-h-20 overflow-hidden whitespace-pre-wrap break-words text-foreground/90">
+                  {{ row.value }}
+                </span>
+                <span v-else class="truncate font-mono text-foreground/90" :title="row.value">{{ row.value }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
       </LightTooltip>
     </div>
   </CustomContextMenu>
