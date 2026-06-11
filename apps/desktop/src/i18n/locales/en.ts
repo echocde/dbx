@@ -1161,6 +1161,7 @@
     searchPlaceholder: "Search databases...",
     selectedCount: "{selected}/{total} selected",
     selectAll: "Select all",
+    selectFiltered: "Select search results",
     clear: "Clear",
     showAll: "Show all",
     showSystemDatabases: "Show system databases",

@@ -1160,6 +1160,7 @@
     searchPlaceholder: "搜索数据库...",
     selectedCount: "已选择 {selected}/{total}",
     selectAll: "全选",
+    selectFiltered: "选中搜索结果",
     clear: "清空",
     showAll: "显示全部",
     showSystemDatabases: "显示系统库",
