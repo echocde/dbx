@@ -73,7 +73,7 @@ const ddlLoading = ref(false);
 const ddlFetched = ref(false);
 
 async function fetchDdl() {
-  if (!props.connectionId || !props.database || !props.tableName || ddlFetched.value) return;
+  if (!props.connectionId || !props.database || !props.tableName || ddlFetched.value || !tableMetadataCapabilities.value.ddl) return;
   ddlLoading.value = true;
   try {
     ddlContent.value = await api.getTableDdl(props.connectionId, props.database, metadataSchema.value, props.tableName);
@@ -373,7 +373,7 @@ async function loadStructure(silent = false) {
     await store.ensureConnected(props.connectionId);
     const nextColumns = await api.getColumns(props.connectionId, props.database, metadataSchema.value, props.tableName);
     const [nextIndexes, nextForeignKeys, nextTriggers] = await Promise.all([
-      api.listIndexes(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []),
+      tableMetadataCapabilities.value.indexes ? api.listIndexes(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []) : Promise.resolve([]),
       tableMetadataCapabilities.value.foreignKeys ? api.listForeignKeys(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []) : Promise.resolve([]),
       tableMetadataCapabilities.value.triggers ? api.listTriggers(props.connectionId, props.database, metadataSchema.value, props.tableName).catch(() => []) : Promise.resolve([]),
     ]);
@@ -672,9 +672,23 @@ onBeforeUnmount(() => {
   unregisterStructureEditorShortcuts();
 });
 
+function firstStructureMetadataTab(capabilities = tableMetadataCapabilities.value) {
+  if (capabilities.columns) return "columns";
+  if (capabilities.indexes) return "indexes";
+  if (capabilities.foreignKeys) return "foreignKeys";
+  if (capabilities.triggers) return "triggers";
+  if (capabilities.ddl && !isCreateMode.value) return "ddl";
+  return "columns";
+}
+
 watch(tableMetadataCapabilities, (capabilities) => {
-  if (activeTab.value === "foreignKeys" && !capabilities.foreignKeys) activeTab.value = "columns";
-  if (activeTab.value === "triggers" && !capabilities.triggers) activeTab.value = "columns";
+  const supported =
+    (activeTab.value === "columns" && capabilities.columns) ||
+    (activeTab.value === "indexes" && capabilities.indexes) ||
+    (activeTab.value === "foreignKeys" && capabilities.foreignKeys) ||
+    (activeTab.value === "triggers" && capabilities.triggers) ||
+    (activeTab.value === "ddl" && capabilities.ddl && !isCreateMode.value);
+  if (!supported) activeTab.value = firstStructureMetadataTab(capabilities);
 });
 
 watch(
@@ -735,11 +749,11 @@ watch(activeTab, (tab) => {
         <Tabs v-model="activeTab" class="flex h-full min-h-0 flex-col">
           <div class="flex shrink-0 items-center justify-between gap-2 border-b px-2 py-[var(--structure-header-py)]">
             <TabsList>
-              <TabsTrigger value="columns">{{ t("structureEditor.columns") }}</TabsTrigger>
-              <TabsTrigger value="indexes">{{ t("structureEditor.indexes") }}</TabsTrigger>
+              <TabsTrigger v-if="tableMetadataCapabilities.columns" value="columns">{{ t("structureEditor.columns") }}</TabsTrigger>
+              <TabsTrigger v-if="tableMetadataCapabilities.indexes" value="indexes">{{ t("structureEditor.indexes") }}</TabsTrigger>
               <TabsTrigger v-if="tableMetadataCapabilities.foreignKeys" value="foreignKeys">{{ t("structureEditor.foreignKeys") }}</TabsTrigger>
               <TabsTrigger v-if="tableMetadataCapabilities.triggers" value="triggers">{{ t("structureEditor.triggers") }}</TabsTrigger>
-              <TabsTrigger value="ddl" v-if="!isCreateMode">DDL</TabsTrigger>
+              <TabsTrigger v-if="tableMetadataCapabilities.ddl && !isCreateMode" value="ddl">DDL</TabsTrigger>
             </TabsList>
             <div class="flex shrink-0 items-center gap-1.5">
               <div class="flex items-center gap-1.5">
@@ -766,7 +780,7 @@ watch(activeTab, (tab) => {
             </div>
           </div>
 
-          <TabsContent value="columns" class="m-0 min-h-0 flex-1 overflow-auto p-0">
+          <TabsContent v-if="tableMetadataCapabilities.columns" value="columns" class="m-0 min-h-0 flex-1 overflow-auto p-0">
             <table class="border-separate border-spacing-0 text-[length:var(--structure-font-size)] leading-[var(--structure-line-height)]" :style="{ minWidth: visibleColWidths.reduce((a, w) => a + w, 0) + 'px' }">
               <thead class="sticky top-0 z-10 bg-background">
                 <tr>
@@ -984,7 +998,7 @@ watch(activeTab, (tab) => {
             </table>
           </TabsContent>
 
-          <TabsContent value="indexes" class="m-0 min-h-0 flex-1 overflow-auto p-0">
+          <TabsContent v-if="tableMetadataCapabilities.indexes" value="indexes" class="m-0 min-h-0 flex-1 overflow-auto p-0">
             <table class="border-separate border-spacing-0 text-[length:var(--structure-font-size)] leading-[var(--structure-line-height)]" :style="{ minWidth: indexColWidths.reduce((a, w) => a + w, 0) + 'px' }">
               <thead class="sticky top-0 z-10 bg-background">
                 <tr>
@@ -1108,7 +1122,7 @@ watch(activeTab, (tab) => {
             </div>
           </TabsContent>
 
-          <TabsContent value="ddl" class="m-0 min-h-0 flex-1 overflow-auto p-[var(--structure-cell-px)]">
+          <TabsContent v-if="tableMetadataCapabilities.ddl" value="ddl" class="m-0 min-h-0 flex-1 overflow-auto p-[var(--structure-cell-px)]">
             <div v-if="ddlLoading" class="flex items-center justify-center gap-2 py-10 text-muted-foreground">
               <Loader2 class="h-4 w-4 animate-spin" />
               {{ t("common.loading") }}

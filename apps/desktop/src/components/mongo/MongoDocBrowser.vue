@@ -16,7 +16,7 @@ import { normalizeResultPageSize } from "@/lib/paginationPageSize";
 import { useSettingsStore } from "@/stores/settingsStore";
 import JsonEditNode from "./JsonEditNode.vue";
 import type { EditNode } from "@/types/editor";
-import type { QueryResult } from "@/types/database";
+import type { DatabaseType, QueryResult } from "@/types/database";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 
@@ -27,6 +27,7 @@ const props = defineProps<{
   connectionId: string;
   database: string;
   collection: string;
+  databaseType?: DatabaseType;
 }>();
 
 type JsonRecord = Record<string, unknown>;
@@ -64,6 +65,17 @@ const tableFindPaneStyle = computed(() => {
   if (tableFindPaneWidth.value == null) return {};
   return { flex: `0 0 ${tableFindPaneWidth.value}px` };
 });
+const documentStoreLabels = computed(() =>
+  props.databaseType === "elasticsearch"
+    ? {
+        documentsLabel: "Documents",
+        queryPreview: `${props.collection}/_search`,
+      }
+    : {
+        documentsLabel: t("mongo.documents", { count: total.value }),
+        queryPreview: mongoQueryPreview.value,
+      },
+);
 
 type PendingDelete = { kind: "document"; index: number } | { kind: "field"; index: number; name: string };
 type LocalFilterSummary = {
@@ -114,6 +126,7 @@ const deleteDetails = computed(() => {
   if (!pending) return "";
   if (pending.kind === "document") {
     const id = documents.value[pending.index]?._id ?? "";
+    if (props.databaseType === "elasticsearch") return `Elasticsearch index: ${props.collection}\nDocument _id: ${String(id)}`;
     return t("dangerDialog.mongoDocumentDetails", { collection: props.collection, id: String(id) });
   }
   return t("dangerDialog.mongoFieldDetails", { field: pending.name || t("mongo.field") });
@@ -675,7 +688,7 @@ function resetTableSearchSplitWidth() {
         </Button>
       </div>
 
-      <span class="shrink-0 ml-1">{{ t("mongo.documents", { count: total }) }}</span>
+      <span class="shrink-0 ml-1">{{ documentStoreLabels.documentsLabel }}</span>
 
       <Button v-if="viewMode === 'document'" variant="ghost" size="icon" class="h-5 w-5" @click="startNew"><Plus class="h-3 w-3" /></Button>
       <Button v-if="viewMode === 'document'" variant="ghost" size="icon" class="h-5 w-5" @click="load"><RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" /></Button>
@@ -767,7 +780,7 @@ function resetTableSearchSplitWidth() {
       editable
       :custom-save="gridSave"
       :loading="loading"
-      :sql="mongoQueryPreview"
+      :sql="documentStoreLabels.queryPreview"
       :page-offset="page * pageSize"
       :page-limit="pageSize"
       :total-row-count="total"

@@ -325,7 +325,8 @@ export type TreeNodeType =
   | "redis-db"
   | "etcd-root"
   | "mongo-db"
-  | "mongo-collection";
+  | "mongo-collection"
+  | "elasticsearch-index";
 
 export interface ConnectionGroup {
   id: string;

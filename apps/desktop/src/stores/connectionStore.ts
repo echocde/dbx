@@ -522,16 +522,16 @@ export const useConnectionStore = defineStore("connection", () => {
     for (const key of Object.keys(elasticsearchCompletionIndicesCache.value)) {
       if (key === exactCacheKey || key.startsWith(cachePrefix)) delete elasticsearchCompletionIndicesCache.value[key];
     }
-    for (const key of [...completionTableIndex.keys()]) {
+    for (const key of completionTableIndex.keys()) {
       if (key.startsWith(cachePrefix)) completionTableIndex.delete(key);
     }
-    for (const key of [...completionObjectIndex.keys()]) {
+    for (const key of completionObjectIndex.keys()) {
       if (key.startsWith(cachePrefix)) completionObjectIndex.delete(key);
     }
-    for (const key of [...completionColumnIndex.keys()]) {
+    for (const key of completionColumnIndex.keys()) {
       if (key.startsWith(cachePrefix)) completionColumnIndex.delete(key);
     }
-    for (const key of [...completionInFlight.keys()]) {
+    for (const key of completionInFlight.keys()) {
       if (key.startsWith(cachePrefix)) completionInFlight.delete(key);
     }
   }
@@ -645,6 +645,8 @@ export const useConnectionStore = defineStore("connection", () => {
       await loadEtcdRoot(connectionId);
     } else if (config.db_type === "mongodb") {
       await loadMongoDatabases(connectionId);
+    } else if (config.db_type === "elasticsearch") {
+      await loadElasticsearchIndices(connectionId);
     } else {
       await loadDatabases(connectionId, { force: true });
     }
@@ -962,6 +964,38 @@ export const useConnectionStore = defineStore("connection", () => {
             database: db,
             isExpanded: false,
             children: [],
+          })),
+          node,
+        ),
+      );
+      node.isExpanded = true;
+    } catch (e) {
+      recordMetadataLoadError(connectionId, e);
+      throw e;
+    } finally {
+      node.isLoading = false;
+    }
+  }
+
+  async function loadElasticsearchIndices(connectionId: string) {
+    const node = findNode(treeNodes.value, connectionId);
+    if (!node) return;
+
+    node.isLoading = true;
+    try {
+      await ensureConnected(connectionId);
+      const indices = await api.elasticsearchListIndices(connectionId);
+      setChildren(
+        node,
+        withSavedSqlRoot(
+          connectionId,
+          sortSidebarNames(indices).map((index) => ({
+            id: `${connectionId}:__es_index:${index}`,
+            label: index,
+            type: "elasticsearch-index" as const,
+            connectionId,
+            database: "default",
+            isExpanded: false,
           })),
           node,
         ),
@@ -1408,8 +1442,10 @@ export const useConnectionStore = defineStore("connection", () => {
         await loadRedisDatabases(node.connectionId);
       } else if (config?.db_type === "etcd") {
         await loadEtcdRoot(node.connectionId);
-      } else if (config?.db_type === "mongodb" || config?.db_type === "elasticsearch") {
+      } else if (config?.db_type === "mongodb") {
         await loadMongoDatabases(node.connectionId);
+      } else if (config?.db_type === "elasticsearch") {
+        await loadElasticsearchIndices(node.connectionId);
       } else {
         await loadDatabases(node.connectionId, options);
       }
@@ -1700,7 +1736,7 @@ export const useConnectionStore = defineStore("connection", () => {
       return elasticsearchCompletionIndicesCache.value[cacheKey];
     }
     await ensureConnected(connectionId);
-    const indices = await api.mongoListCollections(connectionId, database);
+    const indices = await api.elasticsearchListIndices(connectionId);
     elasticsearchCompletionIndicesCache.value[cacheKey] = indices;
     evictOldestCacheEntries(elasticsearchCompletionIndicesCache.value, COMPLETION_CACHE_MAX);
     return elasticsearchCompletionIndicesCache.value[cacheKey];
@@ -2435,6 +2471,7 @@ export const useConnectionStore = defineStore("connection", () => {
     loadEtcdRoot,
     updateRedisDbKeyStats,
     loadMongoDatabases,
+    loadElasticsearchIndices,
     loadMongoCollections,
     loadSchemas,
     loadSqlServerDatabaseObjects,

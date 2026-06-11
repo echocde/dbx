@@ -21,6 +21,12 @@ const capabilityByType: Partial<Record<DatabaseType, Partial<TableMetadataCapabi
     foreignKeys: false,
     triggers: false,
   },
+  elasticsearch: {
+    indexes: false,
+    foreignKeys: false,
+    triggers: false,
+    ddl: false,
+  },
   influxdb: {
     indexes: false,
     foreignKeys: false,

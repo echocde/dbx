@@ -5272,15 +5272,18 @@ function toggleCellDetailPanelLayout() {
 
 const tableMetadataCapabilities = computed(() => getTableMetadataCapabilities(props.databaseType));
 const tableInfoTabs = computed(() => {
-  const tabs: TableInfoTabItem[] = [
-    {
+  const tabs: TableInfoTabItem[] = [];
+  if (tableMetadataCapabilities.value.columns) {
+    tabs.push({
       id: "columns",
       label: t("grid.tableInfoColumns"),
       icon: ListTree,
       count: props.tableMeta?.columns.length,
-    },
-    { id: "indexes", label: t("grid.tableInfoIndexes"), icon: KeyRound, count: indexes.value.length },
-  ];
+    });
+  }
+  if (tableMetadataCapabilities.value.indexes) {
+    tabs.push({ id: "indexes", label: t("grid.tableInfoIndexes"), icon: KeyRound, count: indexes.value.length });
+  }
   if (tableMetadataCapabilities.value.foreignKeys) {
     tabs.push({
       id: "foreignKeys",
@@ -5292,7 +5295,9 @@ const tableInfoTabs = computed(() => {
   if (tableMetadataCapabilities.value.triggers) {
     tabs.push({ id: "triggers", label: t("grid.tableInfoTriggers"), icon: RotateCcw, count: triggers.value.length });
   }
-  tabs.push({ id: "ddl", label: "DDL", icon: Code2 });
+  if (tableMetadataCapabilities.value.ddl) {
+    tabs.push({ id: "ddl", label: "DDL", icon: Code2 });
+  }
   return tabs;
 });
 const tableInfoTabListStyle = computed(() => ({
@@ -5309,7 +5314,8 @@ async function toggleTableInfo(tab: TableInfoTab = activeTableInfoTab.value) {
 }
 
 async function selectTableInfoTab(tab: TableInfoTab) {
-  const nextTab = tableInfoTabs.value.some((item) => item.id === tab) ? tab : "columns";
+  const nextTab = tableInfoTabs.value.some((item) => item.id === tab) ? tab : tableInfoTabs.value[0]?.id;
+  if (!nextTab) return;
   activeTableInfoTab.value = nextTab;
   if (nextTab === "ddl") await fetchDdl();
   else if (nextTab === "indexes") await fetchIndexes();

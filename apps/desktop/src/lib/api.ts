@@ -266,6 +266,9 @@ export const mongoUpdateDocuments = forward("mongoUpdateDocuments");
 export const mongoDeleteDocument = forward("mongoDeleteDocument");
 export const mongoDeleteDocuments = forward("mongoDeleteDocuments");
 
+// Elasticsearch
+export const elasticsearchListIndices = forward("elasticsearchListIndices");
+
 // History
 export const saveHistory = forward("saveHistory");
 export const loadHistory = forward("loadHistory");

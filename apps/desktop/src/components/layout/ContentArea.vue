@@ -820,10 +820,10 @@ defineExpose({ focusSearch, refreshData, handleModRTarget });
       </div>
     </template>
 
-    <!-- MongoDB mode: document browser -->
+    <!-- Document mode: MongoDB collections and Elasticsearch indices -->
     <template v-else-if="activeTab.mode === 'mongo'">
       <div class="flex-1 min-h-0">
-        <MongoDocBrowser :key="activeTab.id" :connection-id="activeTab.connectionId" :database="activeTab.database" :collection="activeTab.sql" />
+        <MongoDocBrowser :key="activeTab.id" :connection-id="activeTab.connectionId" :database="activeTab.database" :collection="activeTab.sql" :database-type="activeEffectiveDatabaseType" />
       </div>
     </template>
 
