@@ -1074,6 +1074,21 @@ test("suggests table alias after FROM table", () => {
   assert.ok(aliasItem!.apply!.includes("AS"), "alias apply should include AS");
 });
 
+test("prioritizes table acronym matches above alias snippets", () => {
+  const acronymTables: SqlCompletionTable[] = [...tables, { name: "user_basic_info", schema: "public", type: "table" }];
+  const items = buildSqlCompletionItems("select * from ubi", "select * from ubi".length, {
+    tables: acronymTables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "user_basic_info");
+  assert.equal(items[0]?.type, "table");
+  assert.ok(
+    items.some((item) => item.type === "snippet" && item.apply === "AS ubi "),
+    "alias snippet should remain available",
+  );
+});
+
 // --- CASE snippet ---
 
 test("suggests CASE WHEN snippet", () => {

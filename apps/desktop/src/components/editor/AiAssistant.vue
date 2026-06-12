@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, type Component } from "vue";
 import { uuid } from "@/lib/utils";
 import { useI18n } from "vue-i18n";
@@ -203,6 +203,9 @@ async function changeConnection(connectionId: string) {
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     toast(t("connection.connectFailed", { message: translateBackendError(t, message) }), 5000);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    toast(t("connection.connectFailed", { message: translateBackendError(t, message) }), 5000);
   }
 }
 
@@ -372,7 +375,10 @@ async function loadMentionCandidates(query: string) {
     mentionCandidates.value = mentionCache.value[key];
     mentionSelectedIndex.value = 0;
   } catch (e: unknown) {
+  } catch (e: unknown) {
     if (requestId !== mentionRequestId) return;
+    const message = e instanceof Error ? e.message : String(e);
+    mentionError.value = translateBackendError(t, message);
     const message = e instanceof Error ? e.message : String(e);
     mentionError.value = translateBackendError(t, message);
     mentionCandidates.value = [];
@@ -502,6 +508,7 @@ async function send() {
   const sessionId = uuid();
   currentSessionId.value = sessionId;
   const agentEvents: AgentEvent[] = [];
+  const agentEvents: AgentEvent[] = [];
   try {
     const context = await buildAiContext(props.tab, props.connection, {
       mentionedTables,
@@ -510,6 +517,7 @@ async function send() {
       role: m.role,
       content: m.content,
     }));
+    await runAgentStream(
     await runAgentStream(
       {
         config: settings.aiConfig,
@@ -551,6 +559,9 @@ async function send() {
       },
       sessionId,
     );
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    messages.value[assistantIdx].content = `Error: ${message}`;
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     messages.value[assistantIdx].content = `Error: ${message}`;
@@ -620,6 +631,9 @@ async function copyCode(code: string, key: string) {
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     toast(t("grid.copyFailed", { message }), 5000);
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    toast(t("grid.copyFailed", { message }), 5000);
   }
 }
 
@@ -683,6 +697,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   clearTimeout(mentionTimer);
+  cancelStream();
   cancelStream();
 });
 
