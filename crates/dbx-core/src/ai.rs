@@ -1205,28 +1205,44 @@ async fn stream_claude_with_tools(
     on_event: &impl Fn(StreamToolEvent),
 ) -> Result<(), String> {
     let mut messages: Vec<serde_json::Value> = Vec::new();
+    let mut pending_tool_results: Vec<serde_json::Value> = Vec::new();
     for m in &request.messages {
         if m.role == "tool" {
-            messages.push(json!({
-                "role": "user",
-                "content": [{
-                    "type": "tool_result",
-                    "tool_use_id": m.tool_call_id.as_deref().unwrap_or_default(),
-                    "content": m.content
-                }]
+            // Collect consecutive tool results; flush as a single user message.
+            pending_tool_results.push(json!({
+                "type": "tool_result",
+                "tool_use_id": m.tool_call_id.as_deref().unwrap_or_default(),
+                "content": m.content
             }));
-        } else if m.role == "assistant" && !m.tool_calls.is_empty() {
-            let mut content_blocks: Vec<serde_json::Value> = Vec::new();
-            if !m.content.is_empty() {
-                content_blocks.push(json!({ "type": "text", "text": m.content }));
-            }
-            for tc in &m.tool_calls {
-                content_blocks.push(json!({ "type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments }));
-            }
-            messages.push(json!({ "role": "assistant", "content": content_blocks }));
         } else {
-            messages.push(json!({ "role": m.role, "content": m.content }));
+            // Flush any pending tool results before emitting a non-tool message.
+            if !pending_tool_results.is_empty() {
+                messages.push(json!({
+                    "role": "user",
+                    "content": pending_tool_results.drain(..).collect::<Vec<_>>()
+                }));
+            }
+            if m.role == "assistant" && !m.tool_calls.is_empty() {
+                let mut content_blocks: Vec<serde_json::Value> = Vec::new();
+                if !m.content.is_empty() {
+                    content_blocks.push(json!({ "type": "text", "text": m.content }));
+                }
+                for tc in &m.tool_calls {
+                    content_blocks
+                        .push(json!({ "type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments }));
+                }
+                messages.push(json!({ "role": "assistant", "content": content_blocks }));
+            } else {
+                messages.push(json!({ "role": m.role, "content": m.content }));
+            }
         }
+    }
+    // Flush any remaining tool results at the end of the message list.
+    if !pending_tool_results.is_empty() {
+        messages.push(json!({
+            "role": "user",
+            "content": pending_tool_results.drain(..).collect::<Vec<_>>()
+        }));
     }
 
     let tool_json: Vec<serde_json::Value> = tools.iter().map(|t| t.to_anthropic_tool()).collect();
@@ -1492,6 +1508,7 @@ async fn stream_gemini_with_tools(
     on_event: &impl Fn(StreamToolEvent),
 ) -> Result<(), String> {
     let mut contents: Vec<serde_json::Value> = Vec::new();
+    let mut pending_function_responses: Vec<serde_json::Value> = Vec::new();
     for m in &request.messages {
         if m.role == "tool" {
             let tool_name = m
@@ -1500,28 +1517,41 @@ async fn stream_gemini_with_tools(
                 .and_then(|s| s.strip_prefix("gemini-tc-"))
                 .and_then(|s| s.rsplitn(2, '-').nth(1))
                 .unwrap_or("unknown");
-            contents.push(json!({
-                "role": "user",
-                "parts": [{
-                    "functionResponse": {
-                        "name": tool_name,
-                        "response": { "content": m.content }
-                    }
-                }]
+            pending_function_responses.push(json!({
+                "functionResponse": {
+                    "name": tool_name,
+                    "response": { "content": m.content }
+                }
             }));
-        } else if m.role == "assistant" && !m.tool_calls.is_empty() {
-            let mut parts: Vec<serde_json::Value> = Vec::new();
-            if !m.content.is_empty() {
-                parts.push(json!({ "text": m.content }));
-            }
-            for tc in &m.tool_calls {
-                parts.push(json!({ "functionCall": { "name": tc.name, "args": tc.arguments } }));
-            }
-            contents.push(json!({ "role": "model", "parts": parts }));
         } else {
-            let role = if m.role == "assistant" { "model" } else { "user" };
-            contents.push(json!({ "role": role, "parts": [{ "text": m.content }] }));
+            // Flush any pending function responses before emitting a non-tool message.
+            if !pending_function_responses.is_empty() {
+                contents.push(json!({
+                    "role": "user",
+                    "parts": pending_function_responses.drain(..).collect::<Vec<_>>()
+                }));
+            }
+            if m.role == "assistant" && !m.tool_calls.is_empty() {
+                let mut parts: Vec<serde_json::Value> = Vec::new();
+                if !m.content.is_empty() {
+                    parts.push(json!({ "text": m.content }));
+                }
+                for tc in &m.tool_calls {
+                    parts.push(json!({ "functionCall": { "name": tc.name, "args": tc.arguments } }));
+                }
+                contents.push(json!({ "role": "model", "parts": parts }));
+            } else {
+                let role = if m.role == "assistant" { "model" } else { "user" };
+                contents.push(json!({ "role": role, "parts": [{ "text": m.content }] }));
+            }
         }
+    }
+    // Flush any remaining function responses at the end of the message list.
+    if !pending_function_responses.is_empty() {
+        contents.push(json!({
+            "role": "user",
+            "parts": pending_function_responses.drain(..).collect::<Vec<_>>()
+        }));
     }
 
     let tool_declarations: Vec<serde_json::Value> = tools.iter().map(|t| t.to_gemini_tool()).collect();
