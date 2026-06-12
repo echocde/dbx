@@ -84,13 +84,8 @@ async fn spawn_client_for_key(manager: &AgentManager, key: &str) -> Result<Agent
     let state = manager.load_state();
     let jre_key = state.installed_drivers.get(key).map(|driver| driver.jre.as_str()).unwrap_or(DEFAULT_JRE_KEY);
 
-    if !manager.is_driver_installed(key) {
-        return Err(format!("{key} driver is not installed. Please install it from the Driver Manager."));
-    }
-
-    let java = manager.resolve_java_runtime(&state, jre_key)?.to_string_lossy().to_string();
-    let jar = manager.driver_jar_path(key).to_string_lossy().to_string();
-    let mut client = AgentDriverClient::spawn(&java, &jar).await?;
+    let launch = manager.resolve_agent_launch_spec(&state, key, jre_key)?;
+    let mut client = AgentDriverClient::spawn(launch).await?;
     client.try_optional_handshake(manager.agent_app_version()).await;
     Ok(client)
 }

@@ -148,6 +148,35 @@ fn agent_list_does_not_mark_jre_update_for_system_java_runtime() {
 }
 
 #[test]
+fn agent_list_does_not_require_jre_for_native_agent() {
+    let manager = test_manager("native-no-jre");
+    let native_path = manager.driver_native_path("dameng");
+    std::fs::create_dir_all(native_path.parent().unwrap()).unwrap();
+    std::fs::write(&native_path, b"agent").unwrap();
+    manager
+        .save_state(&dbx_core::agent_manager::AgentState {
+            installed_drivers: [(
+                "dameng".to_string(),
+                InstalledDriver {
+                    version: "0.2.0".to_string(),
+                    installed_at: "2026-05-18T00:00:00Z".to_string(),
+                    jre: DEFAULT_JRE_KEY.to_string(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let agents = build_agent_list(&manager, None);
+    let dameng = agents.iter().find(|agent| agent.db_type == "dameng").unwrap();
+
+    assert!(dameng.installed);
+    assert!(dameng.jre_installed);
+}
+
+#[test]
 fn agent_list_uses_legacy_default_jre_version_when_checking_updates() {
     let manager = test_manager("legacy-jre-version");
     let jar_path = manager.driver_jar_path("dameng");
@@ -279,6 +308,14 @@ async fn uninstall_driver_removes_artifact_and_state() {
     let jar_path = manager.driver_jar_path("h2");
     std::fs::create_dir_all(jar_path.parent().unwrap()).unwrap();
     std::fs::write(&jar_path, b"jar").unwrap();
+    let cache_dir = manager.download_cache_dir();
+    std::fs::create_dir_all(&cache_dir).unwrap();
+    let h2_cache = cache_dir.join("driver-h2-0.1.0-abc-agent.jar");
+    let dameng_cache = cache_dir.join("driver-dameng-0.1.0-abc-agent.jar");
+    let jre_cache = cache_dir.join("jre-21-21.0.11-abc-jre-download.tar.gz");
+    std::fs::write(&h2_cache, b"h2").unwrap();
+    std::fs::write(&dameng_cache, b"dameng").unwrap();
+    std::fs::write(&jre_cache, b"jre").unwrap();
     manager
         .save_state(&dbx_core::agent_manager::AgentState {
             installed_drivers: [(
@@ -298,6 +335,9 @@ async fn uninstall_driver_removes_artifact_and_state() {
     uninstall_agent_driver(&manager, "h2").await.unwrap();
 
     assert!(!jar_path.exists());
+    assert!(!h2_cache.exists());
+    assert!(dameng_cache.exists());
+    assert!(jre_cache.exists());
     assert!(!manager.load_state().installed_drivers.contains_key("h2"));
 }
 

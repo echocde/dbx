@@ -63,6 +63,7 @@ pub fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> 
     agent_catalog::driver_store_entries()
         .map(|(key, label)| {
             let installed = am.is_driver_installed(key);
+            let requires_java_runtime = am.driver_requires_java_runtime(key);
             let local = local_state.installed_drivers.get(key);
             let remote = registry.and_then(|r| r.drivers.get(key));
             let jre_key = remote
@@ -72,6 +73,7 @@ pub fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> 
             let remote_jre_version = registry.and_then(|r| r.resolve_jre(&jre_key)).map(|j| &j.version);
             let local_jre_version = installed_jre_version(&local_state, &jre_key);
             let jre_update_available = installed
+                && requires_java_runtime
                 && use_managed_jre
                 && (!am.is_jre_installed(&jre_key)
                     || remote_jre_version.is_some_and(|version| local_jre_version != Some(version)));
@@ -87,7 +89,7 @@ pub fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> 
                     _ => false,
                 },
                 jre: jre_key.clone(),
-                jre_installed: am.is_jre_installed(&jre_key),
+                jre_installed: !installed || !requires_java_runtime || am.is_jre_installed(&jre_key),
             }
         })
         .collect()
@@ -212,6 +214,7 @@ pub async fn upgrade_all_agent_drivers(
 }
 
 pub async fn uninstall_agent_driver(am: &AgentManager, db_type: &str) -> Result<(), String> {
+    prune_driver_download_cache(am, db_type)?;
     let jar_path = am.driver_jar_path(db_type);
     if jar_path.exists() {
         std::fs::remove_file(&jar_path).map_err(|err| err.to_string())?;
@@ -271,6 +274,7 @@ pub async fn reinstall_agent_jre(
         &github_url_to_r2_path(&platform_jre.url, "jre"),
         &jre_archive,
         platform_jre.size,
+        Some(CacheIdentity::Jre { key: jre_key, version: &jre_info.version }),
         None,
         None,
         None,
@@ -372,6 +376,7 @@ async fn install_agent_driver_from_registry(
             &github_url_to_r2_path(&platform_jre.url, "jre"),
             &jre_archive,
             platform_jre.size,
+            Some(CacheIdentity::Jre { key: jre_key, version: &jre_info.version }),
             Some(db_type),
             current,
             total_drivers,
@@ -400,6 +405,7 @@ async fn install_agent_driver_from_registry(
         &github_url_to_r2_path(&driver.jar.url, "driver"),
         &jar_path,
         driver.jar.size,
+        Some(CacheIdentity::Driver { db_type, version: &driver.version }),
         Some(db_type),
         current,
         total_drivers,
@@ -433,6 +439,7 @@ async fn download_with_progress(
     r2_path: &str,
     dest: &std::path::Path,
     total_size: u64,
+    cache_identity: Option<CacheIdentity<'_>>,
     db_type: Option<&str>,
     current: Option<u32>,
     total_drivers: Option<u32>,
@@ -441,7 +448,7 @@ async fn download_with_progress(
         std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
     let tmp = download_temp_path(dest);
-    let cache_path = cached_download_path(am, url, total_size, dest);
+    let cache_path = cached_download_path(am, url, total_size, cache_identity, dest);
     prune_download_cache(am).ok();
     if cached_download_is_valid(am, &cache_path, total_size) {
         std::fs::copy(&cache_path, &tmp).map_err(|err| format!("Failed to copy cached download: {err}"))?;
@@ -484,13 +491,46 @@ async fn download_with_progress(
     replace_download(&tmp, dest)
 }
 
-fn cached_download_path(am: &AgentManager, url: &str, total_size: u64, dest: &std::path::Path) -> std::path::PathBuf {
+#[derive(Debug, Clone, Copy)]
+enum CacheIdentity<'a> {
+    Driver { db_type: &'a str, version: &'a str },
+    Jre { key: &'a str, version: &'a str },
+}
+
+impl CacheIdentity<'_> {
+    fn hash_key(self) -> String {
+        match self {
+            Self::Driver { db_type, version } => format!("driver:{db_type}:{version}"),
+            Self::Jre { key, version } => format!("jre:{key}:{version}"),
+        }
+    }
+
+    fn file_prefix(self) -> String {
+        match self {
+            Self::Driver { db_type, version } => {
+                format!("driver-{}-{}", cache_file_token(db_type), cache_file_token(version))
+            }
+            Self::Jre { key, version } => format!("jre-{}-{}", cache_file_token(key), cache_file_token(version)),
+        }
+    }
+}
+
+fn cached_download_path(
+    am: &AgentManager,
+    url: &str,
+    total_size: u64,
+    cache_identity: Option<CacheIdentity<'_>>,
+    dest: &std::path::Path,
+) -> std::path::PathBuf {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     url.hash(&mut hasher);
     total_size.hash(&mut hasher);
+    let identity_hash_key = cache_identity.map(CacheIdentity::hash_key);
+    identity_hash_key.hash(&mut hasher);
     let hash = hasher.finish();
     let file_name = dest.file_name().and_then(|name| name.to_str()).unwrap_or("download");
-    am.download_cache_dir().join(format!("{hash:016x}-{file_name}"))
+    let prefix = cache_identity.map(CacheIdentity::file_prefix).unwrap_or_else(|| "download".to_string());
+    am.download_cache_dir().join(format!("{prefix}-{hash:016x}-{file_name}"))
 }
 
 fn cached_download_is_valid(am: &AgentManager, path: &std::path::Path, expected_size: u64) -> bool {
@@ -528,6 +568,47 @@ fn prune_download_cache(am: &AgentManager) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn prune_driver_download_cache(am: &AgentManager, db_type: &str) -> Result<(), String> {
+    let cache_dir = am.download_cache_dir();
+    let Ok(entries) = std::fs::read_dir(&cache_dir) else {
+        return Ok(());
+    };
+    let prefix = format!("driver-{}-", cache_file_token(db_type));
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if name.starts_with(&prefix) {
+            let meta = match entry.metadata() {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            if meta.is_dir() {
+                std::fs::remove_dir_all(&path)
+                    .map_err(|err| format!("Failed to remove cached driver download: {err}"))?;
+            } else {
+                std::fs::remove_file(&path).map_err(|err| format!("Failed to remove cached driver download: {err}"))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cache_file_token(value: &str) -> String {
+    let token = value
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if token.is_empty() {
+        "unknown".to_string()
+    } else {
+        token
+    }
 }
 
 pub fn github_url_to_r2_path(github_url: &str, category: &str) -> String {
