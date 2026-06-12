@@ -69,6 +69,14 @@ pub struct AiAgentStreamRequest {
     pub connection_id: String,
     pub database: String,
     pub db_type: String,
+    /// Agent mode: "ask" (read-only tools) or "agent" (all tools including execute_query).
+    /// Defaults to "ask" if not provided.
+    #[serde(default = "default_agent_mode")]
+    pub mode: String,
+}
+
+fn default_agent_mode() -> String {
+    "ask".to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +223,7 @@ pub async fn ai_agent_stream(
     let req_messages = request.messages;
     let req_max_tokens = request.max_tokens;
     let req_temperature = request.temperature;
+    let is_agent_mode = body.mode == "agent";
     let tx2 = tx.clone();
     tokio::task::spawn_blocking(move || {
         let rt =
@@ -232,6 +241,7 @@ pub async fn ai_agent_stream(
                 &cancelled,
                 req_max_tokens,
                 req_temperature,
+                is_agent_mode,
             )
             .await;
 

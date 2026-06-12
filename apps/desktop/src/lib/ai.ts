@@ -111,6 +111,7 @@ export async function runAgentStream(input: AiRequestInput, history: api.AiMessa
     input.context.database,
     input.context.databaseType,
     onEvent,
+    input.mode || "ask",
   );
 }
 
