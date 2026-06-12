@@ -763,7 +763,9 @@ async fn measure_first_stream_chunk(
             let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| format!("JSON parse error: {e}"))?;
 
             let delta = if is_claude {
-                claude_stream_text(&parsed).map(|s| s.to_string())
+                // Accept both text and thinking deltas — thinking is often the first
+                // streamed content when extended thinking is enabled.
+                claude_stream_text(&parsed).or_else(|| parsed["delta"]["thinking"].as_str()).map(|s| s.to_string())
             } else if is_gemini {
                 let text = gemini_text(&parsed);
                 if text.is_empty() {
@@ -772,7 +774,10 @@ async fn measure_first_stream_chunk(
                     Some(text)
                 }
             } else {
-                openai_stream_text(&parsed).or_else(|| Some(responses_text(&parsed)))
+                // Accept text, reasoning, or responses content as the first chunk.
+                openai_stream_text(&parsed)
+                    .or_else(|| openai_stream_reasoning(&parsed).map(|s| s.to_string()))
+                    .or_else(|| Some(responses_text(&parsed)))
             };
 
             if let Some(text) = delta {
