@@ -550,8 +550,21 @@ pub fn diff_triggers(source: &[TriggerInfo], target: &[TriggerInfo]) -> Vec<Trig
     diffs
 }
 
+fn is_mysql_like(db_type: DatabaseType) -> bool {
+    matches!(
+        db_type,
+        DatabaseType::Mysql
+            | DatabaseType::Doris
+            | DatabaseType::StarRocks
+            | DatabaseType::Goldendb
+            | DatabaseType::Sundb
+            | DatabaseType::Databend
+            | DatabaseType::Gbase
+    )
+}
+
 fn quote_id(name: &str, db_type: DatabaseType) -> String {
-    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if is_mysql_like(db_type) {
         format!("`{}`", name.replace('`', "``"))
     } else {
         format!("\"{}\"", name.replace('"', "\"\""))
@@ -566,7 +579,7 @@ fn column_def(col: &ColumnInfo, db_type: DatabaseType) -> String {
     if let Some(default) = &col.column_default {
         definition.push_str(&format!(" DEFAULT {default}"));
     }
-    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if is_mysql_like(db_type) {
         if let Some(comment) = &col.comment {
             definition.push_str(&format!(" COMMENT {}", comment_literal(comment)));
         }
@@ -583,7 +596,7 @@ fn qualified_name(name: &str, db_type: DatabaseType, schema: Option<&str>) -> St
 fn drop_index_sql(table_name: &str, index_name: &str, db_type: DatabaseType, schema: Option<&str>) -> String {
     let table = qualified_name(table_name, db_type, schema);
     let index = qualified_name(index_name, db_type, schema);
-    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if is_mysql_like(db_type) {
         format!("DROP INDEX {} ON {table};", quote_id(index_name, db_type))
     } else {
         format!("DROP INDEX IF EXISTS {index};")
@@ -605,6 +618,8 @@ fn create_index_sql(table_name: &str, index: &IndexInfo, db_type: DatabaseType, 
     } else {
         String::new()
     };
+    let mysql_using =
+        if !index_type.is_empty() && is_mysql_like(db_type) { format!(" USING {index_type}") } else { String::new() };
     let included_columns = index.included_columns.clone().unwrap_or_default();
     let include_clause =
         if !included_columns.is_empty() && matches!(db_type, DatabaseType::Postgres | DatabaseType::SqlServer) {
@@ -618,16 +633,29 @@ fn create_index_sql(table_name: &str, index: &IndexInfo, db_type: DatabaseType, 
     let supports_where = matches!(db_type, DatabaseType::Postgres | DatabaseType::SqlServer | DatabaseType::Sqlite);
     let filter = if supports_where { index.filter.as_deref().unwrap_or_default() } else { "" };
     let filter_clause = if filter.is_empty() { String::new() } else { format!(" WHERE {filter}") };
-    format!(
-        "CREATE {unique}{type_prefix}INDEX {} ON {table}{using_clause} ({columns}){include_clause}{filter_clause};",
-        quote_id(&index.name, db_type)
-    )
+    let comment = index.comment.as_deref().unwrap_or("");
+    let comment_clause = if !comment.trim().is_empty() && is_mysql_like(db_type) {
+        format!(" COMMENT {}", comment_literal(comment))
+    } else {
+        String::new()
+    };
+    if is_mysql_like(db_type) {
+        format!(
+            "CREATE {unique}{type_prefix}INDEX {}{mysql_using} ON {table} ({columns}){comment_clause};",
+            quote_id(&index.name, db_type)
+        )
+    } else {
+        format!(
+            "CREATE {unique}{type_prefix}INDEX {} ON {table}{using_clause} ({columns}){include_clause}{filter_clause};",
+            quote_id(&index.name, db_type)
+        )
+    }
 }
 
 fn drop_foreign_key_sql(table_name: &str, fk_name: &str, db_type: DatabaseType, schema: Option<&str>) -> String {
     let table = qualified_name(table_name, db_type, schema);
     let fk = quote_id(fk_name, db_type);
-    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if is_mysql_like(db_type) {
         format!("ALTER TABLE {table} DROP FOREIGN KEY {fk};")
     } else {
         format!("ALTER TABLE {table} DROP CONSTRAINT {fk};")
@@ -661,7 +689,7 @@ fn column_comment_sql(
     db_type: DatabaseType,
     schema: Option<&str>,
 ) -> String {
-    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if is_mysql_like(db_type) {
         return format!(
             "-- Column comment for {column_name}: use ALTER TABLE ... MODIFY COLUMN to set comment in MySQL"
         );
@@ -672,7 +700,7 @@ fn column_comment_sql(
 
 fn table_comment_sql(table_name: &str, comment: &str, db_type: DatabaseType, schema: Option<&str>) -> String {
     let table = qualified_name(table_name, db_type, schema);
-    if matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks) {
+    if is_mysql_like(db_type) {
         format!("ALTER TABLE {table} COMMENT = {};", comment_literal(comment))
     } else {
         format!("COMMENT ON TABLE {table} IS {};", comment_literal(comment))
@@ -681,7 +709,7 @@ fn table_comment_sql(table_name: &str, comment: &str, db_type: DatabaseType, sch
 
 pub fn generate_schema_sync_sql(diffs: &[TableDiff], db_type: DatabaseType, schema: Option<&str>) -> String {
     let mut lines = Vec::new();
-    let is_mysql = matches!(db_type, DatabaseType::Mysql | DatabaseType::Doris | DatabaseType::StarRocks);
+    let is_mysql = is_mysql_like(db_type);
 
     for diff in diffs {
         let table = qualified_name(&diff.name, db_type, schema);
