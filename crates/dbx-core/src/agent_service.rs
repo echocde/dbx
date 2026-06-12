@@ -1,11 +1,132 @@
 use std::hash::{Hash, Hasher};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::agent_catalog;
 use crate::agent_manager::{
     AgentDriverInfo, AgentManager, AgentRegistry, InstalledDriver, JavaRuntimeMode, DEFAULT_JRE_KEY,
 };
+
+/// Number of attempts to delete a JRE directory before giving up (Windows
+/// experiences transient `ERROR_ACCESS_DENIED` when java.exe is still mapped
+/// or anti-virus is scanning the archive). POSIX returns 1 — `unlink` of an
+/// in-use file always succeeds.
+const JRE_REMOVE_ATTEMPTS: usize = if cfg!(windows) { 6 } else { 1 };
+
+/// Exponential-ish backoff between retries. Total wait ≈ 1.55s on Windows.
+const JRE_REMOVE_BACKOFF_MS: &[u64] = &[50, 100, 200, 400, 400, 400];
+
+/// Delete an old JRE directory, retrying on Windows to cover the daemon-exit
+/// and AV-scan release window. Returns the original `std::io::Error` when all
+/// retries fail so callers can decide whether to fall back to rename-stash.
+fn remove_jre_dir_with_retry(path: &Path) -> std::io::Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let mut last_err: Option<std::io::Error> = None;
+    for i in 0..JRE_REMOVE_ATTEMPTS {
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                log::warn!(
+                    "remove_dir_all({}) attempt {}/{} failed: {err}",
+                    path.display(),
+                    i + 1,
+                    JRE_REMOVE_ATTEMPTS
+                );
+                last_err = Some(err);
+                if i + 1 < JRE_REMOVE_ATTEMPTS {
+                    let delay_ms = JRE_REMOVE_BACKOFF_MS.get(i).copied().unwrap_or(400);
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("remove_dir_all failed without an error")))
+}
+
+/// Render a friendly Chinese error message when the old JRE directory cannot
+/// be replaced. On Windows, lists likely culprits (process holding java.exe,
+/// AV scanning) and suggests restarting dbx; on POSIX returns a concise
+/// message. The original OS error is appended in parentheses for support.
+fn format_jre_dir_remove_error(path: &Path, os_err: &std::io::Error) -> String {
+    if cfg!(windows) {
+        format!(
+            "无法删除旧的 JRE 目录：{}\n\
+             可能的原因：\n  \
+             - 仍有 dbx Agent / java 进程占用该目录\n  \
+             - 防病毒软件正在扫描\n\
+             请关闭可能持有该目录的进程，或重启 dbx 后重试。\n\
+             （原始错误：{os_err}）",
+            path.display()
+        )
+    } else {
+        format!("无法删除旧的 JRE 目录：{}（原始错误：{os_err}）", path.display())
+    }
+}
+
+/// Windows-only: rename the old JRE dir to a unique sibling so the install
+/// can continue even when files inside are still mapped. Returns the stash
+/// path so the caller can record it for later cleanup. On POSIX this is
+/// unreachable (callers gate on `cfg(windows)` after a failed remove).
+#[cfg(windows)]
+fn stash_old_jre_dir(path: &Path) -> std::io::Result<PathBuf> {
+    use std::time::SystemTime;
+
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| std::io::Error::other("JRE directory has no file name"))?;
+    let ts = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    // uuid::Uuid::new_v4() is already a workspace dependency — use its short
+    // form for a unique suffix without pulling in `rand`.
+    let rand = uuid::Uuid::new_v4().simple().to_string();
+    let stash = path.with_file_name(format!("{file_name}.old-{ts}-{rand}"));
+    std::fs::rename(path, &stash)?;
+    Ok(stash)
+}
+
+/// Replace an old JRE directory in-place: try retried `remove_dir_all` first;
+/// on Windows fall back to rename-stash if removal fails. Returns the stash
+/// path (Some) if the rename fallback was used so the caller can persist it
+/// for startup cleanup, or None if the directory was deleted outright (or
+/// did not exist).
+fn replace_old_jre_dir(am: &AgentManager, path: &Path) -> Result<Option<PathBuf>, String> {
+    match remove_jre_dir_with_retry(path) {
+        Ok(()) => Ok(None),
+        Err(remove_err) => {
+            #[cfg(windows)]
+            {
+                match stash_old_jre_dir(path) {
+                    Ok(stash) => {
+                        log::warn!("remove_dir_all failed, stashed old JRE at {} ({remove_err})", stash.display());
+                        // Persist immediately so a crash before extraction
+                        // still leaves the stash recorded for cleanup.
+                        let mut state = am.load_state();
+                        state.pending_jre_cleanup.push(stash.clone());
+                        if let Err(save_err) = am.save_state(&state) {
+                            log::warn!("Failed to persist pending_jre_cleanup: {save_err}");
+                        }
+                        Ok(Some(stash))
+                    }
+                    Err(rename_err) => {
+                        log::warn!(
+                            "remove_dir_all and rename both failed for {}: remove={remove_err}, rename={rename_err}",
+                            path.display()
+                        );
+                        Err(format_jre_dir_remove_error(path, &remove_err))
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = am; // silence unused warning on POSIX
+                Err(format_jre_dir_remove_error(path, &remove_err))
+            }
+        }
+    }
+}
 
 const REGISTRY_PATH: &str = "https://github.com/t8y2/dbx-agents/releases/latest/download/agent-registry.json";
 const REGISTRY_R2_PATH: &str = "agents/agent-registry.json";
@@ -261,14 +382,16 @@ pub async fn uninstall_agent_jre(am: &AgentManager, jre_key: &str) -> Result<(),
     if !dependents.is_empty() {
         return Err(format!("JRE {} 正在被以下驱动使用: {}，请先卸载这些驱动", jre_key, dependents.join(", ")));
     }
+    // Stop daemons first so any java.exe holding the JRE files exits before
+    // we try to remove the directory (Windows ERROR_ACCESS_DENIED otherwise).
+    am.stop_daemons().await;
     let jre_dir = am.jre_dir(jre_key);
-    if jre_dir.exists() {
-        std::fs::remove_dir_all(&jre_dir).map_err(|err| format!("Failed to remove JRE: {err}"))?;
+    if let Err(err) = remove_jre_dir_with_retry(&jre_dir) {
+        return Err(format_jre_dir_remove_error(&jre_dir, &err));
     }
     let mut local_state = am.load_state();
     local_state.jre_versions.remove(jre_key);
     am.save_state(&local_state)?;
-    am.stop_daemons().await;
     Ok(())
 }
 
@@ -300,15 +423,16 @@ pub async fn reinstall_agent_jre(
     )
     .await?;
     let jre_dir = am.jre_dir(jre_key);
-    if jre_dir.exists() {
-        std::fs::remove_dir_all(&jre_dir).map_err(|err| format!("Failed to remove old JRE: {err}"))?;
-    }
+    // Stop daemons before deleting so java.exe processes release file
+    // handles on Windows (Issue #1100). Falls back to a rename-stash if the
+    // directory still cannot be removed.
+    am.stop_daemons().await;
+    replace_old_jre_dir(am, &jre_dir)?;
     extract_tar_gz(&jre_archive, &jre_dir)?;
     std::fs::remove_file(&jre_archive).ok();
     let mut local_state = am.load_state();
     local_state.jre_versions.insert(jre_key.to_string(), jre_info.version.clone());
     am.save_state(&local_state)?;
-    am.stop_daemons().await;
     progress(AgentProgressEvent::step("done"));
     Ok(())
 }
@@ -406,9 +530,9 @@ async fn install_agent_driver_from_registry(
         .await?;
         progress(AgentProgressEvent::transfer("jre-extract", 0, 0).with_batch(Some(db_type), current, total_drivers));
         let jre_dir = am.jre_dir(jre_key);
-        if jre_dir.exists() {
-            std::fs::remove_dir_all(&jre_dir).map_err(|err| format!("Failed to remove old JRE: {err}"))?;
-        }
+        // Stop daemons first (Windows ERROR_ACCESS_DENIED, Issue #1100).
+        am.stop_daemons().await;
+        replace_old_jre_dir(am, &jre_dir)?;
         extract_tar_gz(&jre_archive, &jre_dir)?;
         std::fs::remove_file(&jre_archive).ok();
     }
@@ -792,9 +916,11 @@ pub fn import_offline_zip(
         }
 
         let jre_dir = am.jre_dir(jre_key);
-        if jre_dir.exists() {
-            std::fs::remove_dir_all(&jre_dir).ok();
-        }
+        // Daemons cannot be stopped from a sync function safely; the retry +
+        // Windows rename fallback in replace_old_jre_dir still handles a
+        // locked directory. Daemon shutdown for the foreground install paths
+        // happens in `reinstall_agent_jre` and `install_agent_driver_*`.
+        replace_old_jre_dir(am, &jre_dir)?;
         extract_tar_gz(&tmp_archive, &jre_dir)?;
         std::fs::remove_file(&tmp_archive).ok();
 
@@ -910,4 +1036,71 @@ pub fn import_agent_jar(am: &AgentManager, db_type: &str, jar_path: &Path) -> Re
         return Err(format!("File not found: {}", jar_path.display()));
     }
     install_local_agent(am, db_type, jar_path.to_path_buf())
+}
+
+// ──────────── Tests ────────────
+
+#[cfg(test)]
+mod jre_dir_remove_tests {
+    use super::*;
+
+    fn unique_tmp(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("dbx-jre-remove-{name}-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn remove_returns_ok_when_path_missing() {
+        let path = unique_tmp("missing");
+        assert!(!path.exists());
+        assert!(remove_jre_dir_with_retry(&path).is_ok());
+    }
+
+    #[test]
+    fn remove_deletes_existing_dir() {
+        let dir = unique_tmp("happy");
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin").join("java"), b"x").unwrap();
+        assert!(dir.exists());
+        remove_jre_dir_with_retry(&dir).expect("happy path delete");
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn windows_error_message_lists_root_causes_and_path() {
+        let path = PathBuf::from("/tmp/dbx-jre-test");
+        let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "拒绝访问。 (os error 5)");
+        let rendered = format_jre_dir_remove_error(&path, &err);
+        assert!(rendered.contains(&path.display().to_string()), "missing path: {rendered}");
+        assert!(rendered.contains("（原始错误："), "missing original error wrapper: {rendered}");
+        assert!(rendered.contains("拒绝访问"), "missing original error text: {rendered}");
+        if cfg!(windows) {
+            assert!(rendered.starts_with("无法删除旧的 JRE 目录："), "wrong prefix: {rendered}");
+            assert!(rendered.contains("Agent / java 进程占用"), "missing process advice: {rendered}");
+            assert!(rendered.contains("重启 dbx 后重试"), "missing restart advice: {rendered}");
+        } else {
+            // POSIX path: short form, no Windows-specific advice.
+            assert!(rendered.contains("无法删除旧的 JRE 目录"));
+            assert!(!rendered.contains("防病毒"));
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn stash_old_jre_dir_renames_and_is_unique() {
+        let base = unique_tmp("stash-unique");
+        std::fs::create_dir_all(&base).unwrap();
+        let jre_a = base.join("jre-21");
+        std::fs::create_dir_all(&jre_a).unwrap();
+        let stash_a = stash_old_jre_dir(&jre_a).expect("first stash");
+        assert!(stash_a.exists(), "stash dir should exist after rename");
+        assert!(!jre_a.exists(), "original dir should be gone after rename");
+
+        // Recreate original and stash again — name must differ.
+        std::fs::create_dir_all(&jre_a).unwrap();
+        let stash_b = stash_old_jre_dir(&jre_a).expect("second stash");
+        assert_ne!(stash_a, stash_b, "stash names must be unique across calls");
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

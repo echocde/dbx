@@ -63,6 +63,63 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_pending_jre_removes_stash_dirs_and_persists() {
+        let manager = test_manager("pending-cleanup");
+        std::fs::create_dir_all(manager.base_dir()).unwrap();
+        let stash = manager.base_dir().join("jre-21.old-1700000000-deadbeef");
+        std::fs::create_dir_all(&stash).unwrap();
+        std::fs::write(stash.join("dummy"), b"x").unwrap();
+
+        let mut state = AgentState::default();
+        state.pending_jre_cleanup.push(stash.clone());
+        manager.save_state(&state).unwrap();
+
+        // Re-create the manager (simulates app restart).
+        let manager2 = AgentManager::new_with_base_dir(manager.base_dir().clone());
+
+        assert!(!stash.exists(), "stash dir should be removed");
+        let after = manager2.load_state();
+        assert!(after.pending_jre_cleanup.is_empty(), "cleanup should drain the list on success");
+    }
+
+    #[test]
+    fn cleanup_orphan_jre_dirs_removes_unrecorded_stash() {
+        let manager = test_manager("orphan-cleanup");
+        std::fs::create_dir_all(manager.base_dir()).unwrap();
+        let orphan = manager.base_dir().join("jre-21.old-1234567890-cafe");
+        std::fs::create_dir_all(&orphan).unwrap();
+
+        // Re-create manager — it should sweep orphans even without state.
+        let _manager2 = AgentManager::new_with_base_dir(manager.base_dir().clone());
+
+        assert!(!orphan.exists(), "orphan stash should be swept");
+    }
+
+    #[test]
+    fn cleanup_skips_active_jre_dir() {
+        let manager = test_manager("orphan-skip-active");
+        std::fs::create_dir_all(manager.base_dir()).unwrap();
+        let active = manager.jre_dir(DEFAULT_JRE_KEY); // jre-21
+        std::fs::create_dir_all(&active).unwrap();
+
+        let _manager2 = AgentManager::new_with_base_dir(manager.base_dir().clone());
+
+        assert!(active.exists(), "active jre-<key> dir must not be touched (no .old- in name)");
+    }
+
+    #[test]
+    fn agent_state_back_compat_without_pending_jre_cleanup() {
+        // Old state JSON without pending_jre_cleanup must still deserialize.
+        let json = r#"{
+            "jre_versions": {},
+            "installed_drivers": {},
+            "java_runtime": {"mode": "managed"}
+        }"#;
+        let state: AgentState = serde_json::from_str(json).expect("deserialize legacy state");
+        assert!(state.pending_jre_cleanup.is_empty());
+    }
+
+    #[test]
     fn resolves_managed_java_runtime_by_default() {
         let manager = test_manager("managed");
         let java = manager.jre_java_path(DEFAULT_JRE_KEY);
@@ -241,6 +298,11 @@ pub struct AgentState {
     pub installed_drivers: std::collections::HashMap<String, InstalledDriver>,
     #[serde(default)]
     pub java_runtime: JavaRuntimeConfig,
+    /// Old JRE directories that could not be deleted in-place during a
+    /// reinstall on Windows; renamed aside (`<name>.old-<ts>-<rand>`) and
+    /// cleaned up best-effort on next `AgentManager::new`.
+    #[serde(default)]
+    pub pending_jre_cleanup: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -336,6 +398,8 @@ impl AgentManager {
         let mgr =
             Self { base_dir, app_version: app_version.into(), daemons: Mutex::new(std::collections::HashMap::new()) };
         mgr.migrate_legacy_jre();
+        mgr.cleanup_pending_jre_dirs();
+        mgr.cleanup_orphan_jre_dirs();
         mgr
     }
 
@@ -344,6 +408,62 @@ impl AgentManager {
         let versioned = self.jre_dir(DEFAULT_JRE_KEY);
         if legacy.exists() && !versioned.exists() {
             let _ = std::fs::rename(&legacy, &versioned);
+        }
+    }
+
+    /// Best-effort cleanup of `pending_jre_cleanup` paths recorded by previous
+    /// runs that fell back to renaming an old JRE aside on Windows. Successful
+    /// removals are pruned from the persisted state. Failures are kept for the
+    /// next launch and never block startup. (Issue #1100, D6.)
+    fn cleanup_pending_jre_dirs(&self) {
+        let mut state = self.load_state();
+        if state.pending_jre_cleanup.is_empty() {
+            return;
+        }
+        let mut remaining = Vec::new();
+        for path in std::mem::take(&mut state.pending_jre_cleanup) {
+            if !path.exists() {
+                continue;
+            }
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => log::info!("Cleaned up pending JRE stash: {}", path.display()),
+                Err(err) => {
+                    log::warn!("Pending JRE cleanup failed for {}: {err}", path.display());
+                    remaining.push(path);
+                }
+            }
+        }
+        state.pending_jre_cleanup = remaining;
+        if let Err(err) = self.save_state(&state) {
+            log::warn!("Failed to persist post-cleanup AgentState: {err}");
+        }
+    }
+
+    /// Sweep `base_dir` for orphan `*.old-*` JRE stash directories left behind
+    /// by previous runs (e.g. process crashed before the stash was recorded).
+    /// Best-effort — failures are ignored.
+    fn cleanup_orphan_jre_dirs(&self) {
+        let entries = match std::fs::read_dir(&self.base_dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            // Match `<...>.old-<digits>-<...>` (typically `jre-21.old-...`),
+            // which is the suffix scheme used by stash_old_jre_dir.
+            if !name.starts_with("jre-") || !name.contains(".old-") {
+                continue;
+            }
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            match std::fs::remove_dir_all(&path) {
+                Ok(()) => log::info!("Cleaned up orphan JRE stash: {}", path.display()),
+                Err(err) => log::warn!("Orphan JRE cleanup failed for {}: {err}", path.display()),
+            }
         }
     }
 
