@@ -3545,6 +3545,8 @@ mod tests {
                 ref_schema: None,
                 ref_table: "users".to_string(),
                 ref_column: "id".to_string(),
+                on_update: None,
+                on_delete: None,
             },
             db::ForeignKeyInfo {
                 name: "orders_user_id_fkey".to_string(),
@@ -3552,6 +3554,8 @@ mod tests {
                 ref_schema: None,
                 ref_table: "users".to_string(),
                 ref_column: "tenant_id".to_string(),
+                on_update: None,
+                on_delete: None,
             },
         ];
 
