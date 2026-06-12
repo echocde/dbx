@@ -5,7 +5,7 @@ use super::connection::AppState;
 pub use dbx_core::ai::*;
 
 #[tauri::command]
-pub async fn ai_test_connection(config: AiConfig) -> Result<String, String> {
+pub async fn ai_test_connection(config: AiConfig) -> Result<AiTestConnectionResult, String> {
     dbx_core::ai::test_connection_core(&config).await
 }
 

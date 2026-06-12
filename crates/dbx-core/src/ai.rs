@@ -169,6 +169,20 @@ pub struct AiModelInfo {
     pub display_name: Option<String>,
 }
 
+/// Result of an AI connection test (mirrors CC-Switch's StreamCheckResult).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiTestConnectionResult {
+    pub success: bool,
+    pub message: String,
+    /// First-chunk latency in milliseconds, if successful.
+    pub latency_ms: Option<u64>,
+    pub model_used: String,
+    /// Error category for the frontend to render specific guidance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_category: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -721,41 +735,184 @@ pub async fn call_gemini(client: &reqwest::Client, request: AiCompletionRequest)
 // High-level: test_connection_core / complete
 // ---------------------------------------------------------------------------
 
-pub async fn test_connection_core(config: &AiConfig) -> Result<String, String> {
-    validate_config(config)?;
+/// Read the SSE byte stream until the first content-bearing chunk arrives,
+/// then return its latency and the delta text.  Used by `test_connection_core`
+/// to mirror CC-Switch's streaming probe approach.
+async fn measure_first_stream_chunk(
+    mut byte_stream: impl futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Unpin,
+    start: std::time::Instant,
+    is_claude: bool,
+    is_gemini: bool,
+) -> Result<(u64, String), String> {
+    let mut buf = String::new();
+    while let Some(chunk) = byte_stream.next().await {
+        let chunk = chunk.map_err(|e| format!("stream read error: {e}"))?;
+        buf.push_str(&String::from_utf8_lossy(&chunk));
 
-    let client = build_ai_http_client(config, 15)?;
+        while let Some(pos) = buf.find('\n') {
+            let line = buf[..pos].to_string();
+            buf = buf[pos + 1..].to_string();
 
-    let request = AiCompletionRequest {
-        config: config.clone(),
-        system_prompt: String::new(),
-        messages: vec![AiMessage {
-            role: "user".into(),
-            content: "hi".into(),
-            tool_call_id: None,
-            tool_calls: Vec::new(),
-        }],
-        max_tokens: Some(16),
-        temperature: Some(0.0),
-    };
+            let Some(data) = stream_data_payload(&line) else { continue };
+            if data == "[DONE]" {
+                // stream finished without content — not a real failure but rare
+                return Err("no content in response".to_string());
+            }
 
-    match request.config.provider {
-        AiProvider::Claude => call_claude(&client, request).await,
-        AiProvider::Gemini => call_gemini(&client, request).await,
-        AiProvider::Openai
-        | AiProvider::Deepseek
-        | AiProvider::Qwen
-        | AiProvider::Ollama
-        | AiProvider::OpenaiCompatible
-        | AiProvider::Custom => {
-            if request.config.api_style == AiApiStyle::Responses {
-                call_responses_api(&client, request).await
+            // Parse the JSON to extract the text delta
+            let parsed: serde_json::Value = serde_json::from_str(data).map_err(|e| format!("JSON parse error: {e}"))?;
+
+            let delta = if is_claude {
+                claude_stream_text(&parsed).map(|s| s.to_string())
+            } else if is_gemini {
+                let text = gemini_text(&parsed);
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text)
+                }
             } else {
-                call_openai_compatible(&client, request).await
+                openai_stream_text(&parsed).or_else(|| Some(responses_text(&parsed)))
+            };
+
+            if let Some(text) = delta {
+                if !text.trim().is_empty() {
+                    let latency = start.elapsed().as_millis() as u64;
+                    return Ok((latency, text));
+                }
             }
         }
     }
-    .map(|_| "OK".to_string())
+    Err("stream ended without content".to_string())
+}
+
+const TEST_PROMPT: &str = "Who are you?";
+
+pub async fn test_connection_core(config: &AiConfig) -> Result<AiTestConnectionResult, String> {
+    validate_config(config)?;
+
+    let client = build_ai_http_client(config, 15)?;
+    let start = std::time::Instant::now();
+
+    let is_claude = matches!(config.provider, AiProvider::Claude);
+    let is_gemini = matches!(config.provider, AiProvider::Gemini);
+    let model = config.model.clone();
+
+    // Build the streaming request and get the byte stream
+    let byte_stream = match config.provider {
+        AiProvider::Claude => {
+            let body = json!({
+                "model": &model,
+                "max_tokens": 16,
+                "temperature": 0.0,
+                "system": "",
+                "messages": [{ "role": "user", "content": TEST_PROMPT }],
+                "stream": true,
+            });
+            let res = client
+                .post(resolve_endpoint(config))
+                .headers(claude_headers(config)?)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| format!("Claude request failed: {e}"))?;
+            if !res.status().is_success() {
+                let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+                return Err(categorize_error(&data, config));
+            }
+            res.bytes_stream()
+        }
+        AiProvider::Gemini => {
+            let ep = resolve_endpoint(config);
+            let res = client
+                .post(&ep)
+                .header(CONTENT_TYPE, "application/json")
+                .query(&[("key", config.api_key.as_str()), ("alt", "sse")])
+                .json(&json!({
+                    "contents": [{ "parts": [{ "text": TEST_PROMPT }], "role": "user" }],
+                    "generationConfig": { "maxOutputTokens": 16, "temperature": 0.0 },
+                }))
+                .send()
+                .await
+                .map_err(|e| format!("Gemini request failed: {e}"))?;
+            if !res.status().is_success() {
+                let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+                return Err(categorize_error(&data, config));
+            }
+            res.bytes_stream()
+        }
+        _ => {
+            // OpenAI-compatible providers
+            let messages = vec![json!({ "role": "user", "content": TEST_PROMPT })];
+            let mut body_obj = json!({
+                "model": &model,
+                "messages": messages,
+                "max_tokens": 16,
+                "temperature": 0.0,
+                "stream": true,
+            });
+            if !config.enable_thinking {
+                body_obj["extra_body"] = json!({
+                    "chat_template_kwargs": { "enable_thinking": false }
+                });
+            }
+            let ep = resolve_endpoint(config);
+            let res = client
+                .post(&ep)
+                .headers(maybe_bearer_headers(config)?)
+                .json(&body_obj)
+                .send()
+                .await
+                .map_err(|e| format!("AI request failed: {e}"))?;
+            if !res.status().is_success() {
+                let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+                return Err(categorize_error(&data, config));
+            }
+            res.bytes_stream()
+        }
+    };
+
+    match measure_first_stream_chunk(byte_stream, start, is_claude, is_gemini).await {
+        Ok((latency, _delta)) => Ok(AiTestConnectionResult {
+            success: true,
+            message: format!("OK — {}ms", latency),
+            latency_ms: Some(latency),
+            model_used: model,
+            error_category: None,
+        }),
+        Err(e) => {
+            let category = classify_error(&e);
+            Err(format!("[{category}] {e}"))
+        }
+    }
+}
+
+/// Map known API error bodies to a short category string.
+fn categorize_error(data: &serde_json::Value, _config: &AiConfig) -> String {
+    let raw = extract_error(data).unwrap_or_else(|| "API error".to_string());
+    let category = classify_error(&raw);
+    format!("[{category}] {raw}")
+}
+
+fn classify_error(msg: &str) -> &'static str {
+    let lower = msg.to_ascii_lowercase();
+    if lower.contains("401")
+        || lower.contains("unauthorized")
+        || lower.contains("invalid api key")
+        || lower.contains("incorrect api key")
+    {
+        "auth"
+    } else if lower.contains("404") || lower.contains("not found") || lower.contains("model not found") {
+        "modelNotFound"
+    } else if lower.contains("429") || lower.contains("rate limit") || lower.contains("too many requests") {
+        "rateLimit"
+    } else if lower.contains("timeout") || lower.contains("timed out") {
+        "timeout"
+    } else if lower.contains("connect") || lower.contains("dns") || lower.contains("resolve") {
+        "network"
+    } else {
+        "unknown"
+    }
 }
 
 pub async fn complete(request: &AiCompletionRequest) -> Result<String, String> {

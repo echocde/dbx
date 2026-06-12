@@ -27,7 +27,7 @@ import type {
 } from "@/types/database";
 import type { SchemaDiffPreparation, SchemaDiffPreparationOptions, TableDiff, FunctionDiff, SequenceDiff, RuleDiff, OwnerDiff } from "@/lib/schemaDiff";
 import type { SidebarObjectKind } from "@/lib/databaseObjectCapabilities";
-import type { AiConfig } from "@/stores/settingsStore";
+import type { AiConfig, AiTestConnectionResult } from "@/stores/settingsStore";
 import type {
   AgentDriverInfo,
   AiCompletionRequest,
@@ -778,7 +778,7 @@ export async function aiCancelStream(sessionId: string): Promise<boolean> {
   return post("/api/ai/cancel-stream", { sessionId });
 }
 
-export async function aiTestConnection(config: AiConfig): Promise<string> {
+export async function aiTestConnection(config: AiConfig): Promise<AiTestConnectionResult> {
   return post("/api/ai/test-connection", { config });
 }
 

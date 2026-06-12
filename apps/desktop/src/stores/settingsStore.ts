@@ -27,6 +27,14 @@ export interface AiConfig {
   enableThinking?: boolean;
 }
 
+export interface AiTestConnectionResult {
+  success: boolean;
+  message: string;
+  latencyMs?: number;
+  modelUsed: string;
+  errorCategory?: string;
+}
+
 export interface DesktopSettings {
   show_tray_icon: boolean;
   icon_theme: DesktopIconTheme;

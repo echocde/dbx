@@ -942,6 +942,7 @@ const aiCompletionsMode = computed(() => aiEditApiStyle.value === "completions")
 const aiTesting = ref(false);
 const aiTestResult = ref<"" | "success" | "error">("");
 const aiTestError = ref("");
+const aiTestLatency = ref<number | null>(null);
 const aiRequiresApiKey = computed(() => AI_PROVIDER_PRESETS[aiEditProvider.value].requiresApiKey);
 const aiSupportsAuthMethod = computed(() => aiEditProvider.value === "claude");
 const aiCredentialLabel = computed(() => (aiSupportsAuthMethod.value && aiEditAuthMethod.value === "bearer" ? "Auth Token" : "API Key"));
@@ -1077,6 +1078,7 @@ function syncAiEditState() {
   aiEditEnableThinking.value = settingsStore.aiConfig.enableThinking ?? true;
   aiTestResult.value = "";
   aiTestError.value = "";
+  aiTestLatency.value = null;
   clearAiModelOptions();
 }
 
@@ -1087,6 +1089,9 @@ function aiSelectProvider(provider: AiProvider) {
   aiEditApiStyle.value = AI_PROVIDER_PRESETS[provider].apiStyle;
   aiEditAuthMethod.value = AI_PROVIDER_PRESETS[provider].authMethod;
   if (!AI_PROVIDER_PRESETS[provider].requiresApiKey) aiEditApiKey.value = "";
+  aiTestResult.value = "";
+  aiTestError.value = "";
+  aiTestLatency.value = null;
   clearAiModelOptions();
 }
 
@@ -1113,9 +1118,11 @@ async function aiTestConn() {
   aiTesting.value = true;
   aiTestResult.value = "";
   aiTestError.value = "";
+  aiTestLatency.value = null;
   try {
-    await aiTestConnection(currentAiEditConfig());
+    const result = await aiTestConnection(currentAiEditConfig());
     aiTestResult.value = "success";
+    aiTestLatency.value = result.latencyMs ?? null;
   } catch (e: any) {
     aiTestResult.value = "error";
     aiTestError.value = e?.message || String(e);
@@ -2455,8 +2462,9 @@ watch(
                 <Loader2 v-if="aiTesting" class="h-3 w-3 animate-spin mr-1" />
                 {{ t("connection.test") }}
               </Button>
-              <span v-if="aiTestResult === 'success'" class="text-xs text-green-500">
-                {{ t("connection.testSuccess") }}
+              <span v-if="aiTestResult === 'success'" class="text-xs text-green-500 flex items-center gap-1.5">
+                <span>{{ t("connection.testSuccess") }}</span>
+                <span v-if="aiTestLatency != null" class="text-green-500/70">{{ aiTestLatency }}ms</span>
               </span>
               <span v-else-if="aiTestResult === 'error'" class="text-xs text-destructive truncate max-w-[200px]" :title="aiTestError">
                 {{ aiTestError }}

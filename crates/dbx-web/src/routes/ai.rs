@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use dbx_core::agent_events::AgentEvent;
 use dbx_core::agent_loop::{run_agent_loop, AgentLoopContext};
-use dbx_core::ai::{AiCompletionRequest, AiConfig, AiConversation, AiModelInfo, AiStreamChunk};
+use dbx_core::ai::{AiCompletionRequest, AiConfig, AiConversation, AiModelInfo, AiStreamChunk, AiTestConnectionResult};
 use dbx_core::models::connection::DatabaseType;
 
 use crate::error::AppError;
@@ -126,7 +126,9 @@ pub async fn ai_complete(Json(body): Json<AiCompleteRequest>) -> Result<Json<Str
 // AI test connection
 // ---------------------------------------------------------------------------
 
-pub async fn ai_test_connection(Json(body): Json<AiTestConnectionRequest>) -> Result<Json<String>, AppError> {
+pub async fn ai_test_connection(
+    Json(body): Json<AiTestConnectionRequest>,
+) -> Result<Json<AiTestConnectionResult>, AppError> {
     let result = dbx_core::ai::test_connection_core(&body.config).await.map_err(AppError)?;
     Ok(Json(result))
 }
