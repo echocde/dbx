@@ -45,10 +45,12 @@ macro_rules! try_agent {
     };
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_query_tables(con: &duckdb::Connection) -> Result<Vec<db::TableInfo>, String> {
     duckdb_query_tables_in_database(con, "main", "main")
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_query_tables_in_database(
     con: &duckdb::Connection,
     database: &str,
@@ -57,6 +59,7 @@ pub fn duckdb_query_tables_in_database(
     duckdb_query_tables_in_database_with_attached(con, database, schema, &[])
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_query_tables_in_database_with_attached(
     con: &duckdb::Connection,
     database: &str,
@@ -81,6 +84,7 @@ pub fn duckdb_query_tables_in_database_with_attached(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_attach_database(con: &duckdb::Connection, name: &str, path: &str) -> Result<(), String> {
     let name = name.trim();
     let path = path.trim();
@@ -91,10 +95,12 @@ pub fn duckdb_attach_database(con: &duckdb::Connection, name: &str, path: &str) 
     con.execute_batch(&sql).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_list_databases(con: &duckdb::Connection) -> Result<Vec<db::DatabaseInfo>, String> {
     duckdb_list_databases_with_attached(con, &[])
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_list_databases_with_attached(
     con: &duckdb::Connection,
     attached_names: &[String],
@@ -110,10 +116,12 @@ pub fn duckdb_list_databases_with_attached(
     Ok(rows.filter_map(|row| row.ok()).collect())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_list_schemas(con: &duckdb::Connection, database: &str) -> Result<Vec<String>, String> {
     duckdb_list_schemas_with_attached(con, database, &[])
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_list_schemas_with_attached(
     con: &duckdb::Connection,
     database: &str,
@@ -129,6 +137,7 @@ pub fn duckdb_list_schemas_with_attached(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn duckdb_catalog_name(con: &duckdb::Connection, database: &str, attached_names: &[String]) -> Result<String, String> {
     if database.trim().is_empty() || database == "main" {
         return duckdb_primary_catalog(con, attached_names);
@@ -136,6 +145,7 @@ fn duckdb_catalog_name(con: &duckdb::Connection, database: &str, attached_names:
     Ok(database.to_string())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_primary_catalog(con: &duckdb::Connection, attached_names: &[String]) -> Result<String, String> {
     if attached_names.is_empty() {
         return duckdb_current_database(con);
@@ -152,22 +162,27 @@ pub fn duckdb_primary_catalog(con: &duckdb::Connection, attached_names: &[String
     duckdb_current_database(con)
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn duckdb_current_database(con: &duckdb::Connection) -> Result<String, String> {
     con.query_row("SELECT current_database()", [], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn duckdb_quote_ident(value: &str) -> String {
     format!("\"{}\"", value.replace('"', "\"\""))
 }
 
+#[cfg(feature = "duckdb-bundled")]
 fn duckdb_quote_string(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_query_columns(con: &duckdb::Connection, table: &str) -> Result<Vec<db::ColumnInfo>, String> {
     duckdb_query_columns_in_database(con, "main", "main", table)
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_query_columns_in_database(
     con: &duckdb::Connection,
     database: &str,
@@ -177,6 +192,7 @@ pub fn duckdb_query_columns_in_database(
     duckdb_query_columns_in_database_with_attached(con, database, schema, table, &[])
 }
 
+#[cfg(feature = "duckdb-bundled")]
 pub fn duckdb_query_columns_in_database_with_attached(
     con: &duckdb::Connection,
     database: &str,
@@ -233,6 +249,7 @@ pub fn duckdb_query_columns_in_database_with_attached(
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+#[cfg(feature = "duckdb-bundled")]
 async fn duckdb_attached_database_names(state: &AppState, connection_id: &str) -> Vec<String> {
     state
         .configs
@@ -259,6 +276,7 @@ async fn list_databases_once(state: &AppState, connection_id: &str) -> Result<Ve
     log::info!("[list_databases] connection_id={connection_id}");
     {
         let connections = state.connections.read().await;
+        #[cfg(feature = "duckdb-bundled")]
         if extract_pool!(&connections, connection_id, ExternalTabular).is_some() {
             return Ok(vec![db::DatabaseInfo { name: "main".to_string() }]);
         }
@@ -289,6 +307,7 @@ async fn list_databases_once(state: &AppState, connection_id: &str) -> Result<Ve
         }
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
     let db_config = connection_config(state, connection_id).await;
     let connections = state.connections.read().await;
@@ -302,6 +321,7 @@ async fn list_databases_once(state: &AppState, connection_id: &str) -> Result<Ve
         PoolKind::Postgres(p) => db::postgres::list_databases(p).await,
         PoolKind::Sqlite(p) => db::sqlite::list_databases(p).await,
         PoolKind::Rqlite(client) => db::rqlite_driver::list_databases(client).await,
+        #[cfg(feature = "duckdb-bundled")]
         PoolKind::DuckDb(con) => {
             let con = con.lock().map_err(|e| e.to_string())?;
             duckdb_list_databases_with_attached(&con, &duckdb_attached_names)
@@ -379,6 +399,7 @@ async fn list_schemas_once(state: &AppState, connection_id: &str, database: &str
 
     match pool {
         PoolKind::Postgres(p) => db::postgres::list_schemas(p).await,
+        #[cfg(feature = "duckdb-bundled")]
         PoolKind::DuckDb(con) => {
             let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
             let con = con.lock().map_err(|e| e.to_string())?;
@@ -411,11 +432,13 @@ async fn list_tables_once(
     limit: Option<usize>,
 ) -> Result<Vec<db::TableInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+    #[cfg(feature = "duckdb-bundled")]
     let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
     let db_config = connection_config(state, connection_id).await;
 
     {
         let connections = state.connections.read().await;
+        #[cfg(feature = "duckdb-bundled")]
         if let Some(ext_pool) = extract_pool!(&connections, &pool_key, ExternalTabular) {
             drop(connections);
             let cache = ext_pool.cache.clone();
@@ -437,6 +460,7 @@ async fn list_tables_once(
                 )
                 .await;
         }
+        #[cfg(feature = "duckdb-bundled")]
         if let Some(con) = extract_pool!(&connections, &pool_key, DuckDb) {
             drop(connections);
             let con = con.lock().map_err(|e| e.to_string())?;
@@ -553,10 +577,9 @@ fn filter_table_infos(tables: Vec<db::TableInfo>, filter: Option<&str>, limit: O
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        clickhouse_metadata_database, deduplicate_column_infos, duckdb_attach_database, duckdb_list_databases,
-        duckdb_query_tables_in_database, is_agent_postgres_metadata_fallback_config,
-    };
+    use super::{clickhouse_metadata_database, deduplicate_column_infos, is_agent_postgres_metadata_fallback_config};
+    #[cfg(feature = "duckdb-bundled")]
+    use super::{duckdb_attach_database, duckdb_list_databases, duckdb_query_tables_in_database};
     use crate::models::connection::{ConnectionConfig, DatabaseType};
 
     fn test_column(name: &str, comment: Option<&str>, is_primary_key: bool) -> super::db::ColumnInfo {
@@ -618,6 +641,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     #[test]
     fn duckdb_list_databases_includes_attached_database() {
         let unique = uuid::Uuid::new_v4();
@@ -634,6 +658,7 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
+    #[cfg(feature = "duckdb-bundled")]
     #[test]
     fn duckdb_query_tables_filters_by_attached_database() {
         let unique = uuid::Uuid::new_v4();
@@ -725,6 +750,7 @@ async fn list_objects_once(
 
     {
         let connections = state.connections.read().await;
+        #[cfg(feature = "duckdb-bundled")]
         if let Some(ext_pool) = extract_pool!(&connections, &pool_key, ExternalTabular) {
             drop(connections);
             let cache = ext_pool.cache.clone();
@@ -992,11 +1018,13 @@ pub async fn get_columns_core(
     table: &str,
 ) -> Result<Vec<db::ColumnInfo>, String> {
     let pool_key = state.get_or_create_pool(connection_id, Some(database)).await?;
+    #[cfg(feature = "duckdb-bundled")]
     let duckdb_attached_names = duckdb_attached_database_names(state, connection_id).await;
     let db_config = connection_config(state, connection_id).await;
 
     {
         let connections = state.connections.read().await;
+        #[cfg(feature = "duckdb-bundled")]
         if let Some(ext_pool) = extract_pool!(&connections, &pool_key, ExternalTabular) {
             drop(connections);
             let cache = ext_pool.cache.clone();
@@ -1025,6 +1053,7 @@ pub async fn get_columns_core(
                 .await?;
             return Ok(deduplicate_column_infos(columns));
         }
+        #[cfg(feature = "duckdb-bundled")]
         if let Some(con) = extract_pool!(&connections, &pool_key, DuckDb) {
             drop(connections);
             let con = con.lock().map_err(|e| e.to_string())?;
@@ -1319,6 +1348,7 @@ pub async fn get_table_ddl_core(
 
     {
         let connections = state.connections.read().await;
+        #[cfg(feature = "duckdb-bundled")]
         if let Some(con) = extract_pool!(&connections, &pool_key, DuckDb) {
             drop(connections);
             let tbl = table.replace('\'', "''");
