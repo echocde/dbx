@@ -695,6 +695,35 @@ test("suggests user functions and triggers with fuzzy matching", () => {
   assert.ok(triggerItems.some((item) => item.label === "trg_users_audit" && item.detail === "trigger on users"));
 });
 
+test("suggests Oracle table-function helpers in table reference context", () => {
+  const items = buildSqlCompletionItems("select * from tab", "select * from tab".length, {
+    tables,
+    columnsByTable,
+    databaseType: "oracle",
+  });
+
+  const tableFunction = items.find((item) => item.label === "TABLE" && item.type === "function");
+  assert.ok(tableFunction);
+  assert.ok(tableFunction.apply?.startsWith("TABLE("));
+});
+
+test("suggests package members after package qualifier", () => {
+  const items = buildSqlCompletionItems("begin PAYROLL.ca", "begin PAYROLL.ca".length, {
+    tables,
+    columnsByTable,
+    objects: [
+      { name: "PAYROLL", schema: "HR", type: "package" },
+      { name: "calculate_bonus", schema: "HR", type: "function", parentSchema: "HR", parentName: "PAYROLL" },
+    ],
+    databaseType: "oracle",
+  });
+
+  const member = items.find((item) => item.label === "calculate_bonus");
+  assert.ok(member);
+  assert.equal(member.type, "function");
+  assert.equal(member.apply, "calculate_bonus()");
+});
+
 test("matches alias qualifier case-insensitively", () => {
   const sql = "select O. from public.orders o";
   const cursor = "select O.".length;
@@ -1193,6 +1222,49 @@ test("getSqlCompletionContext returns nonAggregatedSelectColumns", () => {
   assert.ok(!context.nonAggregatedSelectColumns.includes("id"), "id inside COUNT should not be non-aggregated");
 });
 
+// --- UPDATE / DELETE completion contexts ---
+
+test("suggests SET immediately after UPDATE target table", () => {
+  const sql = "update users se";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "SET");
+});
+
+test("suggests target table columns inside UPDATE SET clause", () => {
+  const sql = "update users set na";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "name");
+  assert.equal(items[0]?.type, "column");
+});
+
+test("suggests WHERE after UPDATE SET assignments", () => {
+  const sql = "update users set name = 'a' wh";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "WHERE");
+});
+
+test("suggests WHERE immediately after DELETE target table", () => {
+  const sql = "delete from users wh";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+  });
+
+  assert.equal(items[0]?.label, "WHERE");
+});
+
 // --- Better FK join inference ---
 
 test("prefers explicit foreign-key join condition with table aliases", () => {
@@ -1230,6 +1302,20 @@ test("suggests explicit foreign-key join when the joined table owns the key", ()
 
   const fkJoin = items.find((item) => item.label === "o.customer_id = c.id");
   assert.ok(fkJoin, "should suggest FK join when the right side owns the foreign key");
+});
+
+test("boosts foreign-key related table candidates in JOIN table context", () => {
+  const foreignKeysByTable = new Map<string, SqlCompletionForeignKey[]>([["public.orders", [{ name: "orders_user_id_fkey", column: "user_id", ref_table: "users", ref_column: "id" }]]]);
+  const sql = "select * from public.orders o join us";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+    foreignKeysByTable,
+  });
+
+  assert.equal(items[0]?.label, "users");
+  assert.equal(items[0]?.type, "table");
+  assert.ok(items[0]?.detail?.includes("related by"));
 });
 
 test("suggests composite explicit foreign-key join conditions", () => {

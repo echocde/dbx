@@ -1907,7 +1907,7 @@ export const useConnectionStore = defineStore("connection", () => {
 
   function toSqlCompletionObject(object: ObjectInfo): SqlCompletionObject | null {
     const objectType = object.object_type.toUpperCase();
-    const type = objectType.includes("PROCEDURE") ? "procedure" : objectType.includes("FUNCTION") ? "function" : objectType.includes("TRIGGER") ? "trigger" : null;
+    const type = objectType.includes("PROCEDURE") ? "procedure" : objectType.includes("FUNCTION") ? "function" : objectType.includes("TRIGGER") ? "trigger" : objectType.includes("PACKAGE") ? "package" : null;
     if (!type) return null;
     return {
       name: object.name,
@@ -1919,7 +1919,7 @@ export const useConnectionStore = defineStore("connection", () => {
   }
 
   function fuzzyCompletionObjectMatch(object: SqlCompletionObject, filter: string): boolean {
-    return fuzzyTextMatch(object.name, filter) || (!!object.schema && fuzzyTextMatch(object.schema, filter));
+    return fuzzyTextMatch(object.name, filter) || (!!object.schema && fuzzyTextMatch(object.schema, filter)) || (!!object.parentName && fuzzyTextMatch(object.parentName, filter)) || (!!object.parentSchema && fuzzyTextMatch(`${object.parentSchema}.${object.parentName ?? ""}`, filter));
   }
 
   function fuzzyTextMatch(value: string, filter: string): boolean {
