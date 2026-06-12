@@ -82,6 +82,12 @@ pub struct RedisClusterPool {
     pub password: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RedisAuthCandidate {
+    username: String,
+    password: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RedisNodeEndpoint {
     pub host: String,
@@ -90,15 +96,56 @@ pub struct RedisNodeEndpoint {
 
 pub async fn connect(url: &str, timeout: std::time::Duration) -> Result<redis::aio::MultiplexedConnection, String> {
     let client = redis::Client::open(url).map_err(|e| format!("Redis connection failed: {e}"))?;
+    connect_client_with_timeout(client, timeout, "Redis").await
+}
+
+pub async fn connect_standalone(
+    config: &ConnectionConfig,
+    host: &str,
+    port: u16,
+    timeout: std::time::Duration,
+) -> Result<redis::aio::MultiplexedConnection, String> {
+    let mut last_error = None;
+    for auth in redis_auth_candidates(&config.username, &config.password) {
+        let client = redis::Client::open(connection_info(
+            host,
+            port,
+            config.ssl,
+            config.redis_tls_insecure(),
+            &auth.username,
+            &auth.password,
+            redis_database_index(config),
+        ))
+        .map_err(|e| format!("Redis connection failed: {e}"))?;
+        match connect_client_with_timeout(client, timeout, "Redis").await {
+            Ok(con) => return Ok(con),
+            Err(err) if last_error.is_none() || is_redis_auth_error(&err) => {
+                let should_retry = is_redis_auth_error(&err);
+                last_error = Some(err);
+                if !should_retry {
+                    break;
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "Redis connection failed".to_string()))
+}
+
+async fn connect_client_with_timeout(
+    client: redis::Client,
+    timeout: std::time::Duration,
+    label: &str,
+) -> Result<redis::aio::MultiplexedConnection, String> {
     let mut con = tokio::time::timeout(timeout, client.get_multiplexed_async_connection())
         .await
-        .map_err(|_| format!("Redis connection timed out ({}s)", timeout.as_secs()))?
-        .map_err(|e| format!("Redis connection failed: {e}"))?;
+        .map_err(|_| format!("{label} connection timed out ({}s)", timeout.as_secs()))?
+        .map_err(|e| format!("{label} connection failed: {e}"))?;
 
     tokio::time::timeout(timeout, redis::cmd("PING").query_async::<String>(&mut con))
         .await
-        .map_err(|_| format!("Redis ping timed out ({}s)", timeout.as_secs()))?
-        .map_err(|e| format!("Redis authentication failed or command rejected: {e}"))?;
+        .map_err(|_| format!("{label} ping timed out ({}s)", timeout.as_secs()))?
+        .map_err(|e| format!("{label} authentication failed or command rejected: {e}"))?;
 
     Ok(con)
 }
@@ -128,39 +175,66 @@ pub async fn connect_sentinel(config: &ConnectionConfig) -> Result<redis::aio::M
 
 pub async fn connect_cluster(config: &ConnectionConfig) -> Result<RedisClusterPool, String> {
     let seed_nodes = redis_cluster_seed_nodes(config)?;
-    let cluster_nodes: Vec<ConnectionInfo> = seed_nodes
-        .iter()
-        .map(|endpoint| {
-            connection_info(
-                &endpoint.host,
-                endpoint.port,
-                config.ssl,
-                config.redis_tls_insecure(),
-                &config.username,
-                &config.password,
-                0,
-            )
-        })
-        .collect();
-    let client = ClusterClient::new(cluster_nodes).map_err(|e| format!("Redis cluster connection failed: {e}"))?;
-    let mut con = tokio::time::timeout(super::connection_timeout(), client.get_async_connection())
-        .await
-        .map_err(|_| format!("Redis cluster connection timed out ({}s)", super::CONNECTION_TIMEOUT_SECS))?
-        .map_err(|e| format!("Redis cluster connection failed: {e}"))?;
+    let mut last_error = None;
+    for auth in redis_auth_candidates(&config.username, &config.password) {
+        let cluster_nodes: Vec<ConnectionInfo> = seed_nodes
+            .iter()
+            .map(|endpoint| {
+                connection_info(
+                    &endpoint.host,
+                    endpoint.port,
+                    config.ssl,
+                    config.redis_tls_insecure(),
+                    &auth.username,
+                    &auth.password,
+                    0,
+                )
+            })
+            .collect();
+        let client = ClusterClient::new(cluster_nodes).map_err(|e| format!("Redis cluster connection failed: {e}"))?;
+        let mut con = match tokio::time::timeout(super::connection_timeout(), client.get_async_connection())
+            .await
+            .map_err(|_| format!("Redis cluster connection timed out ({}s)", super::CONNECTION_TIMEOUT_SECS))?
+            .map_err(|e| format!("Redis cluster connection failed: {e}"))
+        {
+            Ok(con) => con,
+            Err(err) if last_error.is_none() || is_redis_auth_error(&err) => {
+                let should_retry = is_redis_auth_error(&err);
+                last_error = Some(err);
+                if should_retry {
+                    continue;
+                }
+                break;
+            }
+            Err(err) => return Err(err),
+        };
 
-    tokio::time::timeout(super::connection_timeout(), redis::cmd("PING").query_async::<String>(&mut con))
-        .await
-        .map_err(|_| format!("Redis cluster ping timed out ({}s)", super::CONNECTION_TIMEOUT_SECS))?
-        .map_err(|e| format!("Redis cluster authentication failed or command rejected: {e}"))?;
-
-    Ok(RedisClusterPool {
-        connection: Mutex::new(con),
-        seed_nodes,
-        tls: config.ssl,
-        tls_insecure: config.redis_tls_insecure(),
-        username: config.username.clone(),
-        password: config.password.clone(),
-    })
+        match tokio::time::timeout(super::connection_timeout(), redis::cmd("PING").query_async::<String>(&mut con))
+            .await
+            .map_err(|_| format!("Redis cluster ping timed out ({}s)", super::CONNECTION_TIMEOUT_SECS))?
+            .map_err(|e| format!("Redis cluster authentication failed or command rejected: {e}"))
+        {
+            Ok(_) => {
+                return Ok(RedisClusterPool {
+                    connection: Mutex::new(con),
+                    seed_nodes,
+                    tls: config.ssl,
+                    tls_insecure: config.redis_tls_insecure(),
+                    username: auth.username,
+                    password: auth.password,
+                });
+            }
+            Err(err) if last_error.is_none() || is_redis_auth_error(&err) => {
+                let should_retry = is_redis_auth_error(&err);
+                last_error = Some(err);
+                if !should_retry {
+                    break;
+                }
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "Redis cluster connection failed".to_string()))
 }
 
 fn redis_sentinel_nodes(config: &ConnectionConfig) -> Result<Vec<ConnectionInfo>, String> {
@@ -271,6 +345,25 @@ fn redis_connection_info(username: &str, password: &str, db: i64) -> RedisConnec
         password: non_empty_string(password),
         protocol: ProtocolVersion::RESP2,
     }
+}
+
+fn redis_auth_candidates(username: &str, password: &str) -> Vec<RedisAuthCandidate> {
+    let username = username.trim();
+    let password = password.trim();
+    let mut candidates = vec![RedisAuthCandidate { username: username.to_string(), password: password.to_string() }];
+    if !username.is_empty() && !password.is_empty() {
+        candidates.push(RedisAuthCandidate { username: String::new(), password: format!("{username}@{password}") });
+    }
+    candidates
+}
+
+fn redis_database_index(config: &ConnectionConfig) -> i64 {
+    config.effective_database().and_then(|database| database.parse::<i64>().ok()).unwrap_or(0)
+}
+
+fn is_redis_auth_error(error: &str) -> bool {
+    let error = error.to_ascii_lowercase();
+    error.contains("auth") || error.contains("wrongpass") || error.contains("invalid username-password")
 }
 
 fn non_empty_string(value: &str) -> Option<String> {
@@ -1530,11 +1623,12 @@ mod tests {
     use super::{
         classify_command, connection_info, decode_cluster_cursor, encode_cluster_cursor, is_redis_json_type,
         parse_cluster_slots, parse_command_argv, parse_database_count, parse_redis_endpoint, parse_scan_keys,
-        parse_stream_entries, redis_command_raw_to_json, redis_json_raw_to_json, redis_json_value_preview,
-        redis_key_bytes_to_display, redis_key_bytes_to_raw, redis_key_raw_to_bytes, redis_key_value_preview,
-        redis_raw_to_json, redis_value_contains_binary, redis_value_matches_query, RedisCommandSafety,
-        RedisNodeEndpoint, RedisRawValue,
+        parse_stream_entries, redis_auth_candidates, redis_command_raw_to_json, redis_database_index,
+        redis_json_raw_to_json, redis_json_value_preview, redis_key_bytes_to_display, redis_key_bytes_to_raw,
+        redis_key_raw_to_bytes, redis_key_value_preview, redis_raw_to_json, redis_value_contains_binary,
+        redis_value_matches_query, RedisAuthCandidate, RedisCommandSafety, RedisNodeEndpoint, RedisRawValue,
     };
+    use crate::models::connection::ConnectionConfig;
     use redis::ConnectionAddr;
 
     fn bulk(value: &str) -> RedisRawValue {
@@ -1752,6 +1846,76 @@ mod tests {
         let info = connection_info("cache.example.com", 6379, true, true, "default", "secret", 0);
 
         assert!(matches!(info.addr, ConnectionAddr::TcpTls { insecure: true, .. }));
+    }
+
+    #[test]
+    fn redis_connection_info_preserves_acl_username_and_password() {
+        let info = connection_info("cache.example.com", 6379, false, false, "app-user", "secret", 0);
+
+        assert_eq!(info.redis.username.as_deref(), Some("app-user"));
+        assert_eq!(info.redis.password.as_deref(), Some("secret"));
+    }
+
+    #[test]
+    fn redis_auth_candidates_try_username_at_password_fallback() {
+        let candidates = redis_auth_candidates("app-user", "secret");
+
+        assert_eq!(
+            candidates,
+            vec![
+                RedisAuthCandidate { username: "app-user".to_string(), password: "secret".to_string() },
+                RedisAuthCandidate { username: String::new(), password: "app-user@secret".to_string() },
+            ]
+        );
+    }
+
+    #[test]
+    fn redis_database_index_uses_numeric_database_only() {
+        let mut config = ConnectionConfig {
+            id: "redis".to_string(),
+            name: "Redis".to_string(),
+            db_type: crate::models::connection::DatabaseType::Redis,
+            driver_profile: None,
+            driver_label: None,
+            url_params: None,
+            host: "cache.example.com".to_string(),
+            port: 6379,
+            username: String::new(),
+            password: String::new(),
+            database: Some("4".to_string()),
+            visible_databases: None,
+            attached_databases: Vec::new(),
+            color: None,
+            transport_layers: Vec::new(),
+            connect_timeout_secs: crate::models::connection::default_connect_timeout_secs(),
+            query_timeout_secs: crate::models::connection::default_query_timeout_secs(),
+            idle_timeout_secs: crate::models::connection::default_idle_timeout_secs(),
+            ssl: false,
+            ca_cert_path: String::new(),
+            client_cert_path: String::new(),
+            client_key_path: String::new(),
+            sysdba: false,
+            oracle_connection_type: None,
+            connection_string: None,
+            redis_connection_mode: None,
+            redis_sentinel_master: String::new(),
+            redis_sentinel_nodes: String::new(),
+            redis_sentinel_username: String::new(),
+            redis_sentinel_password: String::new(),
+            redis_sentinel_tls: false,
+            redis_cluster_nodes: String::new(),
+            redis_key_separator: crate::models::connection::default_redis_key_separator(),
+            etcd_endpoints: String::new(),
+            external_config: None,
+            jdbc_driver_class: None,
+            jdbc_driver_paths: Vec::new(),
+            one_time: false,
+            read_only: false,
+        };
+
+        assert_eq!(redis_database_index(&config), 4);
+        config.database = Some("not-a-number".to_string());
+        assert_eq!(redis_database_index(&config), 0);
     }
 
     #[test]

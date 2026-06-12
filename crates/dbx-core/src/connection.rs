@@ -412,7 +412,7 @@ impl AppState {
                     ))
                 } else {
                     db::redis_driver::RedisConnection::Direct(tokio::sync::Mutex::new(
-                        db::redis_driver::connect(&url, connect_timeout).await?,
+                        db::redis_driver::connect_standalone(&db_config, &host, port, connect_timeout).await?,
                     ))
                 };
                 PoolKind::Redis(con)
