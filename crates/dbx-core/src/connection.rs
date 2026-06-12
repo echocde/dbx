@@ -324,7 +324,10 @@ impl AppState {
 
         let conns = self.connections.read().await;
         if conns.contains_key(&pool_key) {
-            return Ok(pool_key);
+            drop(conns);
+            if !self.remove_stale_connection_pool(&pool_key).await {
+                return Ok(pool_key);
+            }
         } else {
             drop(conns);
         }
@@ -673,6 +676,49 @@ impl AppState {
         .await?;
 
         Ok(("127.0.0.1".to_string(), local_port))
+    }
+
+    async fn remove_stale_connection_pool(&self, pool_key: &str) -> bool {
+        let stale = {
+            let connections = self.connections.read().await;
+            let Some(pool) = connections.get(pool_key) else {
+                return false;
+            };
+            match pool {
+                PoolKind::SqlServer(client) => {
+                    let client = client.clone();
+                    drop(connections);
+                    let mut client = client.lock().await;
+                    match db::sqlserver::test_connection(&mut client).await {
+                        Ok(()) => false,
+                        Err(err) => {
+                            log::warn!("SQL Server connection pool '{pool_key}' is stale: {err}");
+                            true
+                        }
+                    }
+                }
+                PoolKind::Redis(redis) => match db::redis_driver::test_connection(redis).await {
+                    Ok(()) => false,
+                    Err(err) => {
+                        log::warn!("Redis connection pool '{pool_key}' is stale: {err}");
+                        true
+                    }
+                },
+                _ => false,
+            }
+        };
+
+        if !stale {
+            return false;
+        }
+
+        let removed = self.connections.write().await.remove(pool_key);
+        if let Some(pool) = removed {
+            close_pool_kind(pool).await;
+            true
+        } else {
+            false
+        }
     }
 
     pub async fn reconnect_pool(&self, connection_id: &str, database: Option<&str>) -> Result<String, String> {

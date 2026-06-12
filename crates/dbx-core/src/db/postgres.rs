@@ -1803,6 +1803,8 @@ pub async fn list_foreign_keys(pool: &Pool, schema: &str, table: &str) -> Result
             ref_schema: Some(row.get::<_, String>(2)),
             ref_table: row.get::<_, String>(3),
             ref_column: row.get::<_, String>(4),
+            on_update: None,
+            on_delete: None,
         })
         .collect())
 }
@@ -1826,6 +1828,7 @@ pub async fn list_triggers(pool: &Pool, schema: &str, table: &str) -> Result<Vec
             name: row.get::<_, String>(0),
             event: row.get::<_, String>(1),
             timing: row.get::<_, String>(2),
+            statement: None,
         })
         .collect())
 }

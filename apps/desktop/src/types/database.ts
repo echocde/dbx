@@ -259,12 +259,15 @@ export interface ForeignKeyInfo {
   ref_schema?: string | null;
   ref_table: string;
   ref_column: string;
+  on_update?: string | null;
+  on_delete?: string | null;
 }
 
 export interface TriggerInfo {
   name: string;
   event: string;
   timing: string;
+  statement?: string | null;
 }
 
 export interface QueryResult {

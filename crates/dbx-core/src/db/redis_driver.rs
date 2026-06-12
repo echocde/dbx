@@ -237,6 +237,30 @@ pub async fn connect_cluster(config: &ConnectionConfig) -> Result<RedisClusterPo
     Err(last_error.unwrap_or_else(|| "Redis cluster connection failed".to_string()))
 }
 
+pub async fn test_connection(connection: &RedisConnection) -> Result<(), String> {
+    match connection {
+        RedisConnection::Direct(con) => {
+            let mut con = con.lock().await;
+            redis_ping(&mut *con, "Redis").await
+        }
+        RedisConnection::Cluster(cluster) => {
+            let mut con = cluster.connection.lock().await;
+            redis_ping(&mut *con, "Redis cluster").await
+        }
+    }
+}
+
+async fn redis_ping<C>(con: &mut C, label: &str) -> Result<(), String>
+where
+    C: ConnectionLike + Send + Sync + Unpin,
+{
+    tokio::time::timeout(super::connection_timeout(), redis::cmd("PING").query_async::<String>(con))
+        .await
+        .map_err(|_| format!("{label} ping timed out ({}s)", super::CONNECTION_TIMEOUT_SECS))?
+        .map(|_| ())
+        .map_err(|e| format!("{label} ping failed: {e}"))
+}
+
 fn redis_sentinel_nodes(config: &ConnectionConfig) -> Result<Vec<ConnectionInfo>, String> {
     let raw_nodes = config.redis_sentinel_nodes.trim();
     let endpoints: Vec<String> = if raw_nodes.is_empty() {
