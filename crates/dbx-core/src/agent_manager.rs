@@ -153,11 +153,8 @@ mod tests {
     async fn runtime_gateway_resolves_profile_specific_keys() {
         let manager = test_manager("profile-key");
 
-        assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Oracle, Some("oracle-10g")), Some("oracle-10g"));
-        assert_eq!(
-            AgentManager::db_type_to_agent_key(&DatabaseType::Oracle, Some("oracle-legacy")),
-            Some("oracle-legacy")
-        );
+        assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Oracle, Some("oracle-10g")), Some("oracle"));
+        assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Oracle, Some("oracle-legacy")), Some("oracle"));
         assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Oracle, None), Some("oracle"));
         assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Gbase, Some("gbase8s")), Some("gbase8s"));
         assert_eq!(AgentManager::db_type_to_agent_key(&DatabaseType::Gbase, None), Some("gbase"));
@@ -220,7 +217,10 @@ pub struct DriverInfo {
     pub version: String,
     pub label: String,
     pub min_app_version: String,
-    pub jar: ArtifactInfo,
+    #[serde(default)]
+    pub jar: Option<ArtifactInfo>,
+    #[serde(default)]
+    pub native: std::collections::HashMap<String, ArtifactInfo>,
     #[serde(default = "default_jre_key")]
     pub jre: String,
 }

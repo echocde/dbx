@@ -21,7 +21,8 @@ fn registry_with_driver(db_type: &str, version: &str, jre: &str) -> AgentRegistr
             label: db_type.to_string(),
             min_app_version: "0.1.0".to_string(),
             jre: jre.to_string(),
-            jar: ArtifactInfo { url: format!("https://example.com/dbx-agent-{db_type}.jar"), size: 42 },
+            jar: Some(ArtifactInfo { url: format!("https://example.com/dbx-agent-{db_type}.jar"), size: 42 }),
+            native: std::collections::HashMap::new(),
         },
     );
     AgentRegistry { jre: None, jres: std::collections::HashMap::new(), drivers }

@@ -81,7 +81,7 @@ pub fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> 
                 db_type: key.to_string(),
                 label: label.to_string(),
                 version: remote.map(|r| r.version.clone()).unwrap_or_default(),
-                size: remote.map(|r| r.jar.size).unwrap_or(0),
+                size: remote.and_then(driver_download_artifact).map(|artifact| artifact.size).unwrap_or(0),
                 installed,
                 installed_version: local.map(|l| l.version.clone()),
                 update_available: match (local, remote) {
@@ -95,11 +95,30 @@ pub fn build_agent_list(am: &AgentManager, registry: Option<&AgentRegistry>) -> 
         .collect()
 }
 
+fn driver_download_artifact(driver: &crate::agent_manager::DriverInfo) -> Option<&crate::agent_manager::ArtifactInfo> {
+    driver.native.get(AgentManager::current_platform()).or(driver.jar.as_ref())
+}
+
 fn installed_jre_version<'a>(state: &'a crate::agent_manager::AgentState, jre_key: &str) -> Option<&'a String> {
     state
         .jre_versions
         .get(jre_key)
         .or_else(|| (jre_key == DEFAULT_JRE_KEY).then_some(state.jre_version.as_ref()).flatten())
+}
+
+fn mark_executable(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = std::fs::metadata(path).map_err(|err| err.to_string())?.permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).map_err(|err| err.to_string())?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
 }
 
 pub fn jre_needs_install(am: &AgentManager, registry: &AgentRegistry, jre_key: &str) -> bool {
@@ -352,7 +371,10 @@ async fn install_agent_driver_from_registry(
         return Err(format!("Unknown driver type: {db_type}"));
     };
     let jre_key = &driver.jre;
-    let needs_jre = jre_needs_install(am, registry, jre_key);
+    let native_artifact = driver.native.get(AgentManager::current_platform());
+    let jar_artifact = driver.jar.as_ref();
+    let requires_java_runtime = native_artifact.is_none();
+    let needs_jre = requires_java_runtime && jre_needs_install(am, registry, jre_key);
 
     if needs_jre {
         let jre_info =
@@ -391,8 +413,17 @@ async fn install_agent_driver_from_registry(
         std::fs::remove_file(&jre_archive).ok();
     }
 
-    let jar_path = am.driver_jar_path(db_type);
-    progress(AgentProgressEvent::transfer("driver", 0, driver.jar.size).with_batch(
+    let (artifact, target_path) = if let Some(native) = native_artifact {
+        (native, am.driver_native_path(db_type))
+    } else if let Some(jar) = jar_artifact {
+        (jar, am.driver_jar_path(db_type))
+    } else {
+        return Err(format!("No driver artifact available for {db_type}"));
+    };
+    if let Some(parent) = target_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| format!("Failed to create driver directory: {err}"))?;
+    }
+    progress(AgentProgressEvent::transfer("driver", 0, artifact.size).with_batch(
         Some(db_type),
         current,
         total_drivers,
@@ -401,20 +432,28 @@ async fn install_agent_driver_from_registry(
         am,
         progress,
         "driver",
-        &driver.jar.url,
-        &github_url_to_r2_path(&driver.jar.url, "driver"),
-        &jar_path,
-        driver.jar.size,
+        &artifact.url,
+        &github_url_to_r2_path(&artifact.url, "driver"),
+        &target_path,
+        artifact.size,
         Some(CacheIdentity::Driver { db_type, version: &driver.version }),
         Some(db_type),
         current,
         total_drivers,
     )
     .await?;
+    if native_artifact.is_some() {
+        mark_executable(&target_path)?;
+        std::fs::remove_file(am.driver_jar_path(db_type)).ok();
+    } else {
+        std::fs::remove_file(am.driver_native_path(db_type)).ok();
+    }
 
     let mut local_state = am.load_state();
-    if let Some(jre_info) = registry.resolve_jre(jre_key) {
-        local_state.jre_versions.insert(jre_key.clone(), jre_info.version.clone());
+    if requires_java_runtime {
+        if let Some(jre_info) = registry.resolve_jre(jre_key) {
+            local_state.jre_versions.insert(jre_key.clone(), jre_info.version.clone());
+        }
     }
     local_state.installed_drivers.insert(
         db_type.to_string(),
@@ -715,13 +754,16 @@ pub fn import_offline_zip(
         })
         .collect();
 
-    let driver_entries: Vec<(String, String)> = (0..archive.len())
+    let driver_entries: Vec<(String, String, bool)> = (0..archive.len())
         .filter_map(|i| {
             let entry = archive.by_index(i).ok()?;
             let name = entry.name().to_string();
             if name.starts_with("drivers/") && name.ends_with(".jar") {
                 let db_type = extract_db_type_from_filename(&name)?;
-                Some((db_type, name))
+                Some((db_type, name, false))
+            } else if name.starts_with("drivers/") {
+                let db_type = db_type_for_native_offline_entry(&registry, platform, &name)?;
+                Some((db_type, name, true))
             } else {
                 None
             }
@@ -762,7 +804,7 @@ pub fn import_offline_zip(
         result.jre_installed.push(jre_key.clone());
     }
 
-    for (db_type, entry_name) in &driver_entries {
+    for (db_type, entry_name, is_native) in &driver_entries {
         current += 1;
 
         if let Some(remote_driver) = registry.drivers.get(db_type) {
@@ -784,13 +826,19 @@ pub fn import_offline_zip(
             label: agent_catalog::label_for_key(db_type).unwrap_or(db_type).to_string(),
         });
 
-        let jar_path = am.driver_jar_path(db_type);
-        if let Some(parent) = jar_path.parent() {
+        let driver_path = if *is_native { am.driver_native_path(db_type) } else { am.driver_jar_path(db_type) };
+        if let Some(parent) = driver_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let mut entry = archive.by_name(entry_name).map_err(|e| format!("Failed to read {entry_name}: {e}"))?;
-        let mut out = std::fs::File::create(&jar_path).map_err(|e| format!("Failed to write driver JAR: {e}"))?;
-        std::io::copy(&mut entry, &mut out).map_err(|e| format!("Failed to copy driver JAR: {e}"))?;
+        let mut out = std::fs::File::create(&driver_path).map_err(|e| format!("Failed to write driver: {e}"))?;
+        std::io::copy(&mut entry, &mut out).map_err(|e| format!("Failed to copy driver: {e}"))?;
+        if *is_native {
+            mark_executable(&driver_path)?;
+            std::fs::remove_file(am.driver_jar_path(db_type)).ok();
+        } else {
+            std::fs::remove_file(am.driver_native_path(db_type)).ok();
+        }
 
         let version = registry.drivers.get(db_type).map(|d| d.version.clone()).unwrap_or_else(|| "local".to_string());
         let jre_key =
@@ -834,6 +882,15 @@ fn extract_db_type_from_filename(name: &str) -> Option<String> {
         return None;
     }
     Some(db_type.to_string())
+}
+
+fn db_type_for_native_offline_entry(registry: &AgentRegistry, platform: &str, name: &str) -> Option<String> {
+    let filename = name.rsplit('/').next()?;
+    registry.drivers.iter().find_map(|(db_type, driver)| {
+        let artifact = driver.native.get(platform)?;
+        let artifact_filename = artifact.url.rsplit('/').next()?;
+        (artifact_filename == filename).then(|| db_type.clone())
+    })
 }
 
 fn extract_tar_gz(archive: &Path, dest: &Path) -> Result<(), String> {
