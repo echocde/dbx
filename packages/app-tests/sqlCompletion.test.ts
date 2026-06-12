@@ -1318,6 +1318,38 @@ test("boosts foreign-key related table candidates in JOIN table context", () => 
   assert.ok(items[0]?.detail?.includes("related by"));
 });
 
+test("boosts inbound foreign-key table candidates in JOIN table context", () => {
+  const foreignKeysByTable = new Map<string, SqlCompletionForeignKey[]>([["public.orders", [{ name: "orders_customer_id_fkey", column: "customer_id", ref_schema: "public", ref_table: "customers", ref_column: "id" }]]]);
+  const sql = "select * from public.customers c join ord";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables,
+    columnsByTable,
+    foreignKeysByTable,
+  });
+
+  assert.equal(items[0]?.label, "orders");
+  assert.equal(items[0]?.type, "table");
+  assert.ok(items[0]?.detail?.includes("orders.customer_id"));
+});
+
+test("uses owner schema when ranking inbound foreign-key table candidates", () => {
+  const foreignKeysByTable = new Map<string, SqlCompletionForeignKey[]>([["sales.orders", [{ name: "orders_customer_id_fkey", column: "customer_id", ref_schema: "crm", ref_table: "customers", ref_column: "id" }]]]);
+  const sql = "select * from crm.customers c join ord";
+  const items = buildSqlCompletionItems(sql, sql.length, {
+    tables: [
+      { name: "orders", schema: "public", type: "table" },
+      { name: "orders", schema: "sales", type: "table" },
+      { name: "customers", schema: "crm", type: "table" },
+    ],
+    columnsByTable,
+    foreignKeysByTable,
+  });
+
+  assert.equal(items[0]?.label, "orders");
+  assert.equal(items[0]?.detail, "related by sales.orders.customer_id → id");
+  assert.equal(items[0]?.apply, "orders");
+});
+
 test("suggests composite explicit foreign-key join conditions", () => {
   const colsWithCompositeFk = new Map<string, SqlCompletionColumn[]>([
     [

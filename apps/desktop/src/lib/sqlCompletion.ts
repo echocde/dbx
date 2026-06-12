@@ -2154,17 +2154,17 @@ function buildForeignKeyRelatedTableItems(context: SqlCompletionContext, tables:
   const candidates = new Map<string, { table: SqlCompletionTable; detail: string }>();
   for (const ref of context.referencedTables) {
     for (const [ownerKey, foreignKeys] of foreignKeysByTable.entries()) {
-      const ownerName = ownerKey.split(".").filter(Boolean).pop() ?? ownerKey;
+      const owner = foreignKeyOwnerFromKey(ownerKey);
       for (const foreignKey of foreignKeys) {
-        if (referencedTableMatchesName(ref, ownerName)) {
+        if (referencedTableMatchesName(ref, owner.name, owner.schema)) {
           const target = findCompletionTable(tables, foreignKey.ref_table, foreignKey.ref_schema);
           if (target && matchesPrefix(target.name, context.prefix)) {
-            candidates.set(`${target.schema ?? ""}.${target.name}`.toLowerCase(), { table: target, detail: `related by ${foreignKey.column} → ${foreignKey.ref_table}.${foreignKey.ref_column}` });
+            candidates.set(`${target.schema ?? ""}.${target.name}`.toLowerCase(), { table: target, detail: `related by ${foreignKey.column} → ${qualifiedCompletionName(foreignKey.ref_table, foreignKey.ref_schema)}.${foreignKey.ref_column}` });
           }
         } else if (referencedTableMatchesName(ref, foreignKey.ref_table, foreignKey.ref_schema)) {
-          const target = findCompletionTable(tables, ownerName);
+          const target = findCompletionTable(tables, owner.name, owner.schema);
           if (target && matchesPrefix(target.name, context.prefix)) {
-            candidates.set(`${target.schema ?? ""}.${target.name}`.toLowerCase(), { table: target, detail: `related by ${ownerName}.${foreignKey.column} → ${foreignKey.ref_column}` });
+            candidates.set(`${target.schema ?? ""}.${target.name}`.toLowerCase(), { table: target, detail: `related by ${qualifiedCompletionName(owner.name, owner.schema)}.${foreignKey.column} → ${foreignKey.ref_column}` });
           }
         }
       }
@@ -2180,6 +2180,17 @@ function buildForeignKeyRelatedTableItems(context: SqlCompletionContext, tables:
       boost: computeBoost(table.name, context.prefix) + 3600,
     }))
     .sort(compareCompletionItems);
+}
+
+function foreignKeyOwnerFromKey(ownerKey: string): { name: string; schema?: string } {
+  const parts = ownerKey.split(".").filter(Boolean);
+  const name = parts.pop() ?? ownerKey;
+  const schema = parts.pop();
+  return { name, schema };
+}
+
+function qualifiedCompletionName(name: string, schema?: string | null): string {
+  return schema ? `${schema}.${name}` : name;
 }
 
 function findCompletionTable(tables: SqlCompletionTable[], name: string, schema?: string | null): SqlCompletionTable | undefined {
