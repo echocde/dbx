@@ -582,6 +582,7 @@ pub async fn scan_cluster_values_page(
     cursor: u64,
     pattern: &str,
     query: &str,
+    include_key_matches: bool,
     count: usize,
 ) -> Result<RedisScanResult, String> {
     let master_nodes = cluster_master_nodes(pool).await?;
@@ -600,7 +601,7 @@ pub async fn scan_cluster_values_page(
         let mut con =
             connect_direct_node(endpoint, pool.tls, pool.tls_insecure, &pool.username, &pool.password).await?;
         let current_cursor = if index == node_index { node_cursor } else { 0 };
-        let result = scan_values_page(&mut con, current_cursor, pattern, query, count).await?;
+        let result = scan_values_page(&mut con, current_cursor, pattern, query, include_key_matches, count).await?;
         if !result.keys.is_empty() {
             let next_cursor = if result.cursor != 0 {
                 encode_cluster_cursor(index, result.cursor)?
@@ -962,6 +963,7 @@ pub async fn scan_values_page<C>(
     cursor: u64,
     pattern: &str,
     query: &str,
+    include_key_matches: bool,
     count: usize,
 ) -> Result<RedisScanResult, String>
 where
@@ -985,7 +987,47 @@ where
 
     let (next_cursor, keys) = parse_scan_keys(raw)?;
     let mut result = Vec::new();
-    for key in keys {
+    let keys: Vec<_> = keys
+        .into_iter()
+        .map(|key| {
+            let key_display = redis_key_bytes_to_display(&key);
+            let key_raw = redis_key_bytes_to_raw(&key);
+            let key_matches = include_key_matches && redis_key_matches_query(&key_display, &key_raw, query);
+            (key, key_display, key_raw, key_matches)
+        })
+        .collect();
+
+    let mut key_match_types = Vec::new();
+    if include_key_matches {
+        let mut pipe = redis::pipe();
+        let mut key_match_count = 0usize;
+        for (key, _, _, key_matches) in &keys {
+            if *key_matches {
+                pipe.cmd("TYPE").arg(key);
+                key_match_count += 1;
+            }
+        }
+        if key_match_count > 0 {
+            key_match_types = pipe.query_async(con).await.unwrap_or_default();
+        }
+    }
+
+    let mut key_match_type_index = 0usize;
+    for (key, key_display, key_raw, key_matches) in keys {
+        if key_matches {
+            let key_type = key_match_types.get(key_match_type_index).cloned().unwrap_or_else(|| "unknown".to_string());
+            key_match_type_index += 1;
+            result.push(RedisKeyInfo {
+                key_display,
+                key_raw,
+                value_preview: redis_key_value_preview(&key_type),
+                key_type,
+                ttl: -2,
+                size: 0,
+            });
+            continue;
+        }
+
         let Ok(value) = get_value(con, &key).await else {
             continue;
         };
@@ -1074,6 +1116,15 @@ fn redis_value_matches_query(value: &serde_json::Value, query: &str) -> bool {
         return false;
     }
     redis_search_value_text(value).to_lowercase().contains(&query.to_lowercase())
+}
+
+fn redis_key_matches_query(key_display: &str, key_raw: &str, query: &str) -> bool {
+    let query = query.trim();
+    if query.is_empty() {
+        return false;
+    }
+    let query = query.to_lowercase();
+    key_display.to_lowercase().contains(&query) || key_raw.to_lowercase().contains(&query)
 }
 
 fn redis_search_value_text(value: &serde_json::Value) -> String {
@@ -1625,8 +1676,9 @@ mod tests {
         parse_cluster_slots, parse_command_argv, parse_database_count, parse_redis_endpoint, parse_scan_keys,
         parse_stream_entries, redis_auth_candidates, redis_command_raw_to_json, redis_database_index,
         redis_json_raw_to_json, redis_json_value_preview, redis_key_bytes_to_display, redis_key_bytes_to_raw,
-        redis_key_raw_to_bytes, redis_key_value_preview, redis_raw_to_json, redis_value_contains_binary,
-        redis_value_matches_query, RedisAuthCandidate, RedisCommandSafety, RedisNodeEndpoint, RedisRawValue,
+        redis_key_matches_query, redis_key_raw_to_bytes, redis_key_value_preview, redis_raw_to_json,
+        redis_value_contains_binary, redis_value_matches_query, RedisAuthCandidate, RedisCommandSafety,
+        RedisNodeEndpoint, RedisRawValue,
     };
     use crate::models::connection::ConnectionConfig;
     use redis::ConnectionAddr;
@@ -1765,6 +1817,14 @@ mod tests {
         assert!(redis_value_matches_query(&serde_json::json!({"field": "Ada Lovelace"}), "lovelace"));
         assert!(!redis_value_matches_query(&serde_json::json!("Hello Redis"), ""));
         assert!(!redis_value_matches_query(&serde_json::json!("Hello Redis"), "mysql"));
+    }
+
+    #[test]
+    fn matches_redis_keys_case_insensitively() {
+        assert!(redis_key_matches_query("User:42:Profile", "User:42:Profile", "profile"));
+        assert!(redis_key_matches_query("binary key", "ff75736572", "FF75"));
+        assert!(!redis_key_matches_query("User:42:Profile", "User:42:Profile", ""));
+        assert!(!redis_key_matches_query("User:42:Profile", "User:42:Profile", "order"));
     }
 
     #[test]
