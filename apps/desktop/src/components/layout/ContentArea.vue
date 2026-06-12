@@ -46,6 +46,7 @@ import { isTableDataEditable } from "@/lib/tableEditing";
 import { tableMetaForDataTab } from "@/lib/tableDataTabMeta";
 import { formatShortcut } from "@/lib/shortcutRegistry";
 import { effectiveDatabaseTypeForConnection } from "@/lib/jdbcDialect";
+import { chartableColumnIndexes } from "@/lib/chartData";
 import { useTabScroll } from "@/composables/useTabScroll";
 import type { QueryTab, ConnectionConfig } from "@/types/database";
 import type { SqlFormatDialect } from "@/lib/sqlFormatter";
@@ -203,7 +204,7 @@ const resultTabsScrollbarThumbStyle = computed<CSSProperties>(() => ({
 const hasNumericData = computed(() => {
   const r = props.activeTab.result;
   if (!r || r.rows.length === 0) return false;
-  return r.columns.some((_, idx) => r.rows.some((row) => typeof row[idx] === "number"));
+  return chartableColumnIndexes(r).length > 0;
 });
 
 const activeQueryError = computed(() => {
