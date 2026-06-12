@@ -46,6 +46,8 @@ pub fn agent_connect_params(config: &ConnectionConfig, host: &str, port: u16, da
         "client_cert_path": config.client_cert_path,
         "client_key_path": config.client_key_path,
         "etcd_endpoints": etcd_endpoints,
+        "jdbc_driver_class": config.jdbc_driver_class.as_deref().unwrap_or(""),
+        "jdbc_driver_paths": &config.jdbc_driver_paths,
     })
 }
 
