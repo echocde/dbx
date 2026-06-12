@@ -1546,6 +1546,7 @@ pub async fn execute_query_with_max_rows(
     } else {
         let client = pool.get().await.map_err(|e| e.to_string())?;
         let affected = client.execute(sql, &[]).await.map_err(pg_error_to_string)?;
+        clear_postgres_caches_after_ddl(pool, Some(&client), sql);
 
         Ok(QueryResult {
             columns: vec![],
@@ -1598,6 +1599,9 @@ pub async fn execute_query_with_schema_and_max_rows(
 
     let query_start = Instant::now();
     let result = execute_query_with_max_rows_inner(&client, sql, max_rows).await;
+    if result.is_ok() {
+        clear_postgres_caches_after_ddl(pool, Some(&client), sql);
+    }
     log::info!(
         "[postgres][execute_with_schema:query:done] elapsed_ms={} total_ms={} ok={}",
         query_start.elapsed().as_millis(),
@@ -1841,7 +1845,27 @@ pub async fn execute_batch(pool: &Pool, statements: &[String]) -> Result<(), Str
         return Ok(());
     }
     let client = pool.get().await.map_err(|e| e.to_string())?;
-    client.batch_execute(&combined).await.map_err(pg_error_to_string)
+    client.batch_execute(&combined).await.map_err(pg_error_to_string)?;
+    clear_postgres_caches_after_ddl(pool, Some(&client), &combined);
+    Ok(())
+}
+
+fn clear_postgres_caches_after_ddl(pool: &Pool, client: Option<&deadpool_postgres::Client>, sql: &str) {
+    if !invalidates_postgres_statement_cache(sql) {
+        return;
+    }
+    pool.manager().statement_caches.clear();
+    if let Some(client) = client {
+        client.clear_type_cache();
+    }
+}
+
+fn invalidates_postgres_statement_cache(sql: &str) -> bool {
+    let trimmed = sql.trim_start();
+    starts_with_executable_sql_keyword(
+        trimmed,
+        &["ALTER", "CREATE", "DROP", "TRUNCATE", "COMMENT", "REINDEX", "VACUUM"],
+    )
 }
 
 /// Export data via COPY TO STDOUT. `sql` must be a complete COPY statement, e.g.
@@ -2299,6 +2323,25 @@ mod tests {
         assert!(!is_transaction_recovery_statement("SELECT 1"));
         assert!(!is_transaction_recovery_statement("BEGIN"));
         assert!(!is_transaction_recovery_statement("UPDATE users SET name = 'dbx'"));
+    }
+
+    #[test]
+    fn postgres_ddl_detection_covers_schema_changing_statements() {
+        assert!(invalidates_postgres_statement_cache("ALTER TABLE users ADD COLUMN email text"));
+        assert!(invalidates_postgres_statement_cache("  CREATE INDEX idx_users_email ON users(email)"));
+        assert!(invalidates_postgres_statement_cache("COMMENT ON COLUMN users.email IS 'Email'"));
+        assert!(invalidates_postgres_statement_cache("DROP TABLE users"));
+        assert!(invalidates_postgres_statement_cache("TRUNCATE users"));
+        assert!(invalidates_postgres_statement_cache("REINDEX TABLE users"));
+        assert!(invalidates_postgres_statement_cache("VACUUM users"));
+    }
+
+    #[test]
+    fn postgres_ddl_detection_ignores_regular_dml_and_selects() {
+        assert!(!invalidates_postgres_statement_cache("SELECT * FROM users"));
+        assert!(!invalidates_postgres_statement_cache("UPDATE users SET name = 'Ada'"));
+        assert!(!invalidates_postgres_statement_cache("INSERT INTO users(name) VALUES ('Ada')"));
+        assert!(!invalidates_postgres_statement_cache("DELETE FROM users WHERE id = 1"));
     }
 
     // --- execute_batch ---
