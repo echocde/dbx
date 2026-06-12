@@ -46,10 +46,6 @@ use dbx_core::agent_events::AgentEvent;
 use dbx_core::agent_loop::{run_agent_loop, AgentLoopContext};
 use dbx_core::models::connection::DatabaseType;
 
-use dbx_core::agent_events::AgentEvent;
-use dbx_core::agent_loop::{run_agent_loop, AgentLoopContext};
-use dbx_core::models::connection::DatabaseType;
-
 #[tauri::command]
 pub async fn ai_cancel_stream(session_id: String) -> Result<bool, String> {
     Ok(dbx_core::ai::cancel_stream(&session_id).await)
