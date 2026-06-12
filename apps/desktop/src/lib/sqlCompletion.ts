@@ -2805,6 +2805,7 @@ function matchesPrefix(candidate: string, prefix: string): boolean {
  *
  * Scoring tiers:
  *   Exact match:    3000 - len
+ *   Initials match: 2400 + exactInitialsBonus - len
  *   Prefix match:   2000 - len
  *   Tight fuzzy:    1500 - gapPenalty + earlyMatchBonus - len  (gaps < prefix length)
  *   Loose fuzzy:     500 + partialEarlyBonus - gapPenalty - len (gaps >= prefix length)
@@ -2820,6 +2821,12 @@ function computeMatchScore(candidate: string, prefix: string): number {
 
   // Prefix match
   if (c.startsWith(p)) return 2000 - c.length;
+
+  const initials = identifierInitials(c);
+  if (initials && initials.startsWith(p)) {
+    const exactInitialsBonus = initials === p ? 400 : 0;
+    return 2400 + exactInitialsBonus - c.length;
+  }
 
   // Fuzzy match: chars must appear in order (allows gaps for typos/abbrevs)
   let ci = 0;
@@ -2847,6 +2854,14 @@ function computeMatchScore(candidate: string, prefix: string): number {
 
   const gapPenalty = totalGap * 10;
   return 1200 + earlyMatchBonus - gapPenalty - c.length;
+}
+
+function identifierInitials(candidate: string): string {
+  return candidate
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("");
 }
 
 function computeBoost(candidate: string, prefix: string): number {
