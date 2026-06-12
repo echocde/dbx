@@ -38,7 +38,9 @@ fn get_columns_tool() -> ToolDefinition {
     ToolDefinition {
         name: "get_columns",
         description:
-            "Get column definitions for a table: names, types, primary keys, nullable, defaults, and comments.",
+            "Get column definitions for a table: names, types, primary keys, nullable, defaults, and comments. \
+             Use this when the user asks about table structure, column details, or field information — \
+             even if some schema context was provided, this tool returns the authoritative and complete column list.",
         parameters: json!({
             "type": "object",
             "properties": {

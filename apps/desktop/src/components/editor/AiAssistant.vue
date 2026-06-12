@@ -253,8 +253,10 @@ function agentStepClass(tone: AiAgentStepTone): string {
 }
 
 function agentStepTitle(step: AiAgentStepItem): string {
-  if (!step.titleKey) return t(step.labelKey);
-  return t(step.titleKey, step.titleParams || {});
+  if (step.titleKey) return t(step.titleKey, step.titleParams || {});
+  const tool = step.titleParams?.tool;
+  if (tool) return `${t(step.labelKey)}: ${tool}`;
+  return t(step.labelKey);
 }
 
 function toggleReasoning(index: number) {
@@ -512,6 +514,22 @@ async function send() {
         }
         if (event.type === "reasoning_delta" && event.delta) {
           appendAssistantReasoning(assistantIdx, event.delta);
+        }
+        // Real-time agent step rendering
+        if (event.type === "tool_call_start" || event.type === "tool_call_end") {
+          const msg = messages.value[assistantIdx];
+          if (msg) {
+            const steps = agentEvents
+              .filter((e) => e.type === "tool_call_start" || e.type === "tool_call_end")
+              .map((e) => ({
+                key: `${e.tool_call_id || ""}-${e.type}`,
+                labelKey: e.type === "tool_call_start" ? "ai.agentSteps.callingTool" : e.is_error ? "ai.agentSteps.toolError" : "ai.agentSteps.toolDone",
+                tone: (e.type === "tool_call_start" ? "active" : e.is_error ? "danger" : "success") as AiAgentStepTone,
+                titleKey: undefined,
+                titleParams: { tool: e.tool_name || "" },
+              }));
+            msg.agentSteps = steps;
+          }
         }
         scrollToBottom();
       },

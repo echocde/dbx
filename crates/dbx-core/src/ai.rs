@@ -1121,6 +1121,540 @@ async fn stream_gemini(
 }
 
 // ---------------------------------------------------------------------------
+// Streaming with tools (agent loop)
+// ---------------------------------------------------------------------------
+
+/// Events emitted by provider-specific streaming-with-tools functions.
+/// The public `stream_with_tools` entry point uses these to accumulate
+/// tool calls and forward text/reasoning chunks to the caller.
+pub enum StreamToolEvent {
+    /// A text or reasoning delta for the frontend.
+    Chunk(AiStreamChunk),
+    /// A tool_use / function_call block has started.
+    ToolCallStart { index: u32, id: String, name: String },
+    /// An argument fragment for an in-progress tool call.
+    ToolCallDelta { index: u32, fragment: String },
+    /// A tool_use / function_call block has ended.
+    ToolCallComplete { index: u32 },
+}
+
+/// Partially accumulated tool call during streaming.
+#[derive(Debug)]
+struct PartialToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+/// Accumulates streaming tool-call events into complete `ToolCall` objects.
+#[derive(Debug)]
+pub struct StreamingToolCallAccumulator {
+    calls: std::collections::HashMap<u32, PartialToolCall>,
+    ordered_indices: Vec<u32>,
+}
+
+impl StreamingToolCallAccumulator {
+    pub fn new() -> Self {
+        Self { calls: std::collections::HashMap::new(), ordered_indices: Vec::new() }
+    }
+
+    pub fn process(&mut self, event: StreamToolEvent, on_chunk: &impl Fn(AiStreamChunk)) {
+        match event {
+            StreamToolEvent::Chunk(chunk) => on_chunk(chunk),
+            StreamToolEvent::ToolCallStart { index, id, name } => {
+                self.calls.insert(index, PartialToolCall { id, name, arguments: String::new() });
+                if !self.ordered_indices.contains(&index) {
+                    self.ordered_indices.push(index);
+                }
+            }
+            StreamToolEvent::ToolCallDelta { index, fragment } => {
+                if let Some(tc) = self.calls.get_mut(&index) {
+                    tc.arguments.push_str(&fragment);
+                }
+            }
+            StreamToolEvent::ToolCallComplete { index: _ } => {
+                // Nothing extra to do — the call is already accumulated.
+            }
+        }
+    }
+
+    pub fn finalize(self) -> Vec<crate::agent_events::ToolCall> {
+        let mut result = Vec::new();
+        for idx in &self.ordered_indices {
+            if let Some(tc) = self.calls.get(idx) {
+                let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or(json!({}));
+                result.push(crate::agent_events::ToolCall {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    arguments: args,
+                });
+            }
+        }
+        result
+    }
+}
+
+/// Streaming Claude call with tool support.
+/// Returns a stream of `StreamToolEvent` via the `on_event` callback.
+async fn stream_claude_with_tools(
+    client: &reqwest::Client,
+    session_id: &str,
+    request: &AiCompletionRequest,
+    tools: &[crate::agent_events::ToolDefinition],
+    cancelled: &Notify,
+    on_event: &impl Fn(StreamToolEvent),
+) -> Result<(), String> {
+    let mut messages: Vec<serde_json::Value> = Vec::new();
+    for m in &request.messages {
+        if m.role == "tool" {
+            messages.push(json!({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": m.tool_call_id.as_deref().unwrap_or_default(),
+                    "content": m.content
+                }]
+            }));
+        } else if m.role == "assistant" && !m.tool_calls.is_empty() {
+            let mut content_blocks: Vec<serde_json::Value> = Vec::new();
+            if !m.content.is_empty() {
+                content_blocks.push(json!({ "type": "text", "text": m.content }));
+            }
+            for tc in &m.tool_calls {
+                content_blocks.push(json!({ "type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments }));
+            }
+            messages.push(json!({ "role": "assistant", "content": content_blocks }));
+        } else {
+            messages.push(json!({ "role": m.role, "content": m.content }));
+        }
+    }
+
+    let tool_json: Vec<serde_json::Value> = tools.iter().map(|t| t.to_anthropic_tool()).collect();
+
+    let mut body = json!({
+        "model": request.config.model,
+        "max_tokens": request.max_tokens.unwrap_or(4096),
+        "system": request.system_prompt,
+        "messages": messages,
+        "tools": tool_json,
+        "stream": true,
+    });
+    add_temperature_if_supported(&mut body, request);
+
+    let res = client
+        .post(resolve_endpoint(&request.config))
+        .headers(claude_headers(&request.config)?)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Claude request failed: {e}"))?;
+
+    if !res.status().is_success() {
+        let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+        return Err(extract_error(&data).unwrap_or_else(|| "Claude API error".to_string()));
+    }
+
+    let mut byte_stream = res.bytes_stream();
+    let mut buf = String::new();
+    // Track the current content block index and type for tool_use blocks
+    let mut current_block_index: Option<u32> = None;
+    let mut current_block_type: Option<String> = None;
+
+    loop {
+        tokio::select! {
+            chunk = byte_stream.next() => {
+                let Some(chunk) = chunk else { break };
+                let chunk = chunk.map_err(|e| e.to_string())?;
+                buf.push_str(&String::from_utf8_lossy(&chunk));
+
+                let mut finished = false;
+                while let Some(pos) = buf.find('\n') {
+                    let line = buf[..pos].to_string();
+                    buf = buf[pos + 1..].to_string();
+
+                    let Some(data) = stream_data_payload(&line) else { continue };
+                    if data == "[DONE]" {
+                        finished = true;
+                        break;
+                    }
+
+                    if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
+                        let event_type = event["type"].as_str().unwrap_or("");
+
+                        match event_type {
+                            "content_block_start" => {
+                                let idx = event["index"].as_u64().unwrap_or(0) as u32;
+                                let block_type = event["content_block"]["type"].as_str().unwrap_or("");
+                                current_block_index = Some(idx);
+                                current_block_type = Some(block_type.to_string());
+
+                                if block_type == "tool_use" {
+                                    let id = event["content_block"]["id"].as_str().unwrap_or_default().to_string();
+                                    let name = event["content_block"]["name"].as_str().unwrap_or_default().to_string();
+                                    on_event(StreamToolEvent::ToolCallStart { index: idx, id, name });
+                                }
+                            }
+                            "content_block_delta" => {
+                                let idx = event["index"].as_u64().unwrap_or(0) as u32;
+                                let delta_type = event["delta"]["type"].as_str().unwrap_or("");
+
+                                match delta_type {
+                                    "text_delta" => {
+                                        if let Some(text) = event["delta"]["text"].as_str() {
+                                            on_event(StreamToolEvent::Chunk(AiStreamChunk {
+                                                session_id: session_id.to_string(),
+                                                delta: text.to_string(),
+                                                reasoning_delta: None,
+                                                done: false,
+                                            }));
+                                        }
+                                    }
+                                    "thinking_delta" => {
+                                        if let Some(thinking) = event["delta"]["thinking"].as_str() {
+                                            on_event(StreamToolEvent::Chunk(AiStreamChunk {
+                                                session_id: session_id.to_string(),
+                                                delta: String::new(),
+                                                reasoning_delta: Some(thinking.to_string()),
+                                                done: false,
+                                            }));
+                                        }
+                                    }
+                                    "input_json_delta" => {
+                                        if let Some(fragment) = event["delta"]["partial_json"].as_str() {
+                                            on_event(StreamToolEvent::ToolCallDelta {
+                                                index: idx,
+                                                fragment: fragment.to_string(),
+                                            });
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            "content_block_stop" => {
+                                if let Some(idx) = current_block_index.take() {
+                                    if current_block_type.as_deref() == Some("tool_use") {
+                                        on_event(StreamToolEvent::ToolCallComplete { index: idx });
+                                    }
+                                }
+                                current_block_type = None;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                if finished { break; }
+            }
+            _ = cancelled.notified() => { break; }
+        }
+    }
+
+    Ok(())
+}
+
+/// Streaming OpenAI-compatible call with tool support.
+async fn stream_openai_with_tools(
+    client: &reqwest::Client,
+    session_id: &str,
+    request: &AiCompletionRequest,
+    tools: &[crate::agent_events::ToolDefinition],
+    cancelled: &Notify,
+    on_event: &impl Fn(StreamToolEvent),
+) -> Result<(), String> {
+    let headers = maybe_bearer_headers(&request.config)?;
+
+    let mut messages = vec![json!({ "role": "system", "content": request.system_prompt })];
+    messages.extend(request.messages.iter().map(|m| {
+        let mut msg = json!({ "role": m.role, "content": m.content });
+        if m.role == "tool" {
+            if let Some(ref tc_id) = m.tool_call_id {
+                msg["tool_call_id"] = json!(tc_id);
+            }
+        } else if m.role == "assistant" && !m.tool_calls.is_empty() {
+            let calls: Vec<serde_json::Value> = m
+                .tool_calls
+                .iter()
+                .map(|tc| {
+                    json!({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": tc.arguments.to_string()
+                        }
+                    })
+                })
+                .collect();
+            msg["tool_calls"] = json!(calls);
+        }
+        msg
+    }));
+
+    let tool_json: Vec<serde_json::Value> = tools.iter().map(|t| t.to_openai_tool()).collect();
+
+    let mut body = json!({
+        "model": request.config.model,
+        "messages": messages,
+        "max_tokens": request.max_tokens.unwrap_or(4096),
+        "tools": tool_json,
+        "tool_choice": "auto",
+        "stream": true,
+    });
+    add_temperature_if_supported(&mut body, request);
+
+    let res = client
+        .post(resolve_endpoint(&request.config))
+        .headers(headers)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("AI request failed: {e}"))?;
+
+    if !res.status().is_success() {
+        let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+        return Err(extract_error(&data).unwrap_or_else(|| "API error".to_string()));
+    }
+
+    let mut byte_stream = res.bytes_stream();
+    let mut buf = String::new();
+
+    loop {
+        tokio::select! {
+            chunk = byte_stream.next() => {
+                let Some(chunk) = chunk else { break };
+                let chunk = chunk.map_err(|e| e.to_string())?;
+                buf.push_str(&String::from_utf8_lossy(&chunk));
+
+                let mut finished = false;
+                while let Some(pos) = buf.find('\n') {
+                    let line = buf[..pos].to_string();
+                    buf = buf[pos + 1..].to_string();
+
+                    let Some(data) = stream_data_payload(&line) else { continue };
+                    if data == "[DONE]" {
+                        finished = true;
+                        break;
+                    }
+
+                    if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
+                        // Reasoning
+                        if let Some(reasoning) = openai_stream_reasoning(&event) {
+                            on_event(StreamToolEvent::Chunk(AiStreamChunk {
+                                session_id: session_id.to_string(),
+                                delta: String::new(),
+                                reasoning_delta: Some(reasoning.to_string()),
+                                done: false,
+                            }));
+                        }
+                        // Text
+                        if let Some(text) = openai_stream_text(&event) {
+                            on_event(StreamToolEvent::Chunk(AiStreamChunk {
+                                session_id: session_id.to_string(),
+                                delta: text,
+                                reasoning_delta: None,
+                                done: false,
+                            }));
+                        }
+                        // Tool calls
+                        if let Some(tool_calls) = event["choices"].get(0).and_then(|c| c["delta"]["tool_calls"].as_array()) {
+                            for tc in tool_calls {
+                                let idx = tc["index"].as_u64().unwrap_or(0) as u32;
+                                // First chunk for this tool call has id and name
+                                if let Some(id) = tc["id"].as_str() {
+                                    let name = tc["function"]["name"].as_str().unwrap_or_default().to_string();
+                                    on_event(StreamToolEvent::ToolCallStart { index: idx, id: id.to_string(), name });
+                                }
+                                // Argument fragments
+                                if let Some(fragment) = tc["function"]["arguments"].as_str() {
+                                    on_event(StreamToolEvent::ToolCallDelta { index: idx, fragment: fragment.to_string() });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if finished { break; }
+            }
+            _ = cancelled.notified() => { break; }
+        }
+    }
+
+    Ok(())
+}
+
+/// Streaming Gemini call with tool support.
+async fn stream_gemini_with_tools(
+    client: &reqwest::Client,
+    session_id: &str,
+    request: &AiCompletionRequest,
+    tools: &[crate::agent_events::ToolDefinition],
+    cancelled: &Notify,
+    on_event: &impl Fn(StreamToolEvent),
+) -> Result<(), String> {
+    let mut contents: Vec<serde_json::Value> = Vec::new();
+    for m in &request.messages {
+        if m.role == "tool" {
+            let tool_name = m
+                .tool_call_id
+                .as_deref()
+                .and_then(|s| s.strip_prefix("gemini-tc-"))
+                .and_then(|s| s.rsplitn(2, '-').nth(1))
+                .unwrap_or("unknown");
+            contents.push(json!({
+                "role": "user",
+                "parts": [{
+                    "functionResponse": {
+                        "name": tool_name,
+                        "response": { "content": m.content }
+                    }
+                }]
+            }));
+        } else if m.role == "assistant" && !m.tool_calls.is_empty() {
+            let mut parts: Vec<serde_json::Value> = Vec::new();
+            if !m.content.is_empty() {
+                parts.push(json!({ "text": m.content }));
+            }
+            for tc in &m.tool_calls {
+                parts.push(json!({ "functionCall": { "name": tc.name, "args": tc.arguments } }));
+            }
+            contents.push(json!({ "role": "model", "parts": parts }));
+        } else {
+            let role = if m.role == "assistant" { "model" } else { "user" };
+            contents.push(json!({ "role": role, "parts": [{ "text": m.content }] }));
+        }
+    }
+
+    let tool_declarations: Vec<serde_json::Value> = tools.iter().map(|t| t.to_gemini_tool()).collect();
+
+    let body = json!({
+        "contents": contents,
+        "systemInstruction": { "parts": [{ "text": request.system_prompt }] },
+        "tools": [{ "functionDeclarations": tool_declarations }],
+        "generationConfig": {
+            "maxOutputTokens": request.max_tokens.unwrap_or(4096),
+        }
+    });
+
+    let res = client
+        .post(resolve_gemini_stream_endpoint(&request.config))
+        .query(&[("key", request.config.api_key.as_str()), ("alt", "sse")])
+        .header(CONTENT_TYPE, "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Gemini request failed: {e}"))?;
+
+    if !res.status().is_success() {
+        let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+        return Err(extract_error(&data).unwrap_or_else(|| "Gemini API error".to_string()));
+    }
+
+    let mut byte_stream = res.bytes_stream();
+    let mut buf = String::new();
+    let mut tool_call_idx: u32 = 0;
+
+    loop {
+        tokio::select! {
+            chunk = byte_stream.next() => {
+                let Some(chunk) = chunk else { break };
+                let chunk = chunk.map_err(|e| e.to_string())?;
+                buf.push_str(&String::from_utf8_lossy(&chunk));
+
+                while let Some(pos) = buf.find('\n') {
+                    let line = buf[..pos].to_string();
+                    buf = buf[pos + 1..].to_string();
+
+                    let Some(data) = stream_data_payload(&line) else { continue };
+                    if let Ok(event) = serde_json::from_str::<serde_json::Value>(data) {
+                        if let Some(candidates) = event["candidates"].as_array() {
+                            if let Some(parts) = candidates[0]["content"]["parts"].as_array() {
+                                for part in parts {
+                                    // Text
+                                    if let Some(text) = part["text"].as_str() {
+                                        on_event(StreamToolEvent::Chunk(AiStreamChunk {
+                                            session_id: session_id.to_string(),
+                                            delta: text.to_string(),
+                                            reasoning_delta: None,
+                                            done: false,
+                                        }));
+                                    }
+                                    // Function call (Gemini sends complete objects, not deltas)
+                                    if let Some(fc) = part.get("functionCall") {
+                                        let name = fc["name"].as_str().unwrap_or_default().to_string();
+                                        let args = fc["args"].clone();
+                                        let id = format!("gemini-tc-{name}-{tool_call_idx}");
+                                        let args_str = args.to_string();
+                                        on_event(StreamToolEvent::ToolCallStart {
+                                            index: tool_call_idx,
+                                            id: id.clone(),
+                                            name: name.clone(),
+                                        });
+                                        on_event(StreamToolEvent::ToolCallDelta {
+                                            index: tool_call_idx,
+                                            fragment: args_str,
+                                        });
+                                        on_event(StreamToolEvent::ToolCallComplete { index: tool_call_idx });
+                                        tool_call_idx += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ = cancelled.notified() => { break; }
+        }
+    }
+
+    Ok(())
+}
+
+/// Public entry point: stream an LLM call with tool support, accumulating tool calls.
+/// Returns completed tool calls when the stream finishes.
+pub async fn stream_with_tools(
+    config: &AiConfig,
+    request: &AiCompletionRequest,
+    session_id: &str,
+    tools: &[crate::agent_events::ToolDefinition],
+    cancelled: &Notify,
+    on_chunk: impl Fn(AiStreamChunk),
+) -> Result<Vec<crate::agent_events::ToolCall>, String> {
+    validate_config(config)?;
+
+    let stream_timeout = if config.enable_thinking { 600 } else { 120 };
+    let client = build_ai_http_client(config, stream_timeout)?;
+
+    let accumulator = Arc::new(std::sync::Mutex::new(StreamingToolCallAccumulator::new()));
+
+    match config.provider {
+        AiProvider::Claude => {
+            stream_claude_with_tools(&client, session_id, request, tools, cancelled, &|event| {
+                accumulator.lock().unwrap().process(event, &on_chunk);
+            })
+            .await?
+        }
+        AiProvider::Gemini => {
+            stream_gemini_with_tools(&client, session_id, request, tools, cancelled, &|event| {
+                accumulator.lock().unwrap().process(event, &on_chunk);
+            })
+            .await?
+        }
+        _ => {
+            stream_openai_with_tools(&client, session_id, request, tools, cancelled, &|event| {
+                accumulator.lock().unwrap().process(event, &on_chunk);
+            })
+            .await?
+        }
+    }
+
+    Ok(Arc::try_unwrap(accumulator)
+        .expect("stream_with_tools: accumulator Arc should have single owner")
+        .into_inner()
+        .expect("stream_with_tools: accumulator Mutex should not be poisoned")
+        .finalize())
+}
+
+// ---------------------------------------------------------------------------
 // Conversation persistence (path-based)
 // ---------------------------------------------------------------------------
 
