@@ -3382,12 +3382,22 @@ function treeItemMenuItems(): ContextMenuItem[] {
 .tree-item-highlight {
   background-color: rgb(253 225 167) !important;
   background-color: oklch(0.92 0.08 85) !important;
-  transition: background-color 0.8s ease-out 0.6s;
+  transition: background-color 0.28s ease-out;
 }
 
 :root.dark .tree-item-highlight {
   background-color: rgb(110 67 0) !important;
   background-color: oklch(0.42 0.12 80) !important;
-  transition: background-color 0.8s ease-out 0.6s;
+  transition: background-color 0.28s ease-out;
+}
+
+.tree-item-connection-tint.tree-item-highlight::before {
+  background-color: rgb(253 225 167) !important;
+  background-color: oklch(0.92 0.08 85) !important;
+}
+
+:root.dark .tree-item-connection-tint.tree-item-highlight::before {
+  background-color: rgb(110 67 0) !important;
+  background-color: oklch(0.42 0.12 80) !important;
 }
 </style>
