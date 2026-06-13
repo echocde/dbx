@@ -867,6 +867,7 @@
     confirmDeleteMessage: '¿Estás seguro de que deseas eliminar "{name}"? Esta acción no se puede deshacer.',
     confirmDeleteSelectedMessage: "¿Eliminar las {count} conexiones seleccionadas? Esta acción no se puede deshacer.",
     editConnection: "Editar conexión",
+    revealDatabaseFile: "Mostrar en el explorador",
     selectVisibleDatabases: "Seleccionar bases visibles",
     duplicateConnection: "Duplicar conexión",
     newQuery: "Nueva consulta",

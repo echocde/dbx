@@ -968,6 +968,7 @@
     confirmDeleteMessage: 'Tem certeza de que deseja excluir "{name}"? Esta ação não pode ser desfeita.',
     confirmDeleteSelectedMessage: "Excluir as {count} conexões selecionadas? Esta ação não pode ser desfeita.",
     editConnection: "Editar Conexão",
+    revealDatabaseFile: "Mostrar no gerenciador de arquivos",
     selectVisibleDatabases: "Selecionar Bancos de Dados Visíveis",
     duplicateConnection: "Duplicar Conexão",
     newQuery: "Nova Consulta",

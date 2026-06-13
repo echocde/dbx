@@ -1010,6 +1010,7 @@
     confirmDeleteMessage: 'Are you sure you want to delete "{name}"? This cannot be undone.',
     confirmDeleteSelectedMessage: "Are you sure you want to delete the selected {count} connections? This cannot be undone.",
     editConnection: "Edit Connection",
+    revealDatabaseFile: "Reveal in File Manager",
     selectVisibleDatabases: "Select Visible Databases",
     userAdmin: "Users & Privileges",
     openUserAdmin: "Open Users & Privileges",

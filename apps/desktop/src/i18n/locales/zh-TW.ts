@@ -947,6 +947,7 @@
     confirmDeleteMessage: "確定要刪除「{name}」嗎？此操作無法復原。",
     confirmDeleteSelectedMessage: "確定要刪除選取的{count}個連線嗎？",
     editConnection: "編輯連線",
+    revealDatabaseFile: "在檔案管理員中顯示",
     selectVisibleDatabases: "選擇顯示資料庫",
     duplicateConnection: "複製連線",
     newQuery: "建立查詢",

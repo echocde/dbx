@@ -23,6 +23,7 @@ import { applyParsedConnectionUrl, normalizeMongoConnectionString, parseConnecti
 import type { ConnectionDeepLinkDraft } from "@/lib/connectionDeepLink";
 import { connectionUrlPlaceholder as getUrlPlaceholder } from "@/lib/connectionPresentation";
 import { h2ConnectionModeForConfig, h2FileJdbcUrl, h2FilePathFromJdbcUrl, type H2ConnectionMode } from "@/lib/h2Connection";
+import { isLocalFileTypeDb } from "@/lib/connectionFile";
 import { mongodbAuthFailureHint, mongoUrlParam, setMongoUrlParam } from "@/lib/mongoConnectionOptions";
 import { copyToClipboard } from "@/lib/clipboard";
 import { showAgentDriverInstallHint, type AgentDriverInstallState } from "@/lib/agentDriverInstallHint";
@@ -847,7 +848,7 @@ const hasDbPickerResults = computed(() => filteredDbCategories.value.some((categ
 const selectedDbIcon = computed(() => iconTypeMap[selectedType.value] || selectedProfile().icon || selectedType.value);
 const isJdbcConnection = computed(() => form.value.db_type === "jdbc");
 const isH2FileMode = computed(() => form.value.db_type === "h2" && h2ConnectionMode.value === "file");
-const usesLocalFilePathInput = computed(() => form.value.db_type === "sqlite" || form.value.db_type === "duckdb" || form.value.db_type === "access" || isH2FileMode.value);
+const usesLocalFilePathInput = computed(() => isLocalFileTypeDb(form.value.db_type) && (form.value.db_type !== "h2" || isH2FileMode.value));
 
 const connectionUrlPlaceholder = computed(() => getUrlPlaceholder(form.value.db_type));
 const filePathPlaceholder = computed(() => {

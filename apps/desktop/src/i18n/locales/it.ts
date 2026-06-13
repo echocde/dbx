@@ -968,6 +968,7 @@
     confirmDeleteMessage: 'Sei sicuro di voler eliminare "{name}"? Questa azione non può essere annullata.',
     confirmDeleteSelectedMessage: "Eliminare le {count} connessioni selezionate? Questa azione non può essere annullata.",
     editConnection: "Modifica Connessione",
+    revealDatabaseFile: "Mostra nel file manager",
     selectVisibleDatabases: "Seleziona Database Visibili",
     duplicateConnection: "Duplica Connessione",
     newQuery: "Nuova Query",

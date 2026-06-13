@@ -1009,6 +1009,7 @@
     confirmDeleteMessage: "确定要删除「{name}」吗？此操作不可撤销。",
     confirmDeleteSelectedMessage: "确定要删除选中的{count}个连接吗？",
     editConnection: "编辑连接",
+    revealDatabaseFile: "在文件管理器中显示",
     selectVisibleDatabases: "选择显示数据库",
     duplicateConnection: "复制连接",
     userAdmin: "用户与权限",

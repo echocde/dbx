@@ -482,6 +482,7 @@ pub fn run() {
             commands::saved_sql::saved_sql_storage_dir,
             commands::saved_sql::open_saved_sql_storage_dir,
             commands::saved_sql::sync_saved_sql_directory,
+            commands::fs_open::reveal_path_in_file_manager,
             commands::mongo_cmd::mongo_list_databases,
             commands::mongo_cmd::mongo_list_collections,
             commands::mongo_cmd::document_find_documents,

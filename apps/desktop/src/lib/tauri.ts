@@ -960,6 +960,10 @@ export async function openSavedSqlStorageDir(dir?: string | null): Promise<void>
   return invoke("open_saved_sql_storage_dir", { dir });
 }
 
+export async function revealPathInFileManager(path: string): Promise<void> {
+  return invoke("reveal_path_in_file_manager", { path });
+}
+
 export async function syncSavedSqlDirectory(request: SavedSqlSyncRequest): Promise<void> {
   return invoke("sync_saved_sql_directory", { request });
 }

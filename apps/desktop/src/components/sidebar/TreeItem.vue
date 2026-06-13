@@ -62,6 +62,8 @@ import { uuid } from "@/lib/utils";
 import { resolveDefaultDatabase } from "@/lib/defaultDatabase";
 import { canTreeNodeShowExpander, treeItemPaddingLeft, usesFullWidthTreeLabel } from "@/lib/sidebarTreeItemLayout";
 import { buildTableSelectSql } from "@/lib/tableSelectSql";
+import { connectionFilePath } from "@/lib/connectionFile";
+import { revealPathInFileManager } from "@/lib/tauri";
 import { clearActiveTableReferencePayload, createTableReferencePayload, createTableReferenceDropEvent, setActiveTableReferencePayload, type QueryEditorTableReferencePayload } from "@/lib/queryEditorTableDrop";
 import { editablePrimaryKeys, usesSyntheticRowIdKey } from "@/lib/tableEditing";
 import { supportsDatabaseCreation, supportsDatabaseSearch, supportsFieldLineage, supportsObjectBrowserTreeNode, supportsSchemaDiagram, supportsSqlFileExecution, supportsTableImport, supportsTableTruncate, supportsTableStructureEditing, usesTreeSchemaMode } from "@/lib/databaseCapabilities";
@@ -2118,6 +2120,24 @@ function editConnection() {
   }
 }
 
+const revealConnectionFilePath = computed<string | null>(() => {
+  if (props.node.type !== "connection" || !props.node.connectionId) return null;
+  const config = connectionStore.getConfig(props.node.connectionId);
+  if (!config) return null;
+  return connectionFilePath(config);
+});
+
+async function revealDatabaseFile() {
+  const path = revealConnectionFilePath.value;
+  if (!path) return;
+  try {
+    await revealPathInFileManager(path);
+  } catch (e: any) {
+    const message = typeof e === "string" ? e : e?.message || String(e);
+    toast(message, 5000);
+  }
+}
+
 async function disconnectConnection() {
   if (props.node.connectionId) {
     try {
@@ -2713,6 +2733,13 @@ function treeItemMenuItems(): ContextMenuItem[] {
       });
     }
     items.push({ label: t("contextMenu.editConnection"), action: editConnection, icon: Pencil });
+    if (revealConnectionFilePath.value) {
+      items.push({
+        label: t("contextMenu.revealDatabaseFile"),
+        action: revealDatabaseFile,
+        icon: FolderOpen,
+      });
+    }
     items.push({ label: t("contextMenu.duplicateConnection"), action: duplicateConnection, icon: CopyPlus });
     items.push({ label: "", separator: true });
     items.push({

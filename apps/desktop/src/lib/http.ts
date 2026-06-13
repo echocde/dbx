@@ -372,6 +372,10 @@ export async function openSavedSqlStorageDir(_dir?: string | null): Promise<void
   throw new Error("SQL storage directory is only available in the desktop app.");
 }
 
+export async function revealPathInFileManager(_path: string): Promise<void> {
+  throw new Error("Reveal in file manager is only available in the desktop app.");
+}
+
 export async function syncSavedSqlDirectory(_request: SavedSqlSyncRequest): Promise<void> {
   throw new Error("SQL directory sync is only available in the desktop app.");
 }
