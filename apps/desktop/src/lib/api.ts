@@ -187,6 +187,8 @@ export const saveAiConfig = forward("saveAiConfig");
 export const loadAiConfig = forward("loadAiConfig");
 export const loadDesktopSettings = forward("loadDesktopSettings");
 export const saveDesktopSettings = forward("saveDesktopSettings");
+export const setDriverStoreDir = forward("setDriverStoreDir");
+export const getDriverStorePath = forward("getDriverStorePath");
 export const loadPinnedTreeNodeIds = forward("loadPinnedTreeNodeIds");
 export const savePinnedTreeNodeIds = forward("savePinnedTreeNodeIds");
 export const webdavSyncTest = forward("webdavSyncTest");
@@ -318,6 +320,8 @@ export type {
   JavaRuntimeMode,
   JavaRuntimeConfig,
   DriverInstallProgress,
+  DriverStoreMigrationResult,
+  DriverStorePathInfo,
   WebDavConfig,
   WebDavPasswordStatus,
   WebDavSyncSummary,

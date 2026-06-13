@@ -851,11 +851,31 @@ export async function loadAiConfig(): Promise<AiConfig | null> {
 }
 
 export async function loadDesktopSettings(): Promise<DesktopSettings> {
-  return { show_tray_icon: true, icon_theme: "default", debug_logging_enabled: false, saved_sql_sync_dir: null };
+  return { show_tray_icon: true, icon_theme: "default", debug_logging_enabled: false, saved_sql_sync_dir: null, driver_store_dir: null };
 }
 
 export async function saveDesktopSettings(_settings: DesktopSettings): Promise<void> {
   return;
+}
+
+export interface DriverStoreMigrationResult {
+  driver_store_dir: string | null;
+  migrated_plugins: boolean;
+  migrated_agents: boolean;
+}
+
+export async function setDriverStoreDir(_newDir: string | null): Promise<DriverStoreMigrationResult> {
+  throw new Error("Not available in web mode");
+}
+
+export interface DriverStorePathInfo {
+  driver_store_dir: string | null;
+  plugins_dir: string;
+  agents_dir: string;
+}
+
+export async function getDriverStorePath(): Promise<DriverStorePathInfo> {
+  throw new Error("Not available in web mode");
 }
 
 export interface WebDavConfig {

@@ -126,6 +126,7 @@ export interface DesktopSettings {
   icon_theme: "default" | "black";
   debug_logging_enabled: boolean;
   saved_sql_sync_dir?: string | null;
+  driver_store_dir?: string | null;
 }
 
 export interface SavedSqlSyncEntry {
@@ -329,6 +330,26 @@ export async function loadDesktopSettings(): Promise<DesktopSettings> {
 
 export async function saveDesktopSettings(settings: DesktopSettings): Promise<void> {
   return invoke("save_desktop_settings", { settings });
+}
+
+export interface DriverStoreMigrationResult {
+  driver_store_dir: string | null;
+  migrated_plugins: boolean;
+  migrated_agents: boolean;
+}
+
+export async function setDriverStoreDir(newDir: string | null): Promise<DriverStoreMigrationResult> {
+  return invoke("set_driver_store_dir", { newDir });
+}
+
+export interface DriverStorePathInfo {
+  driver_store_dir: string | null;
+  plugins_dir: string;
+  agents_dir: string;
+}
+
+export async function getDriverStorePath(): Promise<DriverStorePathInfo> {
+  return invoke("get_driver_store_path");
 }
 
 export async function webdavSyncTest(config: WebDavConfig): Promise<void> {

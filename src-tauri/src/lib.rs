@@ -261,7 +261,15 @@ pub fn run() {
             apply_debug_log_level(desktop_settings.debug_logging_enabled);
             eprintln!("[STARTUP] storage ready in {:?}", t.elapsed());
 
-            let state = if data_dir::uses_custom_data_dir() {
+            let state = if let Some(ref driver_dir) = desktop_settings.driver_store_dir {
+                let driver_base = std::path::PathBuf::from(driver_dir);
+                Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
+                    storage,
+                    driver_base.join("plugins"),
+                    driver_base.join("agents"),
+                    env!("CARGO_PKG_VERSION"),
+                ))
+            } else if data_dir::uses_custom_data_dir() {
                 Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
                     storage,
                     data_dir.join("plugins"),
@@ -328,6 +336,8 @@ pub fn run() {
             commands::ai::delete_ai_conversation,
             commands::app_settings::load_desktop_settings,
             commands::app_settings::save_desktop_settings,
+            commands::app_settings::set_driver_store_dir,
+            commands::app_settings::get_driver_store_path,
             commands::app_settings::load_pinned_tree_node_ids,
             commands::app_settings::save_pinned_tree_node_ids,
             commands::app_settings::load_native_debug_logs,

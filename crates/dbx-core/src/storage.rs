@@ -36,6 +36,8 @@ pub struct DesktopSettings {
     pub debug_logging_enabled: bool,
     #[serde(default)]
     pub saved_sql_sync_dir: Option<String>,
+    #[serde(default)]
+    pub driver_store_dir: Option<String>,
 }
 
 impl Default for DesktopSettings {
@@ -45,6 +47,7 @@ impl Default for DesktopSettings {
             icon_theme: DesktopIconTheme::Default,
             debug_logging_enabled: false,
             saved_sql_sync_dir: None,
+            driver_store_dir: None,
         }
     }
 }
@@ -525,6 +528,12 @@ impl Storage {
                 .unwrap_or_else(|| DesktopSettings::default().debug_logging_enabled),
             saved_sql_sync_dir: settings
                 .get("saved_sql_sync_dir")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string),
+            driver_store_dir: settings
+                .get("driver_store_dir")
                 .and_then(|value| value.as_str())
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
