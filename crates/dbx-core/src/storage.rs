@@ -510,6 +510,14 @@ impl Storage {
                 settings.remove("saved_sql_sync_dir");
             }
         }
+        match desktop_settings.driver_store_dir.as_ref().filter(|path| !path.trim().is_empty()) {
+            Some(path) => {
+                settings.insert("driver_store_dir".to_string(), serde_json::Value::String(path.clone()));
+            }
+            None => {
+                settings.remove("driver_store_dir");
+            }
+        }
         self.save_app_settings_json(&settings).await
     }
 
@@ -1486,6 +1494,7 @@ mod tests {
                 icon_theme: DesktopIconTheme::Black,
                 debug_logging_enabled: true,
                 saved_sql_sync_dir: None,
+                driver_store_dir: Some("/tmp/dbx-drivers".to_string()),
             })
             .await
             .unwrap();
@@ -1497,7 +1506,8 @@ mod tests {
                 show_tray_icon: false,
                 icon_theme: DesktopIconTheme::Black,
                 debug_logging_enabled: true,
-                saved_sql_sync_dir: None
+                saved_sql_sync_dir: None,
+                driver_store_dir: Some("/tmp/dbx-drivers".to_string())
             }
         );
     }
