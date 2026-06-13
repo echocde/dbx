@@ -75,9 +75,9 @@ interface PersistedTreeChildrenLoadResult {
 
 type BeforeConnectHandler = (config: ConnectionConfig) => Promise<void>;
 
-function redisDbLabel(db: number, loadedKeyCount?: number, totalKeyCount?: number): string {
+function redisDbLabel(db: number, _loadedKeyCount?: number, totalKeyCount?: number): string {
   if (totalKeyCount == null) return `db${db}`;
-  return `db${db} (${loadedKeyCount ?? 0}/${totalKeyCount})`;
+  return `db${db} (${totalKeyCount})`;
 }
 
 export const useConnectionStore = defineStore("connection", () => {
