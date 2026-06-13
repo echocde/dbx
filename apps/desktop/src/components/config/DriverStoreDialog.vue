@@ -45,8 +45,12 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import type { DriverStorePathInfo } from "@/lib/api";
 const settingsStore = useSettingsStore();
 
-const driverStoreDir = computed(() => settingsStore.desktopSettings.driver_store_dir ?? null);
-const driverStoreDirMigrating = ref(false);
+type DriverStoreDirKind = "plugin" | "agent";
+
+const legacyDriverStoreDir = computed(() => settingsStore.desktopSettings.driver_store_dir ?? null);
+const pluginStoreDir = computed(() => settingsStore.desktopSettings.plugin_store_dir ?? null);
+const agentStoreDir = computed(() => settingsStore.desktopSettings.agent_store_dir ?? null);
+const driverStoreDirMigrating = ref<DriverStoreDirKind | null>(null);
 const currentDriverStorePath = ref<DriverStorePathInfo | null>(null);
 
 async function loadDriverStorePath() {
@@ -58,49 +62,82 @@ async function loadDriverStorePath() {
   }
 }
 
-const driverStoreDirDisplay = computed(() => {
-  if (currentDriverStorePath.value) {
-    return driverStoreDir.value || currentDriverStorePath.value.plugins_dir;
+function configuredDriverStoreDir(kind: DriverStoreDirKind): string | null {
+  if (kind === "plugin") {
+    return pluginStoreDir.value ?? (legacyDriverStoreDir.value ? `${legacyDriverStoreDir.value}/plugins` : null);
   }
-  return driverStoreDir.value || t("driverStore.driverStoreDirDefault");
-});
+  return agentStoreDir.value ?? (legacyDriverStoreDir.value ? `${legacyDriverStoreDir.value}/agents` : null);
+}
 
-async function chooseDriverStoreDir() {
+function actualDriverStoreDir(kind: DriverStoreDirKind): string | null {
+  if (!currentDriverStorePath.value) return null;
+  return kind === "plugin" ? currentDriverStorePath.value.plugins_dir : currentDriverStorePath.value.agents_dir;
+}
+
+function driverStoreDirDisplay(kind: DriverStoreDirKind): string {
+  return actualDriverStoreDir(kind) ?? configuredDriverStoreDir(kind) ?? t("driverStore.driverStoreDirDefault");
+}
+
+function driverStoreTargetLabel(kind: DriverStoreDirKind): string {
+  return kind === "plugin" ? t("driverStore.pluginStoreDir") : t("driverStore.agentStoreDir");
+}
+
+const driverStorePathRows = computed(() => [
+  {
+    kind: "plugin" as const,
+    label: t("driverStore.pluginStoreDir"),
+    description: t("driverStore.pluginStoreDirDescription"),
+    display: driverStoreDirDisplay("plugin"),
+    custom: Boolean(pluginStoreDir.value || legacyDriverStoreDir.value),
+  },
+  {
+    kind: "agent" as const,
+    label: t("driverStore.agentStoreDir"),
+    description: t("driverStore.agentStoreDirDescription"),
+    display: driverStoreDirDisplay("agent"),
+    custom: Boolean(agentStoreDir.value || legacyDriverStoreDir.value),
+  },
+]);
+
+async function chooseDriverStoreDir(kind: DriverStoreDirKind) {
   if (isWeb || driverStoreDirMigrating.value) return;
   const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({
-    title: t("driverStore.driverStoreDirDialogTitle"),
+    title: t("driverStore.driverStoreDirDialogTitle", { target: driverStoreTargetLabel(kind) }),
     directory: true,
     multiple: false,
   });
   if (typeof selected === "string") {
-    await applyDriverStoreDir(selected);
+    await applyDriverStoreDir(kind, selected);
   }
 }
 
-async function resetDriverStoreDir() {
+async function resetDriverStoreDir(kind: DriverStoreDirKind) {
   if (driverStoreDirMigrating.value) return;
-  await applyDriverStoreDir(null);
+  await applyDriverStoreDir(kind, null);
 }
 
-async function applyDriverStoreDir(newDir: string | null) {
+async function applyDriverStoreDir(kind: DriverStoreDirKind, newDir: string | null) {
   if (driverStoreDirMigrating.value) return;
 
-  const confirmed = window.confirm(t("driverStore.driverStoreDirConfirm"));
+  const target = driverStoreTargetLabel(kind);
+  const confirmed = window.confirm(t("driverStore.driverStoreDirConfirm", { target }));
   if (!confirmed) return;
 
-  driverStoreDirMigrating.value = true;
+  driverStoreDirMigrating.value = kind;
   try {
-    const result = await api.setDriverStoreDir(newDir);
+    const result = kind === "plugin" ? await api.setPluginStoreDir(newDir) : await api.setAgentStoreDir(newDir);
     settingsStore.desktopSettings.driver_store_dir = result.driver_store_dir;
-    toast(t("driverStore.driverStoreDirSuccess"));
+    settingsStore.desktopSettings.plugin_store_dir = result.plugin_store_dir;
+    settingsStore.desktopSettings.agent_store_dir = result.agent_store_dir;
+    toast(t("driverStore.driverStoreDirSuccess", { target }));
     // Restart the app to use the new paths
     const { relaunch } = await import("@tauri-apps/plugin-process");
     relaunch();
   } catch (e: any) {
     toast(t("driverStore.driverStoreDirMigrationFailed", { error: e?.message || String(e) }), 5000);
   } finally {
-    driverStoreDirMigrating.value = false;
+    driverStoreDirMigrating.value = null;
   }
 }
 
@@ -1226,28 +1263,39 @@ watch(driverStoreTab, (tab) => {
             <div v-if="!isWeb" class="rounded-xl border bg-muted/20 p-4 space-y-3">
               <div class="text-sm font-medium">{{ t("driverStore.driverStoreDir") }}</div>
               <p class="text-xs text-muted-foreground">{{ t("driverStore.driverStoreDirDescription") }}</p>
-              <div class="flex items-center gap-2">
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <div class="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-xs font-mono truncate">
-                      {{ driverStoreDirDisplay }}
+              <div class="space-y-2.5">
+                <div v-for="row in driverStorePathRows" :key="row.kind" class="rounded-lg border bg-background/50 p-3">
+                  <div class="mb-2 flex items-start justify-between gap-3">
+                    <div class="min-w-0 text-xs leading-5">
+                      <span class="font-medium">{{ row.label }}</span>
+                      <span class="ml-2 text-[11px] text-muted-foreground">{{ row.description }}</span>
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" class="max-w-100 break-all text-xs">
-                    {{ driverStoreDirDisplay }}
-                  </TooltipContent>
-                </Tooltip>
-                <Button variant="outline" size="sm" class="shrink-0 gap-1" :disabled="driverStoreDirMigrating" @click="chooseDriverStoreDir">
-                  <FolderSync class="h-3.5 w-3.5" />
-                  {{ t("driverStore.driverStoreDirChange") }}
-                </Button>
-                <Button v-if="driverStoreDir" variant="ghost" size="sm" class="shrink-0 gap-1 text-muted-foreground" :disabled="driverStoreDirMigrating" @click="resetDriverStoreDir">
-                  {{ t("driverStore.driverStoreDirReset") }}
-                </Button>
+                    <Loader2 v-if="driverStoreDirMigrating === row.kind" class="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <div class="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-xs font-mono truncate">
+                          {{ row.display }}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" class="max-w-100 break-all text-xs">
+                        {{ row.display }}
+                      </TooltipContent>
+                    </Tooltip>
+                    <Button variant="outline" size="sm" class="shrink-0 gap-1" :disabled="Boolean(driverStoreDirMigrating)" @click="chooseDriverStoreDir(row.kind)">
+                      <FolderSync class="h-3.5 w-3.5" />
+                      {{ t("driverStore.driverStoreDirChange") }}
+                    </Button>
+                    <Button v-if="row.custom" variant="ghost" size="sm" class="shrink-0 gap-1 text-muted-foreground" :disabled="Boolean(driverStoreDirMigrating)" @click="resetDriverStoreDir(row.kind)">
+                      {{ t("driverStore.driverStoreDirReset") }}
+                    </Button>
+                  </div>
+                </div>
               </div>
               <p v-if="driverStoreDirMigrating" class="text-xs text-muted-foreground flex items-center gap-1.5">
                 <Loader2 class="h-3 w-3 animate-spin" />
-                {{ t("driverStore.driverStoreDirMigrating") }}
+                {{ t("driverStore.driverStoreDirMigrating", { target: driverStoreTargetLabel(driverStoreDirMigrating) }) }}
               </p>
             </div>
 

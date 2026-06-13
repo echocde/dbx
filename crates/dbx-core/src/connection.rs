@@ -1112,7 +1112,7 @@ fn default_plugin_dir() -> PathBuf {
     default_dbx_dir().join("plugins")
 }
 
-fn default_agent_dir() -> PathBuf {
+pub fn default_agent_dir() -> PathBuf {
     default_dbx_dir().join("agents")
 }
 

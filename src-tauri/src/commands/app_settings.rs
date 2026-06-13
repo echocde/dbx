@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use dbx_core::storage::DesktopSettings;
 use tauri::{AppHandle, Manager, State};
@@ -9,6 +12,8 @@ use crate::{apply_debug_log_level, apply_desktop_settings};
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DriverStoreMigrationResult {
     pub driver_store_dir: Option<String>,
+    pub plugin_store_dir: Option<String>,
+    pub agent_store_dir: Option<String>,
     pub migrated_plugins: bool,
     pub migrated_agents: bool,
 }
@@ -53,6 +58,8 @@ pub async fn load_native_debug_logs(app: AppHandle) -> Result<String, String> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DriverStorePathInfo {
     pub driver_store_dir: Option<String>,
+    pub plugin_store_dir: Option<String>,
+    pub agent_store_dir: Option<String>,
     pub plugins_dir: String,
     pub agents_dir: String,
 }
@@ -62,6 +69,8 @@ pub async fn get_driver_store_path(state: State<'_, Arc<AppState>>) -> Result<Dr
     let settings = state.storage.load_desktop_settings().await.unwrap_or_default();
     Ok(DriverStorePathInfo {
         driver_store_dir: settings.driver_store_dir,
+        plugin_store_dir: settings.plugin_store_dir,
+        agent_store_dir: settings.agent_store_dir,
         plugins_dir: state.plugins.root_dir().to_string_lossy().to_string(),
         agents_dir: state.agent_manager.base_dir().to_string_lossy().to_string(),
     })
@@ -69,91 +78,180 @@ pub async fn get_driver_store_path(state: State<'_, Arc<AppState>>) -> Result<Dr
 
 #[tauri::command]
 pub async fn set_driver_store_dir(
+    app: AppHandle,
     state: State<'_, Arc<AppState>>,
     new_dir: Option<String>,
 ) -> Result<DriverStoreMigrationResult, String> {
-    let new_dir = new_dir.filter(|d| !d.trim().is_empty()).map(|d| d.trim().to_string());
-    let new_path = new_dir.as_ref().map(PathBuf::from);
-
-    // Resolve current plugin/agent directories
+    let new_dir = normalize_store_dir(new_dir);
     let current_plugins_dir = state.plugins.root_dir().to_path_buf();
     let current_agents_dir = state.agent_manager.base_dir().clone();
-
-    // Validate: if setting a custom dir, it must be different from current parent
-    if let Some(ref np) = new_path {
-        let target_plugins = np.join("plugins");
-        let target_agents = np.join("agents");
-
-        // Canonicalize for comparison (both sides)
-        let np_canonical = if np.exists() {
-            np.canonicalize().map_err(|e| format!("Invalid path {}: {e}", np.display()))?
-        } else {
-            std::fs::create_dir_all(np).map_err(|e| format!("Failed to create directory {}: {e}", np.display()))?;
-            np.canonicalize().map_err(|e| format!("Invalid path {}: {e}", np.display()))?
-        };
-
-        let current_plugins_parent = current_plugins_dir.parent();
-        let current_agents_parent = current_agents_dir.parent();
-
-        // Check if the new dir is the same as the current parent (no-op)
-        if current_plugins_parent == Some(&np_canonical) && current_agents_parent == Some(&np_canonical) {
-            return Ok(DriverStoreMigrationResult {
-                driver_store_dir: new_dir,
-                migrated_plugins: false,
-                migrated_agents: false,
-            });
+    let (target_plugins_dir, target_agents_dir) = match new_dir.as_ref() {
+        Some(dir) => {
+            let driver_base = PathBuf::from(dir);
+            (driver_base.join("plugins"), driver_base.join("agents"))
         }
+        None => default_store_dirs(&app)?,
+    };
 
-        // Stop all running agent daemons before migration
-        state.agent_manager.stop_daemons().await;
+    state.agent_manager.stop_daemons().await;
+    let migrated_plugins = migrate_store_directory(&current_plugins_dir, &target_plugins_dir)?;
+    let migrated_agents = migrate_store_directory(&current_agents_dir, &target_agents_dir)?;
 
-        // Migrate plugins directory
-        let migrated_plugins = if current_plugins_dir.exists() {
-            migrate_directory(&current_plugins_dir, &target_plugins)?;
-            true
-        } else {
-            false
-        };
-
-        // Migrate agents directory
-        let migrated_agents = if current_agents_dir.exists() {
-            migrate_directory(&current_agents_dir, &target_agents)?;
-            true
-        } else {
-            false
-        };
-
-        // Verify migration
-        if migrated_plugins {
-            verify_migration(&current_plugins_dir, &target_plugins)?;
-        }
-        if migrated_agents {
-            verify_migration(&current_agents_dir, &target_agents)?;
-        }
-
-        // Delete old data after successful verification
-        if migrated_plugins {
-            if let Err(err) = std::fs::remove_dir_all(&current_plugins_dir) {
-                log::warn!("Failed to remove old plugins dir {}: {err}", current_plugins_dir.display());
-            }
-        }
-        if migrated_agents {
-            if let Err(err) = std::fs::remove_dir_all(&current_agents_dir) {
-                log::warn!("Failed to remove old agents dir {}: {err}", current_agents_dir.display());
-            }
-        }
-    }
-
-    // Save the setting
     let mut settings = state.storage.load_desktop_settings().await.unwrap_or_default();
     settings.driver_store_dir = new_dir.clone();
+    settings.plugin_store_dir = None;
+    settings.agent_store_dir = None;
     state.storage.save_desktop_settings(&settings).await?;
 
-    Ok(DriverStoreMigrationResult { driver_store_dir: new_dir, migrated_plugins: true, migrated_agents: true })
+    Ok(driver_store_migration_result(settings, migrated_plugins, migrated_agents))
+}
+
+#[tauri::command]
+pub async fn set_plugin_store_dir(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    new_dir: Option<String>,
+) -> Result<DriverStoreMigrationResult, String> {
+    let new_dir = normalize_store_dir(new_dir);
+    let current_plugins_dir = state.plugins.root_dir().to_path_buf();
+    let current_agents_dir = state.agent_manager.base_dir().clone();
+    let target_plugins_dir = match new_dir.as_ref() {
+        Some(dir) => PathBuf::from(dir),
+        None => default_plugin_store_dir(&app)?,
+    };
+
+    let migrated_plugins = migrate_store_directory(&current_plugins_dir, &target_plugins_dir)?;
+
+    let mut settings = state.storage.load_desktop_settings().await.unwrap_or_default();
+    convert_legacy_driver_store(&mut settings, &current_plugins_dir, &current_agents_dir);
+    settings.plugin_store_dir = new_dir;
+    state.storage.save_desktop_settings(&settings).await?;
+
+    Ok(driver_store_migration_result(settings, migrated_plugins, false))
+}
+
+#[tauri::command]
+pub async fn set_agent_store_dir(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    new_dir: Option<String>,
+) -> Result<DriverStoreMigrationResult, String> {
+    let new_dir = normalize_store_dir(new_dir);
+    let current_plugins_dir = state.plugins.root_dir().to_path_buf();
+    let current_agents_dir = state.agent_manager.base_dir().clone();
+    let target_agents_dir = match new_dir.as_ref() {
+        Some(dir) => PathBuf::from(dir),
+        None => default_agent_store_dir(&app)?,
+    };
+
+    state.agent_manager.stop_daemons().await;
+    let migrated_agents = migrate_store_directory(&current_agents_dir, &target_agents_dir)?;
+
+    let mut settings = state.storage.load_desktop_settings().await.unwrap_or_default();
+    convert_legacy_driver_store(&mut settings, &current_plugins_dir, &current_agents_dir);
+    settings.agent_store_dir = new_dir;
+    state.storage.save_desktop_settings(&settings).await?;
+
+    Ok(driver_store_migration_result(settings, false, migrated_agents))
+}
+
+fn normalize_store_dir(dir: Option<String>) -> Option<String> {
+    dir.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
+fn default_store_dirs(app: &AppHandle) -> Result<(PathBuf, PathBuf), String> {
+    Ok((default_plugin_store_dir(app)?, default_agent_store_dir(app)?))
+}
+
+fn default_plugin_store_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let default_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(crate::data_dir::resolve_data_dir(default_data_dir).join("plugins"))
+}
+
+fn default_agent_store_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let default_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let data_dir = crate::data_dir::resolve_data_dir(default_data_dir);
+    Ok(if crate::data_dir::uses_custom_data_dir() {
+        data_dir.join("agents")
+    } else {
+        dbx_core::connection::default_agent_dir()
+    })
+}
+
+fn convert_legacy_driver_store(settings: &mut DesktopSettings, current_plugins_dir: &Path, current_agents_dir: &Path) {
+    if settings.driver_store_dir.is_none() {
+        return;
+    }
+    if settings.plugin_store_dir.is_none() {
+        settings.plugin_store_dir = Some(current_plugins_dir.to_string_lossy().to_string());
+    }
+    if settings.agent_store_dir.is_none() {
+        settings.agent_store_dir = Some(current_agents_dir.to_string_lossy().to_string());
+    }
+    settings.driver_store_dir = None;
+}
+
+fn driver_store_migration_result(
+    settings: DesktopSettings,
+    migrated_plugins: bool,
+    migrated_agents: bool,
+) -> DriverStoreMigrationResult {
+    DriverStoreMigrationResult {
+        driver_store_dir: settings.driver_store_dir,
+        plugin_store_dir: settings.plugin_store_dir,
+        agent_store_dir: settings.agent_store_dir,
+        migrated_plugins,
+        migrated_agents,
+    }
+}
+
+fn migrate_store_directory(current_dir: &Path, target_dir: &Path) -> Result<bool, String> {
+    std::fs::create_dir_all(target_dir)
+        .map_err(|e| format!("Failed to create directory {}: {e}", target_dir.display()))?;
+    let target_canonical =
+        target_dir.canonicalize().map_err(|e| format!("Invalid path {}: {e}", target_dir.display()))?;
+
+    if !current_dir.exists() {
+        return Ok(false);
+    }
+
+    let current_canonical =
+        current_dir.canonicalize().map_err(|e| format!("Invalid path {}: {e}", current_dir.display()))?;
+    if current_canonical == target_canonical {
+        return Ok(false);
+    }
+    if target_canonical.starts_with(&current_canonical) {
+        return Err(format!(
+            "Target directory {} cannot be inside current directory {}",
+            target_dir.display(),
+            current_dir.display()
+        ));
+    }
+    if target_dir_has_entries(target_dir)? {
+        return Err(format!(
+            "Target directory {} is not empty. Please choose an empty directory or remove the existing data first.",
+            target_dir.display()
+        ));
+    }
+
+    migrate_directory(current_dir, target_dir)?;
+    verify_migration(current_dir, target_dir)?;
+    if let Err(err) = std::fs::remove_dir_all(current_dir) {
+        log::warn!("Failed to remove old driver store dir {}: {err}", current_dir.display());
+    }
+    Ok(true)
+}
+
+fn target_dir_has_entries(dir: &Path) -> Result<bool, String> {
+    let mut entries = std::fs::read_dir(dir).map_err(|e| format!("Failed to read {}: {e}", dir.display()))?;
+    Ok(entries.next().transpose().map_err(|e| e.to_string())?.is_some())
 }
 
 /// Recursively copy a directory to a new location.
-fn migrate_directory(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
+fn migrate_directory(src: &Path, dst: &Path) -> Result<(), String> {
     if !src.exists() {
         return Ok(());
     }
@@ -178,7 +276,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 }
 
 /// Verify that the migrated directory has the same file count and total size.
-fn verify_migration(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
+fn verify_migration(src: &Path, dst: &Path) -> Result<(), String> {
     let src_info = count_files_recursive(src)?;
     let dst_info = count_files_recursive(dst)?;
     if src_info.count != dst_info.count || src_info.total_size != dst_info.total_size {

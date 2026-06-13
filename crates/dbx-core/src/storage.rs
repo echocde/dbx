@@ -38,6 +38,10 @@ pub struct DesktopSettings {
     pub saved_sql_sync_dir: Option<String>,
     #[serde(default)]
     pub driver_store_dir: Option<String>,
+    #[serde(default)]
+    pub plugin_store_dir: Option<String>,
+    #[serde(default)]
+    pub agent_store_dir: Option<String>,
 }
 
 impl Default for DesktopSettings {
@@ -48,6 +52,8 @@ impl Default for DesktopSettings {
             debug_logging_enabled: false,
             saved_sql_sync_dir: None,
             driver_store_dir: None,
+            plugin_store_dir: None,
+            agent_store_dir: None,
         }
     }
 }
@@ -518,6 +524,22 @@ impl Storage {
                 settings.remove("driver_store_dir");
             }
         }
+        match desktop_settings.plugin_store_dir.as_ref().filter(|path| !path.trim().is_empty()) {
+            Some(path) => {
+                settings.insert("plugin_store_dir".to_string(), serde_json::Value::String(path.clone()));
+            }
+            None => {
+                settings.remove("plugin_store_dir");
+            }
+        }
+        match desktop_settings.agent_store_dir.as_ref().filter(|path| !path.trim().is_empty()) {
+            Some(path) => {
+                settings.insert("agent_store_dir".to_string(), serde_json::Value::String(path.clone()));
+            }
+            None => {
+                settings.remove("agent_store_dir");
+            }
+        }
         self.save_app_settings_json(&settings).await
     }
 
@@ -542,6 +564,18 @@ impl Storage {
                 .map(ToString::to_string),
             driver_store_dir: settings
                 .get("driver_store_dir")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string),
+            plugin_store_dir: settings
+                .get("plugin_store_dir")
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string),
+            agent_store_dir: settings
+                .get("agent_store_dir")
                 .and_then(|value| value.as_str())
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -1495,6 +1529,8 @@ mod tests {
                 debug_logging_enabled: true,
                 saved_sql_sync_dir: None,
                 driver_store_dir: Some("/tmp/dbx-drivers".to_string()),
+                plugin_store_dir: Some("/tmp/dbx-plugins".to_string()),
+                agent_store_dir: Some("/tmp/dbx-agents".to_string()),
             })
             .await
             .unwrap();
@@ -1507,7 +1543,9 @@ mod tests {
                 icon_theme: DesktopIconTheme::Black,
                 debug_logging_enabled: true,
                 saved_sql_sync_dir: None,
-                driver_store_dir: Some("/tmp/dbx-drivers".to_string())
+                driver_store_dir: Some("/tmp/dbx-drivers".to_string()),
+                plugin_store_dir: Some("/tmp/dbx-plugins".to_string()),
+                agent_store_dir: Some("/tmp/dbx-agents".to_string())
             }
         );
     }

@@ -127,6 +127,8 @@ export interface DesktopSettings {
   debug_logging_enabled: boolean;
   saved_sql_sync_dir?: string | null;
   driver_store_dir?: string | null;
+  plugin_store_dir?: string | null;
+  agent_store_dir?: string | null;
 }
 
 export interface SavedSqlSyncEntry {
@@ -334,6 +336,8 @@ export async function saveDesktopSettings(settings: DesktopSettings): Promise<vo
 
 export interface DriverStoreMigrationResult {
   driver_store_dir: string | null;
+  plugin_store_dir: string | null;
+  agent_store_dir: string | null;
   migrated_plugins: boolean;
   migrated_agents: boolean;
 }
@@ -342,8 +346,18 @@ export async function setDriverStoreDir(newDir: string | null): Promise<DriverSt
   return invoke("set_driver_store_dir", { newDir });
 }
 
+export async function setPluginStoreDir(newDir: string | null): Promise<DriverStoreMigrationResult> {
+  return invoke("set_plugin_store_dir", { newDir });
+}
+
+export async function setAgentStoreDir(newDir: string | null): Promise<DriverStoreMigrationResult> {
+  return invoke("set_agent_store_dir", { newDir });
+}
+
 export interface DriverStorePathInfo {
   driver_store_dir: string | null;
+  plugin_store_dir: string | null;
+  agent_store_dir: string | null;
   plugins_dir: string;
   agents_dir: string;
 }

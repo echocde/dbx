@@ -261,27 +261,29 @@ pub fn run() {
             apply_debug_log_level(desktop_settings.debug_logging_enabled);
             eprintln!("[STARTUP] storage ready in {:?}", t.elapsed());
 
-            let state = if let Some(ref driver_dir) = desktop_settings.driver_store_dir {
-                let driver_base = std::path::PathBuf::from(driver_dir);
+            let legacy_driver_base = desktop_settings.driver_store_dir.as_ref().map(std::path::PathBuf::from);
+            let plugin_dir = desktop_settings
+                .plugin_store_dir
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .or_else(|| legacy_driver_base.as_ref().map(|base| base.join("plugins")))
+                .unwrap_or_else(|| data_dir.join("plugins"));
+            let agent_dir = desktop_settings
+                .agent_store_dir
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .or_else(|| legacy_driver_base.as_ref().map(|base| base.join("agents")))
+                .or_else(|| data_dir::uses_custom_data_dir().then(|| data_dir.join("agents")));
+
+            let state = if let Some(agent_dir) = agent_dir {
                 Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
                     storage,
-                    driver_base.join("plugins"),
-                    driver_base.join("agents"),
-                    env!("CARGO_PKG_VERSION"),
-                ))
-            } else if data_dir::uses_custom_data_dir() {
-                Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
-                    storage,
-                    data_dir.join("plugins"),
-                    data_dir.join("agents"),
+                    plugin_dir,
+                    agent_dir,
                     env!("CARGO_PKG_VERSION"),
                 ))
             } else {
-                Arc::new(AppState::new_with_plugin_dir_and_app_version(
-                    storage,
-                    data_dir.join("plugins"),
-                    env!("CARGO_PKG_VERSION"),
-                ))
+                Arc::new(AppState::new_with_plugin_dir_and_app_version(storage, plugin_dir, env!("CARGO_PKG_VERSION")))
             };
             app.manage(state.clone());
             app.manage(commands::saved_sql::SavedSqlStorageState { data_dir: data_dir.clone() });
@@ -337,6 +339,8 @@ pub fn run() {
             commands::app_settings::load_desktop_settings,
             commands::app_settings::save_desktop_settings,
             commands::app_settings::set_driver_store_dir,
+            commands::app_settings::set_plugin_store_dir,
+            commands::app_settings::set_agent_store_dir,
             commands::app_settings::get_driver_store_path,
             commands::app_settings::load_pinned_tree_node_ids,
             commands::app_settings::save_pinned_tree_node_ids,
