@@ -245,6 +245,8 @@ function getIconInfo(node: TreeNode): { icon: any; colorClass: string } | null {
       return { icon: Package, colorClass: "text-cyan-500" };
     case "group-partitions":
       return { icon: node.isExpanded ? FolderOpen : FolderClosed, colorClass: "text-green-400" };
+    case "load-more":
+      return { icon: Plus, colorClass: "text-primary" };
     default:
       return { icon: Database, colorClass: "text-muted-foreground" };
   }
@@ -258,6 +260,7 @@ function isGroupLabel(node: TreeNode): boolean {
 }
 
 function displayLabel(node: TreeNode): string {
+  if (node.type === "load-more") return t(node.label);
   if (node.type === "object-browser") return t(node.label, { count: node.objectCount ?? 0 });
   if (node.type === "user-admin") return t(node.label);
   if (node.label === "tree.defaultDatabase") return t(node.label);
@@ -390,6 +393,10 @@ async function toggle() {
 
 function runRowClickAction() {
   const node = props.node;
+  if (node.type === "load-more") {
+    void loadMoreObjectGroupChildren();
+    return;
+  }
   if (node.type === "object-browser") {
     void openObjectBrowser();
     return;
@@ -401,6 +408,14 @@ function runRowClickAction() {
     void viewObjectSource();
   } else if (action === "toggle") {
     toggle();
+  }
+}
+
+async function loadMoreObjectGroupChildren() {
+  try {
+    await connectionStore.loadMoreObjectGroupChildren(props.node);
+  } catch (e: any) {
+    toast(t("connection.connectFailed", { message: translateBackendError(t, e?.message || String(e)) }), 5000);
   }
 }
 
@@ -3068,6 +3083,7 @@ function treeItemMenuItems(): ContextMenuItem[] {
           </template>
           <span v-else class="w-3.5 h-3.5 shrink-0" />
           <DatabaseIcon v-if="node.type === 'connection'" :db-type="connectionIconType(node.connectionId)" class="w-3.5 h-3.5 shrink-0" />
+          <Loader2 v-else-if="node.type === 'load-more' && node.isLoading" class="w-3.5 h-3.5 shrink-0 animate-spin text-primary" />
           <component v-else :is="getIconInfo(node)?.icon || Database" class="w-3.5 h-3.5 shrink-0" :class="nodeIconClass" />
           <input
             v-if="isRenamingGroup"

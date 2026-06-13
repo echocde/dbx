@@ -1141,6 +1141,7 @@
     sequences: "Sequenze",
     packages: "Pacchetti",
     partitions: "Partizioni",
+    loadMore: "Carica altro...",
     objectBrowser: "Sfoglia in Esplora Oggetti ({count})",
   },
   objects: {

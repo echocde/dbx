@@ -1187,6 +1187,7 @@
     sequences: "Sequences",
     packages: "Packages",
     partitions: "Partitions",
+    loadMore: "Load more...",
     objectBrowser: "Browse in Object Browser ({count})",
   },
   userAdmin: {

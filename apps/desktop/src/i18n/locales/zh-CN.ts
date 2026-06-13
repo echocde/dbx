@@ -1186,6 +1186,7 @@
     sequences: "序列",
     packages: "包",
     partitions: "分区",
+    loadMore: "加载更多...",
     objectBrowser: "在对象浏览器中查看 ({count})",
   },
   userAdmin: {

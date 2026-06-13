@@ -1031,6 +1031,7 @@
     sequences: "Secuencias",
     packages: "Paquetes",
     partitions: "Particiones",
+    loadMore: "Cargar más...",
     objectBrowser: "Explorar en el navegador de objetos ({count})",
   },
   objects: {
