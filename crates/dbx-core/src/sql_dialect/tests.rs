@@ -53,6 +53,29 @@ fn qualifies_schema_only_for_schema_aware_databases() {
 }
 
 #[test]
+fn maps_table_pagination_strategy_by_database_type() {
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Mysql)), TablePaginationStrategy::LimitOffset);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Dameng)), TablePaginationStrategy::FetchFirst);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Db2)), TablePaginationStrategy::Db2FetchFirst);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::SqlServer)), TablePaginationStrategy::SqlServerTop);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Iris)), TablePaginationStrategy::IrisTop);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Informix)), TablePaginationStrategy::InformixFirst);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::OceanbaseOracle)), TablePaginationStrategy::Rownum);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Questdb)), TablePaginationStrategy::QuestDbLimit);
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Oracle)), TablePaginationStrategy::Unbounded);
+    assert_eq!(
+        pagination_strategy(Some(DatabaseType::Oracle), PaginationContext::BoundedRead),
+        TablePaginationStrategy::FetchFirst
+    );
+    assert_eq!(
+        pagination_strategy(Some(DatabaseType::Oracle), PaginationContext::UserQuery),
+        TablePaginationStrategy::Unbounded
+    );
+    assert_eq!(table_pagination_strategy(Some(DatabaseType::Jdbc)), TablePaginationStrategy::AgentMaxRows);
+    assert_eq!(table_pagination_strategy(None), TablePaginationStrategy::LimitOffset);
+}
+
+#[test]
 fn builds_select_sql_with_limit_syntax_for_database_type() {
     let columns = vec!["id".to_string(), "name".to_string()];
     let keys = vec!["id".to_string()];
