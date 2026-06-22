@@ -682,6 +682,7 @@ function applyProfile(val: string, preserveConnectionFields = false) {
       form.value.jdbc_driver_paths = [];
       jdbcDriverPathsInput.value = "";
       jdbcManualClasspathOpen.value = true;
+      applyPrestoSqlBuiltinDriverPathsIfAvailable();
     }
     if (profile.type === "mq") {
       resetMqFields();
