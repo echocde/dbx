@@ -964,8 +964,20 @@ pub async fn test_connection_core(config: &AiConfig) -> Result<AiTestConnectionR
                 .await
                 .map_err(|e| format!("AI request failed: {e}"))?;
             if !res.status().is_success() {
-                let data: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
-                return Err(categorize_error(&data, config));
+                let status = res.status();
+                let body = res.text().await.unwrap_or_default();
+                // Try JSON first (APIs like OpenAI return structured error bodies)
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let raw = extract_error(&data).unwrap_or_else(|| "API error".to_string());
+                    return Err(format!("[{}] {}", classify_error(&raw), raw));
+                }
+                // Non-JSON body — show HTTP status + raw body
+                let msg = if body.trim().is_empty() {
+                    format!("HTTP {}", status)
+                } else {
+                    format!("HTTP {}: {}", status, body.trim())
+                };
+                return Err(format!("[{}] {}", classify_error(&msg), msg));
             }
             res.bytes_stream()
         }
@@ -1005,9 +1017,14 @@ fn classify_error(msg: &str) -> &'static str {
         "modelNotFound"
     } else if lower.contains("429") || lower.contains("rate limit") || lower.contains("too many requests") {
         "rateLimit"
-    } else if lower.contains("timeout") || lower.contains("timed out") {
+    } else if lower.contains("timeout") || lower.contains("timed out") || lower.contains("504") {
         "timeout"
-    } else if lower.contains("connect") || lower.contains("dns") || lower.contains("resolve") {
+    } else if lower.contains("connect")
+        || lower.contains("dns")
+        || lower.contains("resolve")
+        || lower.contains("502")
+        || lower.contains("503")
+    {
         "network"
     } else {
         "unknown"
