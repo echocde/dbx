@@ -68,8 +68,7 @@ fn should_show_main_window_after_setup() -> bool {
 
 fn native_window_decorations_override(target_os: &str) -> Option<bool> {
     match target_os {
-        "windows" => Some(false),
-        "linux" => Some(true),
+        "windows" | "linux" => Some(false),
         _ => None,
     }
 }
@@ -270,7 +269,7 @@ mod tests {
     #[test]
     fn overrides_native_window_decorations_for_desktop_platforms() {
         assert_eq!(native_window_decorations_override("windows"), Some(false));
-        assert_eq!(native_window_decorations_override("linux"), Some(true));
+        assert_eq!(native_window_decorations_override("linux"), Some(false));
         assert_eq!(native_window_decorations_override("macos"), None);
     }
 
